@@ -2,8 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 import type { HealthDay, Transaction, EmailItem, MeetingDay, Domain, ScreenDay, LocationDay, MusicDay } from '../types'
 
 export const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL ?? 'https://xdykcdzqpgcjhcibaola.supabase.co',
-  import.meta.env.VITE_SUPABASE_ANON_KEY ?? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkeWtjZHpxcGdjamhjaWJhb2xhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMzg2ODMsImV4cCI6MjA5NzgxNDY4M30.sA9AohBmBiFwrxKuNZLTiGEP2_nZR1glfajVmbnqIbM',
+  import.meta.env.VITE_SUPABASE_URL || 'https://xdykcdzqpgcjhcibaola.supabase.co',
+  import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkeWtjZHpxcGdjamhjaWJhb2xhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMzg2ODMsImV4cCI6MjA5NzgxNDY4M30.sA9AohBmBiFwrxKuNZLTiGEP2_nZR1glfajVmbnqIbM',
 )
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
