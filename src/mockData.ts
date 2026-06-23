@@ -440,4 +440,4 @@ export const payments: Payment[] = [
 
 export const OPENING_BALANCE = 2840
 
-export const STORAGE_KEY = 'rick-os-state-v3'
+export const STORAGE_KEY = 'rick-os-state-v4'

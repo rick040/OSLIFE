@@ -402,11 +402,25 @@ export const useStore = create<State>()(
       name: mock.STORAGE_KEY,
       onRehydrateStorage: () => (state) => {
         if (!state) return
-        // previous fetch may have persisted empty arrays before the guard existed
-        if (!state.healthDays?.length) state.healthDays = [...mock.healthDays]
-        if (!state.emails?.length) state.emails = [...mock.emails]
-        if (!state.transactions?.length) state.transactions = [...mock.transactions]
-        if (!state.meetingDays?.length) state.meetingDays = [...mock.meetingDays]
+        const s = seed()
+        // Guard every array/required field — prevents blank page from stale persisted state
+        if (!state.healthDays?.length) state.healthDays = s.healthDays
+        if (!state.emails?.length) state.emails = s.emails
+        if (!state.transactions?.length) state.transactions = s.transactions
+        if (!state.meetingDays?.length) state.meetingDays = s.meetingDays
+        if (!state.projects?.length) state.projects = s.projects
+        if (!state.goals?.length) state.goals = s.goals
+        if (!state.milestones?.length) state.milestones = s.milestones
+        if (!state.payments?.length) state.payments = s.payments
+        if (!state.blocks?.length) state.blocks = s.blocks
+        if (!state.threads) state.threads = s.threads
+        if (!state.habits?.length) state.habits = s.habits
+        if (!state.nudge) state.nudge = s.nudge
+        if (!state.essentials?.length) state.essentials = s.essentials
+        if (!state.patterns?.length) state.patterns = s.patterns
+        if (!state.screenDays?.length) state.screenDays = s.screenDays
+        if (!state.locationDays?.length) state.locationDays = s.locationDays
+        if (!state.musicDays?.length) state.musicDays = s.musicDays
         if (!state.dataSource) state.dataSource = 'mock'
       },
     },
