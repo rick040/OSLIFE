@@ -1,0 +1,33 @@
+name: Spotify Live Sync
+
+on:
+  schedule:
+    # Every 30 minutes — well within GitHub Actions free tier (2000 min/month)
+    - cron: '*/30 * * * *'
+  workflow_dispatch: # allow manual trigger
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install supabase python-dotenv requests
+
+      - name: Sync Spotify recently played
+        run: python integrations/python/spotify_poll.py
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          RICK_USER_ID: ${{ secrets.RICK_USER_ID }}
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+          SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}

@@ -1,9 +1,9 @@
 import { createClient } from '@supabase/supabase-js'
-import type { HealthDay, Transaction, EmailItem, MeetingDay, Domain } from '../types'
+import type { HealthDay, Transaction, EmailItem, MeetingDay, Domain, ScreenDay, LocationDay, MusicDay } from '../types'
 
 export const supabase = createClient(
-  'https://lgwowurhqtdbukcpwkex.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxnd293dXJocXRkYnVrY3B3a2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MTc5NzMsImV4cCI6MjA5NTM5Mzk3M30.u4cc2-eEQ3Ncj0OQI1Prrs_k3CDNNXTUtbR2520mZow',
+  import.meta.env.VITE_SUPABASE_URL ?? 'https://xdykcdzqpgcjhcibaola.supabase.co',
+  import.meta.env.VITE_SUPABASE_ANON_KEY ?? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhkeWtjZHpxcGdjamhjaWJhb2xhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyMzg2ODMsImV4cCI6MjA5NzgxNDY4M30.sA9AohBmBiFwrxKuNZLTiGEP2_nZR1glfajVmbnqIbM',
 )
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -42,55 +42,45 @@ function inferEmailDomain(labels: string[]): Domain {
 // ── Fetch functions ───────────────────────────────────────────────────────────
 
 export async function fetchHealthDays(): Promise<HealthDay[]> {
-  const [{ data: hRows }, { data: sRows }] = await Promise.all([
-    supabase
-      .from('health_daily_stats')
-      .select('date,steps,active_min,avg_resting_hr')
-      .order('date', { ascending: false })
-      .limit(90),
-    supabase
-      .from('hc_sleep')
-      .select('date,duration_minutes')
-      .order('date', { ascending: false })
-      .limit(90),
-  ])
+  const { data } = await supabase
+    .from('health_days')
+    .select('date,steps,step_goal,sleep_hours,resting_hr,active_minutes,energy,mood')
+    .order('date', { ascending: false })
+    .limit(90)
 
-  const sleepByDate = new Map<string, number>()
-  for (const s of sRows ?? []) sleepByDate.set(s.date as string, ((s.duration_minutes as number) ?? 0) / 60)
-
-  return (hRows ?? []).map((r) => ({
+  return (data ?? []).map((r) => ({
     date: r.date as string,
     steps: (r.steps as number) ?? 0,
-    stepGoal: 10000,
-    sleepHours: Math.round(((sleepByDate.get(r.date as string) ?? 0)) * 10) / 10,
-    restingHR: (r.avg_resting_hr as number) ?? 0,
-    activeMinutes: (r.active_min as number) ?? 0,
-    energy: 0, // populated from dayLogs in Reflect
-    mood: 0,
+    stepGoal: (r.step_goal as number) ?? 8000,
+    sleepHours: (r.sleep_hours as number) ?? 0,
+    restingHR: (r.resting_hr as number) ?? 0,
+    activeMinutes: (r.active_minutes as number) ?? 0,
+    energy: (r.energy as number) ?? 3,
+    mood: (r.mood as number) ?? 3,
   }))
 }
 
 export async function fetchTransactions(): Promise<Transaction[]> {
   const { data } = await supabase
-    .from('finance_tx')
-    .select('id,occurred_on,amount,description,counterparty')
-    .order('occurred_on', { ascending: false })
+    .from('transactions')
+    .select('id,date,amount,merchant,category,domain')
+    .order('date', { ascending: false })
     .limit(300)
 
   return (data ?? []).map((r) => ({
     id: r.id as string,
-    date: r.occurred_on as string,
-    amount: parseFloat(r.amount as string),
-    merchant: extractMerchant((r.description as string) ?? '', (r.counterparty as string) ?? ''),
-    category: inferTxCategory((r.description as string) ?? ''),
-    domain: inferTxDomain((r.description as string) ?? '', (r.counterparty as string) ?? ''),
+    date: r.date as string,
+    amount: (r.amount as number) ?? 0,
+    merchant: (r.merchant as string) ?? '',
+    category: (r.category as string) ?? 'other',
+    domain: inferTxDomain((r.merchant as string) ?? '', '') as Domain,
   }))
 }
 
 export async function fetchEmails(): Promise<EmailItem[]> {
   const { data } = await supabase
-    .from('gmail_messages')
-    .select('id,from_addr,subject,snippet,received_at,read,importance,labels')
+    .from('emails')
+    .select('id,from_addr,subject,snippet,received_at,unread,important,domain')
     .order('received_at', { ascending: false })
     .limit(50)
 
@@ -100,28 +90,26 @@ export async function fetchEmails(): Promise<EmailItem[]> {
     subject: (r.subject as string) ?? '',
     snippet: (r.snippet as string) ?? '',
     receivedAt: r.received_at as string,
-    unread: !(r.read as boolean),
-    important: (r.importance as string) === 'high',
-    domain: inferEmailDomain(Array.isArray(r.labels) ? (r.labels as string[]) : []),
+    unread: (r.unread as boolean) ?? true,
+    important: (r.important as boolean) ?? false,
+    domain: ((r.domain as Domain) ?? 'personal'),
   }))
 }
 
 export async function fetchMeetingDays(): Promise<MeetingDay[]> {
   const { data } = await supabase
-    .from('calendar_events')
-    .select('title,starts_at,ends_at,all_day')
-    .eq('all_day', false)
-    .order('starts_at', { ascending: false })
+    .from('blocks')
+    .select('title,date,start,end,domain')
+    .order('date', { ascending: false })
     .limit(300)
 
   const byDate = new Map<string, MeetingDay>()
   for (const ev of data ?? []) {
-    if (ev.all_day) continue
-    const start = new Date(ev.starts_at as string)
-    const end = new Date(ev.ends_at as string)
-    // Amsterdam summer = UTC+2
-    const localDate = new Date(start.getTime() + 2 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    const mins = Math.round((end.getTime() - start.getTime()) / 60000)
+    const localDate = ev.date as string
+    if (!localDate) continue
+    const [sh, sm] = ((ev.start as string) ?? '00:00').split(':').map(Number)
+    const [eh, em] = ((ev.end as string) ?? '00:00').split(':').map(Number)
+    const mins = Math.max(0, (eh * 60 + em) - (sh * 60 + sm))
     const existing = byDate.get(localDate)
     if (existing) {
       existing.count++
@@ -132,4 +120,93 @@ export async function fetchMeetingDays(): Promise<MeetingDay[]> {
     }
   }
   return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date))
+}
+
+export async function fetchScreenDays(): Promise<ScreenDay[]> {
+  const { data } = await supabase
+    .from('screen_days')
+    .select('date,total_min,app_breakdown,pickups,notifications_received')
+    .order('date', { ascending: false })
+    .limit(90)
+
+  return (data ?? []).map((r) => {
+    const apps: Array<{ app: string; category: string; minutes: number }> = (r.app_breakdown as Array<{ app: string; category: string; minutes: number }>) ?? []
+    const focusMinutes = apps.filter((a) => a.category === 'work').reduce((s, a) => s + a.minutes, 0)
+    const distractMinutes = apps.filter((a) => a.category === 'social' || a.category === 'media').reduce((s, a) => s + a.minutes, 0)
+    return {
+      date: r.date as string,
+      totalMinutes: (r.total_min as number) ?? 0,
+      pickups: (r.pickups as number) ?? 0,
+      focusMinutes,
+      distractMinutes,
+      topApps: apps.map((a) => ({
+        name: a.app,
+        minutes: a.minutes,
+        category: (a.category as 'work' | 'social' | 'media' | 'comms') ?? 'work',
+      })),
+    }
+  })
+}
+
+export async function fetchLocationDays(): Promise<LocationDay[]> {
+  const { data } = await supabase
+    .from('location_days')
+    .select('date,places_visited,distance_km,time_home_min,time_out_min')
+    .order('date', { ascending: false })
+    .limit(90)
+
+  return (data ?? []).map((r) => ({
+    date: r.date as string,
+    timeHome: (r.time_home_min as number) ?? 0,
+    timeOut: (r.time_out_min as number) ?? 0,
+    timeCommute: 0,
+    distanceKm: (r.distance_km as number) ?? 0,
+    places: ((r.places_visited as Array<{ name: string; duration_min: number }>) ?? []).map((p) => ({
+      name: p.name,
+      domain: 'personal' as Domain,
+      minutes: p.duration_min ?? 0,
+    })),
+  }))
+}
+
+export async function fetchMusicDays(): Promise<MusicDay[]> {
+  const { data } = await supabase
+    .from('spotify_history')
+    .select('played_at,ms_played,genres,popularity')
+    .order('played_at', { ascending: false })
+    .limit(500)
+
+  // Roll up per day; infer mood from genres since audio-features API is deprecated
+  const byDate = new Map<string, { minutes: number; genres: string[]; popularity: number[] }>()
+  for (const r of data ?? []) {
+    const date = (r.played_at as string).slice(0, 10)
+    const ms = (r.ms_played as number) ?? 0
+    const genres: string[] = (r.genres as string[]) ?? []
+    const pop = (r.popularity as number) ?? 50
+    const existing = byDate.get(date)
+    if (existing) {
+      existing.minutes += Math.round(ms / 60000)
+      existing.genres.push(...genres)
+      existing.popularity.push(pop)
+    } else {
+      byDate.set(date, { minutes: Math.round(ms / 60000), genres: [...genres], popularity: [pop] })
+    }
+  }
+
+  return Array.from(byDate.entries())
+    .map(([date, d]) => {
+      const genreStr = d.genres.join(' ').toLowerCase()
+      // Infer valence from genre keywords (replaces deprecated audio-features)
+      const valence = /pop|dance|happy|funk|soul|latin|reggaeton/.test(genreStr) ? 0.75
+        : /metal|punk|hardcore|rage|angry/.test(genreStr) ? 0.35
+        : /ambient|sleep|classical|chill|lo-fi/.test(genreStr) ? 0.55
+        : 0.6
+      // Infer tempo proxy from genre
+      const tempo = /metal|drum|techno|hardstyle|edm|trap/.test(genreStr) ? 145
+        : /ambient|classical|acoustic|folk/.test(genreStr) ? 75
+        : 110
+      const topGenre = d.genres[0] ?? 'unknown'
+      return { date, minutes: d.minutes, topGenre, tempo, valence }
+    })
+    .sort((a, b) => a.date.localeCompare(b.date))
 }
