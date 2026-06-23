@@ -1,6 +1,6 @@
 import type { Domain, ItemKind, Sentiment } from './types'
 
-export const TODAY = '2026-06-22' // fixed reference date for this prototype
+export const TODAY = new Date().toISOString().slice(0, 10)
 
 export const DOMAIN_META: Record<
   Domain,
