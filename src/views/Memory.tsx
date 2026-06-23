@@ -1,0 +1,142 @@
+import { useState } from 'react'
+import { useStore } from '../store'
+import { TODAY, fmtDate, daysBetween } from '../domains'
+import { DomainChip, ConfidenceBar, Empty } from '../components/ui'
+import { Lock, GitBranch, Repeat, CheckCircle2, RotateCcw, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+
+type Tab = 'essentials' | 'threads' | 'patterns'
+
+export default function Memory() {
+  const { essentials, threads, patterns, closeThread, reopenThread } = useStore()
+  const [tab, setTab] = useState<Tab>('threads')
+
+  const tabs: { id: Tab; label: string; icon: typeof Lock; count: number; desc: string }[] = [
+    { id: 'essentials', label: 'Essentials', icon: Lock, count: essentials.length, desc: 'Permanent facts. They don’t change and don’t expire.' },
+    { id: 'threads', label: 'Threads', icon: GitBranch, count: threads.filter((t) => t.status === 'open').length, desc: 'Open loops & promises owed. These demand closure.' },
+    { id: 'patterns', label: 'Patterns', icon: Repeat, count: patterns.length, desc: 'Recurring observations, weighted by confidence, they decay if not reinforced.' },
+  ]
+
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto">
+      <div>
+        <h1 className="text-xl font-semibold">Memory</h1>
+        <p className="text-sm text-muted mt-1">
+          Three deliberately separate stores. A promise must never get buried under a habit.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        {tabs.map((t) => {
+          const Icon = t.icon
+          const active = tab === t.id
+          return (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`card p-3 text-left transition-all ${active ? 'border-forest-hi/60 bg-forest/5' : 'hover:border-line'}`}
+            >
+              <div className="flex items-center justify-between">
+                <Icon className={`h-4 w-4 ${active ? 'text-forest' : 'text-muted'}`} />
+                <span className="text-lg font-semibold tabular-nums">{t.count}</span>
+              </div>
+              <div className="text-sm font-medium mt-1">{t.label}</div>
+            </button>
+          )
+        })}
+      </div>
+
+      <p className="text-xs text-faint -mt-2">{tabs.find((t) => t.id === tab)!.desc}</p>
+
+      {tab === 'essentials' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 animate-fade-up">
+          {essentials.map((e) => (
+            <div key={e.id} className="card p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase tracking-wider text-faint">{e.label}</span>
+                <DomainChip domain={e.domain} small />
+              </div>
+              <p className="text-sm text-ink mt-1">{e.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === 'threads' && (
+        <div className="space-y-2 animate-fade-up">
+          {threads.length ? (
+            threads.map((t) => {
+              const dd = t.due ? daysBetween(TODAY, t.due) : null
+              const overdue = t.status === 'open' && dd !== null && dd < 0
+              return (
+                <div
+                  key={t.id}
+                  className={`card p-3 flex items-center justify-between gap-3 ${
+                    t.status === 'closed' ? 'opacity-50' : ''
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <DomainChip domain={t.domain} small />
+                      {t.status === 'closed' ? (
+                        <span className="chip bg-buurtkaart/15 text-buurtkaart">closed</span>
+                      ) : (
+                        <span className={`text-[11px] ${overdue ? 'text-cross font-medium' : 'text-faint'}`}>
+                          {t.due ? (overdue ? `${-dd!}d overdue` : `due ${fmtDate(t.due)}`) : 'no due date'}
+                        </span>
+                      )}
+                    </div>
+                    <p className={`text-sm mt-0.5 truncate ${t.status === 'closed' ? 'line-through text-faint' : 'text-ink'}`}>
+                      {t.title}
+                    </p>
+                    <p className="text-[11px] text-faint">→ {t.owedTo}</p>
+                  </div>
+                  {t.status === 'open' ? (
+                    <button className="btn-ghost shrink-0 !py-1.5" onClick={() => closeThread(t.id)}>
+                      <CheckCircle2 className="h-4 w-4" /> Close
+                    </button>
+                  ) : (
+                    <button className="btn-ghost shrink-0 !py-1.5" onClick={() => reopenThread(t.id)}>
+                      <RotateCcw className="h-4 w-4" /> Reopen
+                    </button>
+                  )}
+                </div>
+              )
+            })
+          ) : (
+            <Empty>No threads yet.</Empty>
+          )}
+        </div>
+      )}
+
+      {tab === 'patterns' && (
+        <div className="space-y-2 animate-fade-up">
+          {patterns
+            .slice()
+            .sort((a, b) => b.confidence - a.confidence)
+            .map((p) => {
+              const Trend = p.trend === 'up' ? TrendingUp : p.trend === 'down' ? TrendingDown : Minus
+              return (
+                <div key={p.id} className="card p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm text-ink">{p.text}</p>
+                    <DomainChip domain={p.domain} small />
+                  </div>
+                  <div className="mt-2">
+                    <ConfidenceBar value={p.confidence} />
+                  </div>
+                  <div className="flex items-center gap-1 text-[11px] text-faint mt-1.5">
+                    <Trend
+                      className={`h-3 w-3 ${
+                        p.trend === 'up' ? 'text-buurtkaart' : p.trend === 'down' ? 'text-cross' : 'text-faint'
+                      }`}
+                    />
+                    last reinforced {fmtDate(p.lastReinforced)}
+                  </div>
+                </div>
+              )
+            })}
+        </div>
+      )}
+    </div>
+  )
+}

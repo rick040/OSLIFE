@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #f2f3ec;
+  color: #1b1d17;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+/* calm light scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #dcded2;
+  border-radius: 8px;
+  border: 2px solid #f2f3ec;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #c7cabb;
+}
+
+@layer components {
+  .card {
+    @apply bg-surface border border-line rounded-3xl shadow-card;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium
+           transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-forest hover:bg-forest-hi text-white shadow-sm;
+  }
+  .btn-ghost {
+    @apply btn bg-sunken hover:bg-line text-ink;
+  }
+  .btn-lime {
+    @apply btn bg-lime hover:bg-lime-hi text-forest;
+  }
+}
