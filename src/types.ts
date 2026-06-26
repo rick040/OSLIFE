@@ -271,6 +271,9 @@ export interface DogEntry {
   weightKg?: number | null
   note?: string | null
   photo?: string | null // data URL
+  location?: string | null
+  poopConsistency?: 1 | 2 | 3 | 4 | 5 | null // 1=vloeibaar..5=droog
+  trainingType?: string | null
 }
 
 export type DogMedicalType = 'vaccine' | 'vet' | 'medication' | 'condition' | 'weight'
