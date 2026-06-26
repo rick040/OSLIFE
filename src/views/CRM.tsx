@@ -3,6 +3,8 @@ import { useStore } from '../store'
 import { TODAY, daysBetween, fmtDate } from '../domains'
 import { DomainChip, SectionTitle, Empty } from '../components/ui'
 import Messages from './Messages'
+import ProjectDetail from './ProjectDetail'
+import ClientDetail from './ClientDetail'
 import type { Project, ProjectStatus, ClientStatus, Client } from '../types'
 import {
   Users,
@@ -70,6 +72,8 @@ export default function CRM() {
   const [filter, setFilter] = useState('In uitvoering')
   const [view, setView] = useState<'grid' | 'lijst'>('grid')
   const [showMessages, setShowMessages] = useState(false)
+  const [openProject, setOpenProject] = useState<Project | null>(null)
+  const [openClient, setOpenClient] = useState<Client | null>(null)
 
   const unread = messages.filter((m) => m.unread).length
 
@@ -202,11 +206,11 @@ export default function CRM() {
           <Empty>Geen projecten in deze status.</Empty>
         ) : view === 'grid' ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {shown.map((p) => <ProjectCard key={p.id} p={p} />)}
+            {shown.map((p) => <ProjectCard key={p.id} p={p} onClick={() => setOpenProject(p)} />)}
           </div>
         ) : (
           <div className="space-y-2.5">
-            {shown.map((p) => <ProjectRow key={p.id} p={p} />)}
+            {shown.map((p) => <ProjectRow key={p.id} p={p} onClick={() => setOpenProject(p)} />)}
           </div>
         )}
       </div>
@@ -219,7 +223,7 @@ export default function CRM() {
             <span className="text-xs text-faint">{clients.length}</span>
           </div>
           <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
-            {clients.map((c) => <ClientCard key={c.id} c={c} />)}
+            {clients.map((c) => <ClientCard key={c.id} c={c} onClick={() => setOpenClient(c)} />)}
           </div>
         </div>
       )}
@@ -230,6 +234,12 @@ export default function CRM() {
           onClose={() => setShowMessages(false)}
           onReadConversation={markConversationRead}
         />
+      )}
+      {openProject && (
+        <ProjectDetail project={openProject} onClose={() => setOpenProject(null)} />
+      )}
+      {openClient && (
+        <ClientDetail client={openClient} onClose={() => setOpenClient(null)} />
       )}
     </div>
   )
@@ -258,10 +268,10 @@ function StatusBadge({ status }: { status: ProjectStatus }) {
   )
 }
 
-function ProjectCard({ p }: { p: Project }) {
+function ProjectCard({ p, onClick }: { p: Project; onClick: () => void }) {
   const dl = deadlineInfo(p.deadline)
   return (
-    <div className="card p-3.5 flex flex-col min-h-[150px]">
+    <button onClick={onClick} className="card p-3.5 flex flex-col min-h-[150px] text-left w-full hover:bg-sunken transition-colors">
       <div className="flex items-center justify-between mb-2">
         <span className="h-9 w-9 rounded-2xl bg-sunken flex items-center justify-center">
           <FolderKanban className="h-4.5 w-4.5 text-prjct" />
@@ -287,14 +297,14 @@ function ProjectCard({ p }: { p: Project }) {
         <span className="text-sm font-semibold tabular-nums">{eur(p.value)}</span>
         {p.type?.[0] && <span className="text-[11px] text-faint">{p.type[0]}</span>}
       </div>
-    </div>
+    </button>
   )
 }
 
-function ProjectRow({ p }: { p: Project }) {
+function ProjectRow({ p, onClick }: { p: Project; onClick: () => void }) {
   const dl = deadlineInfo(p.deadline)
   return (
-    <div className="card p-3.5 flex items-start gap-3">
+    <button onClick={onClick} className="card p-3.5 flex items-start gap-3 text-left w-full hover:bg-sunken transition-colors">
       <span className="h-10 w-10 rounded-2xl bg-sunken flex items-center justify-center shrink-0">
         <FolderKanban className="h-5 w-5 text-prjct" />
       </span>
@@ -319,14 +329,14 @@ function ProjectRow({ p }: { p: Project }) {
           ))}
         </div>
       </div>
-    </div>
+    </button>
   )
 }
 
-function ClientCard({ c }: { c: Client }) {
+function ClientCard({ c, onClick }: { c: Client; onClick: () => void }) {
   const color = CLIENT_HEX[c.clientStatus ?? 'Past'] ?? '#8C9080'
   return (
-    <div className="card p-3.5 w-40 shrink-0">
+    <button onClick={onClick} className="card p-3.5 w-40 shrink-0 text-left hover:bg-sunken transition-colors">
       <div className="flex items-center gap-2 mb-2">
         <span className="h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0" style={{ color, background: `${color}28` }}>
           {c.name.slice(0, 1).toUpperCase()}
@@ -341,6 +351,6 @@ function ClientCard({ c }: { c: Client }) {
         {c.scope != null && <div className="tabular-nums">Scope: {eur(c.scope)}</div>}
         <div className="flex items-center gap-1"><DomainChip domain={c.domain} small /></div>
       </div>
-    </div>
+    </button>
   )
 }
