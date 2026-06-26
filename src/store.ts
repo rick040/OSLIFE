@@ -26,6 +26,7 @@ import type {
   MusicDay,
   Client,
   Message,
+  Subscription,
 } from './types'
 import { classify } from './understand'
 import { runReflect } from './reflect'
@@ -67,6 +68,7 @@ interface State {
   milestones: Milestone[]
   emails: EmailItem[]
   payments: Payment[]
+  subscriptions: Subscription[]
   dataSource: 'mock' | 'live'
 
   // INTAKE → UNDERSTAND → REMEMBER
@@ -102,6 +104,12 @@ interface State {
   addTransactions: (txns: Transaction[]) => void
   markPaymentPaid: (id: string) => void
 
+  // Subscriptions
+  addSubscription: (sub: Omit<Subscription, 'id'>) => void
+  updateSubscription: (id: string, patch: Partial<Subscription>) => void
+  toggleSubscription: (id: string) => void
+  deleteSubscription: (id: string) => void
+
   resetDemo: () => void
 }
 
@@ -131,6 +139,7 @@ const seed = () => ({
   milestones: mock.milestones,
   emails: mock.emails,
   payments: mock.payments,
+  subscriptions: mock.subscriptions,
   dataSource: 'mock' as const,
 })
 
@@ -391,6 +400,18 @@ export const useStore = create<State>()(
           }
         }),
 
+      addSubscription: (sub) =>
+        set((s) => ({ subscriptions: [{ ...sub, id: uid('sub') }, ...s.subscriptions] })),
+
+      updateSubscription: (id, patch) =>
+        set((s) => ({ subscriptions: s.subscriptions.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
+
+      toggleSubscription: (id) =>
+        set((s) => ({ subscriptions: s.subscriptions.map((x) => (x.id === id ? { ...x, active: !x.active } : x)) })),
+
+      deleteSubscription: (id) =>
+        set((s) => ({ subscriptions: s.subscriptions.filter((x) => x.id !== id) })),
+
       loadLiveData: async () => {
         try {
           const [healthDays, transactions, emails, meetingDays] = await Promise.all([
@@ -432,6 +453,7 @@ export const useStore = create<State>()(
         if (!state.goals?.length) state.goals = s.goals
         if (!state.milestones?.length) state.milestones = s.milestones
         if (!state.payments?.length) state.payments = s.payments
+        if (!state.subscriptions?.length) state.subscriptions = s.subscriptions
         if (!state.blocks?.length) state.blocks = s.blocks
         if (!state.threads) state.threads = s.threads
         if (!state.habits?.length) state.habits = s.habits

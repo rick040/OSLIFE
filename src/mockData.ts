@@ -20,6 +20,7 @@ import type {
   MusicDay,
   Client,
   Message,
+  Subscription,
 } from './types'
 import { TODAY } from './domains'
 
@@ -466,6 +467,18 @@ export const payments: Payment[] = [
   { id: 'pay7', payee: 'Hosting + domeinen', amount: 95, due: '2026-06-24', direction: 'outgoing', status: 'open', domain: 'prjct', source: 'calendar', externalId: 'evt-hosting' },
 ]
 
+// ── SUBSCRIPTIONS (recurring spend, mirrors a subs database) ─────────────────
+export const subscriptions: Subscription[] = [
+  { id: 'sub1', name: 'Adobe Creative Cloud', amount: 660, cadence: 'yearly', nextCharge: '2026-06-30', active: true, category: 'Software', domain: 'prjct' },
+  { id: 'sub2', name: 'Canva Pro', amount: 89, cadence: 'yearly', nextCharge: '2027-06-18', active: true, category: 'Software', domain: 'prjct' },
+  { id: 'sub3', name: 'Spotify', amount: 11.99, cadence: 'monthly', nextCharge: '2026-07-16', active: true, category: 'Media', domain: 'personal' },
+  { id: 'sub4', name: 'Hosting + domeinen', amount: 95, cadence: 'quarterly', nextCharge: '2026-06-24', active: true, category: 'Hosting', domain: 'prjct' },
+  { id: 'sub5', name: 'Vercel Pro', amount: 20, cadence: 'monthly', nextCharge: '2026-07-01', active: true, category: 'Hosting', domain: 'prjct' },
+  { id: 'sub6', name: 'ChatGPT Plus', amount: 23, cadence: 'monthly', nextCharge: '2026-07-08', active: true, category: 'AI', domain: 'prjct' },
+  { id: 'sub7', name: 'Notion', amount: 96, cadence: 'yearly', nextCharge: '2026-11-02', active: true, category: 'Productivity', domain: 'prjct' },
+  { id: 'sub8', name: 'Sportschool Geldrop', amount: 29.5, cadence: 'monthly', nextCharge: '2026-07-01', active: false, category: 'Health', domain: 'personal', notes: 'gepauzeerd sinds mei' },
+]
+
 export const OPENING_BALANCE = 2840
 
-export const STORAGE_KEY = 'rick-os-state-v5'
+export const STORAGE_KEY = 'rick-os-state-v6'

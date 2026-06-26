@@ -246,6 +246,21 @@ export interface Payment {
   externalId?: string // google event id, for dedup
 }
 
+// ── Subscriptions (recurring spend) ──────────────────────────────────────────
+export type Cadence = 'weekly' | 'monthly' | 'quarterly' | 'yearly'
+
+export interface Subscription {
+  id: string
+  name: string
+  amount: number // EUR per cadence period
+  cadence: Cadence
+  nextCharge: string | null // ISO date
+  active: boolean
+  category: string
+  domain: Domain
+  notes?: string
+}
+
 // ── Inbox (most important Gmail threads) ─────────────────────────────────────
 
 export interface EmailItem {
