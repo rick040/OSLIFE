@@ -14,10 +14,13 @@ import Projects from './views/Projects'
 import CRM from './views/CRM'
 import Habits from './views/Habits'
 import Dog from './views/Dog'
+import StrategieHQ from './views/StrategieHQ'
+import Buurtkaart from './views/Buurtkaart'
+import Eyes from './views/Eyes'
+import Dakmeester from './views/Dakmeester'
 import InboxView from './views/Inbox'
 import NorthStar from './views/NorthStar'
 import Mindmap from './views/Mindmap'
-import Placeholder from './components/Placeholder'
 import LoopExplainer from './components/LoopExplainer'
 import Orb from './components/Orb'
 import AppGrid from './components/AppGrid'
@@ -52,10 +55,10 @@ export default function App() {
     // built in later phases
     habits: <Habits />,
     crm: <CRM />,
-    strategiehq: <Placeholder view="strategiehq" />,
-    buurtkaart: <Placeholder view="buurtkaart" />,
-    eyes: <Placeholder view="eyes" />,
-    dakmeester: <Placeholder view="dakmeester" />,
+    strategiehq: <StrategieHQ onNav={(v) => setView(v)} />,
+    buurtkaart: <Buurtkaart />,
+    eyes: <Eyes />,
+    dakmeester: <Dakmeester />,
     dog: <Dog />,
   }
 
