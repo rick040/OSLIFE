@@ -54,4 +54,7 @@ body {
   .btn-lime {
     @apply btn bg-lime hover:bg-lime-hi text-forest;
   }
+  .input {
+    @apply rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none focus:border-personal/60;
+  }
 }

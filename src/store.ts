@@ -118,6 +118,7 @@ interface State {
   // Kyra
   logDog: (entry: Omit<DogEntry, 'id' | 'at'> & { at?: string }) => void
   deleteDogEntry: (id: string) => void
+  updateDogEntry: (id: string, patch: Partial<Omit<DogEntry, 'id'>>) => void
   addDogMedical: (m: Omit<DogMedical, 'id'>) => void
   deleteDogMedical: (id: string) => void
   addDogReminder: (r: Omit<DogReminder, 'id' | 'done'>) => void
@@ -451,6 +452,9 @@ export const useStore = create<State>()(
         }),
 
       deleteDogEntry: (id) => set((s) => ({ dogEntries: s.dogEntries.filter((x) => x.id !== id) })),
+
+      updateDogEntry: (id, patch) =>
+        set((s) => ({ dogEntries: s.dogEntries.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
 
       addDogMedical: (m) =>
         set((s) => ({ dogMedical: [{ ...m, id: uid('dmed') }, ...s.dogMedical] })),

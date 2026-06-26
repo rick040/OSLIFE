@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, useCallback } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { useStore } from '../store'
 import { TODAY, fmtDate, daysBetween } from '../domains'
@@ -22,31 +22,45 @@ import {
   Syringe,
   Pill,
   HeartPulse,
+  Pencil,
+  Clock,
+  MapPin,
+  Timer,
 } from 'lucide-react'
 
 const KIND: Record<DogKind, { label: string; icon: typeof Bone; hex: string }> = {
-  walk: { label: 'Wandeling', icon: Footprints, hex: '#6FA07C' },
-  food: { label: 'Eten', icon: Bone, hex: '#C6A05B' },
-  water: { label: 'Water', icon: Droplet, hex: '#6E8CA8' },
-  pee: { label: 'Plas', icon: Droplet, hex: '#C6A05B' },
-  poop: { label: 'Poep', icon: Sparkles, hex: '#9385B0' },
-  play: { label: 'Spelen', icon: Sparkles, hex: '#C58392' },
-  treat: { label: 'Snack', icon: Bone, hex: '#C6A05B' },
-  training: { label: 'Training', icon: Dumbbell, hex: '#6E8CA8' },
-  vet: { label: 'Dierenarts', icon: Stethoscope, hex: '#C58392' },
-  weight: { label: 'Gewicht', icon: Scale, hex: '#9385B0' },
-  note: { label: 'Notitie', icon: Camera, hex: '#5C6150' },
+  walk:     { label: 'Wandeling',  icon: Footprints,   hex: '#6FA07C' },
+  food:     { label: 'Eten',       icon: Bone,          hex: '#C6A05B' },
+  water:    { label: 'Water',      icon: Droplet,       hex: '#6E8CA8' },
+  pee:      { label: 'Plas',       icon: Droplet,       hex: '#C6A05B' },
+  poop:     { label: 'Poep',       icon: Sparkles,      hex: '#9385B0' },
+  play:     { label: 'Spelen',     icon: Sparkles,      hex: '#C58392' },
+  treat:    { label: 'Snack',      icon: Bone,          hex: '#C6A05B' },
+  training: { label: 'Training',   icon: Dumbbell,      hex: '#6E8CA8' },
+  vet:      { label: 'Dierenarts', icon: Stethoscope,   hex: '#C58392' },
+  weight:   { label: 'Gewicht',    icon: Scale,         hex: '#9385B0' },
+  note:     { label: 'Notitie',    icon: Camera,        hex: '#5C6150' },
 }
 
 const QUICK: DogKind[] = ['walk', 'food', 'water', 'pee', 'poop', 'play', 'treat', 'training', 'vet']
 
 const MED_META: Record<DogMedicalType, { label: string; icon: typeof Syringe; hex: string }> = {
-  vaccine: { label: 'Enting', icon: Syringe, hex: '#6FA07C' },
-  vet: { label: 'Dierenarts', icon: Stethoscope, hex: '#C58392' },
-  medication: { label: 'Medicatie', icon: Pill, hex: '#6E8CA8' },
-  condition: { label: 'Conditie', icon: HeartPulse, hex: '#C6A05B' },
-  weight: { label: 'Gewicht', icon: Scale, hex: '#9385B0' },
+  vaccine:   { label: 'Enting',      icon: Syringe,     hex: '#6FA07C' },
+  vet:       { label: 'Dierenarts',  icon: Stethoscope, hex: '#C58392' },
+  medication:{ label: 'Medicatie',   icon: Pill,        hex: '#6E8CA8' },
+  condition: { label: 'Conditie',    icon: HeartPulse,  hex: '#C6A05B' },
+  weight:    { label: 'Gewicht',     icon: Scale,       hex: '#9385B0' },
 }
+
+const POOP_LABELS: Record<number, string> = {
+  1: 'Vloeibaar',
+  2: 'Zacht',
+  3: 'Normaal',
+  4: 'Vast',
+  5: 'Droog',
+}
+
+const TRAINING_TYPES = ['Zit', 'Af / Blijf', 'Loopt mee', 'Terugroepen', 'Voetstap', 'Socialisatie', 'Gehoorzaamheid', 'Overig']
 
 function readPhoto(file: File): Promise<string> {
   return new Promise((res, rej) => {
@@ -56,10 +70,619 @@ function readPhoto(file: File): Promise<string> {
     r.readAsDataURL(file)
   })
 }
+
 function timeHM(iso: string) {
   return new Date(iso).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
 }
 
+function isoToDatetimeLocal(iso: string) {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function nowDatetimeLocal() {
+  return isoToDatetimeLocal(new Date().toISOString())
+}
+
+// ── Long press hook ──────────────────────────────────────────────────────────
+function useLongPress(onShort: () => void, onLong: () => void, delay = 500) {
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const fired = useRef(false)
+
+  const start = useCallback(() => {
+    fired.current = false
+    timer.current = setTimeout(() => {
+      fired.current = true
+      onLong()
+    }, delay)
+  }, [onLong, delay])
+
+  const cancel = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current)
+  }, [])
+
+  const end = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current)
+    if (!fired.current) onShort()
+  }, [onShort])
+
+  return {
+    onMouseDown: start,
+    onMouseUp: end,
+    onMouseLeave: cancel,
+    onTouchStart: (e: React.TouchEvent) => { e.preventDefault(); start() },
+    onTouchEnd: (e: React.TouchEvent) => { e.preventDefault(); end() },
+  }
+}
+
+// ── Detail log modal (long press) ────────────────────────────────────────────
+function DetailLogModal({
+  kind,
+  onSave,
+  onClose,
+}: {
+  kind: DogKind
+  onSave: (entry: Omit<DogEntry, 'id'>) => void
+  onClose: () => void
+}) {
+  const meta = KIND[kind]
+  const Icon = meta.icon
+
+  const [at, setAt] = useState(nowDatetimeLocal())
+  const [durationMin, setDurationMin] = useState('')
+  const [distanceKm, setDistanceKm] = useState('')
+  const [location, setLocation] = useState('')
+  const [weightKg, setWeightKg] = useState('')
+  const [note, setNote] = useState('')
+  const [poopConsistency, setPoopConsistency] = useState<1|2|3|4|5|null>(null)
+  const [trainingType, setTrainingType] = useState('')
+
+  const save = () => {
+    onSave({
+      kind,
+      at: new Date(at).toISOString(),
+      durationMin: durationMin ? Number(durationMin) : null,
+      distanceKm: distanceKm ? Number(distanceKm) : null,
+      weightKg: weightKg ? Number(weightKg) : null,
+      location: location || null,
+      note: note || null,
+      poopConsistency: poopConsistency,
+      trainingType: trainingType || null,
+    })
+    onClose()
+  }
+
+  return (
+    <Overlay onClose={onClose}>
+      <div className="flex items-center gap-3 mb-4">
+        <span className="h-10 w-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `${meta.hex}22` }}>
+          <Icon className="h-5 w-5" style={{ color: meta.hex }} />
+        </span>
+        <div>
+          <div className="font-semibold text-ink">{meta.label} loggen</div>
+          <div className="text-xs text-faint">Lang ingedrukt voor details</div>
+        </div>
+      </div>
+
+      {/* Tijd */}
+      <label className="block mb-3">
+        <div className="text-xs text-faint mb-1 flex items-center gap-1"><Clock className="h-3 w-3" /> Tijd</div>
+        <input type="datetime-local" value={at} onChange={e => setAt(e.target.value)} className="input w-full" />
+      </label>
+
+      {/* Walk-specifiek */}
+      {kind === 'walk' && (
+        <>
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <label className="block">
+              <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
+              <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="30" className="input w-full" />
+            </label>
+            <label className="block">
+              <div className="text-xs text-faint mb-1 flex items-center gap-1"><Footprints className="h-3 w-3" /> Afstand (km)</div>
+              <input type="number" min="0" step="0.1" value={distanceKm} onChange={e => setDistanceKm(e.target.value)} placeholder="2.5" className="input w-full" />
+            </label>
+          </div>
+          <label className="block mb-3">
+            <div className="text-xs text-faint mb-1 flex items-center gap-1"><MapPin className="h-3 w-3" /> Waar (locatie)</div>
+            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="bijv. Beatrixpark" className="input w-full" />
+          </label>
+        </>
+      )}
+
+      {/* Poop-specifiek */}
+      {kind === 'poop' && (
+        <div className="mb-3">
+          <div className="text-xs text-faint mb-1.5">Consistentie</div>
+          <div className="flex gap-1.5 flex-wrap">
+            {([1,2,3,4,5] as const).map(n => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setPoopConsistency(poopConsistency === n ? null : n)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${
+                  poopConsistency === n
+                    ? 'border-transparent text-white'
+                    : 'border-line text-muted bg-sunken'
+                }`}
+                style={poopConsistency === n ? { background: meta.hex } : {}}
+              >
+                {n} · {POOP_LABELS[n]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Training-specifiek */}
+      {kind === 'training' && (
+        <>
+          <label className="block mb-3">
+            <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
+            <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="15" className="input w-full" />
+          </label>
+          <div className="mb-3">
+            <div className="text-xs text-faint mb-1.5">Type training</div>
+            <div className="flex gap-1.5 flex-wrap">
+              {TRAINING_TYPES.map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTrainingType(trainingType === t ? '' : t)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${
+                    trainingType === t
+                      ? 'border-transparent text-white'
+                      : 'border-line text-muted bg-sunken'
+                  }`}
+                  style={trainingType === t ? { background: meta.hex } : {}}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Play/Spelen duur */}
+      {kind === 'play' && (
+        <label className="block mb-3">
+          <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
+          <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="20" className="input w-full" />
+        </label>
+      )}
+
+      {/* Gewicht */}
+      {kind === 'weight' && (
+        <label className="block mb-3">
+          <div className="text-xs text-faint mb-1">Gewicht (kg)</div>
+          <input type="number" min="0" step="0.1" value={weightKg} onChange={e => setWeightKg(e.target.value)} placeholder="9.2" className="input w-full" />
+        </label>
+      )}
+
+      {/* Notitie altijd */}
+      <label className="block mb-4">
+        <div className="text-xs text-faint mb-1">Notitie (optioneel)</div>
+        <input value={note} onChange={e => setNote(e.target.value)} placeholder="Extra info..." className="input w-full" />
+      </label>
+
+      <div className="flex gap-2">
+        <button onClick={onClose} className="btn-ghost flex-1">Annuleren</button>
+        <button onClick={save} className="btn-primary flex-1">
+          <Plus className="h-4 w-4" /> Opslaan
+        </button>
+      </div>
+    </Overlay>
+  )
+}
+
+// ── Edit entry modal ─────────────────────────────────────────────────────────
+function EditEntryModal({
+  entry,
+  onSave,
+  onDelete,
+  onClose,
+}: {
+  entry: DogEntry
+  onSave: (patch: Partial<Omit<DogEntry, 'id'>>) => void
+  onDelete: () => void
+  onClose: () => void
+}) {
+  const meta = KIND[entry.kind]
+  const Icon = meta.icon
+
+  const [at, setAt] = useState(isoToDatetimeLocal(entry.at))
+  const [durationMin, setDurationMin] = useState(entry.durationMin != null ? String(entry.durationMin) : '')
+  const [distanceKm, setDistanceKm] = useState(entry.distanceKm != null ? String(entry.distanceKm) : '')
+  const [location, setLocation] = useState(entry.location ?? '')
+  const [weightKg, setWeightKg] = useState(entry.weightKg != null ? String(entry.weightKg) : '')
+  const [note, setNote] = useState(entry.note ?? '')
+  const [poopConsistency, setPoopConsistency] = useState<1|2|3|4|5|null>(entry.poopConsistency ?? null)
+  const [trainingType, setTrainingType] = useState(entry.trainingType ?? '')
+  const [confirmDel, setConfirmDel] = useState(false)
+
+  const save = () => {
+    onSave({
+      at: new Date(at).toISOString(),
+      durationMin: durationMin ? Number(durationMin) : null,
+      distanceKm: distanceKm ? Number(distanceKm) : null,
+      weightKg: weightKg ? Number(weightKg) : null,
+      location: location || null,
+      note: note || null,
+      poopConsistency,
+      trainingType: trainingType || null,
+    })
+    onClose()
+  }
+
+  return (
+    <Overlay onClose={onClose}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <span className="h-10 w-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `${meta.hex}22` }}>
+            <Icon className="h-5 w-5" style={{ color: meta.hex }} />
+          </span>
+          <div className="font-semibold text-ink">{meta.label} bewerken</div>
+        </div>
+        {!confirmDel ? (
+          <button onClick={() => setConfirmDel(true)} className="text-xs text-cross hover:underline">Verwijderen</button>
+        ) : (
+          <div className="flex gap-1.5">
+            <button onClick={() => setConfirmDel(false)} className="text-xs text-faint">Nee</button>
+            <button onClick={() => { onDelete(); onClose() }} className="text-xs text-cross font-medium">Ja, verwijder</button>
+          </div>
+        )}
+      </div>
+
+      {/* Tijd */}
+      <label className="block mb-3">
+        <div className="text-xs text-faint mb-1 flex items-center gap-1"><Clock className="h-3 w-3" /> Tijd</div>
+        <input type="datetime-local" value={at} onChange={e => setAt(e.target.value)} className="input w-full" />
+      </label>
+
+      {/* Walk-specifiek */}
+      {entry.kind === 'walk' && (
+        <>
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <label className="block">
+              <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
+              <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="30" className="input w-full" />
+            </label>
+            <label className="block">
+              <div className="text-xs text-faint mb-1 flex items-center gap-1"><Footprints className="h-3 w-3" /> Afstand (km)</div>
+              <input type="number" min="0" step="0.1" value={distanceKm} onChange={e => setDistanceKm(e.target.value)} placeholder="2.5" className="input w-full" />
+            </label>
+          </div>
+          <label className="block mb-3">
+            <div className="text-xs text-faint mb-1 flex items-center gap-1"><MapPin className="h-3 w-3" /> Locatie</div>
+            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="bijv. Beatrixpark" className="input w-full" />
+          </label>
+        </>
+      )}
+
+      {/* Poop-specifiek */}
+      {entry.kind === 'poop' && (
+        <div className="mb-3">
+          <div className="text-xs text-faint mb-1.5">Consistentie</div>
+          <div className="flex gap-1.5 flex-wrap">
+            {([1,2,3,4,5] as const).map(n => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => setPoopConsistency(poopConsistency === n ? null : n)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${
+                  poopConsistency === n ? 'border-transparent text-white' : 'border-line text-muted bg-sunken'
+                }`}
+                style={poopConsistency === n ? { background: meta.hex } : {}}
+              >
+                {n} · {POOP_LABELS[n]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Training-specifiek */}
+      {entry.kind === 'training' && (
+        <>
+          <label className="block mb-3">
+            <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
+            <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="15" className="input w-full" />
+          </label>
+          <div className="mb-3">
+            <div className="text-xs text-faint mb-1.5">Type training</div>
+            <div className="flex gap-1.5 flex-wrap">
+              {TRAINING_TYPES.map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTrainingType(trainingType === t ? '' : t)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${
+                    trainingType === t ? 'border-transparent text-white' : 'border-line text-muted bg-sunken'
+                  }`}
+                  style={trainingType === t ? { background: meta.hex } : {}}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Play/Spelen duur */}
+      {entry.kind === 'play' && (
+        <label className="block mb-3">
+          <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
+          <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="20" className="input w-full" />
+        </label>
+      )}
+
+      {/* Gewicht */}
+      {entry.kind === 'weight' && (
+        <label className="block mb-3">
+          <div className="text-xs text-faint mb-1">Gewicht (kg)</div>
+          <input type="number" min="0" step="0.1" value={weightKg} onChange={e => setWeightKg(e.target.value)} placeholder="9.2" className="input w-full" />
+        </label>
+      )}
+
+      {/* Notitie */}
+      <label className="block mb-4">
+        <div className="text-xs text-faint mb-1">Notitie</div>
+        <input value={note} onChange={e => setNote(e.target.value)} placeholder="Extra info..." className="input w-full" />
+      </label>
+
+      <div className="flex gap-2">
+        <button onClick={onClose} className="btn-ghost flex-1">Annuleren</button>
+        <button onClick={save} className="btn-primary flex-1">
+          <Check className="h-4 w-4" /> Opslaan
+        </button>
+      </div>
+    </Overlay>
+  )
+}
+
+// ── Add entry modal (manual) ──────────────────────────────────────────────────
+function AddEntryModal({
+  onSave,
+  onClose,
+}: {
+  onSave: (entry: Omit<DogEntry, 'id'>) => void
+  onClose: () => void
+}) {
+  const [kind, setKind] = useState<DogKind>('walk')
+  const [at, setAt] = useState(nowDatetimeLocal())
+  const [durationMin, setDurationMin] = useState('')
+  const [distanceKm, setDistanceKm] = useState('')
+  const [location, setLocation] = useState('')
+  const [weightKg, setWeightKg] = useState('')
+  const [note, setNote] = useState('')
+  const [poopConsistency, setPoopConsistency] = useState<1|2|3|4|5|null>(null)
+  const [trainingType, setTrainingType] = useState('')
+
+  const meta = KIND[kind]
+  const Icon = meta.icon
+
+  const save = () => {
+    onSave({
+      kind,
+      at: new Date(at).toISOString(),
+      durationMin: durationMin ? Number(durationMin) : null,
+      distanceKm: distanceKm ? Number(distanceKm) : null,
+      weightKg: weightKg ? Number(weightKg) : null,
+      location: location || null,
+      note: note || null,
+      poopConsistency,
+      trainingType: trainingType || null,
+    })
+    onClose()
+  }
+
+  return (
+    <Overlay onClose={onClose}>
+      <div className="flex items-center gap-3 mb-4">
+        <span className="h-10 w-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `${meta.hex}22` }}>
+          <Icon className="h-5 w-5" style={{ color: meta.hex }} />
+        </span>
+        <div className="font-semibold text-ink">Activiteit toevoegen</div>
+      </div>
+
+      {/* Type kiezen */}
+      <div className="mb-3">
+        <div className="text-xs text-faint mb-1.5">Type</div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {QUICK.map(k => {
+            const m = KIND[k]
+            const I = m.icon
+            return (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setKind(k)}
+                className={`flex items-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-medium border transition-colors ${
+                  kind === k ? 'border-transparent text-white' : 'border-line text-muted bg-sunken'
+                }`}
+                style={kind === k ? { background: m.hex } : {}}
+              >
+                <I className="h-3.5 w-3.5 shrink-0" /> {m.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Tijd */}
+      <label className="block mb-3">
+        <div className="text-xs text-faint mb-1 flex items-center gap-1"><Clock className="h-3 w-3" /> Tijd</div>
+        <input type="datetime-local" value={at} onChange={e => setAt(e.target.value)} className="input w-full" />
+      </label>
+
+      {kind === 'walk' && (
+        <>
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <label className="block">
+              <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
+              <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="30" className="input w-full" />
+            </label>
+            <label className="block">
+              <div className="text-xs text-faint mb-1 flex items-center gap-1"><Footprints className="h-3 w-3" /> Afstand (km)</div>
+              <input type="number" min="0" step="0.1" value={distanceKm} onChange={e => setDistanceKm(e.target.value)} placeholder="2.5" className="input w-full" />
+            </label>
+          </div>
+          <label className="block mb-3">
+            <div className="text-xs text-faint mb-1 flex items-center gap-1"><MapPin className="h-3 w-3" /> Locatie</div>
+            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="bijv. Beatrixpark" className="input w-full" />
+          </label>
+        </>
+      )}
+
+      {kind === 'poop' && (
+        <div className="mb-3">
+          <div className="text-xs text-faint mb-1.5">Consistentie</div>
+          <div className="flex gap-1.5 flex-wrap">
+            {([1,2,3,4,5] as const).map(n => (
+              <button key={n} type="button"
+                onClick={() => setPoopConsistency(poopConsistency === n ? null : n)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${poopConsistency === n ? 'border-transparent text-white' : 'border-line text-muted bg-sunken'}`}
+                style={poopConsistency === n ? { background: meta.hex } : {}}
+              >
+                {n} · {POOP_LABELS[n]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {kind === 'training' && (
+        <>
+          <label className="block mb-3">
+            <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
+            <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="15" className="input w-full" />
+          </label>
+          <div className="mb-3">
+            <div className="text-xs text-faint mb-1.5">Type training</div>
+            <div className="flex gap-1.5 flex-wrap">
+              {TRAINING_TYPES.map(t => (
+                <button key={t} type="button"
+                  onClick={() => setTrainingType(trainingType === t ? '' : t)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${trainingType === t ? 'border-transparent text-white' : 'border-line text-muted bg-sunken'}`}
+                  style={trainingType === t ? { background: meta.hex } : {}}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {kind === 'play' && (
+        <label className="block mb-3">
+          <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
+          <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="20" className="input w-full" />
+        </label>
+      )}
+
+      {kind === 'weight' && (
+        <label className="block mb-3">
+          <div className="text-xs text-faint mb-1">Gewicht (kg)</div>
+          <input type="number" min="0" step="0.1" value={weightKg} onChange={e => setWeightKg(e.target.value)} placeholder="9.2" className="input w-full" />
+        </label>
+      )}
+
+      <label className="block mb-4">
+        <div className="text-xs text-faint mb-1">Notitie (optioneel)</div>
+        <input value={note} onChange={e => setNote(e.target.value)} placeholder="Extra info..." className="input w-full" />
+      </label>
+
+      <div className="flex gap-2">
+        <button onClick={onClose} className="btn-ghost flex-1">Annuleren</button>
+        <button onClick={save} className="btn-primary flex-1">
+          <Plus className="h-4 w-4" /> Opslaan
+        </button>
+      </div>
+    </Overlay>
+  )
+}
+
+// ── Modal overlay wrapper ─────────────────────────────────────────────────────
+function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div
+        className="relative bg-surface rounded-3xl p-5 w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
+  )
+}
+
+// ── Quick log button with long-press support ──────────────────────────────────
+function QuickButton({
+  dogKind,
+  onShort,
+  onLong,
+}: {
+  dogKind: DogKind
+  onShort: () => void
+  onLong: () => void
+}) {
+  const meta = KIND[dogKind]
+  const Icon = meta.icon
+  const lp = useLongPress(onShort, onLong)
+
+  return (
+    <button
+      {...lp}
+      className="card p-3 flex flex-col items-center gap-1.5 hover:bg-sunken transition-colors active:scale-95 select-none cursor-pointer"
+      style={{ WebkitTouchCallout: 'none', userSelect: 'none' }}
+    >
+      <span className="h-10 w-10 rounded-2xl flex items-center justify-center" style={{ background: `${meta.hex}22` }}>
+        <Icon className="h-5 w-5" style={{ color: meta.hex }} />
+      </span>
+      <span className="text-xs font-medium">{meta.label}</span>
+      <span className="text-[9px] text-faint leading-tight">houd vast voor details</span>
+    </button>
+  )
+}
+
+// ── Timeline row ──────────────────────────────────────────────────────────────
+function TimelineRow({ e, onEdit, onDelete }: { e: DogEntry; onEdit: () => void; onDelete: () => void }) {
+  const meta = KIND[e.kind]
+  const Icon = meta.icon
+
+  const extras: string[] = []
+  if (e.durationMin) extras.push(`${e.durationMin} min`)
+  if (e.distanceKm) extras.push(`${e.distanceKm} km`)
+  if (e.location) extras.push(e.location)
+  if (e.weightKg) extras.push(`${e.weightKg} kg`)
+  if (e.trainingType) extras.push(e.trainingType)
+  if (e.poopConsistency) extras.push(POOP_LABELS[e.poopConsistency])
+
+  return (
+    <div className="flex items-center gap-3 p-3">
+      <span className="h-9 w-9 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `${meta.hex}22` }}>
+        <Icon className="h-4 w-4" style={{ color: meta.hex }} />
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm text-ink">
+          {meta.label}{extras.length ? ` · ${extras.join(' · ')}` : ''}
+        </div>
+        {e.note && <div className="text-[11px] text-faint truncate">{e.note}</div>}
+        {e.photo && <img src={e.photo} alt="" className="mt-1.5 rounded-lg max-h-28 object-cover border border-line" />}
+      </div>
+      <span className="text-[11px] text-faint shrink-0">{timeHM(e.at)}</span>
+      <button onClick={onEdit} className="text-faint hover:text-ink p-0.5 shrink-0"><Pencil className="h-3.5 w-3.5" /></button>
+      <button onClick={onDelete} className="text-faint hover:text-cross p-0.5 shrink-0"><X className="h-3.5 w-3.5" /></button>
+    </div>
+  )
+}
+
+// ── Main screen ───────────────────────────────────────────────────────────────
 export default function Dog() {
   const {
     dogProfile,
@@ -68,12 +691,16 @@ export default function Dog() {
     dogReminders,
     logDog,
     deleteDogEntry,
+    updateDogEntry,
     addDogMedical,
     deleteDogMedical,
     toggleDogReminder,
   } = useStore()
   const photoRef = useRef<HTMLInputElement>(null)
   const [medForm, setMedForm] = useState(false)
+  const [detailKind, setDetailKind] = useState<DogKind | null>(null)
+  const [editEntry, setEditEntry] = useState<DogEntry | null>(null)
+  const [addModal, setAddModal] = useState(false)
 
   const today = dogEntries.filter((e) => e.at.slice(0, 10) === TODAY)
   const count = (k: DogKind) => today.filter((e) => e.kind === k).length
@@ -97,8 +724,6 @@ export default function Dog() {
   )
   const latestWeight = weights.length ? weights[weights.length - 1].kg : dogProfile.weightKg
 
-  const onQuick = (k: DogKind) => logDog({ kind: k })
-
   const onPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
@@ -120,9 +745,34 @@ export default function Dog() {
     return tips
   }, [dogEntries, dogReminders, latestWeight])
 
+  const todaySorted = [...today].sort((a, b) => b.at.localeCompare(a.at))
+
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
-      {/* hero */}
+      {/* Modals */}
+      {detailKind && (
+        <DetailLogModal
+          kind={detailKind}
+          onSave={(entry) => logDog(entry)}
+          onClose={() => setDetailKind(null)}
+        />
+      )}
+      {editEntry && (
+        <EditEntryModal
+          entry={editEntry}
+          onSave={(patch) => updateDogEntry(editEntry.id, patch)}
+          onDelete={() => deleteDogEntry(editEntry.id)}
+          onClose={() => setEditEntry(null)}
+        />
+      )}
+      {addModal && (
+        <AddEntryModal
+          onSave={(entry) => logDog(entry)}
+          onClose={() => setAddModal(false)}
+        />
+      )}
+
+      {/* Hero */}
       <div className="flex items-center gap-4">
         <div className="h-16 w-16 rounded-3xl bg-gradient-to-br from-personal to-cross flex items-center justify-center shadow-card overflow-hidden shrink-0">
           {dogProfile.photo ? <img src={dogProfile.photo} alt="Kyra" className="h-full w-full object-cover" /> : <DogIcon className="h-8 w-8 text-white" />}
@@ -134,7 +784,7 @@ export default function Dog() {
         </div>
       </div>
 
-      {/* today summary */}
+      {/* Today summary */}
       <div className="grid grid-cols-4 gap-2.5">
         {summary.map((s) => {
           const val = 'val' in s ? s.val! : count(s.k!)
@@ -152,7 +802,7 @@ export default function Dog() {
         })}
       </div>
 
-      {/* quick log */}
+      {/* Quick log */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <SectionTitle>Snel loggen</SectionTitle>
@@ -162,34 +812,42 @@ export default function Dog() {
           <input ref={photoRef} type="file" accept="image/*" hidden onChange={onPhoto} />
         </div>
         <div className="grid grid-cols-3 sm:grid-cols-5 gap-2.5">
-          {QUICK.map((k) => {
-            const meta = KIND[k]
-            const Icon = meta.icon
-            return (
-              <button key={k} onClick={() => onQuick(k)} className="card p-3 flex flex-col items-center gap-1.5 hover:bg-sunken transition-colors active:scale-95">
-                <span className="h-10 w-10 rounded-2xl flex items-center justify-center" style={{ background: `${meta.hex}22` }}>
-                  <Icon className="h-5 w-5" style={{ color: meta.hex }} />
-                </span>
-                <span className="text-xs font-medium">{meta.label}</span>
-              </button>
-            )
-          })}
+          {QUICK.map((k) => (
+            <QuickButton
+              key={k}
+              dogKind={k}
+              onShort={() => logDog({ kind: k })}
+              onLong={() => setDetailKind(k)}
+            />
+          ))}
         </div>
       </div>
 
-      {/* today timeline */}
+      {/* Today timeline */}
       <div>
-        <SectionTitle>Vandaag</SectionTitle>
-        {today.length === 0 ? (
-          <Empty>Nog niks gelogd vandaag. Tik een knop hierboven.</Empty>
+        <div className="flex items-center justify-between mb-3">
+          <SectionTitle>Vandaag</SectionTitle>
+          <button className="btn-ghost !py-1.5" onClick={() => setAddModal(true)}>
+            <Plus className="h-4 w-4" /> Toevoegen
+          </button>
+        </div>
+        {todaySorted.length === 0 ? (
+          <Empty>Nog niks gelogd vandaag. Tik een knop hierboven of houd vast voor details.</Empty>
         ) : (
           <div className="card divide-y divide-line">
-            {today.map((e) => <TimelineRow key={e.id} e={e} onDelete={() => deleteDogEntry(e.id)} />)}
+            {todaySorted.map((e) => (
+              <TimelineRow
+                key={e.id}
+                e={e}
+                onEdit={() => setEditEntry(e)}
+                onDelete={() => deleteDogEntry(e.id)}
+              />
+            ))}
           </div>
         )}
       </div>
 
-      {/* weight / vitals */}
+      {/* Weight chart */}
       {weights.length > 1 && (
         <div className="card p-4">
           <div className="flex items-center justify-between mb-2">
@@ -208,7 +866,7 @@ export default function Dog() {
         </div>
       )}
 
-      {/* advice */}
+      {/* Advice */}
       <div className="card p-4">
         <SectionTitle hint="Op basis van vandaag, gewicht en aankomende herinneringen.">
           <span className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-personal" /> Advies</span>
@@ -223,7 +881,7 @@ export default function Dog() {
         </div>
       </div>
 
-      {/* reminders */}
+      {/* Reminders */}
       <div>
         <SectionTitle>
           <span className="flex items-center gap-2"><Bell className="h-4 w-4 text-cross" /> Herinneringen</span>
@@ -249,7 +907,7 @@ export default function Dog() {
         </div>
       </div>
 
-      {/* medical dossier */}
+      {/* Medical dossier */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <SectionTitle>
@@ -287,28 +945,6 @@ export default function Dog() {
           )}
         </div>
       </div>
-    </div>
-  )
-}
-
-function TimelineRow({ e, onDelete }: { e: DogEntry; onDelete: () => void }) {
-  const meta = KIND[e.kind]
-  const Icon = meta.icon
-  const extra = [e.durationMin ? `${e.durationMin} min` : null, e.distanceKm ? `${e.distanceKm} km` : null, e.weightKg ? `${e.weightKg} kg` : null]
-    .filter(Boolean)
-    .join(' · ')
-  return (
-    <div className="flex items-center gap-3 p-3">
-      <span className="h-9 w-9 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `${meta.hex}22` }}>
-        <Icon className="h-4 w-4" style={{ color: meta.hex }} />
-      </span>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm text-ink">{meta.label}{extra ? ` · ${extra}` : ''}</div>
-        {e.note && <div className="text-[11px] text-faint truncate">{e.note}</div>}
-        {e.photo && <img src={e.photo} alt="" className="mt-1.5 rounded-lg max-h-28 object-cover border border-line" />}
-      </div>
-      <span className="text-[11px] text-faint shrink-0">{timeHM(e.at)}</span>
-      <button onClick={onDelete} className="text-faint hover:text-cross p-0.5 shrink-0"><X className="h-3.5 w-3.5" /></button>
     </div>
   )
 }
