@@ -24,6 +24,14 @@ import type {
   LocationDay,
   MeetingDay,
   MusicDay,
+  Client,
+  Message,
+  Subscription,
+  DogEntry,
+  DogKind,
+  DogMedical,
+  DogReminder,
+  DogProfile,
 } from './types'
 import { classify } from './understand'
 import { runReflect } from './reflect'
@@ -59,10 +67,17 @@ interface State {
   meetingDays: MeetingDay[]
   musicDays: MusicDay[]
   projects: Project[]
+  clients: Client[]
+  messages: Message[]
   goals: Goal[]
   milestones: Milestone[]
   emails: EmailItem[]
   payments: Payment[]
+  subscriptions: Subscription[]
+  dogProfile: DogProfile
+  dogEntries: DogEntry[]
+  dogMedical: DogMedical[]
+  dogReminders: DogReminder[]
   dataSource: 'mock' | 'live'
 
   // INTAKE → UNDERSTAND → REMEMBER
@@ -72,6 +87,8 @@ interface State {
   closeThread: (id: string) => void
   reopenThread: (id: string) => void
   tickHabit: (id: string) => void
+  addHabit: (name: string, emoji: string, color?: string) => void
+  deleteHabit: (id: string) => void
   completeBlock: (id: string) => void
   skipBlock: (id: string) => void
   resetBlock: (id: string) => void
@@ -89,10 +106,28 @@ interface State {
   markEmailRead: (id: string) => void
   markAllEmailsRead: () => void
 
+  // CRM
+  markMessageRead: (id: string) => void
+  markConversationRead: (contactKey: string) => void
+
   // Projects + Money
   setProjectStatus: (id: string, status: ProjectStatus) => void
   addTransactions: (txns: Transaction[]) => void
   markPaymentPaid: (id: string) => void
+
+  // Kyra
+  logDog: (entry: Omit<DogEntry, 'id' | 'at'> & { at?: string }) => void
+  deleteDogEntry: (id: string) => void
+  addDogMedical: (m: Omit<DogMedical, 'id'>) => void
+  deleteDogMedical: (id: string) => void
+  addDogReminder: (r: Omit<DogReminder, 'id' | 'done'>) => void
+  toggleDogReminder: (id: string) => void
+
+  // Subscriptions
+  addSubscription: (sub: Omit<Subscription, 'id'>) => void
+  updateSubscription: (id: string, patch: Partial<Subscription>) => void
+  toggleSubscription: (id: string) => void
+  deleteSubscription: (id: string) => void
 
   resetDemo: () => void
 }
@@ -117,10 +152,17 @@ const seed = () => ({
   meetingDays: mock.meetingDays,
   musicDays: mock.musicDays,
   projects: mock.projects,
+  clients: mock.clients,
+  messages: mock.messages,
   goals: mock.goals,
   milestones: mock.milestones,
   emails: mock.emails,
   payments: mock.payments,
+  subscriptions: mock.subscriptions,
+  dogProfile: mock.dogProfile,
+  dogEntries: mock.dogEntries,
+  dogMedical: mock.dogMedical,
+  dogReminders: mock.dogReminders,
   dataSource: 'mock' as const,
 })
 
@@ -192,19 +234,37 @@ export const useStore = create<State>()(
           const h = s.habits.find((x) => x.id === id)
           if (!h) return {}
           const doneToday = !h.doneToday
+          const hist = new Set(h.history ?? [])
+          if (doneToday) hist.add(TODAY)
+          else hist.delete(TODAY)
           return {
             habits: s.habits.map((x) =>
               x.id === id
-                ? { ...x, doneToday, streak: doneToday ? x.streak + 1 : Math.max(0, x.streak - 1) }
+                ? {
+                    ...x,
+                    doneToday,
+                    streak: doneToday ? x.streak + 1 : Math.max(0, x.streak - 1),
+                    history: [...hist].sort(),
+                  }
                 : x,
             ),
             activity: pushSignal(s.activity, {
-              text: `${doneToday ? 'Ticked' : 'Un-ticked'} habit: ${h.name}`,
+              text: `${doneToday ? 'Afgevinkt' : 'Teruggezet'}: ${h.name}`,
               domain: 'personal',
               loop: 'fast',
             }),
           }
         }),
+
+      addHabit: (name, emoji, color) =>
+        set((s) => ({
+          habits: [
+            ...s.habits,
+            { id: uid('h'), name, emoji: emoji || '✅', color, streak: 0, doneToday: false, history: [] },
+          ],
+        })),
+
+      deleteHabit: (id) => set((s) => ({ habits: s.habits.filter((x) => x.id !== id) })),
 
       completeBlock: (id) =>
         set((s) => {
@@ -344,6 +404,14 @@ export const useStore = create<State>()(
       markAllEmailsRead: () =>
         set((s) => ({ emails: s.emails.map((x) => ({ ...x, unread: false })) })),
 
+      markMessageRead: (id) =>
+        set((s) => ({ messages: s.messages.map((m) => (m.id === id ? { ...m, unread: false } : m)) })),
+
+      markConversationRead: (contactKey) =>
+        set((s) => ({
+          messages: s.messages.map((m) => (m.contactKey === contactKey ? { ...m, unread: false } : m)),
+        })),
+
       setProjectStatus: (id, status) =>
         set((s) => {
           const p = s.projects.find((x) => x.id === id)
@@ -372,6 +440,40 @@ export const useStore = create<State>()(
             }),
           }
         }),
+
+      logDog: (entry) =>
+        set((s) => {
+          const e: DogEntry = { id: uid('dog'), at: entry.at ?? new Date().toISOString(), ...entry }
+          return {
+            dogEntries: [e, ...s.dogEntries],
+            activity: pushSignal(s.activity, { text: `Kyra: ${entry.kind} gelogd`, domain: 'personal', loop: 'fast' }),
+          }
+        }),
+
+      deleteDogEntry: (id) => set((s) => ({ dogEntries: s.dogEntries.filter((x) => x.id !== id) })),
+
+      addDogMedical: (m) =>
+        set((s) => ({ dogMedical: [{ ...m, id: uid('dmed') }, ...s.dogMedical] })),
+
+      deleteDogMedical: (id) => set((s) => ({ dogMedical: s.dogMedical.filter((x) => x.id !== id) })),
+
+      addDogReminder: (r) =>
+        set((s) => ({ dogReminders: [...s.dogReminders, { ...r, id: uid('drem'), done: false }] })),
+
+      toggleDogReminder: (id) =>
+        set((s) => ({ dogReminders: s.dogReminders.map((x) => (x.id === id ? { ...x, done: !x.done } : x)) })),
+
+      addSubscription: (sub) =>
+        set((s) => ({ subscriptions: [{ ...sub, id: uid('sub') }, ...s.subscriptions] })),
+
+      updateSubscription: (id, patch) =>
+        set((s) => ({ subscriptions: s.subscriptions.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
+
+      toggleSubscription: (id) =>
+        set((s) => ({ subscriptions: s.subscriptions.map((x) => (x.id === id ? { ...x, active: !x.active } : x)) })),
+
+      deleteSubscription: (id) =>
+        set((s) => ({ subscriptions: s.subscriptions.filter((x) => x.id !== id) })),
 
       loadLiveData: async () => {
         try {
@@ -409,9 +511,16 @@ export const useStore = create<State>()(
         if (!state.transactions?.length) state.transactions = s.transactions
         if (!state.meetingDays?.length) state.meetingDays = s.meetingDays
         if (!state.projects?.length) state.projects = s.projects
+        if (!state.clients?.length) state.clients = s.clients
+        if (!state.messages?.length) state.messages = s.messages
         if (!state.goals?.length) state.goals = s.goals
         if (!state.milestones?.length) state.milestones = s.milestones
         if (!state.payments?.length) state.payments = s.payments
+        if (!state.subscriptions?.length) state.subscriptions = s.subscriptions
+        if (!state.dogProfile) state.dogProfile = s.dogProfile
+        if (!state.dogEntries?.length) state.dogEntries = s.dogEntries
+        if (!state.dogMedical?.length) state.dogMedical = s.dogMedical
+        if (!state.dogReminders?.length) state.dogReminders = s.dogReminders
         if (!state.blocks?.length) state.blocks = s.blocks
         if (!state.threads) state.threads = s.threads
         if (!state.habits?.length) state.habits = s.habits

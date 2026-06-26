@@ -87,6 +87,8 @@ export interface Habit {
   streak: number
   doneToday: boolean
   emoji: string
+  color?: string // hex accent
+  history?: string[] // ISO dates the habit was completed
 }
 
 // ── Health (Fit / Samsung Health style sense) ────────────────────────────────
@@ -159,6 +161,8 @@ export interface MusicDay {
 
 export type ProjectStatus = 'lead' | 'active' | 'review' | 'blocked' | 'done'
 
+export type Priority = 'High' | 'Medium' | 'Low'
+
 export interface Project {
   id: string
   name: string
@@ -168,6 +172,43 @@ export interface Project {
   deadline: string | null // ISO date
   progress: number // 0..1
   value: number // EUR
+  // CRM enrichment (mirrors Notion Projects DB)
+  type?: string[] // Website, Branding, Logo, Social Media, ...
+  priority?: Priority
+  clientId?: string
+}
+
+// ── CRM: clients (mirrors Notion Clients DB) ─────────────────────────────────
+export type ClientStatus = 'Active' | 'Lead' | 'Prospect' | 'Planned' | 'Inactive' | 'Past'
+
+export interface Client {
+  id: string
+  name: string
+  domain: Domain
+  clientStatus: ClientStatus | null
+  potentie?: 'Hoog' | 'Middel' | 'Laag' | null
+  scope?: number | null // EUR potential
+  firstContact?: string | null // ISO date
+  email?: string | null
+  website?: string | null
+}
+
+// ── CRM: unified client messages (email / fiverr / whatsapp) ─────────────────
+export type Channel = 'email' | 'fiverr' | 'whatsapp'
+
+export interface Message {
+  id: string
+  contact: string
+  contactKey: string // groups messages into a conversation
+  clientId?: string | null
+  projectName?: string | null
+  channel: Channel
+  direction: 'in' | 'out'
+  subject?: string | null
+  snippet: string
+  body?: string | null
+  ts: string // ISO
+  unread: boolean
 }
 
 // ── North Star: high-level goals + milestones ────────────────────────────────
@@ -205,6 +246,75 @@ export interface Payment {
   domain: Domain
   source: string // 'calendar' | 'manual' | ...
   externalId?: string // google event id, for dedup
+}
+
+// ── Kyra: dog tracker ────────────────────────────────────────────────────────
+export type DogKind =
+  | 'walk'
+  | 'food'
+  | 'water'
+  | 'pee'
+  | 'poop'
+  | 'play'
+  | 'treat'
+  | 'training'
+  | 'vet'
+  | 'weight'
+  | 'note'
+
+export interface DogEntry {
+  id: string
+  kind: DogKind
+  at: string // ISO datetime
+  durationMin?: number | null
+  distanceKm?: number | null
+  weightKg?: number | null
+  note?: string | null
+  photo?: string | null // data URL
+}
+
+export type DogMedicalType = 'vaccine' | 'vet' | 'medication' | 'condition' | 'weight'
+
+export interface DogMedical {
+  id: string
+  type: DogMedicalType
+  date: string // ISO date
+  title: string
+  note?: string | null
+  photo?: string | null // data URL (scan, foto)
+  nextDue?: string | null // ISO date
+}
+
+export interface DogReminder {
+  id: string
+  title: string
+  due: string // ISO date
+  kind: DogKind | 'vet' | 'med' | 'other'
+  done: boolean
+}
+
+export interface DogProfile {
+  name: string
+  breed: string
+  birthdate: string // ISO date
+  weightKg: number
+  vet: string
+  photo?: string | null
+}
+
+// ── Subscriptions (recurring spend) ──────────────────────────────────────────
+export type Cadence = 'weekly' | 'monthly' | 'quarterly' | 'yearly'
+
+export interface Subscription {
+  id: string
+  name: string
+  amount: number // EUR per cadence period
+  cadence: Cadence
+  nextCharge: string | null // ISO date
+  active: boolean
+  category: string
+  domain: Domain
+  notes?: string
 }
 
 // ── Inbox (most important Gmail threads) ─────────────────────────────────────

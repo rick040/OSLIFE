@@ -18,6 +18,13 @@ import type {
   LocationDay,
   MeetingDay,
   MusicDay,
+  Client,
+  Message,
+  Subscription,
+  DogEntry,
+  DogMedical,
+  DogReminder,
+  DogProfile,
 } from './types'
 import { TODAY } from './domains'
 
@@ -235,10 +242,27 @@ export const transactions: Transaction[] = [
 ]
 
 // ── HABITS ────────────────────────────────────────────────────────────────────
+// Build a plausible completion history for the last 30 days. `keep(i)` decides,
+// per day-offset (0 = today), whether the habit was done. tail = current streak.
+function buildHistory(keep: (offset: number) => boolean): string[] {
+  const out: string[] = []
+  const today = new Date(TODAY + 'T00:00:00')
+  for (let i = 29; i >= 1; i--) {
+    if (keep(i)) {
+      const d = new Date(today)
+      d.setDate(d.getDate() - i)
+      out.push(d.toISOString().slice(0, 10))
+    }
+  }
+  return out
+}
+
 export const habits: Habit[] = [
-  { id: 'h1', name: 'Morning dog walk', streak: 4, doneToday: false, emoji: '🐕' },
-  { id: 'h2', name: 'No screens after 23:00', streak: 1, doneToday: false, emoji: '🌙' },
-  { id: 'h3', name: 'Log the day (5 min)', streak: 9, doneToday: false, emoji: '📓' },
+  { id: 'h1', name: 'Ochtendwandeling Kyra', streak: 4, doneToday: false, emoji: '🐕', color: '#6FA07C', history: buildHistory((i) => i <= 4 || i % 4 !== 0) },
+  { id: 'h2', name: 'Geen schermen na 23:00', streak: 1, doneToday: false, emoji: '🌙', color: '#6E8CA8', history: buildHistory((i) => i <= 1 || i % 3 === 0) },
+  { id: 'h3', name: 'Dag loggen (5 min)', streak: 9, doneToday: false, emoji: '📓', color: '#C6A05B', history: buildHistory((i) => i <= 9 || i % 5 !== 0) },
+  { id: 'h4', name: 'Sporten / bewegen', streak: 0, doneToday: false, emoji: '🏃', color: '#C58392', history: buildHistory((i) => i % 2 === 0) },
+  { id: 'h5', name: 'Diepe focus-blok', streak: 2, doneToday: false, emoji: '🎯', color: '#9385B0', history: buildHistory((i) => i <= 2 || i % 3 !== 1) },
 ]
 
 // ── SURFACE: today's planned blocks (Day Builder seed) ───────────────────────
@@ -390,13 +414,39 @@ export const musicDays: MusicDay[] = [
 
 // ── PROJECTS (mirrors a Notion projects DB) ──────────────────────────────────
 export const projects: Project[] = [
-  { id: 'pr1', name: 'Mural concept + brand boards', client: 'Lana de Vries', domain: 'prjct', status: 'active', deadline: '2026-06-23', progress: 0.7, value: 850 },
-  { id: 'pr2', name: 'Website + huisstijl', client: 'Bakkerij van Dijk', domain: 'prjct', status: 'review', deadline: '2026-06-27', progress: 0.9, value: 1150 },
-  { id: 'pr3', name: 'Website (aanbetaling binnen)', client: 'De Groot Installaties', domain: 'prjct', status: 'active', deadline: '2026-07-04', progress: 0.35, value: 1250 },
-  { id: 'pr4', name: 'Zomercampagne assets', client: 'ParkingYou', domain: 'parkingyou', status: 'active', deadline: '2026-06-30', progress: 0.5, value: 0 },
-  { id: 'pr5', name: 'Buurtkaart flyer + distributie', client: 'Geldrop Buurtkaart', domain: 'buurtkaart', status: 'blocked', deadline: '2026-06-25', progress: 0.4, value: 0 },
-  { id: 'pr6', name: 'Logo + social kit', client: 'Café De Kroon', domain: 'prjct', status: 'lead', deadline: null, progress: 0.1, value: 600 },
-  { id: 'pr7', name: 'Branding pakket', client: 'Kapsalon Mooi', domain: 'prjct', status: 'lead', deadline: null, progress: 0, value: 750 },
+  { id: 'pr1', name: 'Mural concept + brand boards', client: 'Lana de Vries', clientId: 'cl1', domain: 'prjct', status: 'active', deadline: '2026-06-23', progress: 0.7, value: 850, type: ['Branding', 'Design'], priority: 'High' },
+  { id: 'pr2', name: 'Website + huisstijl', client: 'Bakkerij van Dijk', clientId: 'cl2', domain: 'prjct', status: 'review', deadline: '2026-06-27', progress: 0.9, value: 1150, type: ['Website', 'Branding'], priority: 'High' },
+  { id: 'pr3', name: 'Website (aanbetaling binnen)', client: 'De Groot Installaties', clientId: 'cl3', domain: 'prjct', status: 'active', deadline: '2026-07-04', progress: 0.35, value: 1250, type: ['Website'], priority: 'Medium' },
+  { id: 'pr4', name: 'Zomercampagne assets', client: 'ParkingYou', clientId: 'cl4', domain: 'parkingyou', status: 'active', deadline: '2026-06-30', progress: 0.5, value: 0, type: ['Social Media', 'Design'], priority: 'Medium' },
+  { id: 'pr5', name: 'Buurtkaart flyer + distributie', client: 'Geldrop Buurtkaart', clientId: 'cl5', domain: 'buurtkaart', status: 'blocked', deadline: '2026-06-25', progress: 0.4, value: 0, type: ['Design'], priority: 'Low' },
+  { id: 'pr6', name: 'Logo + social kit', client: 'Café De Kroon', clientId: 'cl6', domain: 'prjct', status: 'lead', deadline: null, progress: 0.1, value: 600, type: ['Logo', 'Social Media'], priority: 'Medium' },
+  { id: 'pr7', name: 'Branding pakket', client: 'Kapsalon Mooi', clientId: 'cl7', domain: 'prjct', status: 'lead', deadline: null, progress: 0, value: 750, type: ['Branding'], priority: 'Low' },
+  { id: 'pr8', name: 'Webshop redesign', client: 'Bloemist Geldrop', clientId: 'cl8', domain: 'prjct', status: 'done', deadline: '2026-05-30', progress: 1, value: 1100, type: ['Website'], priority: 'Medium' },
+]
+
+// ── CRM: clients ──────────────────────────────────────────────────────────────
+export const clients: Client[] = [
+  { id: 'cl1', name: 'Lana de Vries', domain: 'prjct', clientStatus: 'Active', potentie: 'Hoog', scope: 1500, firstContact: '2026-05-02', email: 'lana@studiolana.nl', website: 'studiolana.nl' },
+  { id: 'cl2', name: 'Bakkerij van Dijk', domain: 'prjct', clientStatus: 'Active', potentie: 'Middel', scope: 1150, firstContact: '2026-04-18', email: 'info@bakkerijvandijk.nl' },
+  { id: 'cl3', name: 'De Groot Installaties', domain: 'prjct', clientStatus: 'Active', potentie: 'Hoog', scope: 1250, firstContact: '2026-05-20', email: 'p.degroot@degroot-installaties.nl' },
+  { id: 'cl4', name: 'ParkingYou', domain: 'parkingyou', clientStatus: 'Active', potentie: 'Hoog', scope: 3000, firstContact: '2025-11-01' },
+  { id: 'cl5', name: 'Geldrop Buurtkaart', domain: 'buurtkaart', clientStatus: 'Active', potentie: 'Middel', scope: 0, firstContact: '2026-01-12' },
+  { id: 'cl6', name: 'Café De Kroon', domain: 'prjct', clientStatus: 'Lead', potentie: 'Middel', scope: 600, firstContact: '2026-06-15', email: 'dekroon@kroongeldrop.nl' },
+  { id: 'cl7', name: 'Kapsalon Mooi', domain: 'prjct', clientStatus: 'Prospect', potentie: 'Laag', scope: 750, firstContact: '2026-06-19' },
+  { id: 'cl8', name: 'Bloemist Geldrop', domain: 'prjct', clientStatus: 'Past', potentie: 'Laag', scope: 1100, firstContact: '2026-03-04', email: 'hallo@bloemistgeldrop.nl' },
+  { id: 'cl9', name: 'Garage Smolders', domain: 'prjct', clientStatus: 'Planned', potentie: 'Middel', scope: 900, firstContact: '2026-06-22' },
+]
+
+// ── CRM: unified client messages ──────────────────────────────────────────────
+export const messages: Message[] = [
+  { id: 'msg1', contact: 'Bakkerij van Dijk', contactKey: 'cl2', clientId: 'cl2', projectName: 'Website + huisstijl', channel: 'email', direction: 'in', subject: 'Re: Website oplevering', snippet: 'Ziet er goed uit! Nog een kleine aanpassing aan de openingstijden, dan kunnen we live.', body: 'Hoi Rick,\n\nZiet er goed uit! Nog een kleine aanpassing aan de openingstijden, dan kunnen we live. Wanneer kun je dat doen?\n\nGroet, Anja', ts: '2026-06-22T08:14:00', unread: true },
+  { id: 'msg2', contact: 'Lana de Vries', contactKey: 'cl1', clientId: 'cl1', projectName: 'Mural concept + brand boards', channel: 'email', direction: 'in', subject: 'Concept boards vandaag?', snippet: 'Lukt het je om de mural-concepten vandaag te sturen? Wil ze morgen delen.', body: 'Spannend! Lukt het je om de mural-concepten vandaag te sturen? Wil ze morgen met de opdrachtgever delen.', ts: '2026-06-22T07:42:00', unread: true },
+  { id: 'msg3', contact: 'Café De Kroon', contactKey: 'cl6', clientId: 'cl6', projectName: 'Logo + social kit', channel: 'fiverr', direction: 'in', subject: null, snippet: 'Klinkt goed! Kun je een offerte sturen voor het logo en de social media kit?', body: 'Klinkt goed wat je voorstelde. Kun je een offerte sturen voor het logo en de social media kit?', ts: '2026-06-20T14:20:00', unread: true },
+  { id: 'msg4', contact: 'Café De Kroon', contactKey: 'cl6', clientId: 'cl6', projectName: 'Logo + social kit', channel: 'fiverr', direction: 'out', subject: null, snippet: 'Top, ik stuur je vanmiddag een offerte met 2 logo-richtingen.', body: 'Top, ik stuur je vanmiddag een offerte met 2 logo-richtingen.', ts: '2026-06-20T15:05:00', unread: false },
+  { id: 'msg5', contact: 'De Groot Installaties', contactKey: 'cl3', clientId: 'cl3', projectName: 'Website (aanbetaling binnen)', channel: 'whatsapp', direction: 'in', snippet: 'Aanbetaling is overgemaakt, succes met de bouw!', body: 'Aanbetaling is overgemaakt, succes met de bouw!', subject: null, ts: '2026-06-21T16:30:00', unread: false },
+  { id: 'msg6', contact: 'De Groot Installaties', contactKey: 'cl3', clientId: 'cl3', projectName: 'Website (aanbetaling binnen)', channel: 'whatsapp', direction: 'out', snippet: 'Top, bedankt! Ik lever de eerste opzet volgende week.', body: 'Top, bedankt! Ik lever de eerste opzet volgende week.', subject: null, ts: '2026-06-21T16:45:00', unread: false },
+  { id: 'msg7', contact: 'Kapsalon Mooi', contactKey: 'cl7', clientId: 'cl7', projectName: 'Branding pakket', channel: 'whatsapp', direction: 'in', snippet: 'Hoi! We willen graag een nieuw logo en huisstijl. Wat kost dat ongeveer?', body: 'Hoi! We willen graag een nieuw logo en huisstijl. Wat kost dat ongeveer?', subject: null, ts: '2026-06-19T11:02:00', unread: true },
+  { id: 'msg8', contact: 'Garage Smolders', contactKey: 'cl9', clientId: 'cl9', projectName: null, channel: 'email', direction: 'in', subject: 'Interesse in website', snippet: 'We zoeken iemand voor een nieuwe website + Google vindbaarheid.', body: 'We zoeken iemand voor een nieuwe website + Google vindbaarheid. Kun je bellen?', ts: '2026-06-22T09:10:00', unread: true },
 ]
 
 // ── NORTH STAR: high-level goals + milestones ────────────────────────────────
@@ -438,6 +488,64 @@ export const payments: Payment[] = [
   { id: 'pay7', payee: 'Hosting + domeinen', amount: 95, due: '2026-06-24', direction: 'outgoing', status: 'open', domain: 'prjct', source: 'calendar', externalId: 'evt-hosting' },
 ]
 
+// ── SUBSCRIPTIONS (recurring spend, mirrors a subs database) ─────────────────
+export const subscriptions: Subscription[] = [
+  { id: 'sub1', name: 'Adobe Creative Cloud', amount: 660, cadence: 'yearly', nextCharge: '2026-06-30', active: true, category: 'Software', domain: 'prjct' },
+  { id: 'sub2', name: 'Canva Pro', amount: 89, cadence: 'yearly', nextCharge: '2027-06-18', active: true, category: 'Software', domain: 'prjct' },
+  { id: 'sub3', name: 'Spotify', amount: 11.99, cadence: 'monthly', nextCharge: '2026-07-16', active: true, category: 'Media', domain: 'personal' },
+  { id: 'sub4', name: 'Hosting + domeinen', amount: 95, cadence: 'quarterly', nextCharge: '2026-06-24', active: true, category: 'Hosting', domain: 'prjct' },
+  { id: 'sub5', name: 'Vercel Pro', amount: 20, cadence: 'monthly', nextCharge: '2026-07-01', active: true, category: 'Hosting', domain: 'prjct' },
+  { id: 'sub6', name: 'ChatGPT Plus', amount: 23, cadence: 'monthly', nextCharge: '2026-07-08', active: true, category: 'AI', domain: 'prjct' },
+  { id: 'sub7', name: 'Notion', amount: 96, cadence: 'yearly', nextCharge: '2026-11-02', active: true, category: 'Productivity', domain: 'prjct' },
+  { id: 'sub8', name: 'Sportschool Geldrop', amount: 29.5, cadence: 'monthly', nextCharge: '2026-07-01', active: false, category: 'Health', domain: 'personal', notes: 'gepauzeerd sinds mei' },
+]
+
+// ── KYRA: dog tracker ─────────────────────────────────────────────────────────
+function atToday(hhmm: string): string {
+  return `${TODAY}T${hhmm}:00`
+}
+function atDaysAgo(n: number, hhmm: string): string {
+  const d = new Date(TODAY + 'T00:00:00')
+  d.setDate(d.getDate() - n)
+  return `${d.toISOString().slice(0, 10)}T${hhmm}:00`
+}
+
+export const dogProfile: DogProfile = {
+  name: 'Kyra',
+  breed: 'Shiba Inu',
+  birthdate: '2022-04-11',
+  weightKg: 9.2,
+  vet: 'Dierenkliniek Geldrop',
+}
+
+export const dogEntries: DogEntry[] = [
+  { id: 'd1', kind: 'walk', at: atToday('07:35'), durationMin: 35, distanceKm: 2.8, note: 'Rondje Strabrechtse Heide' },
+  { id: 'd2', kind: 'food', at: atToday('08:10'), note: 'Ochtendbrok 120g' },
+  { id: 'd3', kind: 'pee', at: atToday('08:20') },
+  { id: 'd4', kind: 'poop', at: atToday('07:50') },
+  { id: 'd5', kind: 'water', at: atToday('09:00') },
+  { id: 'd6', kind: 'training', at: atToday('11:15'), durationMin: 15, note: 'Terugkomen + zit, ging goed' },
+  { id: 'd7', kind: 'walk', at: atDaysAgo(1, '18:20'), durationMin: 40, distanceKm: 3.1 },
+  { id: 'd8', kind: 'food', at: atDaysAgo(1, '18:00'), note: 'Avondbrok 120g' },
+  { id: 'd9', kind: 'weight', at: atDaysAgo(7, '09:00'), weightKg: 9.3 },
+  { id: 'd10', kind: 'weight', at: atDaysAgo(21, '09:00'), weightKg: 9.0 },
+  { id: 'd11', kind: 'weight', at: atDaysAgo(0, '09:00'), weightKg: 9.2 },
+]
+
+export const dogMedical: DogMedical[] = [
+  { id: 'm1', type: 'vaccine', date: '2026-03-12', title: 'Cocktailenting (DHPPi)', note: 'Jaarlijkse enting, geen reactie', nextDue: '2027-03-12' },
+  { id: 'm2', type: 'medication', date: '2026-06-01', title: 'Vlooien/teken (Bravecto)', note: 'Kauwtablet, werkt 12 weken', nextDue: '2026-08-24' },
+  { id: 'm3', type: 'vet', date: '2026-02-20', title: 'Controle gebit', note: 'Lichte tandsteen, poetsen aangeraden' },
+  { id: 'm4', type: 'weight', date: '2026-06-26', title: 'Gewicht 9,2 kg', note: 'Gezond gewicht voor Shiba (8-10 kg)' },
+]
+
+export const dogReminders: DogReminder[] = [
+  { id: 'r1', title: 'Vlooien/teken-tablet (Bravecto)', due: '2026-08-24', kind: 'med', done: false },
+  { id: 'r2', title: 'Jaarlijkse vet-check + enting', due: '2027-03-12', kind: 'vet', done: false },
+  { id: 'r3', title: 'Nagels knippen', due: '2026-07-05', kind: 'other', done: false },
+  { id: 'r4', title: 'Vacht borstelen (rui)', due: '2026-06-28', kind: 'other', done: false },
+]
+
 export const OPENING_BALANCE = 2840
 
-export const STORAGE_KEY = 'rick-os-state-v4'
+export const STORAGE_KEY = 'rick-os-state-v8'
