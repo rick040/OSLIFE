@@ -72,6 +72,13 @@ export const SENTIMENT_META: Record<Sentiment, { label: string; cls: string }> =
   stressed: { label: 'stressed', cls: 'bg-cross/15 text-cross-deep' },
 }
 
+const VALID_DOMAINS = new Set<string>(['parkingyou', 'prjct', 'buurtkaart', 'personal', 'cross'])
+
+/** Returns DOMAIN_META entry, falling back to 'personal' for unknown/undefined domains. */
+export function domainMeta(d: unknown) {
+  return DOMAIN_META[(VALID_DOMAINS.has(d as string) ? (d as Domain) : 'personal')]
+}
+
 /** Short date like "Jun 24". */
 export function fmtDate(iso: string | null): string {
   if (!iso) return 'no date'

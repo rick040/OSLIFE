@@ -10,7 +10,7 @@ import {
   Cell,
 } from 'recharts'
 import { useStore } from '../store'
-import { TODAY, DOMAIN_META, DOMAIN_HEX, fmtDate, daysBetween } from '../domains'
+import { TODAY, DOMAIN_META, DOMAIN_HEX, domainMeta, fmtDate, daysBetween } from '../domains'
 import { OPENING_BALANCE } from '../mockData'
 import { DomainChip, SectionTitle, Empty } from '../components/ui'
 import type { Domain, Transaction, Cadence, Subscription } from '../types'
@@ -329,7 +329,7 @@ export default function Money() {
                     <div className="card divide-y divide-line/50">
                       {txns.map((t) => (
                         <div key={t.id} className="flex items-center gap-3 p-3">
-                          <span className={`h-2 w-2 rounded-full shrink-0 ${DOMAIN_META[t.domain].dot}`} />
+                          <span className={`h-2 w-2 rounded-full shrink-0 ${domainMeta(t.domain).dot}`} />
                           <div className="min-w-0 flex-1">
                             <div className="text-sm text-ink truncate">{t.merchant}</div>
                             <div className="text-[11px] text-faint">{t.category}</div>

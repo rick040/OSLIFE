@@ -295,6 +295,11 @@ export async function fetchDogEntries(): Promise<DogEntry[]> {
 
 // ── Brain state (threads + patterns) ─────────────────────────────────────────
 
+const VALID_DOMAINS = new Set(['parkingyou', 'prjct', 'buurtkaart', 'personal', 'cross'])
+function normalizeDomain(d: unknown): Domain {
+  return VALID_DOMAINS.has(d as string) ? (d as Domain) : 'personal'
+}
+
 export async function fetchBrainState(): Promise<{ threads: Thread[]; patterns: Pattern[] }> {
   const { data } = await supabase
     .from('brain_state')
@@ -302,10 +307,28 @@ export async function fetchBrainState(): Promise<{ threads: Thread[]; patterns: 
     .limit(1)
     .maybeSingle()
 
-  return {
-    threads: (data?.threads as Thread[]) ?? [],
-    patterns: (data?.patterns as Pattern[]) ?? [],
-  }
+  const rawThreads = (data?.threads as Array<Record<string, unknown>>) ?? []
+  const rawPatterns = (data?.patterns as Array<Record<string, unknown>>) ?? []
+
+  const threads: Thread[] = rawThreads.map((t, i) => ({
+    id: (t.id as string) ?? `thread-${i}`,
+    title: (t.task as string) ?? (t.title as string) ?? '',
+    status: ((t.status as string) === 'closed' ? 'closed' : 'open') as Thread['status'],
+    domain: normalizeDomain(t.domain),
+    due: (t.due as string) ?? null,
+    owedTo: (t.owedTo as string) ?? '',
+    createdAt: (t.created_at as string) ?? new Date().toISOString(),
+  }))
+
+  const patterns: Pattern[] = rawPatterns.map((p, i) => ({
+    id: (p.id as string) ?? `pattern-${i}`,
+    text: (p.text as string) ?? '',
+    domain: normalizeDomain(p.domain),
+    confidence: (p.confidence as number) ?? 0.5,
+    lastReinforced: (p.date as string) ?? TODAY,
+  }))
+
+  return { threads, patterns }
 }
 
 // ── Screen time (if available) ────────────────────────────────────────────────

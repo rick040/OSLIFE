@@ -1,5 +1,5 @@
 import { useStore } from '../store'
-import { TODAY, DOMAIN_META, fmtDate, daysBetween } from '../domains'
+import { TODAY, DOMAIN_META, domainMeta, fmtDate, daysBetween } from '../domains'
 import { DomainChip, SectionTitle, Empty, Ring } from '../components/ui'
 import {
   Bell,
@@ -320,7 +320,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               const overdue = dd !== null && dd < 0
               return (
                 <div key={p.id} className="flex items-center gap-2">
-                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${DOMAIN_META[p.domain].dot}`} />
+                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${domainMeta(p.domain).dot}`} />
                   <span className="text-sm text-ink truncate flex-1">
                     {p.name} <span className="text-faint">· {p.client}</span>
                   </span>
@@ -382,7 +382,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
                 const overdue = dd !== null && dd < 0
                 return (
                   <div key={t.id} className="flex items-center gap-2">
-                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${DOMAIN_META[t.domain].dot}`} />
+                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${domainMeta(t.domain).dot}`} />
                     <span className="text-sm text-ink truncate flex-1">{t.title}</span>
                     <span className={`text-[11px] shrink-0 ${overdue ? 'text-cross' : 'text-faint'}`}>
                       {t.due ? (overdue ? `${-dd!}d te laat` : fmtDate(t.due)) : '–'}
