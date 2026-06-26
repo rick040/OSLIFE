@@ -238,10 +238,27 @@ export const transactions: Transaction[] = [
 ]
 
 // ── HABITS ────────────────────────────────────────────────────────────────────
+// Build a plausible completion history for the last 30 days. `keep(i)` decides,
+// per day-offset (0 = today), whether the habit was done. tail = current streak.
+function buildHistory(keep: (offset: number) => boolean): string[] {
+  const out: string[] = []
+  const today = new Date(TODAY + 'T00:00:00')
+  for (let i = 29; i >= 1; i--) {
+    if (keep(i)) {
+      const d = new Date(today)
+      d.setDate(d.getDate() - i)
+      out.push(d.toISOString().slice(0, 10))
+    }
+  }
+  return out
+}
+
 export const habits: Habit[] = [
-  { id: 'h1', name: 'Morning dog walk', streak: 4, doneToday: false, emoji: '🐕' },
-  { id: 'h2', name: 'No screens after 23:00', streak: 1, doneToday: false, emoji: '🌙' },
-  { id: 'h3', name: 'Log the day (5 min)', streak: 9, doneToday: false, emoji: '📓' },
+  { id: 'h1', name: 'Ochtendwandeling Kyra', streak: 4, doneToday: false, emoji: '🐕', color: '#6FA07C', history: buildHistory((i) => i <= 4 || i % 4 !== 0) },
+  { id: 'h2', name: 'Geen schermen na 23:00', streak: 1, doneToday: false, emoji: '🌙', color: '#6E8CA8', history: buildHistory((i) => i <= 1 || i % 3 === 0) },
+  { id: 'h3', name: 'Dag loggen (5 min)', streak: 9, doneToday: false, emoji: '📓', color: '#C6A05B', history: buildHistory((i) => i <= 9 || i % 5 !== 0) },
+  { id: 'h4', name: 'Sporten / bewegen', streak: 0, doneToday: false, emoji: '🏃', color: '#C58392', history: buildHistory((i) => i % 2 === 0) },
+  { id: 'h5', name: 'Diepe focus-blok', streak: 2, doneToday: false, emoji: '🎯', color: '#9385B0', history: buildHistory((i) => i <= 2 || i % 3 !== 1) },
 ]
 
 // ── SURFACE: today's planned blocks (Day Builder seed) ───────────────────────
@@ -481,4 +498,4 @@ export const subscriptions: Subscription[] = [
 
 export const OPENING_BALANCE = 2840
 
-export const STORAGE_KEY = 'rick-os-state-v6'
+export const STORAGE_KEY = 'rick-os-state-v7'

@@ -78,6 +78,8 @@ interface State {
   closeThread: (id: string) => void
   reopenThread: (id: string) => void
   tickHabit: (id: string) => void
+  addHabit: (name: string, emoji: string, color?: string) => void
+  deleteHabit: (id: string) => void
   completeBlock: (id: string) => void
   skipBlock: (id: string) => void
   resetBlock: (id: string) => void
@@ -211,19 +213,37 @@ export const useStore = create<State>()(
           const h = s.habits.find((x) => x.id === id)
           if (!h) return {}
           const doneToday = !h.doneToday
+          const hist = new Set(h.history ?? [])
+          if (doneToday) hist.add(TODAY)
+          else hist.delete(TODAY)
           return {
             habits: s.habits.map((x) =>
               x.id === id
-                ? { ...x, doneToday, streak: doneToday ? x.streak + 1 : Math.max(0, x.streak - 1) }
+                ? {
+                    ...x,
+                    doneToday,
+                    streak: doneToday ? x.streak + 1 : Math.max(0, x.streak - 1),
+                    history: [...hist].sort(),
+                  }
                 : x,
             ),
             activity: pushSignal(s.activity, {
-              text: `${doneToday ? 'Ticked' : 'Un-ticked'} habit: ${h.name}`,
+              text: `${doneToday ? 'Afgevinkt' : 'Teruggezet'}: ${h.name}`,
               domain: 'personal',
               loop: 'fast',
             }),
           }
         }),
+
+      addHabit: (name, emoji, color) =>
+        set((s) => ({
+          habits: [
+            ...s.habits,
+            { id: uid('h'), name, emoji: emoji || '✅', color, streak: 0, doneToday: false, history: [] },
+          ],
+        })),
+
+      deleteHabit: (id) => set((s) => ({ habits: s.habits.filter((x) => x.id !== id) })),
 
       completeBlock: (id) =>
         set((s) => {

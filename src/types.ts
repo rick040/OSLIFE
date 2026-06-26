@@ -87,6 +87,8 @@ export interface Habit {
   streak: number
   doneToday: boolean
   emoji: string
+  color?: string // hex accent
+  history?: string[] // ISO dates the habit was completed
 }
 
 // ── Health (Fit / Samsung Health style sense) ────────────────────────────────
