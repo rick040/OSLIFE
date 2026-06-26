@@ -54,22 +54,38 @@ function toHHMM(t: string | null | undefined): string {
 // ── Health ────────────────────────────────────────────────────────────────────
 
 export async function fetchHealthDays(): Promise<HealthDay[]> {
-  const { data } = await supabase
-    .from('health_daily_stats')
-    .select('date,steps,sleep_min,avg_resting_hr,active_min')
-    .order('date', { ascending: false })
-    .limit(90)
+  const [stepsRes, sleepRes, statsRes] = await Promise.all([
+    supabase.from('hc_steps').select('date,steps').order('date', { ascending: false }).limit(90),
+    supabase.from('hc_sleep').select('date,duration_minutes').order('date', { ascending: false }).limit(90),
+    supabase.from('health_daily_stats').select('date,avg_resting_hr,active_min').order('date', { ascending: false }).limit(90),
+  ])
 
-  return (data ?? []).map((r) => ({
-    date: r.date as string,
-    steps: (r.steps as number) ?? 0,
-    stepGoal: 8000,
-    sleepHours: Math.round(((r.sleep_min as number) ?? 0) / 60 * 10) / 10,
-    restingHR: (r.avg_resting_hr as number) ?? 0,
-    activeMinutes: (r.active_min as number) ?? 0,
-    energy: 3,
-    mood: 3,
-  }))
+  const sleepByDate = new Map((sleepRes.data ?? []).map((r) => [r.date as string, (r.duration_minutes as number) ?? 0]))
+  const statsByDate = new Map((statsRes.data ?? []).map((r) => [r.date as string, r]))
+
+  const days: HealthDay[] = (stepsRes.data ?? []).map((r) => {
+    const date = r.date as string
+    const stats = statsByDate.get(date)
+    return {
+      date,
+      steps: (r.steps as number) ?? 0,
+      stepGoal: 8000,
+      sleepHours: Math.round(((sleepByDate.get(date) ?? 0) / 60) * 10) / 10,
+      restingHR: (stats?.avg_resting_hr as number) ?? 0,
+      activeMinutes: (stats?.active_min as number) ?? 0,
+      energy: 3,
+      mood: 3,
+    }
+  })
+
+  // Include sleep-only days not covered by steps
+  sleepByDate.forEach((mins, date) => {
+    if (!days.find((d) => d.date === date)) {
+      days.push({ date, steps: 0, stepGoal: 8000, sleepHours: Math.round((mins / 60) * 10) / 10, restingHR: 0, activeMinutes: 0, energy: 3, mood: 3 })
+    }
+  })
+
+  return days.sort((a, b) => a.date.localeCompare(b.date))
 }
 
 // ── Finance ───────────────────────────────────────────────────────────────────
