@@ -37,7 +37,21 @@ import { classify } from './understand'
 import { runReflect } from './reflect'
 import { TODAY } from './domains'
 import * as mock from './mockData'
-import { fetchHealthDays, fetchTransactions, fetchEmails, fetchMeetingDays } from './lib/supabase'
+import {
+  fetchHealthDays,
+  fetchTransactions,
+  fetchEmails,
+  fetchMeetingDays,
+  fetchBlocks,
+  fetchHabits,
+  fetchSubscriptions,
+  fetchGoals,
+  fetchDogEntries,
+  fetchBrainState,
+  fetchScreenDays,
+  fetchLocationDays,
+  fetchMusicDays,
+} from './lib/supabase'
 
 export interface ActivitySignal {
   id: string
@@ -481,11 +495,34 @@ export const useStore = create<State>()(
 
       loadLiveData: async () => {
         try {
-          const [healthDays, transactions, emails, meetingDays] = await Promise.all([
+          const [
+            healthDays,
+            transactions,
+            emails,
+            meetingDays,
+            blocks,
+            habits,
+            subscriptions,
+            goals,
+            dogEntries,
+            brainState,
+            screenDays,
+            locationDays,
+            musicDays,
+          ] = await Promise.all([
             fetchHealthDays(),
             fetchTransactions(),
             fetchEmails(),
             fetchMeetingDays(),
+            fetchBlocks(),
+            fetchHabits(),
+            fetchSubscriptions(),
+            fetchGoals(),
+            fetchDogEntries(),
+            fetchBrainState(),
+            fetchScreenDays(),
+            fetchLocationDays(),
+            fetchMusicDays(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -493,10 +530,20 @@ export const useStore = create<State>()(
             ...(transactions.length > 0 && { transactions }),
             ...(emails.length > 0 && { emails }),
             ...(meetingDays.length > 0 && { meetingDays }),
+            ...(blocks.length > 0 && { blocks }),
+            ...(habits.length > 0 && { habits }),
+            ...(subscriptions.length > 0 && { subscriptions }),
+            ...(goals.length > 0 && { goals }),
+            ...(dogEntries.length > 0 && { dogEntries }),
+            ...(brainState.threads.length > 0 && { threads: brainState.threads }),
+            ...(brainState.patterns.length > 0 && { patterns: brainState.patterns }),
+            ...(screenDays.length > 0 && { screenDays }),
+            ...(locationDays.length > 0 && { locationDays }),
+            ...(musicDays.length > 0 && { musicDays }),
             dataSource: 'live',
           })
         } catch (err) {
-          console.warn('[RICK-OS] Supabase fetch failed, keeping mock data', err)
+          console.warn('[RICK-OS] Supabase fetch failed', err)
         }
       },
 
