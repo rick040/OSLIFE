@@ -24,6 +24,8 @@ import type {
   LocationDay,
   MeetingDay,
   MusicDay,
+  Client,
+  Message,
 } from './types'
 import { classify } from './understand'
 import { runReflect } from './reflect'
@@ -59,6 +61,8 @@ interface State {
   meetingDays: MeetingDay[]
   musicDays: MusicDay[]
   projects: Project[]
+  clients: Client[]
+  messages: Message[]
   goals: Goal[]
   milestones: Milestone[]
   emails: EmailItem[]
@@ -89,6 +93,10 @@ interface State {
   markEmailRead: (id: string) => void
   markAllEmailsRead: () => void
 
+  // CRM
+  markMessageRead: (id: string) => void
+  markConversationRead: (contactKey: string) => void
+
   // Projects + Money
   setProjectStatus: (id: string, status: ProjectStatus) => void
   addTransactions: (txns: Transaction[]) => void
@@ -117,6 +125,8 @@ const seed = () => ({
   meetingDays: mock.meetingDays,
   musicDays: mock.musicDays,
   projects: mock.projects,
+  clients: mock.clients,
+  messages: mock.messages,
   goals: mock.goals,
   milestones: mock.milestones,
   emails: mock.emails,
@@ -344,6 +354,14 @@ export const useStore = create<State>()(
       markAllEmailsRead: () =>
         set((s) => ({ emails: s.emails.map((x) => ({ ...x, unread: false })) })),
 
+      markMessageRead: (id) =>
+        set((s) => ({ messages: s.messages.map((m) => (m.id === id ? { ...m, unread: false } : m)) })),
+
+      markConversationRead: (contactKey) =>
+        set((s) => ({
+          messages: s.messages.map((m) => (m.contactKey === contactKey ? { ...m, unread: false } : m)),
+        })),
+
       setProjectStatus: (id, status) =>
         set((s) => {
           const p = s.projects.find((x) => x.id === id)
@@ -409,6 +427,8 @@ export const useStore = create<State>()(
         if (!state.transactions?.length) state.transactions = s.transactions
         if (!state.meetingDays?.length) state.meetingDays = s.meetingDays
         if (!state.projects?.length) state.projects = s.projects
+        if (!state.clients?.length) state.clients = s.clients
+        if (!state.messages?.length) state.messages = s.messages
         if (!state.goals?.length) state.goals = s.goals
         if (!state.milestones?.length) state.milestones = s.milestones
         if (!state.payments?.length) state.payments = s.payments

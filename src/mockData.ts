@@ -18,6 +18,8 @@ import type {
   LocationDay,
   MeetingDay,
   MusicDay,
+  Client,
+  Message,
 } from './types'
 import { TODAY } from './domains'
 
@@ -390,13 +392,39 @@ export const musicDays: MusicDay[] = [
 
 // ── PROJECTS (mirrors a Notion projects DB) ──────────────────────────────────
 export const projects: Project[] = [
-  { id: 'pr1', name: 'Mural concept + brand boards', client: 'Lana de Vries', domain: 'prjct', status: 'active', deadline: '2026-06-23', progress: 0.7, value: 850 },
-  { id: 'pr2', name: 'Website + huisstijl', client: 'Bakkerij van Dijk', domain: 'prjct', status: 'review', deadline: '2026-06-27', progress: 0.9, value: 1150 },
-  { id: 'pr3', name: 'Website (aanbetaling binnen)', client: 'De Groot Installaties', domain: 'prjct', status: 'active', deadline: '2026-07-04', progress: 0.35, value: 1250 },
-  { id: 'pr4', name: 'Zomercampagne assets', client: 'ParkingYou', domain: 'parkingyou', status: 'active', deadline: '2026-06-30', progress: 0.5, value: 0 },
-  { id: 'pr5', name: 'Buurtkaart flyer + distributie', client: 'Geldrop Buurtkaart', domain: 'buurtkaart', status: 'blocked', deadline: '2026-06-25', progress: 0.4, value: 0 },
-  { id: 'pr6', name: 'Logo + social kit', client: 'Café De Kroon', domain: 'prjct', status: 'lead', deadline: null, progress: 0.1, value: 600 },
-  { id: 'pr7', name: 'Branding pakket', client: 'Kapsalon Mooi', domain: 'prjct', status: 'lead', deadline: null, progress: 0, value: 750 },
+  { id: 'pr1', name: 'Mural concept + brand boards', client: 'Lana de Vries', clientId: 'cl1', domain: 'prjct', status: 'active', deadline: '2026-06-23', progress: 0.7, value: 850, type: ['Branding', 'Design'], priority: 'High' },
+  { id: 'pr2', name: 'Website + huisstijl', client: 'Bakkerij van Dijk', clientId: 'cl2', domain: 'prjct', status: 'review', deadline: '2026-06-27', progress: 0.9, value: 1150, type: ['Website', 'Branding'], priority: 'High' },
+  { id: 'pr3', name: 'Website (aanbetaling binnen)', client: 'De Groot Installaties', clientId: 'cl3', domain: 'prjct', status: 'active', deadline: '2026-07-04', progress: 0.35, value: 1250, type: ['Website'], priority: 'Medium' },
+  { id: 'pr4', name: 'Zomercampagne assets', client: 'ParkingYou', clientId: 'cl4', domain: 'parkingyou', status: 'active', deadline: '2026-06-30', progress: 0.5, value: 0, type: ['Social Media', 'Design'], priority: 'Medium' },
+  { id: 'pr5', name: 'Buurtkaart flyer + distributie', client: 'Geldrop Buurtkaart', clientId: 'cl5', domain: 'buurtkaart', status: 'blocked', deadline: '2026-06-25', progress: 0.4, value: 0, type: ['Design'], priority: 'Low' },
+  { id: 'pr6', name: 'Logo + social kit', client: 'Café De Kroon', clientId: 'cl6', domain: 'prjct', status: 'lead', deadline: null, progress: 0.1, value: 600, type: ['Logo', 'Social Media'], priority: 'Medium' },
+  { id: 'pr7', name: 'Branding pakket', client: 'Kapsalon Mooi', clientId: 'cl7', domain: 'prjct', status: 'lead', deadline: null, progress: 0, value: 750, type: ['Branding'], priority: 'Low' },
+  { id: 'pr8', name: 'Webshop redesign', client: 'Bloemist Geldrop', clientId: 'cl8', domain: 'prjct', status: 'done', deadline: '2026-05-30', progress: 1, value: 1100, type: ['Website'], priority: 'Medium' },
+]
+
+// ── CRM: clients ──────────────────────────────────────────────────────────────
+export const clients: Client[] = [
+  { id: 'cl1', name: 'Lana de Vries', domain: 'prjct', clientStatus: 'Active', potentie: 'Hoog', scope: 1500, firstContact: '2026-05-02', email: 'lana@studiolana.nl', website: 'studiolana.nl' },
+  { id: 'cl2', name: 'Bakkerij van Dijk', domain: 'prjct', clientStatus: 'Active', potentie: 'Middel', scope: 1150, firstContact: '2026-04-18', email: 'info@bakkerijvandijk.nl' },
+  { id: 'cl3', name: 'De Groot Installaties', domain: 'prjct', clientStatus: 'Active', potentie: 'Hoog', scope: 1250, firstContact: '2026-05-20', email: 'p.degroot@degroot-installaties.nl' },
+  { id: 'cl4', name: 'ParkingYou', domain: 'parkingyou', clientStatus: 'Active', potentie: 'Hoog', scope: 3000, firstContact: '2025-11-01' },
+  { id: 'cl5', name: 'Geldrop Buurtkaart', domain: 'buurtkaart', clientStatus: 'Active', potentie: 'Middel', scope: 0, firstContact: '2026-01-12' },
+  { id: 'cl6', name: 'Café De Kroon', domain: 'prjct', clientStatus: 'Lead', potentie: 'Middel', scope: 600, firstContact: '2026-06-15', email: 'dekroon@kroongeldrop.nl' },
+  { id: 'cl7', name: 'Kapsalon Mooi', domain: 'prjct', clientStatus: 'Prospect', potentie: 'Laag', scope: 750, firstContact: '2026-06-19' },
+  { id: 'cl8', name: 'Bloemist Geldrop', domain: 'prjct', clientStatus: 'Past', potentie: 'Laag', scope: 1100, firstContact: '2026-03-04', email: 'hallo@bloemistgeldrop.nl' },
+  { id: 'cl9', name: 'Garage Smolders', domain: 'prjct', clientStatus: 'Planned', potentie: 'Middel', scope: 900, firstContact: '2026-06-22' },
+]
+
+// ── CRM: unified client messages ──────────────────────────────────────────────
+export const messages: Message[] = [
+  { id: 'msg1', contact: 'Bakkerij van Dijk', contactKey: 'cl2', clientId: 'cl2', projectName: 'Website + huisstijl', channel: 'email', direction: 'in', subject: 'Re: Website oplevering', snippet: 'Ziet er goed uit! Nog een kleine aanpassing aan de openingstijden, dan kunnen we live.', body: 'Hoi Rick,\n\nZiet er goed uit! Nog een kleine aanpassing aan de openingstijden, dan kunnen we live. Wanneer kun je dat doen?\n\nGroet, Anja', ts: '2026-06-22T08:14:00', unread: true },
+  { id: 'msg2', contact: 'Lana de Vries', contactKey: 'cl1', clientId: 'cl1', projectName: 'Mural concept + brand boards', channel: 'email', direction: 'in', subject: 'Concept boards vandaag?', snippet: 'Lukt het je om de mural-concepten vandaag te sturen? Wil ze morgen delen.', body: 'Spannend! Lukt het je om de mural-concepten vandaag te sturen? Wil ze morgen met de opdrachtgever delen.', ts: '2026-06-22T07:42:00', unread: true },
+  { id: 'msg3', contact: 'Café De Kroon', contactKey: 'cl6', clientId: 'cl6', projectName: 'Logo + social kit', channel: 'fiverr', direction: 'in', subject: null, snippet: 'Klinkt goed! Kun je een offerte sturen voor het logo en de social media kit?', body: 'Klinkt goed wat je voorstelde. Kun je een offerte sturen voor het logo en de social media kit?', ts: '2026-06-20T14:20:00', unread: true },
+  { id: 'msg4', contact: 'Café De Kroon', contactKey: 'cl6', clientId: 'cl6', projectName: 'Logo + social kit', channel: 'fiverr', direction: 'out', subject: null, snippet: 'Top, ik stuur je vanmiddag een offerte met 2 logo-richtingen.', body: 'Top, ik stuur je vanmiddag een offerte met 2 logo-richtingen.', ts: '2026-06-20T15:05:00', unread: false },
+  { id: 'msg5', contact: 'De Groot Installaties', contactKey: 'cl3', clientId: 'cl3', projectName: 'Website (aanbetaling binnen)', channel: 'whatsapp', direction: 'in', snippet: 'Aanbetaling is overgemaakt, succes met de bouw!', body: 'Aanbetaling is overgemaakt, succes met de bouw!', subject: null, ts: '2026-06-21T16:30:00', unread: false },
+  { id: 'msg6', contact: 'De Groot Installaties', contactKey: 'cl3', clientId: 'cl3', projectName: 'Website (aanbetaling binnen)', channel: 'whatsapp', direction: 'out', snippet: 'Top, bedankt! Ik lever de eerste opzet volgende week.', body: 'Top, bedankt! Ik lever de eerste opzet volgende week.', subject: null, ts: '2026-06-21T16:45:00', unread: false },
+  { id: 'msg7', contact: 'Kapsalon Mooi', contactKey: 'cl7', clientId: 'cl7', projectName: 'Branding pakket', channel: 'whatsapp', direction: 'in', snippet: 'Hoi! We willen graag een nieuw logo en huisstijl. Wat kost dat ongeveer?', body: 'Hoi! We willen graag een nieuw logo en huisstijl. Wat kost dat ongeveer?', subject: null, ts: '2026-06-19T11:02:00', unread: true },
+  { id: 'msg8', contact: 'Garage Smolders', contactKey: 'cl9', clientId: 'cl9', projectName: null, channel: 'email', direction: 'in', subject: 'Interesse in website', snippet: 'We zoeken iemand voor een nieuwe website + Google vindbaarheid.', body: 'We zoeken iemand voor een nieuwe website + Google vindbaarheid. Kun je bellen?', ts: '2026-06-22T09:10:00', unread: true },
 ]
 
 // ── NORTH STAR: high-level goals + milestones ────────────────────────────────
@@ -440,4 +468,4 @@ export const payments: Payment[] = [
 
 export const OPENING_BALANCE = 2840
 
-export const STORAGE_KEY = 'rick-os-state-v4'
+export const STORAGE_KEY = 'rick-os-state-v5'

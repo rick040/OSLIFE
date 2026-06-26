@@ -11,6 +11,7 @@ import Vitals from './views/Vitals'
 import Signals from './views/Signals'
 import Money from './views/Money'
 import Projects from './views/Projects'
+import CRM from './views/CRM'
 import InboxView from './views/Inbox'
 import NorthStar from './views/NorthStar'
 import Mindmap from './views/Mindmap'
@@ -48,7 +49,7 @@ export default function App() {
     mindmap: <Mindmap />,
     // built in later phases
     habits: <Placeholder view="habits" />,
-    crm: <Placeholder view="crm" />,
+    crm: <CRM />,
     strategiehq: <Placeholder view="strategiehq" />,
     buurtkaart: <Placeholder view="buurtkaart" />,
     eyes: <Placeholder view="eyes" />,

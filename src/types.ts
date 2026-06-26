@@ -159,6 +159,8 @@ export interface MusicDay {
 
 export type ProjectStatus = 'lead' | 'active' | 'review' | 'blocked' | 'done'
 
+export type Priority = 'High' | 'Medium' | 'Low'
+
 export interface Project {
   id: string
   name: string
@@ -168,6 +170,43 @@ export interface Project {
   deadline: string | null // ISO date
   progress: number // 0..1
   value: number // EUR
+  // CRM enrichment (mirrors Notion Projects DB)
+  type?: string[] // Website, Branding, Logo, Social Media, ...
+  priority?: Priority
+  clientId?: string
+}
+
+// ── CRM: clients (mirrors Notion Clients DB) ─────────────────────────────────
+export type ClientStatus = 'Active' | 'Lead' | 'Prospect' | 'Planned' | 'Inactive' | 'Past'
+
+export interface Client {
+  id: string
+  name: string
+  domain: Domain
+  clientStatus: ClientStatus | null
+  potentie?: 'Hoog' | 'Middel' | 'Laag' | null
+  scope?: number | null // EUR potential
+  firstContact?: string | null // ISO date
+  email?: string | null
+  website?: string | null
+}
+
+// ── CRM: unified client messages (email / fiverr / whatsapp) ─────────────────
+export type Channel = 'email' | 'fiverr' | 'whatsapp'
+
+export interface Message {
+  id: string
+  contact: string
+  contactKey: string // groups messages into a conversation
+  clientId?: string | null
+  projectName?: string | null
+  channel: Channel
+  direction: 'in' | 'out'
+  subject?: string | null
+  snippet: string
+  body?: string | null
+  ts: string // ISO
+  unread: boolean
 }
 
 // ── North Star: high-level goals + milestones ────────────────────────────────
