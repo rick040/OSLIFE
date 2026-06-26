@@ -248,6 +248,60 @@ export interface Payment {
   externalId?: string // google event id, for dedup
 }
 
+// ── Kyra: dog tracker ────────────────────────────────────────────────────────
+export type DogKind =
+  | 'walk'
+  | 'food'
+  | 'water'
+  | 'pee'
+  | 'poop'
+  | 'play'
+  | 'treat'
+  | 'training'
+  | 'vet'
+  | 'weight'
+  | 'note'
+
+export interface DogEntry {
+  id: string
+  kind: DogKind
+  at: string // ISO datetime
+  durationMin?: number | null
+  distanceKm?: number | null
+  weightKg?: number | null
+  note?: string | null
+  photo?: string | null // data URL
+}
+
+export type DogMedicalType = 'vaccine' | 'vet' | 'medication' | 'condition' | 'weight'
+
+export interface DogMedical {
+  id: string
+  type: DogMedicalType
+  date: string // ISO date
+  title: string
+  note?: string | null
+  photo?: string | null // data URL (scan, foto)
+  nextDue?: string | null // ISO date
+}
+
+export interface DogReminder {
+  id: string
+  title: string
+  due: string // ISO date
+  kind: DogKind | 'vet' | 'med' | 'other'
+  done: boolean
+}
+
+export interface DogProfile {
+  name: string
+  breed: string
+  birthdate: string // ISO date
+  weightKg: number
+  vet: string
+  photo?: string | null
+}
+
 // ── Subscriptions (recurring spend) ──────────────────────────────────────────
 export type Cadence = 'weekly' | 'monthly' | 'quarterly' | 'yearly'
 

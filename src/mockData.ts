@@ -21,6 +21,10 @@ import type {
   Client,
   Message,
   Subscription,
+  DogEntry,
+  DogMedical,
+  DogReminder,
+  DogProfile,
 } from './types'
 import { TODAY } from './domains'
 
@@ -496,6 +500,52 @@ export const subscriptions: Subscription[] = [
   { id: 'sub8', name: 'Sportschool Geldrop', amount: 29.5, cadence: 'monthly', nextCharge: '2026-07-01', active: false, category: 'Health', domain: 'personal', notes: 'gepauzeerd sinds mei' },
 ]
 
+// ── KYRA: dog tracker ─────────────────────────────────────────────────────────
+function atToday(hhmm: string): string {
+  return `${TODAY}T${hhmm}:00`
+}
+function atDaysAgo(n: number, hhmm: string): string {
+  const d = new Date(TODAY + 'T00:00:00')
+  d.setDate(d.getDate() - n)
+  return `${d.toISOString().slice(0, 10)}T${hhmm}:00`
+}
+
+export const dogProfile: DogProfile = {
+  name: 'Kyra',
+  breed: 'Shiba Inu',
+  birthdate: '2022-04-11',
+  weightKg: 9.2,
+  vet: 'Dierenkliniek Geldrop',
+}
+
+export const dogEntries: DogEntry[] = [
+  { id: 'd1', kind: 'walk', at: atToday('07:35'), durationMin: 35, distanceKm: 2.8, note: 'Rondje Strabrechtse Heide' },
+  { id: 'd2', kind: 'food', at: atToday('08:10'), note: 'Ochtendbrok 120g' },
+  { id: 'd3', kind: 'pee', at: atToday('08:20') },
+  { id: 'd4', kind: 'poop', at: atToday('07:50') },
+  { id: 'd5', kind: 'water', at: atToday('09:00') },
+  { id: 'd6', kind: 'training', at: atToday('11:15'), durationMin: 15, note: 'Terugkomen + zit, ging goed' },
+  { id: 'd7', kind: 'walk', at: atDaysAgo(1, '18:20'), durationMin: 40, distanceKm: 3.1 },
+  { id: 'd8', kind: 'food', at: atDaysAgo(1, '18:00'), note: 'Avondbrok 120g' },
+  { id: 'd9', kind: 'weight', at: atDaysAgo(7, '09:00'), weightKg: 9.3 },
+  { id: 'd10', kind: 'weight', at: atDaysAgo(21, '09:00'), weightKg: 9.0 },
+  { id: 'd11', kind: 'weight', at: atDaysAgo(0, '09:00'), weightKg: 9.2 },
+]
+
+export const dogMedical: DogMedical[] = [
+  { id: 'm1', type: 'vaccine', date: '2026-03-12', title: 'Cocktailenting (DHPPi)', note: 'Jaarlijkse enting, geen reactie', nextDue: '2027-03-12' },
+  { id: 'm2', type: 'medication', date: '2026-06-01', title: 'Vlooien/teken (Bravecto)', note: 'Kauwtablet, werkt 12 weken', nextDue: '2026-08-24' },
+  { id: 'm3', type: 'vet', date: '2026-02-20', title: 'Controle gebit', note: 'Lichte tandsteen, poetsen aangeraden' },
+  { id: 'm4', type: 'weight', date: '2026-06-26', title: 'Gewicht 9,2 kg', note: 'Gezond gewicht voor Shiba (8-10 kg)' },
+]
+
+export const dogReminders: DogReminder[] = [
+  { id: 'r1', title: 'Vlooien/teken-tablet (Bravecto)', due: '2026-08-24', kind: 'med', done: false },
+  { id: 'r2', title: 'Jaarlijkse vet-check + enting', due: '2027-03-12', kind: 'vet', done: false },
+  { id: 'r3', title: 'Nagels knippen', due: '2026-07-05', kind: 'other', done: false },
+  { id: 'r4', title: 'Vacht borstelen (rui)', due: '2026-06-28', kind: 'other', done: false },
+]
+
 export const OPENING_BALANCE = 2840
 
-export const STORAGE_KEY = 'rick-os-state-v7'
+export const STORAGE_KEY = 'rick-os-state-v8'

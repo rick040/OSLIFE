@@ -13,6 +13,7 @@ import Money from './views/Money'
 import Projects from './views/Projects'
 import CRM from './views/CRM'
 import Habits from './views/Habits'
+import Dog from './views/Dog'
 import InboxView from './views/Inbox'
 import NorthStar from './views/NorthStar'
 import Mindmap from './views/Mindmap'
@@ -55,7 +56,7 @@ export default function App() {
     buurtkaart: <Placeholder view="buurtkaart" />,
     eyes: <Placeholder view="eyes" />,
     dakmeester: <Placeholder view="dakmeester" />,
-    dog: <Placeholder view="dog" />,
+    dog: <Dog />,
   }
 
   return (

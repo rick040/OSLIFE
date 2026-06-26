@@ -27,6 +27,11 @@ import type {
   Client,
   Message,
   Subscription,
+  DogEntry,
+  DogKind,
+  DogMedical,
+  DogReminder,
+  DogProfile,
 } from './types'
 import { classify } from './understand'
 import { runReflect } from './reflect'
@@ -69,6 +74,10 @@ interface State {
   emails: EmailItem[]
   payments: Payment[]
   subscriptions: Subscription[]
+  dogProfile: DogProfile
+  dogEntries: DogEntry[]
+  dogMedical: DogMedical[]
+  dogReminders: DogReminder[]
   dataSource: 'mock' | 'live'
 
   // INTAKE → UNDERSTAND → REMEMBER
@@ -106,6 +115,14 @@ interface State {
   addTransactions: (txns: Transaction[]) => void
   markPaymentPaid: (id: string) => void
 
+  // Kyra
+  logDog: (entry: Omit<DogEntry, 'id' | 'at'> & { at?: string }) => void
+  deleteDogEntry: (id: string) => void
+  addDogMedical: (m: Omit<DogMedical, 'id'>) => void
+  deleteDogMedical: (id: string) => void
+  addDogReminder: (r: Omit<DogReminder, 'id' | 'done'>) => void
+  toggleDogReminder: (id: string) => void
+
   // Subscriptions
   addSubscription: (sub: Omit<Subscription, 'id'>) => void
   updateSubscription: (id: string, patch: Partial<Subscription>) => void
@@ -142,6 +159,10 @@ const seed = () => ({
   emails: mock.emails,
   payments: mock.payments,
   subscriptions: mock.subscriptions,
+  dogProfile: mock.dogProfile,
+  dogEntries: mock.dogEntries,
+  dogMedical: mock.dogMedical,
+  dogReminders: mock.dogReminders,
   dataSource: 'mock' as const,
 })
 
@@ -420,6 +441,28 @@ export const useStore = create<State>()(
           }
         }),
 
+      logDog: (entry) =>
+        set((s) => {
+          const e: DogEntry = { id: uid('dog'), at: entry.at ?? new Date().toISOString(), ...entry }
+          return {
+            dogEntries: [e, ...s.dogEntries],
+            activity: pushSignal(s.activity, { text: `Kyra: ${entry.kind} gelogd`, domain: 'personal', loop: 'fast' }),
+          }
+        }),
+
+      deleteDogEntry: (id) => set((s) => ({ dogEntries: s.dogEntries.filter((x) => x.id !== id) })),
+
+      addDogMedical: (m) =>
+        set((s) => ({ dogMedical: [{ ...m, id: uid('dmed') }, ...s.dogMedical] })),
+
+      deleteDogMedical: (id) => set((s) => ({ dogMedical: s.dogMedical.filter((x) => x.id !== id) })),
+
+      addDogReminder: (r) =>
+        set((s) => ({ dogReminders: [...s.dogReminders, { ...r, id: uid('drem'), done: false }] })),
+
+      toggleDogReminder: (id) =>
+        set((s) => ({ dogReminders: s.dogReminders.map((x) => (x.id === id ? { ...x, done: !x.done } : x)) })),
+
       addSubscription: (sub) =>
         set((s) => ({ subscriptions: [{ ...sub, id: uid('sub') }, ...s.subscriptions] })),
 
@@ -474,6 +517,10 @@ export const useStore = create<State>()(
         if (!state.milestones?.length) state.milestones = s.milestones
         if (!state.payments?.length) state.payments = s.payments
         if (!state.subscriptions?.length) state.subscriptions = s.subscriptions
+        if (!state.dogProfile) state.dogProfile = s.dogProfile
+        if (!state.dogEntries?.length) state.dogEntries = s.dogEntries
+        if (!state.dogMedical?.length) state.dogMedical = s.dogMedical
+        if (!state.dogReminders?.length) state.dogReminders = s.dogReminders
         if (!state.blocks?.length) state.blocks = s.blocks
         if (!state.threads) state.threads = s.threads
         if (!state.habits?.length) state.habits = s.habits
