@@ -37,8 +37,15 @@ const ED_STATUS: Record<string, { label: string; hex: string }> = {
 const eur = (n: number) => '€' + n.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const fmt = (iso: string) => (iso ? new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' }) : 'geen datum')
 
-const ED0: Edition[] = []
-const SUB0: Submission[] = []
+const ED0: Edition[] = [
+  { id: 1, name: 'Editie 1, september 2026', deadline: '2026-07-15', delivery: '2026-09-01', spotsTotal: 12, submissions: 1, status: 'active', active: true },
+  { id: 2, name: 'Editie 2, november 2026', deadline: '2026-10-01', delivery: '2026-11-15', spotsTotal: 12, submissions: 0, status: 'upcoming', active: false },
+]
+const SUB0: Submission[] = [
+  { id: 1, company: 'Kapsalon Mooi', plan: 'premium', contact: 'Sandra', edition: 'Editie 1', status: 'akkoord', industry: 'Kapper', phone: '040-1234567', address: 'Heuvel 12, Geldrop', website: 'https://kapsalonmooi.nl', pitch: 'Knip + kleur specialist, 20 jaar ervaring.', invoices: [{ id: 1, label: 'Advertentie A7', amount: 295, status: 'open' }] },
+  { id: 2, company: 'Bakkerij van Dijk', plan: 'standard', contact: 'Anja', edition: 'Editie 1', status: 'benaderd', industry: 'Bakker', phone: '040-7654321', invoices: [] },
+  { id: 3, company: 'Café De Kroon', plan: 'standard', contact: '', edition: 'Editie 1', status: 'nieuw', industry: 'Horeca', invoices: [] },
+]
 
 export default function Buurtkaart() {
   const [tab, setTab] = useState<Tab>('edities')
