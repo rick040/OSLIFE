@@ -22,6 +22,19 @@ export default function Vitals() {
   const { healthDays } = useStore()
   const today = healthDays.find((h) => h.date === TODAY) ?? healthDays[healthDays.length - 1]
 
+  if (!today) {
+    return (
+      <div className="space-y-6 max-w-4xl mx-auto">
+        <div>
+          <h1 className="text-xl font-semibold flex items-center gap-2">
+            <Activity className="h-5 w-5 text-buurtkaart" /> Vitals
+          </h1>
+          <p className="text-sm text-muted mt-1">Geen gezondheidsdata beschikbaar.</p>
+        </div>
+      </div>
+    )
+  }
+
   const data = healthDays.map((h) => ({
     date: d(h.date),
     steps: h.steps,
@@ -33,7 +46,7 @@ export default function Vitals() {
   }))
 
   const avg = (k: 'steps' | 'sleep' | 'hr' | 'active') =>
-    data.reduce((a, x) => a + x[k], 0) / data.length
+    data.length ? data.reduce((a, x) => a + x[k], 0) / data.length : 0
 
   const stat = [
     { icon: Footprints, label: 'Ø stappen', value: Math.round(avg('steps')).toLocaleString('nl-NL'), color: 'text-buurtkaart' },
