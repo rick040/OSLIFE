@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useStore } from './store'
 import Dashboard from './views/Dashboard'
 import Today from './views/Today'
-import Jarvis from './views/Jarvis'
+import Heyra from './views/Heyra'
 import Capture from './views/Capture'
 import Memory from './views/Memory'
 import Reflect from './views/Reflect'
@@ -14,76 +14,26 @@ import Projects from './views/Projects'
 import InboxView from './views/Inbox'
 import NorthStar from './views/NorthStar'
 import Mindmap from './views/Mindmap'
+import Placeholder from './components/Placeholder'
 import LoopExplainer from './components/LoopExplainer'
-import {
-  LayoutDashboard,
-  MessageSquare,
-  Inbox,
-  Database,
-  Brain,
-  CalendarRange,
-  RotateCcw,
-  Workflow,
-  Play,
-  Gauge,
-  Activity,
-  Wallet,
-  FolderKanban,
-  Mail,
-  Target,
-  Network,
-  Radar,
-} from 'lucide-react'
-
-type View =
-  | 'dashboard'
-  | 'today'
-  | 'jarvis'
-  | 'capture'
-  | 'memory'
-  | 'reflect'
-  | 'daybuilder'
-  | 'vitals'
-  | 'signals'
-  | 'money'
-  | 'projects'
-  | 'inbox'
-  | 'northstar'
-  | 'mindmap'
-
-const NAV: { id: View; label: string; icon: typeof LayoutDashboard; layer: string; primary?: boolean }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: Gauge, layer: 'Surface · one glance', primary: true },
-  { id: 'today', label: 'Today', icon: LayoutDashboard, layer: 'Surface' },
-  { id: 'daybuilder', label: 'Day Builder', icon: CalendarRange, layer: 'Surface' },
-  { id: 'vitals', label: 'Vitals', icon: Activity, layer: 'Life · health', primary: true },
-  { id: 'signals', label: 'Signalen', icon: Radar, layer: 'Life · gedrag' },
-  { id: 'money', label: 'Money', icon: Wallet, layer: 'Life · finance', primary: true },
-  { id: 'projects', label: 'Projects', icon: FolderKanban, layer: 'Life · work', primary: true },
-  { id: 'inbox', label: 'Inbox', icon: Mail, layer: 'Life · mail' },
-  { id: 'northstar', label: 'North Star', icon: Target, layer: 'Life · goals' },
-  { id: 'jarvis', label: 'Jarvis', icon: MessageSquare, layer: 'Intake · Understand' },
-  { id: 'capture', label: 'Capture', icon: Inbox, layer: 'Intake', primary: true },
-  { id: 'memory', label: 'Memory', icon: Database, layer: 'Remember' },
-  { id: 'reflect', label: 'Reflect', icon: Brain, layer: 'Reflect' },
-  { id: 'mindmap', label: 'Verbanden', icon: Network, layer: 'Reflect · graph' },
-]
+import Orb from './components/Orb'
+import AppGrid from './components/AppGrid'
+import { SCREENS, type View } from './nav'
+import { Workflow, Play, RotateCcw, Grid3x3 } from 'lucide-react'
 
 export default function App() {
   const [view, setView] = useState<View>('dashboard')
   const [showLoops, setShowLoops] = useState(false)
+  const [showGrid, setShowGrid] = useState(false)
   const { resetDemo, runNightlyReflect, reflectCount, loadLiveData, dataSource } = useStore()
 
   useEffect(() => {
     loadLiveData()
   }, [])
 
-  const Current = {
+  const Current: Record<View, JSX.Element> = {
     dashboard: <Dashboard onNav={(v) => setView(v as View)} />,
     today: <Today onNav={(v) => setView(v as View)} />,
-    jarvis: <Jarvis />,
-    capture: <Capture />,
-    memory: <Memory />,
-    reflect: <Reflect />,
     daybuilder: <DayBuilder />,
     vitals: <Vitals />,
     signals: <Signals />,
@@ -91,17 +41,27 @@ export default function App() {
     projects: <Projects />,
     inbox: <InboxView />,
     northstar: <NorthStar />,
+    heyra: <Heyra />,
+    capture: <Capture />,
+    memory: <Memory />,
+    reflect: <Reflect />,
     mindmap: <Mindmap />,
-  }[view]
+    // built in later phases
+    habits: <Placeholder view="habits" />,
+    crm: <Placeholder view="crm" />,
+    strategiehq: <Placeholder view="strategiehq" />,
+    buurtkaart: <Placeholder view="buurtkaart" />,
+    eyes: <Placeholder view="eyes" />,
+    dakmeester: <Placeholder view="dakmeester" />,
+    dog: <Placeholder view="dog" />,
+  }
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-canvas">
       {/* sidebar (desktop) */}
       <aside className="hidden md:flex w-64 shrink-0 flex-col bg-surface border-r border-line p-4 sticky top-0 h-screen">
         <div className="flex items-center gap-2.5 px-2 mb-7">
-          <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-forest to-lime flex items-center justify-center text-lg shadow-sm">
-            🧠
-          </div>
+          <Orb size={36} onTap={() => setView('heyra')} onLongPress={() => setShowGrid(true)} />
           <div>
             <div className="font-semibold leading-tight tracking-tight">RICK-OS</div>
             <div className="text-[10px] leading-tight flex items-center gap-1">
@@ -109,10 +69,17 @@ export default function App() {
               <span className="text-faint">{dataSource === 'live' ? 'live data' : 'mock data'}</span>
             </div>
           </div>
+          <button
+            onClick={() => setShowGrid(true)}
+            className="ml-auto text-faint hover:text-ink p-1.5 rounded-xl hover:bg-sunken"
+            aria-label="Alle apps"
+          >
+            <Grid3x3 className="h-4 w-4" />
+          </button>
         </div>
 
-        <nav className="space-y-0.5 flex-1">
-          {NAV.map((n) => {
+        <nav className="space-y-0.5 flex-1 overflow-y-auto -mr-2 pr-2">
+          {SCREENS.map((n) => {
             const Icon = n.icon
             const active = view === n.id
             return (
@@ -120,9 +87,7 @@ export default function App() {
                 key={n.id}
                 onClick={() => setView(n.id)}
                 className={`group w-full flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm transition-colors ${
-                  active
-                    ? 'bg-forest text-white shadow-sm'
-                    : 'text-muted hover:text-ink hover:bg-sunken'
+                  active ? 'bg-forest text-white shadow-sm' : 'text-muted hover:text-ink hover:bg-sunken'
                 }`}
               >
                 <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-lime' : ''}`} />
@@ -158,11 +123,14 @@ export default function App() {
 
       {/* mobile top bar */}
       <header className="md:hidden sticky top-0 z-30 flex items-center justify-between border-b border-line bg-canvas/85 backdrop-blur px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">🧠</span>
+        <div className="flex items-center gap-2.5">
+          <Orb size={32} onTap={() => setView('heyra')} onLongPress={() => setShowGrid(true)} />
           <span className="font-semibold">RICK-OS</span>
         </div>
         <div className="flex items-center gap-3">
+          <button onClick={() => setShowGrid(true)} className="text-muted" aria-label="Alle apps">
+            <Grid3x3 className="h-5 w-5" />
+          </button>
           <button onClick={() => setShowLoops(true)} className="text-muted">
             <Workflow className="h-5 w-5" />
           </button>
@@ -182,12 +150,12 @@ export default function App() {
 
       {/* main */}
       <main className="flex-1 min-w-0 p-4 md:p-8 pb-24 md:pb-8">
-        <div className="max-w-5xl mx-auto">{Current}</div>
+        <div className="max-w-5xl mx-auto">{Current[view]}</div>
       </main>
 
       {/* mobile bottom nav */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-line bg-canvas/90 backdrop-blur flex">
-        {NAV.filter((n) => n.primary).map((n) => {
+        {SCREENS.filter((n) => n.primary).map((n) => {
           const Icon = n.icon
           const active = view === n.id
           return (
@@ -206,6 +174,7 @@ export default function App() {
       </nav>
 
       {showLoops && <LoopExplainer onClose={() => setShowLoops(false)} />}
+      {showGrid && <AppGrid active={view} onNav={(v) => setView(v)} onClose={() => setShowGrid(false)} />}
     </div>
   )
 }
