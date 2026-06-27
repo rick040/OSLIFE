@@ -26,7 +26,7 @@
 var P = PropertiesService.getScriptProperties();
 function prop(k) { return P.getProperty(k); }
 
-/** Generic Supabase upsert. rows: array of objects. conflict: comma cols for on_conflict. */
+/** Generic Supabase upsert. rows: array of objects. conflict: comma-separated cols for on_conflict. */
 function supabaseUpsert(table, rows, conflict) {
   if (!rows.length) return;
   var url = prop('SUPABASE_URL') + '/rest/v1/' + table +
@@ -80,28 +80,31 @@ function syncNotion() {
       source: 'notion', external_id: pg.id
     };
   });
-  supabaseUpsert('projects', rows, 'user_id,source,external_id');
+  // unique constraint is (user_id, external_id)
+  supabaseUpsert('projects', rows, 'user_id,external_id');
 }
 
-// ── 2. GMAIL → emails ────────────────────────────────────────────────────────
+// ── 2. GMAIL → gmail_messages ────────────────────────────────────────────────
 function syncGmail() {
   var threads = GmailApp.search('is:important newer_than:7d', 0, 25);
   var rows = threads.map(function (th) {
     var m = th.getMessages()[th.getMessageCount() - 1];
     var from = m.getFrom();
     return {
-      from_addr: from, subject: th.getFirstMessageSubject(),
+      from_addr: from,
+      subject: th.getFirstMessageSubject(),
       snippet: m.getPlainBody().slice(0, 160),
       received_at: m.getDate().toISOString(),
-      unread: th.isUnread(), important: true,
-      domain: domainFor(from + ' ' + th.getFirstMessageSubject()),
-      source: 'gmail', external_id: th.getId()
+      read: !th.isUnread(),          // schema: read boolean (false = unread)
+      importance: 'high',            // schema: importance text ('high'|'normal'|'low')
+      labels: th.getLabels().map(function(l) { return l.getName(); }),
+      external_id: th.getId()
     };
   });
-  supabaseUpsert('emails', rows, 'user_id,source,external_id');
+  supabaseUpsert('gmail_messages', rows, 'user_id,external_id');
 }
 
-// ── 3. CALENDAR (main) → blocks ──────────────────────────────────────────────
+// ── 3. CALENDAR (main) → day_blocks ──────────────────────────────────────────
 function syncCalendarBlocks() {
   var now = new Date();
   var end = new Date(now.getTime() + 36 * 3600 * 1000);
@@ -110,13 +113,17 @@ function syncCalendarBlocks() {
     var s = e.getStartTime(), f = e.getEndTime();
     var hhmm = function (d) { return Utilities.formatDate(d, Session.getScriptTimeZone(), 'HH:mm'); };
     return {
-      title: e.getTitle(), domain: domainFor(e.getTitle()),
+      title: e.getTitle(),
+      block_type: domainFor(e.getTitle()),   // schema: block_type (maps to domain concept)
+      description: e.getDescription() || '',
       date: Utilities.formatDate(s, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
-      start: hhmm(s), end: hhmm(f), status: 'planned',
-      rationale: 'From Google Calendar', source: 'calendar', external_id: e.getId()
+      start_time: hhmm(s),                   // schema: start_time
+      end_time: hhmm(f),                     // schema: end_time
+      status: 'planned',
+      external_id: e.getId()
     };
   });
-  supabaseUpsert('blocks', rows, 'user_id,source,external_id');
+  supabaseUpsert('day_blocks', rows, 'user_id,external_id');
 }
 
 // ── 4. PAYMENTS CALENDAR → payments ──────────────────────────────────────────
@@ -134,15 +141,19 @@ function syncPayments() {
     var paid = /betaald|paid|✓|✔/i.test(title);
     return {
       payee: e.getTitle().replace(/\[(in|uit)\]/i, '').replace(/€?\s*\d+[.,]?\d*/, '').trim() || 'Onbekend',
-      amount: amount, due: Utilities.formatDate(e.getStartTime(), Session.getScriptTimeZone(), 'yyyy-MM-dd'),
-      direction: direction, status: paid ? 'paid' : 'open',
-      domain: domainFor(title), source: 'calendar', external_id: e.getId()
+      amount: amount,
+      due: Utilities.formatDate(e.getStartTime(), Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+      direction: direction,
+      status: paid ? 'paid' : 'open',
+      domain: domainFor(title),
+      source: 'calendar',
+      external_id: e.getId()
     };
   });
   supabaseUpsert('payments', rows, 'user_id,source,external_id');
 }
 
-// ── 5. GOOGLE FIT / SAMSUNG HEALTH → health_days ─────────────────────────────
+// ── 5. GOOGLE FIT / SAMSUNG HEALTH → health_daily_stats ──────────────────────
 // Samsung Health syncs to Google Fit via Health Connect (Android 14+).
 // On phone: Samsung Health → Settings → Connected apps → Health Connect → Allow all.
 function syncFit() {
@@ -169,10 +180,10 @@ function syncFit() {
   aggregate('com.google.step_count.delta').forEach(function (b) {
     var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
     var v = 0; (b.dataset[0].point || []).forEach(function (p) { v += p.value[0].intVal || 0; });
-    byDate[d] = { date: d, steps: v, sleep_hours: 0, resting_hr: 0, active_minutes: 0 };
+    byDate[d] = { date: d, steps: v, sleep_min: 0, avg_resting_hr: 0, active_min: 0 };
   });
 
-  // Sleep (aggregate minutes per day from sleep segments)
+  // Sleep: store as minutes (sleep_min column)
   aggregate('com.google.sleep.segment').forEach(function (b) {
     var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
     var mins = 0;
@@ -182,26 +193,24 @@ function syncFit() {
         mins += Math.round((parseInt(p.endTimeNanos, 10) - parseInt(p.startTimeNanos, 10)) / 60000000000);
       }
     });
-    if (byDate[d]) byDate[d].sleep_hours = Math.round((mins / 60) * 10) / 10;
+    if (byDate[d]) byDate[d].sleep_min = mins;
   });
 
-  // Resting heart rate
+  // Resting heart rate → avg_resting_hr
   aggregate('com.google.heart_rate.bpm').forEach(function (b) {
     var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
     var total = 0, count = 0;
     (b.dataset[0].point || []).forEach(function (p) { total += p.value[0].fpVal || 0; count++; });
-    if (byDate[d] && count > 0) byDate[d].resting_hr = Math.round(total / count);
+    if (byDate[d] && count > 0) byDate[d].avg_resting_hr = Math.round(total / count);
   });
 
-  // Active minutes (move minutes)
+  // Active minutes → active_min
   aggregate('com.google.active_minutes').forEach(function (b) {
     var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
     var v = 0; (b.dataset[0].point || []).forEach(function (p) { v += p.value[0].intVal || 0; });
-    if (byDate[d]) byDate[d].active_minutes = v;
+    if (byDate[d]) byDate[d].active_min = v;
   });
 
-  var rows = Object.keys(byDate).map(function (d) {
-    return Object.assign(byDate[d], { step_goal: 8000, energy: 3, mood: 3, source: 'fit' });
-  });
-  supabaseUpsert('health_days', rows, 'user_id,date');
+  var rows = Object.keys(byDate).map(function (d) { return byDate[d]; });
+  supabaseUpsert('health_daily_stats', rows, 'user_id,date');
 }

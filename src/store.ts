@@ -41,6 +41,7 @@ import {
   supabase,
   fetchHealthDays,
   fetchTransactions,
+  fetchPayments,
   fetchEmails,
   fetchMeetingDays,
   fetchBlocks,
@@ -502,6 +503,7 @@ export const useStore = create<State>()(
           const [
             healthDays,
             transactions,
+            payments,
             emails,
             meetingDays,
             blocks,
@@ -517,6 +519,7 @@ export const useStore = create<State>()(
           ] = await Promise.all([
             fetchHealthDays(),
             fetchTransactions(),
+            fetchPayments(),
             fetchEmails(),
             fetchMeetingDays(),
             fetchBlocks(),
@@ -534,6 +537,7 @@ export const useStore = create<State>()(
           set({
             ...(healthDays.length > 0 && { healthDays }),
             ...(transactions.length > 0 && { transactions }),
+            ...(payments.length > 0 && { payments }),
             ...(emails.length > 0 && { emails }),
             ...(meetingDays.length > 0 && { meetingDays }),
             ...(blocks.length > 0 && { blocks }),

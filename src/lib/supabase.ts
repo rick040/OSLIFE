@@ -17,6 +17,7 @@ import type {
   Pattern,
   Project,
   ProjectStatus,
+  Payment,
 } from '../types'
 import { TODAY } from '../domains'
 
@@ -84,7 +85,7 @@ export async function fetchHealthDays(): Promise<HealthDay[]> {
 export async function fetchTransactions(): Promise<Transaction[]> {
   const { data } = await supabase
     .from('finance_tx')
-    .select('id,occurred_on,amount,counterparty,description')
+    .select('id,occurred_on,amount,counterparty,description,category,domain')
     .order('occurred_on', { ascending: false })
     .limit(300)
 
@@ -93,8 +94,28 @@ export async function fetchTransactions(): Promise<Transaction[]> {
     date: r.occurred_on as string,
     amount: (r.amount as number) ?? 0,
     merchant: (r.counterparty as string) || (r.description as string) || '',
-    category: 'other',
-    domain: inferTxDomain((r.counterparty as string) ?? '', (r.description as string) ?? ''),
+    category: (r.category as string) || 'other',
+    // prefer stored domain (set by wallet-ingest), fall back to client-side inference
+    domain: ((r.domain as Domain) || inferTxDomain((r.counterparty as string) ?? '', (r.description as string) ?? '')),
+  }))
+}
+
+export async function fetchPayments(): Promise<Payment[]> {
+  const { data } = await supabase
+    .from('payments')
+    .select('id,payee,amount,due,direction,status,domain,source,external_id')
+    .order('due', { ascending: true, nullsFirst: false })
+
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    payee: (r.payee as string) ?? '',
+    amount: (r.amount as number) ?? 0,
+    due: (r.due as string) ?? null,
+    direction: ((r.direction as Payment['direction']) ?? 'outgoing'),
+    status: ((r.status as Payment['status']) ?? 'open'),
+    domain: ((r.domain as Domain) ?? 'personal'),
+    source: (r.source as string) ?? 'manual',
+    externalId: (r.external_id as string) ?? undefined,
   }))
 }
 

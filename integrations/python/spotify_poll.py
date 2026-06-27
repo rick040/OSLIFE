@@ -104,6 +104,8 @@ def sync(token: str) -> int:
         played_at = item.get("played_at", "")
 
         genres = get_artist_genres(token, artist_id) if artist_id else []
+        # dedup_key must match the unique constraint: unique(user_id, dedup_key)
+        dedup_key = f"{played_at}|{track_name[:200]}"
 
         rows.append({
             "user_id": USER_ID,
@@ -117,11 +119,12 @@ def sync(token: str) -> int:
             "popularity": popularity,
             "explicit": explicit,
             "source": "spotify_api",
+            "dedup_key": dedup_key,
         })
 
     client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
     client.table("spotify_history").upsert(
-        rows, on_conflict="user_id,played_at,track_name"
+        rows, on_conflict="user_id,dedup_key"
     ).execute()
     return len(rows)
 
