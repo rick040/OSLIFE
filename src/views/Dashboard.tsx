@@ -46,7 +46,14 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
 
   const today = healthDays.find((d) => d.date === TODAY) ?? healthDays[healthDays.length - 1]
   const nextBlock = blocks.filter((b) => b.status === 'planned')[0]
-  if (!today) return null
+  if (!today) return (
+    <div className="flex flex-col items-center justify-center h-64 gap-2 text-faint">
+      <p className="text-sm font-medium text-muted">No data yet</p>
+      <p className="text-xs text-center max-w-xs">
+        Make sure <code className="bg-sunken rounded px-1">VITE_SUPABASE_ANON_KEY</code> is set in your Vercel environment variables.
+      </p>
+    </div>
+  )
 
   const openThreads = threads
     .filter((t) => t.status === 'open')

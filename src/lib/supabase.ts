@@ -25,7 +25,9 @@ import { TODAY } from '../domains'
 // (Supabase dashboard → nhyunnnmdcmojvkxrbpl → Settings → API → anon/public key)
 const SUPABASE_URL =
   import.meta.env.VITE_SUPABASE_URL ?? 'https://nhyunnnmdcmojvkxrbpl.supabase.co'
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
+const SUPABASE_ANON_KEY =
+  import.meta.env.VITE_SUPABASE_ANON_KEY ??
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5oeXVubm5tZGNtb2p2a3hyYnBsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1ODEwODYsImV4cCI6MjA5ODE1NzA4Nn0.EYFZE70CP9HOavDELNcSdalcf-sx6RMtktQFvawWnBE'
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 

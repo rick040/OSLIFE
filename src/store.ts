@@ -95,6 +95,7 @@ interface State {
   dogMedical: DogMedical[]
   dogReminders: DogReminder[]
   dataSource: 'mock' | 'live'
+  isLoading: boolean
 
   // INTAKE → UNDERSTAND → REMEMBER
   capture: (text: string, source: CaptureSource) => StructuredItem
@@ -181,6 +182,7 @@ const seed = () => ({
   dogMedical: mock.dogMedical,
   dogReminders: mock.dogReminders,
   dataSource: 'mock' as const,
+  isLoading: true,
 })
 
 const uid = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1000)}`
@@ -546,9 +548,11 @@ export const useStore = create<State>()(
             ...(musicDays.length > 0 && { musicDays }),
             ...(projects.length > 0 && { projects }),
             dataSource: 'live',
+            isLoading: false,
           })
         } catch (err) {
           console.warn('[RICK-OS] Supabase fetch failed', err)
+          set({ isLoading: false })
         }
 
         // One Realtime channel for all passively-ingested tables.
@@ -580,6 +584,7 @@ export const useStore = create<State>()(
       name: mock.STORAGE_KEY,
       onRehydrateStorage: () => (state) => {
         if (!state) return
+        state.isLoading = true
         const s = seed()
         // Guard every array/required field — prevents blank page from stale persisted state
         if (!state.healthDays?.length) state.healthDays = s.healthDays
