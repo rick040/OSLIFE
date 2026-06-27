@@ -38,6 +38,7 @@ import { runReflect } from './reflect'
 import { TODAY } from './domains'
 import * as mock from './mockData'
 import {
+  supabase,
   fetchHealthDays,
   fetchTransactions,
   fetchEmails,
@@ -51,6 +52,7 @@ import {
   fetchScreenDays,
   fetchLocationDays,
   fetchMusicDays,
+  fetchProjects,
 } from './lib/supabase'
 
 export interface ActivitySignal {
@@ -509,6 +511,7 @@ export const useStore = create<State>()(
             screenDays,
             locationDays,
             musicDays,
+            projects,
           ] = await Promise.all([
             fetchHealthDays(),
             fetchTransactions(),
@@ -523,6 +526,7 @@ export const useStore = create<State>()(
             fetchScreenDays(),
             fetchLocationDays(),
             fetchMusicDays(),
+            fetchProjects(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -540,11 +544,32 @@ export const useStore = create<State>()(
             ...(screenDays.length > 0 && { screenDays }),
             ...(locationDays.length > 0 && { locationDays }),
             ...(musicDays.length > 0 && { musicDays }),
+            ...(projects.length > 0 && { projects }),
             dataSource: 'live',
           })
         } catch (err) {
           console.warn('[RICK-OS] Supabase fetch failed', err)
         }
+
+        // One Realtime channel for all passively-ingested tables.
+        // The UI refetches only the affected slice when a row changes.
+        supabase
+          .channel('oslife-live')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'health_daily_stats' },
+            () => fetchHealthDays().then((d) => d.length > 0 && set({ healthDays: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_tx' },
+            () => fetchTransactions().then((d) => d.length > 0 && set({ transactions: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'gmail_messages' },
+            () => fetchEmails().then((d) => d.length > 0 && set({ emails: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'day_blocks' },
+            () => Promise.all([fetchBlocks(), fetchMeetingDays()]).then(([b, m]) => {
+              set({ ...(b.length > 0 && { blocks: b }), ...(m.length > 0 && { meetingDays: m }) })
+            }))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' },
+            () => fetchProjects().then((d) => d.length > 0 && set({ projects: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'spotify_history' },
+            () => fetchMusicDays().then((d) => d.length > 0 && set({ musicDays: d })))
+          .subscribe()
       },
 
       resetDemo: () => {
