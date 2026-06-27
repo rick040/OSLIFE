@@ -2,19 +2,19 @@
  * Supabase Edge Function: wallet-ingest
  * --------------------------------------
  * Receives POST from MacroDroid on Android when Google Wallet sends a payment notification.
- * Parses the notification text, categorizes the merchant, and upserts to `transactions`.
+ * Parses the notification text, categorizes the merchant, and upserts to `finance_tx`.
  *
  * MacroDroid setup (on Samsung phone):
  *   Trigger:  Notification received → App: "Google Wallet" (com.google.android.apps.walletnfcrel)
- *   Action:   HTTP Request → POST → https://xdykcdzqpgcjhcibaola.supabase.co/functions/v1/wallet-ingest
+ *   Action:   HTTP Request → POST → https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/wallet-ingest
  *   Headers:  Content-Type: application/json
  *             x-webhook-secret: <your WALLET_WEBHOOK_SECRET>
  *   Body:     {"title": "[notification_title]", "text": "[notification_text]", "app": "Google Wallet"}
  *   (Use MacroDroid's magic text variables: {notification_title}, {notification_text})
  *
  * Deploy:
- *   supabase functions deploy wallet-ingest --project-ref xdykcdzqpgcjhcibaola
- *   supabase secrets set WALLET_WEBHOOK_SECRET=<random string> --project-ref xdykcdzqpgcjhcibaola
+ *   supabase functions deploy wallet-ingest --project-ref nhyunnnmdcmojvkxrbpl
+ *   supabase secrets set WALLET_WEBHOOK_SECRET=<random string> RICK_USER_ID=<uuid> --project-ref nhyunnnmdcmojvkxrbpl
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -118,19 +118,19 @@ Deno.serve(async (req) => {
   const dedupKey = `${now.slice(0, 16)}|${amount}|${merchant.toLowerCase()}`
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
-  const { error } = await supabase.from('transactions').upsert(
+  const { error } = await supabase.from('finance_tx').upsert(
     {
       user_id: USER_ID,
       dedup_key: dedupKey,
-      source: 'google_wallet',
-      date: now.slice(0, 10),
+      occurred_on: now.slice(0, 10),      // schema: occurred_on (not 'date')
       paid_at: now,
-      amount: -Math.abs(amount), // spending = negative
-      merchant,
+      amount: -Math.abs(amount),           // spending = negative
+      counterparty: merchant,              // schema: counterparty (not 'merchant')
+      description: `${title} | ${text}`.slice(0, 200),
       category: inferCategory(merchant),
       domain: inferDomain(merchant),
+      source: 'google_wallet',
       payment_method: 'contactless',
-      raw_notification: `${title} | ${text}`,
     },
     { onConflict: 'user_id,dedup_key' },
   )
