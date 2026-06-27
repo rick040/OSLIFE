@@ -50,7 +50,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     <div className="flex flex-col items-center justify-center h-64 gap-2 text-faint">
       <p className="text-sm font-medium text-muted">No data yet</p>
       <p className="text-xs text-center max-w-xs">
-        Make sure <code className="bg-sunken rounded px-1">VITE_SUPABASE_ANON_KEY</code> is set in your Vercel environment variables.
+        Health data will appear once your data pipelines have synced.
       </p>
     </div>
   )

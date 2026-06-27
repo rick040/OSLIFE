@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
+import type { Session } from '@supabase/supabase-js'
+import { supabase } from './lib/supabase'
 import { useStore } from './store'
+import LoginScreen from './components/LoginScreen'
 import Dashboard from './views/Dashboard'
 import Today from './views/Today'
 import Heyra from './views/Heyra'
@@ -31,11 +34,24 @@ export default function App() {
   const [view, setView] = useState<View>('dashboard')
   const [showLoops, setShowLoops] = useState(false)
   const [showGrid, setShowGrid] = useState(false)
+  const [session, setSession] = useState<Session | null>(null)
+  const [authChecked, setAuthChecked] = useState(false)
   const { resetDemo, runNightlyReflect, reflectCount, loadLiveData, dataSource, isLoading, healthDays } = useStore()
 
   useEffect(() => {
-    loadLiveData()
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+      setAuthChecked(true)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s)
+    })
+    return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    if (session) loadLiveData()
+  }, [session])
 
   const Current: Record<View, JSX.Element> = {
     dashboard: <Dashboard onNav={(v) => setView(v as View)} />,
@@ -61,6 +77,14 @@ export default function App() {
     dakmeester: <Dakmeester />,
     dog: <Dog />,
   }
+
+  if (!authChecked) return (
+    <div className="min-h-screen flex items-center justify-center bg-canvas">
+      <div className="h-6 w-6 rounded-full border-2 border-forest border-t-transparent animate-spin" />
+    </div>
+  )
+
+  if (!session) return <LoginScreen />
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-canvas">
