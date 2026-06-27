@@ -31,7 +31,7 @@ export default function App() {
   const [view, setView] = useState<View>('dashboard')
   const [showLoops, setShowLoops] = useState(false)
   const [showGrid, setShowGrid] = useState(false)
-  const { resetDemo, runNightlyReflect, reflectCount, loadLiveData, dataSource } = useStore()
+  const { resetDemo, runNightlyReflect, reflectCount, loadLiveData, dataSource, isLoading, healthDays } = useStore()
 
   useEffect(() => {
     loadLiveData()
@@ -156,7 +156,14 @@ export default function App() {
 
       {/* main */}
       <main className="flex-1 min-w-0 p-4 md:p-8 pb-24 md:pb-8">
-        <div className="max-w-5xl mx-auto">{Current[view]}</div>
+        <div className="max-w-5xl mx-auto">
+          {isLoading && healthDays.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 gap-3 text-faint">
+              <div className="h-6 w-6 rounded-full border-2 border-forest border-t-transparent animate-spin" />
+              <p className="text-sm">Connecting to your data…</p>
+            </div>
+          ) : Current[view]}
+        </div>
       </main>
 
       {/* mobile bottom nav */}
