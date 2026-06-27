@@ -15,12 +15,17 @@ import type {
   Block,
   Thread,
   Pattern,
+  Project,
+  ProjectStatus,
 } from '../types'
 import { TODAY } from '../domains'
 
-const SUPABASE_URL = 'https://lgwowurhqtdbukcpwkex.supabase.co'
-const SUPABASE_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxnd293dXJocXRkYnVrY3B3a2V4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk4MTc5NzMsImV4cCI6MjA5NTM5Mzk3M30.u4cc2-eEQ3Ncj0OQI1Prrs_k3CDNNXTUtbR2520mZow'
+// New oslife project (nhyunnnmdcmojvkxrbpl, eu-west-1).
+// Set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY in .env.local
+// (Supabase dashboard → nhyunnnmdcmojvkxrbpl → Settings → API → anon/public key)
+const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL ?? 'https://nhyunnnmdcmojvkxrbpl.supabase.co'
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
@@ -367,6 +372,55 @@ export async function fetchLocationDays(): Promise<LocationDay[]> {
 }
 
 export async function fetchMusicDays(): Promise<MusicDay[]> {
-  // Spotify history not yet synced to Supabase — return empty
-  return []
+  const { data } = await supabase
+    .from('spotify_history')
+    .select('played_at,genres,duration_ms')
+    .order('played_at', { ascending: false })
+    .limit(500)
+
+  const byDate = new Map<string, { totalMs: number; genreCounts: Map<string, number>; tempos: number[] }>()
+  for (const r of data ?? []) {
+    const date = (r.played_at as string).slice(0, 10)
+    const ms = (r.duration_ms as number) ?? 0
+    const genres = (r.genres as string[]) ?? []
+    const existing = byDate.get(date)
+    if (existing) {
+      existing.totalMs += ms
+      for (const g of genres) existing.genreCounts.set(g, (existing.genreCounts.get(g) ?? 0) + 1)
+    } else {
+      const genreCounts = new Map<string, number>()
+      for (const g of genres) genreCounts.set(g, 1)
+      byDate.set(date, { totalMs: ms, genreCounts, tempos: [] })
+    }
+  }
+
+  return Array.from(byDate.entries()).map(([date, d]) => {
+    const topGenre = [...d.genreCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
+    return {
+      date,
+      minutes: Math.round(d.totalMs / 60000),
+      topGenre,
+      tempo: 0,
+      valence: 0,
+    }
+  }).sort((a, b) => a.date.localeCompare(b.date))
+}
+
+export async function fetchProjects(): Promise<Project[]> {
+  const { data } = await supabase
+    .from('projects')
+    .select('id,name,client,domain,status,deadline,value,progress')
+    .not('status', 'eq', 'done')
+    .order('deadline', { ascending: true, nullsFirst: false })
+
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    client: (r.client as string) ?? '',
+    domain: ((r.domain as Domain) ?? 'personal'),
+    status: ((r.status as ProjectStatus) ?? 'lead'),
+    deadline: (r.deadline as string) ?? null,
+    progress: (r.progress as number) ?? 0,
+    value: (r.value as number) ?? 0,
+  }))
 }

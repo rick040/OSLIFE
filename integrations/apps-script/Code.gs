@@ -6,7 +6,7 @@
  *
  * SETUP
  * 1. Project Settings → Script Properties, add:
- *      SUPABASE_URL          https://xdykcdzqpgcjhcibaola.supabase.co
+ *      SUPABASE_URL          https://nhyunnnmdcmojvkxrbpl.supabase.co
  *      SUPABASE_SERVICE_KEY  <service_role key from Supabase dashboard>
  *      RICK_USER_ID          <auth.users uuid of your account>
  *      NOTION_TOKEN          secret_xxx
