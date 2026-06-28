@@ -218,7 +218,7 @@ export async function fetchHabits(): Promise<Habit[]> {
 
   const thirtyDaysAgo = new Date()
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-  const since = thirtyDaysAgo.toISOString().slice(0, 10)
+  const since = thirtyDaysAgo.toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' })
 
   const { data: logRows } = await supabase
     .from('habit_log')
@@ -242,7 +242,7 @@ export async function fetchHabits(): Promise<Habit[]> {
     let streak = 0
     const check = new Date(TODAY)
     for (let i = 0; i < 30; i++) {
-      const d = check.toISOString().slice(0, 10)
+      const d = check.toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' })
       if (datesSet.has(d)) {
         streak++
         check.setDate(check.getDate() - 1)

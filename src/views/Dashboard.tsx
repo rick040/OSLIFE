@@ -48,9 +48,9 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const nextBlock = blocks.filter((b) => b.status === 'planned')[0]
   if (!today) return (
     <div className="flex flex-col items-center justify-center h-64 gap-2 text-faint">
-      <p className="text-sm font-medium text-muted">No data yet</p>
+      <p className="text-sm font-medium text-muted">Nog geen data</p>
       <p className="text-xs text-center max-w-xs">
-        Health data will appear once your data pipelines have synced.
+        Gezondheidsdata verschijnt zodra je datapipelines gesynchroniseerd zijn.
       </p>
     </div>
   )
@@ -96,7 +96,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         <h1 className="text-2xl font-semibold mt-1">{greeting}, Rick.</h1>
         <p className="text-muted text-sm mt-1">
           {openThreads.length} open loops · {activeProjects.length} actieve projecten · {unreadCount} nieuwe mails ·{' '}
-          {habits.filter((h) => h.doneToday).length}/{habits.length} habits
+          {habits.filter((h) => h.doneToday).length}/{habits.length} gewoonten
         </p>
       </div>
 
@@ -137,7 +137,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
                   <CheckCircle2 className="h-4 w-4" /> Klaar
                 </button>
                 <button className="btn-ghost" onClick={() => skipBlock(nextBlock.id)}>
-                  <SkipForward className="h-4 w-4" /> Skip
+                  <SkipForward className="h-4 w-4" /> Overslaan
                 </button>
                 <button className="btn-ghost ml-auto" onClick={() => onNav('daybuilder')}>
                   Dagplan <ArrowRight className="h-4 w-4" />
@@ -260,7 +260,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               <Receipt className="h-4 w-4 text-personal" /> Openstaande betalingen
             </span>
             <button className="text-xs text-muted hover:text-ink flex items-center gap-1" onClick={() => onNav('money')}>
-              in Money <ArrowRight className="h-3 w-3" />
+              in Geld <ArrowRight className="h-3 w-3" />
             </button>
           </div>
           <div className="grid grid-cols-2 gap-2 mb-3">
@@ -331,7 +331,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
                   <span className="text-sm text-ink truncate flex-1">
                     {p.name} <span className="text-faint">· {p.client}</span>
                   </span>
-                  {p.status === 'blocked' && <span className="chip bg-cross/15 text-cross !py-0">blocked</span>}
+                  {p.status === 'blocked' && <span className="chip bg-cross/15 text-cross !py-0">geblokkeerd</span>}
                   <span className={`text-[11px] shrink-0 ${overdue ? 'text-cross' : 'text-faint'}`}>
                     {p.deadline ? (overdue ? `${-dd!}d te laat` : fmtDate(p.deadline)) : '–'}
                   </span>
@@ -379,7 +379,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-semibold">Open loops</span>
             <button className="text-xs text-muted hover:text-ink flex items-center gap-1" onClick={() => onNav('memory')}>
-              in Memory <ArrowRight className="h-3 w-3" />
+              in Geheugen <ArrowRight className="h-3 w-3" />
             </button>
           </div>
           {openThreads.length ? (
@@ -406,7 +406,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         {/* Habits */}
         <div className="card p-4 animate-fade-up" style={{ animationDelay: '220ms' }}>
           <div className="flex items-center gap-2 text-sm font-semibold mb-3">
-            <Flame className="h-4 w-4 text-personal" /> Habits
+            <Flame className="h-4 w-4 text-personal" /> Gewoonten
           </div>
           <div className="space-y-2">
             {habits.map((h) => (

@@ -26,6 +26,7 @@ const STATUS_HEX: Record<string, string> = {
 }
 
 const PRIO_HEX: Record<string, string> = { High: '#C58392', Medium: '#C6A05B', Low: '#8C9080' }
+const PRIO_NL: Record<string, string> = { High: 'Hoog', Medium: 'Gemiddeld', Low: 'Laag' }
 
 const DOMAIN_COLOR: Record<string, string> = {
   parkingyou: '#6E8CA8',
@@ -102,7 +103,7 @@ export default function ProjectDetail({
           {project.priority && (
             <InfoRow label="Prioriteit" divider>
               <span className="font-semibold" style={{ color: PRIO_HEX[project.priority] }}>
-                {project.priority}
+                {PRIO_NL[project.priority] ?? project.priority}
               </span>
             </InfoRow>
           )}

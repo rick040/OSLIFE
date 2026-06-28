@@ -25,7 +25,7 @@ export default function Projects() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-semibold flex items-center gap-2">
-            <FolderKanban className="h-5 w-5 text-parkingyou" /> Projects
+            <FolderKanban className="h-5 w-5 text-parkingyou" /> Projecten
           </h1>
           <p className="text-sm text-muted mt-1">Mirror van je Notion-projectendatabase. Sleep door de fases.</p>
         </div>

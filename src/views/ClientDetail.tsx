@@ -20,6 +20,8 @@ const CLIENT_HEX: Record<string, string> = {
   Past: '#8C9080',
 }
 
+const CLIENT_STATUS_NL: Record<string, string> = { Active: 'Actief', Lead: 'Lead', Prospect: 'Prospect', Planned: 'Gepland', Inactive: 'Inactief', Past: 'Voorbij' }
+
 const CRM_STATUS: Record<ProjectStatus, string> = {
   active: 'In uitvoering',
   review: 'In uitvoering',
@@ -77,7 +79,7 @@ export default function ClientDetail({
                   className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
                   style={{ color, background: `${color}22` }}
                 >
-                  {client.clientStatus}
+                  {CLIENT_STATUS_NL[client.clientStatus] ?? client.clientStatus}
                 </span>
               )}
               <DomainChip domain={client.domain} small />

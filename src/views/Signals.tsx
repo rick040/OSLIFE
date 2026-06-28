@@ -133,7 +133,7 @@ export default function Signals() {
                 <Ring value={locToday.timeOut / locTotal} size={72} color="stroke-parkingyou" label={fmtMin(locToday.timeOut)} sub="onderweg" />
               </div>
               <div className="flex flex-col items-center gap-1">
-                <Ring value={locToday.timeCommute / locTotal} size={72} color="stroke-cross" label={fmtMin(locToday.timeCommute)} sub="commute" />
+                <Ring value={locToday.timeCommute / locTotal} size={72} color="stroke-cross" label={fmtMin(locToday.timeCommute)} sub="reistijd" />
               </div>
               <div className="flex flex-col items-center justify-center">
                 <MapPin className="h-5 w-5 text-buurtkaart mb-1" />

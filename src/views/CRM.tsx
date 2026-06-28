@@ -49,6 +49,8 @@ const CLIENT_HEX: Record<string, string> = {
   Past: '#8C9080',
 }
 const PRIO_HEX: Record<string, string> = { High: '#C58392', Medium: '#C6A05B', Low: '#8C9080' }
+const PRIO_NL: Record<string, string> = { High: 'Hoog', Medium: 'Gemiddeld', Low: 'Laag' }
+const CLIENT_STATUS_NL: Record<string, string> = { Active: 'Actief', Lead: 'Lead', Prospect: 'Prospect', Planned: 'Gepland', Inactive: 'Inactief', Past: 'Voorbij' }
 
 const STATUS_FILTERS = [
   { value: 'Alle', label: 'Alle' },
@@ -171,7 +173,7 @@ export default function CRM() {
           <div className="flex flex-wrap gap-x-4 gap-y-1.5">
             {clientBuckets.map((b) => (
               <span key={b.label} className="text-xs text-muted flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full" style={{ background: CLIENT_HEX[b.label] }} /> {b.label} · {b.count}
+                <span className="h-2 w-2 rounded-full" style={{ background: CLIENT_HEX[b.label] }} /> {CLIENT_STATUS_NL[b.label] ?? b.label} · {b.count}
               </span>
             ))}
           </div>
@@ -284,7 +286,7 @@ function ProjectCard({ p, onClick }: { p: Project; onClick: () => void }) {
       <div className="flex flex-wrap gap-1 mt-2 mb-2">
         {p.priority && (
           <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ color: PRIO_HEX[p.priority], background: `${PRIO_HEX[p.priority]}22` }}>
-            {p.priority}
+            {PRIO_NL[p.priority] ?? p.priority}
           </span>
         )}
         {dl && (
@@ -317,7 +319,7 @@ function ProjectRow({ p, onClick }: { p: Project; onClick: () => void }) {
         <div className="flex flex-wrap gap-1.5 mt-2">
           <StatusBadge status={p.status} />
           {p.priority && (
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md" style={{ color: PRIO_HEX[p.priority], background: `${PRIO_HEX[p.priority]}22` }}>{p.priority}</span>
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md" style={{ color: PRIO_HEX[p.priority], background: `${PRIO_HEX[p.priority]}22` }}>{PRIO_NL[p.priority] ?? p.priority}</span>
           )}
           {dl && (
             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md inline-flex items-center gap-1" style={{ color: dl.color, background: `${dl.color}22` }}>
@@ -342,7 +344,7 @@ function ClientCard({ c, onClick }: { c: Client; onClick: () => void }) {
           {c.name.slice(0, 1).toUpperCase()}
         </span>
         {c.clientStatus && (
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ color, background: `${color}22` }}>{c.clientStatus}</span>
+          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ color, background: `${color}22` }}>{CLIENT_STATUS_NL[c.clientStatus] ?? c.clientStatus}</span>
         )}
       </div>
       <div className="text-sm font-semibold truncate">{c.name}</div>

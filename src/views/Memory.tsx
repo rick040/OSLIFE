@@ -11,17 +11,17 @@ export default function Memory() {
   const [tab, setTab] = useState<Tab>('threads')
 
   const tabs: { id: Tab; label: string; icon: typeof Lock; count: number; desc: string }[] = [
-    { id: 'essentials', label: 'Essentials', icon: Lock, count: essentials.length, desc: 'Permanent facts. They don’t change and don’t expire.' },
-    { id: 'threads', label: 'Threads', icon: GitBranch, count: threads.filter((t) => t.status === 'open').length, desc: 'Open loops & promises owed. These demand closure.' },
-    { id: 'patterns', label: 'Patterns', icon: Repeat, count: patterns.length, desc: 'Recurring observations, weighted by confidence, they decay if not reinforced.' },
+    { id: 'essentials', label: 'Feiten', icon: Lock, count: essentials.length, desc: 'Permanente feiten. Ze veranderen niet en verlopen niet.' },
+    { id: 'threads', label: 'Threads', icon: GitBranch, count: threads.filter((t) => t.status === 'open').length, desc: 'Open loops & openstaande beloften. Deze vragen om afsluiting.' },
+    { id: 'patterns', label: 'Patronen', icon: Repeat, count: patterns.length, desc: 'Terugkerende observaties, gewogen op betrouwbaarheid. Ze nemen af als ze niet worden versterkt.' },
   ]
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       <div>
-        <h1 className="text-xl font-semibold">Memory</h1>
+        <h1 className="text-xl font-semibold">Geheugen</h1>
         <p className="text-sm text-muted mt-1">
-          Three deliberately separate stores. A promise must never get buried under a habit.
+          Drie bewust gescheiden opslagplaatsen. Een belofte mag nooit begraven raken onder een gewoonte.
         </p>
       </div>
 
@@ -78,32 +78,32 @@ export default function Memory() {
                     <div className="flex items-center gap-2">
                       <DomainChip domain={t.domain} small />
                       {t.status === 'closed' ? (
-                        <span className="chip bg-buurtkaart/15 text-buurtkaart">closed</span>
+                        <span className="chip bg-buurtkaart/15 text-buurtkaart">gesloten</span>
                       ) : (
                         <span className={`text-[11px] ${overdue ? 'text-cross font-medium' : 'text-faint'}`}>
-                          {t.due ? (overdue ? `${-dd!}d overdue` : `due ${fmtDate(t.due)}`) : 'no due date'}
+                          {t.due ? (overdue ? `${-dd!}d te laat` : `deadline ${fmtDate(t.due)}`) : 'geen deadline'}
                         </span>
                       )}
                     </div>
                     <p className={`text-sm mt-0.5 truncate ${t.status === 'closed' ? 'line-through text-faint' : 'text-ink'}`}>
                       {t.title}
                     </p>
-                    <p className="text-[11px] text-faint">→ {t.owedTo}</p>
+                    <p className="text-[11px] text-faint">{'→'} {t.owedTo}</p>
                   </div>
                   {t.status === 'open' ? (
                     <button className="btn-ghost shrink-0 !py-1.5" onClick={() => closeThread(t.id)}>
-                      <CheckCircle2 className="h-4 w-4" /> Close
+                      <CheckCircle2 className="h-4 w-4" /> Sluiten
                     </button>
                   ) : (
                     <button className="btn-ghost shrink-0 !py-1.5" onClick={() => reopenThread(t.id)}>
-                      <RotateCcw className="h-4 w-4" /> Reopen
+                      <RotateCcw className="h-4 w-4" /> Heropenen
                     </button>
                   )}
                 </div>
               )
             })
           ) : (
-            <Empty>No threads yet.</Empty>
+            <Empty>Nog geen threads.</Empty>
           )}
         </div>
       )}
@@ -130,7 +130,7 @@ export default function Memory() {
                         p.trend === 'up' ? 'text-buurtkaart' : p.trend === 'down' ? 'text-cross' : 'text-faint'
                       }`}
                     />
-                    last reinforced {fmtDate(p.lastReinforced)}
+                    laatst versterkt op {fmtDate(p.lastReinforced)}
                   </div>
                 </div>
               )
