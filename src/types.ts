@@ -163,6 +163,14 @@ export type ProjectStatus = 'lead' | 'active' | 'review' | 'blocked' | 'done'
 
 export type Priority = 'High' | 'Medium' | 'Low'
 
+export interface Task {
+  id: string
+  name: string
+  done: boolean
+  dueDate?: string | null
+  priority?: Priority | null
+}
+
 export interface Project {
   id: string
   name: string
@@ -176,6 +184,7 @@ export interface Project {
   type?: string[] // Website, Branding, Logo, Social Media, ...
   priority?: Priority
   clientId?: string
+  tasks?: Task[]
 }
 
 // ── CRM: clients (mirrors Notion Clients DB) ─────────────────────────────────
@@ -331,6 +340,8 @@ export interface EmailItem {
   unread: boolean
   important: boolean
   domain: Domain
+  importance?: 'high' | 'med' | 'low' | null
+  threadId?: string | null
 }
 
 // ── Layer 5/6: SURFACE + ACT ──────────────────────────────────────────────────

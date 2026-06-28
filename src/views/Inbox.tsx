@@ -1,8 +1,35 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { TODAY, fmtDate } from '../domains'
-import { DomainChip, SectionTitle, Empty } from '../components/ui'
-import { Mail, MailOpen, Star, CheckCheck } from 'lucide-react'
+import { SectionTitle, Empty } from '../components/ui'
+import { Mail, MailOpen, CheckCheck, ExternalLink } from 'lucide-react'
+import type { EmailItem } from '../types'
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+function extractName(addr: string): string {
+  if (!addr) return '(onbekend)'
+  const m = addr.match(/^([^<]+?)\s*<.*>$/)
+  if (m) return m[1].replace(/(^"|"$)/g, '').trim()
+  const at = addr.indexOf('@')
+  if (at !== -1) return addr.slice(0, at)
+  return addr
+}
+
+function impColor(imp: string | null | undefined): string {
+  switch (imp) {
+    case 'high': return '#C58392'  // red
+    case 'med':  return '#C6A05B'  // orange
+    case 'low':  return '#8C9080'  // muted
+    default:     return '#6FA07C'  // forest (important fallback)
+  }
+}
+
+function resolveImportance(e: EmailItem): 'high' | 'med' | 'low' | null {
+  if (e.importance) return e.importance
+  if (e.important) return 'high'
+  return null
+}
 
 function when(iso: string) {
   const date = iso.slice(0, 10)
@@ -10,14 +37,71 @@ function when(iso: string) {
   return fmtDate(date)
 }
 
+// ── types ─────────────────────────────────────────────────────────────────────
+
+type Filter = 'all' | 'high' | 'med' | 'low'
+
+const FILTER_LABEL: Record<Filter, string> = {
+  all:  'Alles',
+  high: 'Belangrijk',
+  med:  'Misschien',
+  low:  'Ruis',
+}
+
+interface ThreadGroup {
+  row: EmailItem
+  count: number
+}
+
+// ── component ─────────────────────────────────────────────────────────────────
+
 export default function Inbox() {
   const { emails, markEmailRead, markAllEmailsRead } = useStore()
-  const [tab, setTab] = useState<'important' | 'all'>('important')
+  const [filter, setFilter] = useState<Filter>('high')
+  // Optimistic local read-hide: IDs marked read disappear immediately
+  const [readIds, setReadIds] = useState<Set<string>>(new Set())
 
-  const list = (tab === 'important' ? emails.filter((e) => e.important) : emails).sort((a, b) =>
-    a.receivedAt < b.receivedAt ? 1 : -1,
+  const visible = useMemo(
+    () => emails.filter((e) => !readIds.has(e.id)),
+    [emails, readIds],
   )
-  const unread = emails.filter((e) => e.unread).length
+
+  const filtered = useMemo(
+    () =>
+      filter === 'all'
+        ? visible
+        : visible.filter((e) => resolveImportance(e) === filter),
+    [visible, filter],
+  )
+
+  // Group by threadId (newest row wins, count how many share the thread)
+  const grouped = useMemo<ThreadGroup[]>(() => {
+    const map = new Map<string, ThreadGroup>()
+    const sorted = [...filtered].sort((a, b) => (a.receivedAt < b.receivedAt ? 1 : -1))
+    for (const e of sorted) {
+      const key = e.threadId ?? e.id
+      const cur = map.get(key)
+      if (!cur) map.set(key, { row: e, count: 1 })
+      else cur.count++
+    }
+    return [...map.values()]
+  }, [filtered])
+
+  const counts = useMemo(() => {
+    const c: Record<Filter, number> = { all: visible.length, high: 0, med: 0, low: 0 }
+    for (const e of visible) {
+      const imp = resolveImportance(e)
+      if (imp === 'high' || imp === 'med' || imp === 'low') c[imp]++
+    }
+    return c
+  }, [visible])
+
+  const totalUnread = visible.filter((e) => e.unread).length
+
+  function doMarkRead(e: EmailItem) {
+    setReadIds((prev) => new Set([...prev, e.id]))
+    markEmailRead(e.id)
+  }
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
@@ -26,59 +110,104 @@ export default function Inbox() {
           <h1 className="text-xl font-semibold flex items-center gap-2">
             <Mail className="h-5 w-5 text-personal" /> Inbox
           </h1>
-          <p className="text-sm text-muted mt-1">De mails die er nu toe doen, uit je Gmail. {unread} ongelezen.</p>
+          <p className="text-sm text-muted mt-1">
+            De mails die er nu toe doen, uit je Gmail.{' '}
+            {totalUnread > 0 ? `${totalUnread} ongelezen.` : 'Alles gelezen.'}
+          </p>
         </div>
-        {unread > 0 && (
+        {totalUnread > 0 && (
           <button className="btn-ghost" onClick={markAllEmailsRead}>
             <CheckCheck className="h-4 w-4" /> Alles gelezen
           </button>
         )}
       </div>
 
-      <div className="flex gap-1">
-        {(['important', 'all'] as const).map((t) => (
+      {/* Importance filter */}
+      <div className="flex gap-1.5 flex-wrap">
+        {(['high', 'med', 'low', 'all'] as Filter[]).map((f) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`chip ${tab === t ? 'bg-forest text-white' : 'bg-surface border border-line text-muted hover:text-ink'}`}
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`chip ${filter === f ? 'bg-forest text-white' : 'bg-surface border border-line text-muted hover:text-ink'}`}
           >
-            {t === 'important' ? 'Belangrijk' : 'Alles'}
+            {counts[f] > 0
+              ? `${FILTER_LABEL[f]} ${counts[f]}`
+              : FILTER_LABEL[f]}
           </button>
         ))}
       </div>
 
-      {list.length ? (
-        <div className="space-y-2">
-          {list.map((e) => (
-            <button
-              key={e.id}
-              onClick={() => markEmailRead(e.id)}
-              className={`card w-full text-left p-4 flex items-start gap-3 transition-colors hover:border-line ${
-                e.unread ? 'border-personal/30' : ''
-              }`}
-            >
-              <div className="mt-0.5 shrink-0">
-                {e.unread ? <Mail className="h-4 w-4 text-personal" /> : <MailOpen className="h-4 w-4 text-faint" />}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className={`text-sm truncate ${e.unread ? 'text-ink font-semibold' : 'text-ink-soft'}`}>
-                    {e.from}
-                  </span>
-                  {e.important && <Star className="h-3 w-3 text-personal fill-personal shrink-0" />}
-                  <DomainChip domain={e.domain} small />
-                  <span className="text-[11px] text-faint ml-auto shrink-0">{when(e.receivedAt)}</span>
-                </div>
-                <div className={`text-sm mt-0.5 truncate ${e.unread ? 'text-ink' : 'text-muted'}`}>
-                  {e.subject}
-                </div>
-                <div className="text-[12px] text-faint mt-0.5 line-clamp-2">{e.snippet}</div>
-              </div>
-            </button>
-          ))}
-        </div>
-      ) : (
+      {grouped.length === 0 ? (
         <Empty>Geen mails in dit filter.</Empty>
+      ) : (
+        <div className="space-y-2">
+          {grouped.map(({ row: e, count }) => {
+            const imp = resolveImportance(e)
+            const color = impColor(imp)
+            const name = extractName(e.from)
+            return (
+              <div
+                key={e.threadId ?? e.id}
+                className={`card w-full p-4 flex items-start gap-3 ${e.unread ? 'border-personal/30' : ''}`}
+              >
+                {/* Importance dot */}
+                <span
+                  className="mt-1 h-2 w-2 rounded-full shrink-0"
+                  style={{ background: color }}
+                />
+
+                {/* Content */}
+                <button
+                  onClick={() => doMarkRead(e)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm truncate ${e.unread ? 'text-ink font-semibold' : 'text-ink-soft'}`}>
+                      {name}
+                    </span>
+                    {count > 1 && (
+                      <span className="text-[11px] font-bold text-ink-soft bg-sunken rounded-full px-1.5 py-0.5 shrink-0">
+                        {count}
+                      </span>
+                    )}
+                    <span className="text-[11px] text-faint ml-auto shrink-0">{when(e.receivedAt)}</span>
+                  </div>
+                  <div className={`text-sm mt-0.5 truncate ${e.unread ? 'text-ink' : 'text-muted'}`}>
+                    {e.subject}
+                  </div>
+                  <div className="text-[12px] text-faint mt-0.5 line-clamp-2">{e.snippet}</div>
+                </button>
+
+                {/* Actions */}
+                <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                  {e.unread && (
+                    <button
+                      onClick={() => doMarkRead(e)}
+                      className="h-7 w-7 rounded-lg bg-buurtkaart/10 flex items-center justify-center hover:bg-buurtkaart/20 transition-colors"
+                      aria-label="Markeer als gelezen"
+                      title="Markeer als gelezen"
+                    >
+                      <MailOpen className="h-3.5 w-3.5 text-buurtkaart-deep" />
+                    </button>
+                  )}
+                  {e.threadId && (
+                    <a
+                      href={`https://mail.google.com/mail/u/0/#inbox/${e.threadId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(ev) => ev.stopPropagation()}
+                      className="h-7 w-7 rounded-lg bg-parkingyou/10 flex items-center justify-center hover:bg-parkingyou/20 transition-colors"
+                      aria-label="Open in Gmail"
+                      title="Open in Gmail"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5 text-parkingyou-deep" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
       )}
 
       <SectionTitle hint="In een echte build sync deze view met de Gmail API en kan Capture er threads van maken.">
