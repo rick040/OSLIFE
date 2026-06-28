@@ -1,9 +1,13 @@
 /**
  * rick-os Calendar ingest — Google Apps Script
  *
+ * ⚠️  SEPARATE PROJECT — do NOT add this file to the same Apps Script project
+ *     as Code.gs. Code.gs is self-contained (Supabase-direct). This file is
+ *     for a second project that posts to Vercel /api/ingest/* endpoints.
+ *
  * Setup:
- *  1. Add this file PLUS common.gs to your Apps Script project
- *     (the same project as gmail.gs works well — they share common.gs).
+ *  1. Create a NEW Apps Script project (not the one that has Code.gs).
+ *     Add this file PLUS common.gs (and optionally gmail.gs) to it.
  *  2. Script Properties already has INGEST_SECRET from gmail.gs setup.
  *     Add one more: CALENDAR_INGEST_URL = https://<your-vercel-url>.vercel.app/api/ingest/calendar
  *  3. Run ingestCalendar() once, authorize the Calendar scope.

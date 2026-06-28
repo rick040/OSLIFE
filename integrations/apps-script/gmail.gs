@@ -1,8 +1,13 @@
 /**
  * rick-os Gmail ingest — Google Apps Script
  *
+ * ⚠️  SEPARATE PROJECT — do NOT add this file to the same Apps Script project
+ *     as Code.gs. Code.gs is self-contained (Supabase-direct). This file is
+ *     for a second project that posts to Vercel /api/ingest/* endpoints.
+ *
  * Setup:
  *  1. Go to https://script.google.com → New project, name it "rick-os ingest".
+ *     ← This must be a DIFFERENT project from the one containing Code.gs.
  *  2. Add this file PLUS common.gs (and optionally calendar.gs) to the project.
  *  3. Project Settings (gear icon) → Script Properties → add two properties:
  *       INGEST_URL    = https://<your-vercel-url>.vercel.app/api/ingest/gmail
