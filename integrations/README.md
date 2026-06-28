@@ -9,7 +9,12 @@ volledige redenering.
 - `../supabase/migrations/0001_init.sql` — volledig Postgres-schema + RLS + realtime, spiegelt
   `src/types.ts`. Eén tabel per store-slice, dedup via `external_id` / `dedup_key`.
 - `apps-script/Code.gs` — paste-klare ingestie voor Notion, Gmail, Agenda, betalingen-agenda,
-  GoCardless (ABN) en Google Fit, met generieke `supabaseUpsert`.
+  GoCardless (ABN) en Google Fit, die **rechtstreeks** naar Supabase REST schrijft (`supabaseUpsert`).
+- `apps-script/{common,gmail,calendar,health-sheets}.gs` — nieuwere ingest-scripts die naar de
+  **Vercel** endpoints (`/api/ingest/*`, `/api/health/sync-sheets`) POST-en met `INGEST_SECRET`.
+  `common.gs` bevat gedeelde helpers (retry + backoff, `LockService`-guard, property-checks) en
+  hoort in hetzelfde project als `gmail.gs` + `calendar.gs`; `health-sheets.gs` is Sheet-gebonden
+  (eigen project) en is daarom self-contained.
 - `apps-script/appsscript.json` — manifest met de benodigde OAuth-scopes (Gmail, Calendar, Fit).
 - `../.env.example` — env-contract voor de app (alleen publieke Supabase URL + anon key).
 
