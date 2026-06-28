@@ -46,14 +46,6 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
 
   const today = healthDays.find((d) => d.date === TODAY) ?? healthDays[healthDays.length - 1]
   const nextBlock = blocks.filter((b) => b.status === 'planned')[0]
-  if (!today) return (
-    <div className="flex flex-col items-center justify-center h-64 gap-2 text-faint">
-      <p className="text-sm font-medium text-muted">Nog geen data</p>
-      <p className="text-xs text-center max-w-xs">
-        Gezondheidsdata verschijnt zodra je datapipelines gesynchroniseerd zijn.
-      </p>
-    </div>
-  )
 
   const openThreads = threads
     .filter((t) => t.status === 'open')
@@ -156,32 +148,36 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         >
           <div className="flex items-center justify-between">
             <span className="text-xs uppercase tracking-wider text-muted font-semibold">Vitaal vandaag</span>
-            <span className="text-[11px] text-faint">{today.restingHR} bpm rust</span>
+            {today && <span className="text-[11px] text-faint">{today.restingHR} bpm rust</span>}
           </div>
-          <div className="flex items-center justify-around mt-3">
-            <div className="flex flex-col items-center gap-1">
-              <Ring
-                value={today.steps / today.stepGoal}
-                color="stroke-buurtkaart"
-                label={(today.steps / 1000).toFixed(1) + 'k'}
-                sub="stappen"
-              />
-              <Footprints className="h-3.5 w-3.5 text-buurtkaart" />
+          {today ? (
+            <div className="flex items-center justify-around mt-3">
+              <div className="flex flex-col items-center gap-1">
+                <Ring
+                  value={today.steps / today.stepGoal}
+                  color="stroke-buurtkaart"
+                  label={(today.steps / 1000).toFixed(1) + 'k'}
+                  sub="stappen"
+                />
+                <Footprints className="h-3.5 w-3.5 text-buurtkaart" />
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <Ring
+                  value={today.sleepHours / 8}
+                  color="stroke-parkingyou"
+                  label={today.sleepHours + 'u'}
+                  sub="slaap"
+                />
+                <Moon className="h-3.5 w-3.5 text-parkingyou" />
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <Ring value={today.energy / 5} color="stroke-personal" label={today.energy + '/5'} sub="energie" />
+                <Zap className="h-3.5 w-3.5 text-personal" />
+              </div>
             </div>
-            <div className="flex flex-col items-center gap-1">
-              <Ring
-                value={today.sleepHours / 8}
-                color="stroke-parkingyou"
-                label={today.sleepHours + 'u'}
-                sub="slaap"
-              />
-              <Moon className="h-3.5 w-3.5 text-parkingyou" />
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <Ring value={today.energy / 5} color="stroke-personal" label={today.energy + '/5'} sub="energie" />
-              <Zap className="h-3.5 w-3.5 text-personal" />
-            </div>
-          </div>
+          ) : (
+            <Empty>Geen gezondheidsdata vandaag.</Empty>
+          )}
         </button>
       </div>
 
