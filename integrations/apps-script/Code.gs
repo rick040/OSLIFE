@@ -12,312 +12,455 @@
  *      NOTION_TOKEN          secret_xxx
  *      NOTION_DB_ID          <projects database id>
  *      PAYMENTS_CAL_ID       <your payments Google Calendar ID>
+ *
  * 2. Triggers (Triggers → Add):
  *      syncNotion          every 15 min
- *      syncGmail           every 10 min
- *      syncCalendarBlocks  every 15 min
+ *      syncGmail           every 15 min
+ *      syncCalendarBlocks  every hour
  *      syncPayments        every 15 min
  *      syncFit             every hour
+ *
  * 3. Run each function once manually → authorize OAuth scopes.
+ *
  * 4. For screen time + wallet: use MacroDroid on Android (see README).
  *    Those POST directly to the Supabase REST API — no trigger needed here.
  *
  * LOGS
- * View logs: Apps Script editor → Executions (left sidebar) → click a run.
- * Or: View → Logs while a manual run is active.
+ * View → Executions (left sidebar) → click a run.
  */
+
+// ── Calendar config ────────────────────────────────────────────────────────
+// List the calendar IDs to sync. Use ["all"] to sync every accessible calendar,
+// or include "default" for your primary one.
+var CALENDAR_IDS     = ['rickvmierlo@gmail.com', 'rick.prjct.agency@gmail.com'];
+var LOOKBACK_DAYS    = 1;
+var LOOKAHEAD_DAYS   = 60;
+
+// ── Gmail config ───────────────────────────────────────────────────────────
+var GMAIL_LOOKBACK_HOURS = 24;  // first-run fallback
+var GMAIL_OVERLAP_SEC    = 300; // re-scan a small window before the cursor on each run
+var GMAIL_MAX_THREADS    = 100;
+var GMAIL_LAST_RUN_KEY   = 'GMAIL_LAST_RUN_SEC';
+
+// ── Shared helpers ─────────────────────────────────────────────────────────
 
 var P = PropertiesService.getScriptProperties();
 function prop(k) { return P.getProperty(k); }
 
-/** Timestamped log helper — shows up in Executions log. */
 function log(msg) {
   Logger.log('[%s] %s', new Date().toISOString(), msg);
 }
 
-/** Generic Supabase upsert. rows: array of objects. conflict: comma-separated cols for on_conflict. */
+/**
+ * Acquire the script lock so overlapping trigger runs don't double-process.
+ * Returns the lock on success, null if another run already holds it (caller skips).
+ * Always release in a finally block.
+ */
+function acquireLock_() {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(1000);
+    return lock;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Exponential backoff with jitter: ~1s, 2s, 4s, 8s (capped at 8s).
+ */
+function backoffMs_(attempt) {
+  var base = Math.min(8000, 1000 * Math.pow(2, attempt - 1));
+  return base + Math.floor(Math.random() * 400);
+}
+
+/**
+ * Upsert rows into a Supabase table via PostgREST.
+ * Retries on network failures, 429, and 5xx (up to 4 attempts).
+ * Fails fast on 4xx (bad request won't fix itself).
+ * rows: array of objects. conflict: comma-separated cols for on_conflict.
+ */
 function supabaseUpsert(table, rows, conflict) {
   if (!rows.length) {
     log('supabaseUpsert(' + table + '): 0 rows — skipping');
     return;
   }
+
   var url = prop('SUPABASE_URL') + '/rest/v1/' + table +
             (conflict ? '?on_conflict=' + conflict : '');
   var userId = prop('RICK_USER_ID');
-  // Build new objects instead of mutating the originals
   var withUser = rows.map(function (r) {
     return Object.assign({}, r, { user_id: userId });
   });
-  log('supabaseUpsert(' + table + '): sending ' + withUser.length + ' rows to ' + url);
-  var res = UrlFetchApp.fetch(url, {
-    method: 'post',
-    contentType: 'application/json',
-    headers: {
-      apikey: prop('SUPABASE_SERVICE_KEY'),
-      Authorization: 'Bearer ' + prop('SUPABASE_SERVICE_KEY'),
-      Prefer: 'resolution=merge-duplicates,return=minimal'
-    },
-    payload: JSON.stringify(withUser),
-    muteHttpExceptions: true
-  });
-  var code = res.getResponseCode();
-  var body = res.getContentText();
-  log('supabaseUpsert(' + table + '): HTTP ' + code + (body ? ' — ' + body.slice(0, 200) : ''));
-  if (code >= 300) throw new Error(table + ' upsert failed (' + code + '): ' + body);
-  log('supabaseUpsert(' + table + '): OK');
+  var body = JSON.stringify(withUser);
+
+  log('supabaseUpsert(' + table + '): sending ' + withUser.length + ' rows');
+
+  var maxAttempts = 4;
+  for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+    var res = null;
+    try {
+      res = UrlFetchApp.fetch(url, {
+        method: 'post',
+        contentType: 'application/json',
+        headers: {
+          apikey: prop('SUPABASE_SERVICE_KEY'),
+          Authorization: 'Bearer ' + prop('SUPABASE_SERVICE_KEY'),
+          Prefer: 'resolution=merge-duplicates,return=minimal'
+        },
+        payload: body,
+        muteHttpExceptions: true
+      });
+    } catch (e) {
+      // Network-level failure — retry.
+      if (attempt < maxAttempts) {
+        log('supabaseUpsert(' + table + '): network error on attempt ' + attempt + ', retrying…');
+        Utilities.sleep(backoffMs_(attempt));
+        continue;
+      }
+      throw new Error(table + ' upsert network error: ' + (e && e.message));
+    }
+
+    var code = res.getResponseCode();
+    var resBody = res.getContentText();
+
+    if (code < 300) {
+      log('supabaseUpsert(' + table + '): OK (HTTP ' + code + ')');
+      return;
+    }
+
+    var transient = code === 429 || code >= 500;
+    if (transient && attempt < maxAttempts) {
+      log('supabaseUpsert(' + table + '): HTTP ' + code + ' (attempt ' + attempt + '/' + maxAttempts + '), retrying…');
+      Utilities.sleep(backoffMs_(attempt));
+      continue;
+    }
+    throw new Error(table + ' upsert failed (' + code + '): ' + resBody.slice(0, 300));
+  }
 }
 
-/** Map an email/keyword to a domain. Tune to your own senders/labels. */
+/** Map text to a domain. Tune keywords to your own senders/events. */
 function domainFor(text) {
   var t = (text || '').toLowerCase();
-  if (/parking|strijp|host|signage/.test(t)) return 'parkingyou';
-  if (/buurtkaart|geldrop|flyer|kroon/.test(t)) return 'buurtkaart';
+  if (/parking|strijp|host|signage/.test(t))                              return 'parkingyou';
+  if (/buurtkaart|geldrop|flyer|kroon/.test(t))                           return 'buurtkaart';
   if (/invoice|factuur|klant|client|prjct|logo|branding|website|mural/.test(t)) return 'prjct';
   return 'personal';
 }
 
 // ── 1. NOTION → projects ─────────────────────────────────────────────────────
 function syncNotion() {
-  log('syncNotion: start');
-  var dbId = prop('NOTION_DB_ID');
-  if (!dbId) { log('syncNotion: NOTION_DB_ID not set — aborting'); return; }
+  var lock = acquireLock_();
+  if (!lock) { log('syncNotion: another run in progress — skipping'); return; }
+  try {
+    log('syncNotion: start');
+    var dbId = prop('NOTION_DB_ID');
+    if (!dbId) { log('syncNotion: NOTION_DB_ID not set — aborting'); return; }
 
-  var res = UrlFetchApp.fetch('https://api.notion.com/v1/databases/' + dbId + '/query', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { Authorization: 'Bearer ' + prop('NOTION_TOKEN'), 'Notion-Version': '2022-06-28' },
-    payload: '{}',
-    muteHttpExceptions: true
-  });
-  var code = res.getResponseCode();
-  log('syncNotion: Notion API HTTP ' + code);
-  if (code >= 300) {
-    log('syncNotion: error response — ' + res.getContentText().slice(0, 300));
-    throw new Error('Notion API error (' + code + ')');
+    var res = UrlFetchApp.fetch('https://api.notion.com/v1/databases/' + dbId + '/query', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + prop('NOTION_TOKEN'), 'Notion-Version': '2022-06-28' },
+      payload: '{}',
+      muteHttpExceptions: true
+    });
+    var code = res.getResponseCode();
+    log('syncNotion: Notion API HTTP ' + code);
+    if (code >= 300) {
+      log('syncNotion: error — ' + res.getContentText().slice(0, 300));
+      throw new Error('Notion API error (' + code + ')');
+    }
+
+    var pages = JSON.parse(res.getContentText()).results || [];
+    log('syncNotion: fetched ' + pages.length + ' pages');
+
+    var rows = pages.map(function (pg) {
+      var p = pg.properties;
+      var name      = (p.Name   && p.Name.title[0])      ? p.Name.title[0].plain_text        : 'Untitled';
+      var status    = (p.Status && p.Status.status)       ? p.Status.status.name.toLowerCase() : 'lead';
+      var client    = (p.Client && p.Client.rich_text[0]) ? p.Client.rich_text[0].plain_text  : '';
+      var deadline  = (p.Deadline && p.Deadline.date)     ? p.Deadline.date.start             : null;
+      var value     = (p.Value    && typeof p.Value.number    === 'number') ? p.Value.number    : 0;
+      var progress  = (p.Progress && typeof p.Progress.number === 'number') ? p.Progress.number : 0;
+      var validStatus = ['lead','active','review','blocked','done'].indexOf(status) >= 0 ? status : 'lead';
+      return {
+        name: name, client: client, domain: domainFor(name + ' ' + client),
+        status: validStatus, deadline: deadline, value: value, progress: progress,
+        source: 'notion', external_id: pg.id
+      };
+    });
+
+    supabaseUpsert('projects', rows, 'user_id,external_id');
+    log('syncNotion: done — ' + rows.length + ' rows');
+  } finally {
+    lock.releaseLock();
   }
-
-  var pages = JSON.parse(res.getContentText()).results || [];
-  log('syncNotion: fetched ' + pages.length + ' pages from Notion');
-
-  var rows = pages.map(function (pg) {
-    var p = pg.properties;
-    var name = (p.Name && p.Name.title[0]) ? p.Name.title[0].plain_text : 'Untitled';
-    var status = (p.Status && p.Status.status) ? p.Status.status.name.toLowerCase() : 'lead';
-    var client = (p.Client && p.Client.rich_text[0]) ? p.Client.rich_text[0].plain_text : '';
-    var deadline = (p.Deadline && p.Deadline.date) ? p.Deadline.date.start : null;
-    var value = (p.Value && typeof p.Value.number === 'number') ? p.Value.number : 0;
-    var progress = (p.Progress && typeof p.Progress.number === 'number') ? p.Progress.number : 0;
-    var validStatus = ['lead', 'active', 'review', 'blocked', 'done'].indexOf(status) >= 0 ? status : 'lead';
-    log('syncNotion: page "' + name + '" status=' + validStatus + ' client=' + (client || '—') + ' value=' + value);
-    return {
-      name: name, client: client, domain: domainFor(name + ' ' + client),
-      status: validStatus,
-      deadline: deadline, value: value, progress: progress,
-      source: 'notion', external_id: pg.id
-    };
-  });
-
-  log('syncNotion: upserting ' + rows.length + ' project rows');
-  supabaseUpsert('projects', rows, 'user_id,external_id');
-  log('syncNotion: done');
 }
 
 // ── 2. GMAIL → gmail_messages ────────────────────────────────────────────────
+// Uses an incremental cursor (last successful run stored in Script Properties)
+// so each run only scans messages since then, plus a small overlap to avoid gaps.
+// Falls back to GMAIL_LOOKBACK_HOURS on first run.
 function syncGmail() {
-  log('syncGmail: start');
-  var threads = GmailApp.search('is:important newer_than:7d', 0, 25);
-  log('syncGmail: found ' + threads.length + ' important threads');
+  var lock = acquireLock_();
+  if (!lock) { log('syncGmail: another run in progress — skipping'); return; }
+  try {
+    log('syncGmail: start');
 
-  var rows = threads.map(function (th) {
-    var m = th.getMessages()[th.getMessageCount() - 1];
-    var from = m.getFrom();
-    var subject = th.getFirstMessageSubject();
-    var isRead = !th.isUnread();
-    log('syncGmail: thread "' + subject.slice(0, 60) + '" from=' + from + ' read=' + isRead);
-    return {
-      from_addr: from,
-      subject: subject,
-      snippet: m.getPlainBody().slice(0, 160),
-      received_at: m.getDate().toISOString(),
-      read: isRead,
-      importance: 'high',
-      labels: th.getLabels().map(function (l) { return l.getName(); }),
-      external_id: th.getId()
-    };
-  });
+    var nowSec   = Math.floor(Date.now() / 1000);
+    var fallback = nowSec - GMAIL_LOOKBACK_HOURS * 3600;
+    var lastRun  = parseInt(P.getProperty(GMAIL_LAST_RUN_KEY) || '0', 10);
+    var sinceSec = lastRun > 0 ? Math.max(fallback, lastRun - GMAIL_OVERLAP_SEC) : fallback;
+    var sinceMs  = sinceSec * 1000;
 
-  log('syncGmail: upserting ' + rows.length + ' message rows');
-  supabaseUpsert('gmail_messages', rows, 'user_id,external_id');
-  log('syncGmail: done');
+    var query =
+      'in:inbox -category:promotions -category:social -category:forums ' +
+      'after:' + sinceSec;
+
+    var threads = GmailApp.search(query, 0, GMAIL_MAX_THREADS);
+    if (threads.length === GMAIL_MAX_THREADS) {
+      log('syncGmail: WARNING — hit MAX_THREADS=' + GMAIL_MAX_THREADS +
+          '. Lower trigger interval or raise the cap if this recurs.');
+    }
+    log('syncGmail: found ' + threads.length + ' threads since ' + new Date(sinceMs).toISOString());
+
+    var rows = [];
+    for (var i = 0; i < threads.length; i++) {
+      var th = threads[i];
+      var labels = th.getLabels().map(function (l) { return l.getName(); });
+      var msgs = th.getMessages();
+      for (var j = 0; j < msgs.length; j++) {
+        var m = msgs[j];
+        try {
+          // Thread can match `after:` on a recent message but still carry older ones.
+          if (m.getDate().getTime() < sinceMs) continue;
+          rows.push({
+            from_addr:   m.getFrom(),
+            subject:     (m.getSubject() || '').slice(0, 240),
+            snippet:     (m.getPlainBody() || '').replace(/\s+/g, ' ').trim().slice(0, 280),
+            received_at: m.getDate().toISOString(),
+            read:        !th.isUnread(),
+            importance:  'normal',
+            labels:      labels,
+            external_id: m.getId()
+          });
+        } catch (e) {
+          log('syncGmail: skip message — ' + (e && e.message));
+        }
+      }
+    }
+
+    if (rows.length === 0) {
+      log('syncGmail: no new messages');
+      P.setProperty(GMAIL_LAST_RUN_KEY, String(nowSec));
+      return;
+    }
+
+    // Send in chunks.
+    var CHUNK = 25;
+    for (var k = 0; k < rows.length; k += CHUNK) {
+      supabaseUpsert('gmail_messages', rows.slice(k, k + CHUNK), 'user_id,external_id');
+    }
+
+    // Only advance cursor once all chunks succeed.
+    P.setProperty(GMAIL_LAST_RUN_KEY, String(nowSec));
+    log('syncGmail: done — ' + rows.length + ' messages upserted');
+  } finally {
+    lock.releaseLock();
+  }
 }
 
-// ── 3. CALENDAR (main) → day_blocks ──────────────────────────────────────────
+// ── 3. CALENDAR → day_blocks ──────────────────────────────────────────────────
+// Syncs all calendars in CALENDAR_IDS from LOOKBACK_DAYS ago to LOOKAHEAD_DAYS ahead.
+// Recurring-event instances get a unique external_id (base id + start time) so each
+// instance keeps its own row instead of overwriting the others.
 function syncCalendarBlocks() {
-  log('syncCalendarBlocks: start');
-  var now = new Date();
-  var end = new Date(now.getTime() + 36 * 3600 * 1000);
-  log('syncCalendarBlocks: window ' + now.toISOString() + ' → ' + end.toISOString());
+  var lock = acquireLock_();
+  if (!lock) { log('syncCalendarBlocks: another run in progress — skipping'); return; }
+  try {
+    log('syncCalendarBlocks: start');
 
-  var events = CalendarApp.getDefaultCalendar().getEvents(now, end);
-  log('syncCalendarBlocks: found ' + events.length + ' events');
+    var now  = new Date();
+    var from = new Date(now.getTime() - LOOKBACK_DAYS  * 86400000);
+    var to   = new Date(now.getTime() + LOOKAHEAD_DAYS * 86400000);
 
-  var rows = events.map(function (e) {
-    var s = e.getStartTime(), f = e.getEndTime();
-    var hhmm = function (d) { return Utilities.formatDate(d, Session.getScriptTimeZone(), 'HH:mm'); };
-    var title = e.getTitle();
-    var btype = domainFor(title);
-    log('syncCalendarBlocks: event "' + title + '" block_type=' + btype + ' ' + hhmm(s) + '-' + hhmm(f));
-    return {
-      title: title,
-      block_type: btype,
-      description: e.getDescription() || '',
-      date: Utilities.formatDate(s, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
-      start_time: hhmm(s),
-      end_time: hhmm(f),
-      status: 'planned',
-      external_id: e.getId()
-    };
-  });
+    var cals = resolveCalendars_();
+    if (cals.length === 0) {
+      throw new Error('No calendars resolved from CALENDAR_IDS: ' + JSON.stringify(CALENDAR_IDS));
+    }
 
-  log('syncCalendarBlocks: upserting ' + rows.length + ' block rows');
-  supabaseUpsert('day_blocks', rows, 'user_id,external_id');
-  log('syncCalendarBlocks: done');
+    var rows = [];
+    for (var c = 0; c < cals.length; c++) {
+      var cal = cals[c];
+      var events = cal.getEvents(from, to);
+      log('syncCalendarBlocks: ' + cal.getId() + ' → ' + events.length + ' events');
+
+      for (var i = 0; i < events.length; i++) {
+        var e = events[i];
+        try {
+          var s    = e.getStartTime();
+          var f    = e.getEndTime();
+          var hhmm = function (d) { return Utilities.formatDate(d, Session.getScriptTimeZone(), 'HH:mm'); };
+          var title = e.getTitle();
+          // Suffix start-time millis so recurring instances get distinct external_ids.
+          var extId = e.getId() + '_' + s.getTime();
+          rows.push({
+            title:       title,
+            block_type:  domainFor(title),
+            description: e.getDescription() || '',
+            date:        Utilities.formatDate(s, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+            start_time:  hhmm(s),
+            end_time:    hhmm(f),
+            status:      'planned',
+            external_id: extId
+          });
+        } catch (err) {
+          log('syncCalendarBlocks: skip event — ' + (err && err.message));
+        }
+      }
+    }
+
+    var CHUNK = 50;
+    for (var k = 0; k < rows.length; k += CHUNK) {
+      supabaseUpsert('day_blocks', rows.slice(k, k + CHUNK), 'user_id,external_id');
+    }
+    log('syncCalendarBlocks: done — ' + rows.length + ' events across ' + cals.length + ' calendar(s)');
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function resolveCalendars_() {
+  if (CALENDAR_IDS.length === 1 && CALENDAR_IDS[0] === 'all') {
+    return CalendarApp.getAllCalendars();
+  }
+  var cals = [];
+  for (var i = 0; i < CALENDAR_IDS.length; i++) {
+    var id = CALENDAR_IDS[i];
+    var c  = id === 'default' ? CalendarApp.getDefaultCalendar() : CalendarApp.getCalendarById(id);
+    if (c) cals.push(c);
+    else log('resolveCalendars_: not found / not accessible: ' + id);
+  }
+  return cals;
 }
 
 // ── 4. PAYMENTS CALENDAR → payments ──────────────────────────────────────────
 function syncPayments() {
-  log('syncPayments: start');
-  var calId = prop('PAYMENTS_CAL_ID');
-  var cal = CalendarApp.getCalendarById(calId);
-  if (!cal) {
-    log('syncPayments: calendar not found for id=' + calId);
-    throw new Error('Payments calendar not found / not shared');
+  var lock = acquireLock_();
+  if (!lock) { log('syncPayments: another run in progress — skipping'); return; }
+  try {
+    log('syncPayments: start');
+    var calId = prop('PAYMENTS_CAL_ID');
+    if (!calId) { log('syncPayments: PAYMENTS_CAL_ID not set — aborting'); return; }
+    var cal = CalendarApp.getCalendarById(calId);
+    if (!cal) throw new Error('Payments calendar not found / not shared: ' + calId);
+
+    var from = new Date(Date.now() - 90  * 86400000);
+    var to   = new Date(Date.now() + 180 * 86400000);
+    var events = cal.getEvents(from, to);
+    log('syncPayments: found ' + events.length + ' payment events');
+
+    var rows = events.map(function (e) {
+      var text      = e.getTitle() + ' ' + (e.getDescription() || '');
+      var amt       = (text.match(/(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:,\d{1,2})?)/) || [])[1];
+      var amount    = amt ? parseFloat(amt.replace(/\./g, '').replace(',', '.')) : 0;
+      var direction = /\b(in|ontvang|factuur|invoice)\b/i.test(text) ? 'incoming' : 'outgoing';
+      var paid      = /betaald|paid|✓|✔/i.test(text);
+      var payee     = e.getTitle().replace(/\[(in|uit)\]/i, '').replace(/€?\s*\d+[.,]?\d*/, '').trim() || 'Onbekend';
+      return {
+        payee:      payee,
+        amount:     amount,
+        due:        Utilities.formatDate(e.getStartTime(), Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+        direction:  direction,
+        status:     paid ? 'paid' : 'open',
+        domain:     domainFor(text),
+        source:     'calendar',
+        external_id: e.getId()
+      };
+    });
+
+    supabaseUpsert('payments', rows, 'user_id,source,external_id');
+    log('syncPayments: done — ' + rows.length + ' rows');
+  } finally {
+    lock.releaseLock();
   }
-  log('syncPayments: calendar "' + cal.getName() + '" found');
-
-  var from = new Date(Date.now() - 90 * 86400000);
-  var to = new Date(Date.now() + 180 * 86400000);
-  log('syncPayments: window ' + from.toISOString() + ' → ' + to.toISOString());
-
-  var events = cal.getEvents(from, to);
-  log('syncPayments: found ' + events.length + ' payment events');
-
-  var rows = events.map(function (e) {
-    var title = e.getTitle() + ' ' + (e.getDescription() || '');
-    // Fix: handle Dutch thousands (1.500,50) and plain decimals (15,50)
-    var amt = (title.match(/(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:,\d{1,2})?)/) || [])[1];
-    var amount = amt ? parseFloat(amt.replace(/\./g, '').replace(',', '.')) : 0;
-    var direction = /\b(in|ontvang|factuur|invoice)\b/i.test(title) ? 'incoming' : 'outgoing';
-    var paid = /betaald|paid|✓|✔/i.test(title);
-    var payee = e.getTitle().replace(/\[(in|uit)\]/i, '').replace(/€?\s*\d+[.,]?\d*/, '').trim() || 'Onbekend';
-    log('syncPayments: "' + payee + '" amount=' + amount + ' dir=' + direction + ' paid=' + paid);
-    return {
-      payee: payee,
-      amount: amount,
-      due: Utilities.formatDate(e.getStartTime(), Session.getScriptTimeZone(), 'yyyy-MM-dd'),
-      direction: direction,
-      status: paid ? 'paid' : 'open',
-      domain: domainFor(title),
-      source: 'calendar',
-      external_id: e.getId()
-    };
-  });
-
-  log('syncPayments: upserting ' + rows.length + ' payment rows');
-  supabaseUpsert('payments', rows, 'user_id,source,external_id');
-  log('syncPayments: done');
 }
 
 // ── 5. GOOGLE FIT / SAMSUNG HEALTH → health_daily_stats ──────────────────────
 // Samsung Health syncs to Google Fit via Health Connect (Android 14+).
-// On phone: Samsung Health → Settings → Connected apps → Health Connect → Allow all.
+// Phone: Samsung Health → Settings → Connected apps → Health Connect → Allow all.
 function syncFit() {
-  log('syncFit: start');
-  var token = ScriptApp.getOAuthToken();
-  var endMs = Date.now();
-  var startMs = endMs - 13 * 86400000; // last 13 days
-  log('syncFit: querying last 13 days of Fit data');
+  var lock = acquireLock_();
+  if (!lock) { log('syncFit: another run in progress — skipping'); return; }
+  try {
+    log('syncFit: start');
+    var token   = ScriptApp.getOAuthToken();
+    var endMs   = Date.now();
+    var startMs = endMs - 13 * 86400000;
 
-  function aggregate(dataTypeName) {
-    log('syncFit: aggregate(' + dataTypeName + ')');
-    var res = UrlFetchApp.fetch('https://fitness.googleapis.com/fitness/v1/users/me/dataset:aggregate', {
-      method: 'post', contentType: 'application/json',
-      headers: { Authorization: 'Bearer ' + token },
-      payload: JSON.stringify({
-        aggregateBy: [{ dataTypeName: dataTypeName }],
-        bucketByTime: { durationMillis: 86400000 },
-        startTimeMillis: startMs, endTimeMillis: endMs
-      }),
-      muteHttpExceptions: true
-    });
-    var code = res.getResponseCode();
-    log('syncFit: aggregate(' + dataTypeName + ') HTTP ' + code);
-    if (code >= 300) {
-      log('syncFit: Fit API error — ' + res.getContentText().slice(0, 300));
-      return [];
-    }
-    var buckets = JSON.parse(res.getContentText()).bucket || [];
-    log('syncFit: aggregate(' + dataTypeName + ') returned ' + buckets.length + ' buckets');
-    return buckets;
-  }
-
-  // Seed byDate from ALL data types so days with no steps aren't dropped
-  var byDate = {};
-  function ensureDay(d) {
-    if (!byDate[d]) byDate[d] = { date: d, steps: 0, sleep_min: 0, avg_resting_hr: 0, active_min: 0 };
-  }
-
-  // Steps
-  aggregate('com.google.step_count.delta').forEach(function (b) {
-    var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    var v = 0;
-    (b.dataset[0].point || []).forEach(function (p) { v += p.value[0].intVal || 0; });
-    ensureDay(d);
-    byDate[d].steps = v;
-    log('syncFit: steps ' + d + ' = ' + v);
-  });
-
-  // Sleep: store as minutes — exclude stage 1 (awake) and 3 (out-of-bed)
-  aggregate('com.google.sleep.segment').forEach(function (b) {
-    var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    var mins = 0;
-    (b.dataset[0].point || []).forEach(function (p) {
-      var stage = p.value[0].intVal;
-      // 1=awake, 2=sleep(generic), 3=out-of-bed, 4=light, 5=deep, 6=REM
-      // Only count actual sleep stages, not awake or out-of-bed
-      if (stage === 2 || stage >= 4) {
-        mins += Math.round((parseInt(p.endTimeNanos, 10) - parseInt(p.startTimeNanos, 10)) / 60000000000);
+    function aggregate(dataTypeName) {
+      var res = UrlFetchApp.fetch('https://fitness.googleapis.com/fitness/v1/users/me/dataset:aggregate', {
+        method: 'post', contentType: 'application/json',
+        headers: { Authorization: 'Bearer ' + token },
+        payload: JSON.stringify({
+          aggregateBy:    [{ dataTypeName: dataTypeName }],
+          bucketByTime:   { durationMillis: 86400000 },
+          startTimeMillis: startMs, endTimeMillis: endMs
+        }),
+        muteHttpExceptions: true
+      });
+      var code = res.getResponseCode();
+      if (code >= 300) {
+        log('syncFit: Fit API error ' + code + ' for ' + dataTypeName + ' — ' + res.getContentText().slice(0, 200));
+        return [];
       }
-    });
-    ensureDay(d);
-    byDate[d].sleep_min = mins;
-    log('syncFit: sleep ' + d + ' = ' + mins + ' min');
-  });
-
-  // Resting heart rate → avg_resting_hr
-  aggregate('com.google.heart_rate.bpm').forEach(function (b) {
-    var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    var total = 0, count = 0;
-    (b.dataset[0].point || []).forEach(function (p) { total += p.value[0].fpVal || 0; count++; });
-    if (count > 0) {
-      ensureDay(d);
-      byDate[d].avg_resting_hr = Math.round(total / count);
-      log('syncFit: heart_rate ' + d + ' = ' + byDate[d].avg_resting_hr + ' bpm (n=' + count + ')');
+      return JSON.parse(res.getContentText()).bucket || [];
     }
-  });
 
-  // Active minutes → active_min
-  aggregate('com.google.active_minutes').forEach(function (b) {
-    var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    var v = 0;
-    (b.dataset[0].point || []).forEach(function (p) { v += p.value[0].intVal || 0; });
-    ensureDay(d);
-    byDate[d].active_min = v;
-    log('syncFit: active_min ' + d + ' = ' + v);
-  });
+    var byDate = {};
+    function ensureDay(d) {
+      if (!byDate[d]) byDate[d] = { date: d, steps: 0, sleep_min: 0, avg_resting_hr: 0, active_min: 0 };
+    }
 
-  var rows = Object.keys(byDate).map(function (d) { return byDate[d]; });
-  log('syncFit: ' + rows.length + ' days of health data collected');
-  supabaseUpsert('health_daily_stats', rows, 'user_id,date');
-  log('syncFit: done');
+    aggregate('com.google.step_count.delta').forEach(function (b) {
+      var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      var v = 0;
+      (b.dataset[0].point || []).forEach(function (p) { v += p.value[0].intVal || 0; });
+      ensureDay(d); byDate[d].steps = v;
+    });
+
+    // Sleep stages: 2=generic, 4=light, 5=deep, 6=REM — exclude 1=awake, 3=out-of-bed
+    aggregate('com.google.sleep.segment').forEach(function (b) {
+      var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      var mins = 0;
+      (b.dataset[0].point || []).forEach(function (p) {
+        var stage = p.value[0].intVal;
+        if (stage === 2 || stage >= 4) {
+          mins += Math.round((parseInt(p.endTimeNanos, 10) - parseInt(p.startTimeNanos, 10)) / 60000000000);
+        }
+      });
+      ensureDay(d); byDate[d].sleep_min = mins;
+    });
+
+    aggregate('com.google.heart_rate.bpm').forEach(function (b) {
+      var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      var total = 0, count = 0;
+      (b.dataset[0].point || []).forEach(function (p) { total += p.value[0].fpVal || 0; count++; });
+      if (count > 0) { ensureDay(d); byDate[d].avg_resting_hr = Math.round(total / count); }
+    });
+
+    aggregate('com.google.active_minutes').forEach(function (b) {
+      var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      var v = 0;
+      (b.dataset[0].point || []).forEach(function (p) { v += p.value[0].intVal || 0; });
+      ensureDay(d); byDate[d].active_min = v;
+    });
+
+    var rows = Object.keys(byDate).map(function (d) { return byDate[d]; });
+    log('syncFit: ' + rows.length + ' days collected');
+    supabaseUpsert('health_daily_stats', rows, 'user_id,date');
+    log('syncFit: done');
+  } finally {
+    lock.releaseLock();
+  }
 }
