@@ -21,8 +21,8 @@
  *  1. Open your health Google Sheet → Extensions → Apps Script.
  *  2. Paste this file (or replace the existing Code.gs).
  *  3. Script Properties (gear icon → Script properties) → add:
- *       HEALTH_SYNC_URL  = https://<your-vercel-url>/api/health/sync-sheets
- *       INGEST_SECRET    = <same value as INGEST_SECRET in .env.local + Vercel>
+ *       HEALTH_SYNC_URL  = https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/health-sheets-ingest
+ *       INGEST_SECRET    = <same random secret you set with: supabase secrets set INGEST_SECRET=…>
  *  4. Run installTrigger() once to set up the onChange trigger.
  *  5. Done — every sheet change auto-syncs to Supabase (idempotent upsert).
  */
