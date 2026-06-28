@@ -72,7 +72,7 @@ function readPhoto(file: File): Promise<string> {
 }
 
 function timeHM(iso: string) {
-  return new Date(iso).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
+  return new Date(iso).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' })
 }
 
 function isoToDatetimeLocal(iso: string) {

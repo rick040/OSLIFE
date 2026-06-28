@@ -33,7 +33,7 @@ export default function Reflect() {
   )
 
   const sleepEnergy = dayLogs.map((l) => ({
-    date: fmtDate(l.date).replace('Jun ', ''),
+    date: fmtDate(l.date).replace(/\s*(jan|feb|mrt|apr|mei|jun|jul|aug|sep|okt|nov|dec)\s*/i, ''),
     sleep: l.sleepHours,
     energy: l.energy,
     low: l.sleepHours < 6,
@@ -45,7 +45,7 @@ export default function Reflect() {
       if (t.amount < 0) map.set(t.date, (map.get(t.date) || 0) + Math.abs(t.amount))
     })
     return dayLogs.map((l) => ({
-      date: fmtDate(l.date).replace('Jun ', ''),
+      date: fmtDate(l.date).replace(/\s*(jan|feb|mrt|apr|mei|jun|jul|aug|sep|okt|nov|dec)\s*/i, ''),
       iso: l.date,
       spend: Math.round(map.get(l.date) || 0),
       deadline: DEADLINES.includes(l.date),
@@ -70,26 +70,25 @@ export default function Reflect() {
             <Brain className="h-5 w-5 text-cross" /> Reflect
           </h1>
           <p className="text-sm text-muted mt-1 max-w-xl">
-            The one layer that reads your <span className="text-ink">whole</span> memory across every domain
-            at once. It finds connections no single tracker could, then writes refined patterns back down.
+            De laag die je <span className="text-ink">volledige</span> geheugen over alle domeinen tegelijk leest.
+            Vindt verbanden die geen enkele losse tracker kan zien, en schrijft verfijnde patronen terug.
           </p>
         </div>
         <button className="btn-primary bg-cross hover:bg-cross/80" onClick={runNightlyReflect}>
-          <Play className="h-4 w-4" /> Run nightly reflect
+          <Play className="h-4 w-4" /> Nachtelijke reflectie uitvoeren
         </button>
       </div>
 
       {lastDigest && (
         <div className="card p-3 border-cross/40 bg-cross/5 text-sm text-ink-soft animate-fade-up">
-          Reflect has run <b>{reflectCount}×</b>. Patterns reinforced and tomorrow’s Surface (Today nudge + Day
-          Builder) has been reshaped, go look.
+          Reflectie heeft <b>{reflectCount}×</b> gedraaid. Patronen zijn versterkt en het Overzicht van morgen (dagelijkse nudge + Dagplanner) is bijgewerkt.
         </div>
       )}
 
       {/* CROSS-DOMAIN CORRELATIONS */}
       <div>
-        <SectionTitle hint="Computed live from your seeded sleep, energy, spend & deadline data.">
-          Cross-domain correlations
+        <SectionTitle hint="Live berekend op basis van slaap, energie, uitgaven en deadlinedata.">
+          Domein-overstijgende verbanden
         </SectionTitle>
         <div className="space-y-3">
           {correlations.map((c, idx) => {
@@ -130,7 +129,7 @@ export default function Reflect() {
           <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
             <Moon className="h-4 w-4 text-personal" /> Sleep vs. energy
           </h3>
-          <p className="text-[11px] text-faint mb-2">Lines track together, short nights pull energy down.</p>
+          <p className="text-[11px] text-faint mb-2">Lijnen bewegen mee, korte nachten trekken energie omlaag.</p>
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={sleepEnergy} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
@@ -149,10 +148,10 @@ export default function Reflect() {
 
         <div className="card p-4">
           <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
-            <Wallet className="h-4 w-4 text-prjct" /> Daily spend vs. deadlines
+            <Wallet className="h-4 w-4 text-prjct" /> Dagelijkse uitgaven vs. deadlines
           </h3>
           <p className="text-[11px] text-faint mb-2">
-            Pink bars = days on/around a PRJCT/campaign deadline.
+            Roze balken = dagen op/rond een PRJCT/campagne deadline.
           </p>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={spendByDay} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -175,7 +174,7 @@ export default function Reflect() {
 
       {/* ANOMALIES */}
       <div>
-        <SectionTitle>Anomalies</SectionTitle>
+        <SectionTitle>Afwijkingen</SectionTitle>
         <div className="space-y-2">
           {anomalies.map((a) => (
             <div key={a.id} className="card p-3 border-orange-500/30 bg-orange-500/5 flex items-start gap-3">
@@ -194,8 +193,8 @@ export default function Reflect() {
 
       {/* PATTERN WRITE-BACK */}
       <div>
-        <SectionTitle hint="Reflect writes refined confidence scores back into Remember.">
-          Patterns reinforced / decayed
+        <SectionTitle hint="Reflectie schrijft verfijnde betrouwbaarheidsscores terug naar het Geheugen.">
+          Patronen versterkt / afgenomen
         </SectionTitle>
         {lastDigest ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -204,7 +203,7 @@ export default function Reflect() {
               return (
                 <div key={r.patternId} className="card p-3 border-buurtkaart/30">
                   <div className="flex items-center gap-1.5 text-buurtkaart text-xs font-medium">
-                    <ArrowUpRight className="h-3.5 w-3.5" /> reinforced
+                    <ArrowUpRight className="h-3.5 w-3.5" /> versterkt
                   </div>
                   <p className="text-sm text-ink-soft mt-1">{p?.text}</p>
                   <p className="text-[11px] text-faint mt-1 tabular-nums">
@@ -218,7 +217,7 @@ export default function Reflect() {
               return (
                 <div key={r.patternId} className="card p-3 border-cross/20">
                   <div className="flex items-center gap-1.5 text-cross text-xs font-medium">
-                    <ArrowDownRight className="h-3.5 w-3.5" /> decayed (not reinforced)
+                    <ArrowDownRight className="h-3.5 w-3.5" /> afgenomen (niet versterkt)
                   </div>
                   <p className="text-sm text-ink-soft mt-1">{p?.text}</p>
                   <p className="text-[11px] text-faint mt-1 tabular-nums">
@@ -230,8 +229,7 @@ export default function Reflect() {
           </div>
         ) : (
           <div className="card p-4 text-sm text-muted">
-            Hit <b className="text-ink">Run nightly reflect</b> to watch confidence scores move, reinforced
-            patterns climb, stale ones decay.
+            Klik op <b className="text-ink">Nachtelijke reflectie uitvoeren</b> om betrouwbaarheidsscores te zien bewegen: versterkte patronen stijgen, verouderde nemen af.
           </div>
         )}
       </div>

@@ -23,30 +23,30 @@ export default function DayBuilder() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-semibold flex items-center gap-2">
-            <CalendarRange className="h-5 w-5 text-personal" /> Day Builder
+            <CalendarRange className="h-5 w-5 text-personal" /> Dagplanner
           </h1>
           <p className="text-sm text-muted mt-1 max-w-xl">
-            A plan shaped to your <span className="text-ink">learned</span> rhythm, deep work sits in your
-            real 09:30–12:30 focus peak, not a default 9am.
+            Een plan afgestemd op jouw <span className="text-ink">aangeleerde</span> ritme: diep werk zit in jouw
+            echte focuspiek van 09:30–12:30, niet een standaard 9u.
           </p>
         </div>
         <button className="btn-primary" onClick={acceptPlan}>
-          <CheckCircle2 className="h-4 w-4" /> Accept plan
+          <CheckCircle2 className="h-4 w-4" /> Plan accepteren
         </button>
       </div>
 
       <div className="flex items-center gap-2 text-xs">
-        <span className="chip bg-buurtkaart/15 text-buurtkaart">{done} done</span>
-        <span className="chip bg-orange-500/15 text-orange-300">{skipped} skipped</span>
-        <span className="chip bg-sunken text-muted">{blocks.length - done - skipped} planned</span>
+        <span className="chip bg-buurtkaart/15 text-buurtkaart">{done} gedaan</span>
+        <span className="chip bg-orange-500/15 text-orange-300">{skipped} overgeslagen</span>
+        <span className="chip bg-sunken text-muted">{blocks.length - done - skipped} gepland</span>
       </div>
 
       {planAdapted && (
         <div className="card p-3 border-cross/40 bg-cross/5 flex items-start gap-2 animate-fade-up">
           <Sparkles className="h-4 w-4 text-cross mt-0.5 shrink-0" />
           <p className="text-sm text-ink-soft">
-            Reflect reshaped this plan: it added an evening <b>wind-down</b> block to protect tomorrow’s sleep
-            (sleep↔energy pattern reinforced). The slow loop just changed your day.
+            Reflectie heeft dit plan aangepast: er is een avond <b>wind-down</b> blok toegevoegd om de slaap van morgen te beschermen
+            (slaap↔energie patroon versterkt). De trage loop veranderde zojuist je dag.
           </p>
         </div>
       )}
@@ -54,7 +54,7 @@ export default function DayBuilder() {
       {/* learned-window banner */}
       <div className="card p-3 flex items-center gap-2 text-sm text-ink-soft">
         <Sun className="h-4 w-4 text-personal" />
-        Learned high-energy window: <b className="text-personal">09:30 – 12:30</b>. Deep work is protected here.
+        Aangeleerd hoog-energie venster: <b className="text-personal">09:30 – 12:30</b>. Diep werk is hier beschermd.
       </div>
 
       {blocks.length ? (
@@ -85,9 +85,9 @@ export default function DayBuilder() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <DomainChip domain={b.domain} small />
-                    {inPeak && <span className="chip bg-personal/15 text-personal">focus peak</span>}
-                    {b.status === 'done' && <span className="chip bg-buurtkaart/15 text-buurtkaart">done</span>}
-                    {b.status === 'skipped' && <span className="chip bg-orange-500/15 text-orange-300">skipped</span>}
+                    {inPeak && <span className="chip bg-personal/15 text-personal">focuspiek</span>}
+                    {b.status === 'done' && <span className="chip bg-buurtkaart/15 text-buurtkaart">gedaan</span>}
+                    {b.status === 'skipped' && <span className="chip bg-orange-500/15 text-orange-300">overgeslagen</span>}
                   </div>
                   <p
                     className={`text-sm mt-1 ${
@@ -103,10 +103,10 @@ export default function DayBuilder() {
                     {b.status === 'planned' ? (
                       <>
                         <button className="btn-ghost !py-1 !px-2.5 text-xs" onClick={() => completeBlock(b.id)}>
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Done
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Gedaan
                         </button>
                         <button className="btn-ghost !py-1 !px-2.5 text-xs" onClick={() => skipBlock(b.id)}>
-                          <SkipForward className="h-3.5 w-3.5" /> Skip
+                          <SkipForward className="h-3.5 w-3.5" /> Overslaan
                         </button>
                       </>
                     ) : (
@@ -139,12 +139,11 @@ export default function DayBuilder() {
           })}
         </div>
       ) : (
-        <Empty>No blocks planned.</Empty>
+        <Empty>Geen blokken gepland.</Empty>
       )}
 
       <p className="text-[11px] text-faint">
-        Skips and completions are written back as training signals, over time the planner stops scheduling what
-        you reliably skip.
+        Overgeslagen en voltooide blokken worden teruggeschreven als trainingssignalen. Na verloop van tijd plant de planner niet meer in wat je consequent overslaat.
       </p>
     </div>
   )

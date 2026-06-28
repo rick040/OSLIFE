@@ -35,7 +35,7 @@ const ED_STATUS: Record<string, { label: string; hex: string }> = {
 }
 
 const eur = (n: number) => '€' + n.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-const fmt = (iso: string) => (iso ? new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' }) : 'geen datum')
+const fmt = (iso: string) => (iso ? new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/Amsterdam' }) : 'geen datum')
 
 const ED0: Edition[] = []
 const SUB0: Submission[] = []

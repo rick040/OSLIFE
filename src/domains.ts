@@ -1,6 +1,6 @@
 import type { Domain, ItemKind, Sentiment } from './types'
 
-export const TODAY = new Date().toISOString().slice(0, 10)
+export const TODAY = new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' })
 
 export const DOMAIN_META: Record<
   Domain,
@@ -53,30 +53,30 @@ export const DOMAIN_HEX: Record<Domain, string> = {
 }
 
 export const KIND_LABEL: Record<ItemKind, string> = {
-  task: 'task',
-  note: 'note',
-  vent: 'vent',
+  task: 'taak',
+  note: 'notitie',
+  vent: 'uitlaatklep',
   link: 'link',
-  voice: 'voice note',
-  transaction: 'transaction',
-  event: 'event',
-  health: 'health',
-  email: 'email',
-  idea: 'idea',
+  voice: 'spraaknotitie',
+  transaction: 'transactie',
+  event: 'evenement',
+  health: 'gezondheid',
+  email: 'e-mail',
+  idea: 'idee',
 }
 
 export const SENTIMENT_META: Record<Sentiment, { label: string; cls: string }> = {
-  positive: { label: 'positive', cls: 'bg-buurtkaart/15 text-buurtkaart-deep' },
-  neutral: { label: 'neutral', cls: 'bg-line text-muted' },
-  negative: { label: 'negative', cls: 'bg-orange-500/15 text-orange-700' },
-  stressed: { label: 'stressed', cls: 'bg-cross/15 text-cross-deep' },
+  positive: { label: 'positief', cls: 'bg-buurtkaart/15 text-buurtkaart-deep' },
+  neutral: { label: 'neutraal', cls: 'bg-line text-muted' },
+  negative: { label: 'negatief', cls: 'bg-orange-500/15 text-orange-700' },
+  stressed: { label: 'gestrest', cls: 'bg-cross/15 text-cross-deep' },
 }
 
-/** Short date like "Jun 24". */
+/** Short date like "24 jun". */
 export function fmtDate(iso: string | null): string {
-  if (!iso) return 'no date'
+  if (!iso) return 'geen datum'
   const d = new Date(iso + (iso.length === 10 ? 'T00:00:00' : ''))
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return d.toLocaleDateString('nl-NL', { month: 'short', day: 'numeric', timeZone: 'Europe/Amsterdam' })
 }
 
 /** Days between two ISO dates (b - a). */

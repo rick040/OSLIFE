@@ -22,12 +22,12 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
       <div className="animate-fade-up">
         <div className="flex items-center gap-2 text-muted text-sm">
           <Sun className="h-4 w-4 text-personal" />
-          Sunday, {fmtDate(TODAY)} · Geldrop
+          {new Date().toLocaleDateString('nl-NL', { weekday: 'long', timeZone: 'Europe/Amsterdam' }).replace(/^\w/, c => c.toUpperCase())}, {fmtDate(TODAY)} · Geldrop
         </div>
-        <h1 className="text-2xl font-semibold mt-1">Good morning, Rick.</h1>
+        <h1 className="text-2xl font-semibold mt-1">{new Date().toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam', hour: '2-digit' }) < '12' ? 'Goedemorgen' : new Date().toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam', hour: '2-digit' }) < '18' ? 'Goedemiddag' : 'Goedenavond'}, Rick.</h1>
         <p className="text-muted text-sm mt-1">
-          {openThreads.length} open loops · {pending.length} blocks planned ·{' '}
-          {habits.filter((h) => h.doneToday).length}/{habits.length} habits done
+          {openThreads.length} open loops · {pending.length} blokken gepland ·{' '}
+          {habits.filter((h) => h.doneToday).length}/{habits.length} gewoonten gedaan
         </p>
       </div>
 
@@ -41,9 +41,9 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
             <Bell className="h-4 w-4 text-cross" />
           </div>
           <div>
-            <div className="text-xs uppercase tracking-wider text-cross font-semibold">Today’s nudge</div>
+            <div className="text-xs uppercase tracking-wider text-cross font-semibold">Nudge van vandaag</div>
             <p className="text-sm text-ink mt-1">{nudge.text}</p>
-            <p className="text-[11px] text-faint mt-1">why: {nudge.reason}</p>
+            <p className="text-[11px] text-faint mt-1">waarom: {nudge.reason}</p>
           </div>
         </div>
       </div>
@@ -52,8 +52,8 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
         {/* left: next + plan */}
         <div className="lg:col-span-2 space-y-6">
           <div className="animate-fade-up" style={{ animationDelay: '80ms' }}>
-            <SectionTitle hint="Surface composes this from memory. Acting writes straight back (fast loop).">
-              What matters now
+            <SectionTitle hint="Overzicht stelt dit samen vanuit het geheugen. Acties schrijven direct terug (snelle loop).">
+              Wat telt nu
             </SectionTitle>
             {nextBlock ? (
               <div className="card p-4">
@@ -67,24 +67,24 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
                 <p className="text-xs text-faint mt-1">{nextBlock.rationale}</p>
                 <div className="flex gap-2 mt-3">
                   <button className="btn-primary" onClick={() => completeBlock(nextBlock.id)}>
-                    <CheckCircle2 className="h-4 w-4" /> Complete
+                    <CheckCircle2 className="h-4 w-4" /> Klaar
                   </button>
                   <button className="btn-ghost" onClick={() => skipBlock(nextBlock.id)}>
-                    <SkipForward className="h-4 w-4" /> Skip
+                    <SkipForward className="h-4 w-4" /> Overslaan
                   </button>
                 </div>
               </div>
             ) : (
-              <Empty>Nothing planned left today. Open the Day Builder to plan more.</Empty>
+              <Empty>Niks meer gepland vandaag. Open de Dagplanner om meer in te plannen.</Empty>
             )}
           </div>
 
           {/* threads */}
           <div className="animate-fade-up" style={{ animationDelay: '120ms' }}>
             <div className="flex items-center justify-between mb-1">
-              <SectionTitle>Open loops needing closure</SectionTitle>
+              <SectionTitle>Open loops</SectionTitle>
               <button className="text-xs text-muted hover:text-ink flex items-center gap-1" onClick={() => onNav('memory')}>
-                all in Memory <ArrowRight className="h-3 w-3" />
+                alles in Geheugen <ArrowRight className="h-3 w-3" />
               </button>
             </div>
             {openThreads.length ? (
@@ -102,7 +102,7 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
                               overdue ? 'text-cross font-medium' : 'text-faint'
                             }`}
                           >
-                            {t.due ? (overdue ? `${-dd!}d overdue` : `due ${fmtDate(t.due)}`) : 'no date'}
+                            {t.due ? (overdue ? `${-dd!}d te laat` : `deadline ${fmtDate(t.due)}`) : 'geen datum'}
                           </span>
                         </div>
                         <p className="text-sm text-ink truncate mt-0.5">{t.title}</p>
@@ -112,14 +112,14 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
                         className="btn-ghost shrink-0 !py-1.5"
                         onClick={() => useStore.getState().closeThread(t.id)}
                       >
-                        <CheckCircle2 className="h-4 w-4" /> Close
+                        <CheckCircle2 className="h-4 w-4" /> Sluiten
                       </button>
                     </div>
                   )
                 })}
               </div>
             ) : (
-              <Empty>All loops closed. Nothing owed right now. 🎉</Empty>
+              <Empty>Alle loops gesloten. Niks meer openstaand. 🎉</Empty>
             )}
           </div>
         </div>
@@ -127,7 +127,7 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
         {/* right: habits + activity */}
         <div className="space-y-6">
           <div className="animate-fade-up" style={{ animationDelay: '120ms' }}>
-            <SectionTitle>Habits</SectionTitle>
+            <SectionTitle>Gewoonten</SectionTitle>
             <div className="space-y-2">
               {habits.map((h) => (
                 <button
@@ -154,7 +154,7 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
           </div>
 
           <div className="animate-fade-up" style={{ animationDelay: '160ms' }}>
-            <SectionTitle hint="Every action becomes a new signal.">Loop activity</SectionTitle>
+            <SectionTitle hint="Elke actie wordt een nieuw signaal.">Loop-activiteit</SectionTitle>
             {activity.length ? (
               <div className="space-y-1.5 max-h-72 overflow-auto pr-1">
                 {activity.map((a) => (
@@ -166,13 +166,13 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
                     />
                     <span className="text-ink-soft">
                       {a.text}
-                      <span className="text-faint"> · {a.loop} loop</span>
+                      <span className="text-faint"> · {a.loop === 'slow' ? 'trage' : 'snelle'} loop</span>
                     </span>
                   </div>
                 ))}
               </div>
             ) : (
-              <Empty>No actions yet. Complete a block or tick a habit.</Empty>
+              <Empty>Nog geen acties. Voltooi een blok of vink een gewoonte aan.</Empty>
             )}
           </div>
         </div>

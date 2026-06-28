@@ -6,10 +6,10 @@ import type { CaptureSource, StructuredItem } from '../types'
 import { Mic, Link2, ListTodo, Type, Check, ArrowDown, Inbox } from 'lucide-react'
 
 const SOURCES: { id: CaptureSource; label: string; icon: typeof Type }[] = [
-  { id: 'capture', label: 'Note', icon: Type },
-  { id: 'voice', label: 'Voice', icon: Mic },
+  { id: 'capture', label: 'Notitie', icon: Type },
+  { id: 'voice', label: 'Spraak', icon: Mic },
   { id: 'link', label: 'Link', icon: Link2 },
-  { id: 'task', label: 'Task', icon: ListTodo },
+  { id: 'task', label: 'Taak', icon: ListTodo },
 ]
 
 export default function Capture() {
@@ -37,10 +37,10 @@ export default function Capture() {
     <div className="max-w-3xl mx-auto space-y-6">
       <div>
         <h1 className="text-xl font-semibold flex items-center gap-2">
-          <Inbox className="h-5 w-5 text-buurtkaart" /> Capture
+          <Inbox className="h-5 w-5 text-buurtkaart" /> Vastleggen
         </h1>
         <p className="text-sm text-muted mt-1">
-          One mouth. Throw anything in, no folder, no tag, no filing decision. The system files it.
+          Één ingang. Gooi alles erin, geen map, geen tag, geen archieerbeslissing. Het systeem regelt het.
         </p>
       </div>
 
@@ -70,19 +70,19 @@ export default function Capture() {
           rows={3}
           placeholder={
             source === 'voice'
-              ? 'Speak your mind… (typed here for the demo)'
+              ? 'Spreek je gedachten uit… (typ hier voor de demo)'
               : source === 'link'
-              ? 'Paste a link and a note…'
+              ? 'Plak een link en een notitie…'
               : source === 'task'
-              ? 'Something to do…'
-              : 'Anything on your mind…'
+              ? 'Iets te doen…'
+              : 'Wat er ook in je hoofd zit…'
           }
           className="w-full rounded-xl bg-surface border border-line px-4 py-3 text-sm outline-none focus:border-buurtkaart/50 resize-none"
         />
         <div className="flex items-center justify-between mt-3">
-          <span className="text-[11px] text-faint">⌘/Ctrl + Enter to drop it in</span>
+          <span className="text-[11px] text-faint">⌘/Ctrl + Enter om op te slaan</span>
           <button className="btn-primary" onClick={submit} disabled={!text.trim()}>
-            Drop it in
+            Opslaan
           </button>
         </div>
       </div>
@@ -90,30 +90,30 @@ export default function Capture() {
       {/* pipeline visualization */}
       {last && (
         <div className="card p-4 animate-fade-up">
-          <SectionTitle hint="Watch it move through the layers, you didn't choose any of this.">
-            Intake → Understand → Remember
+          <SectionTitle hint=”Zie hoe het door de lagen beweegt — jij koos hier niks van.”>
+            Intake → Begrijpen → Onthouden
           </SectionTitle>
-          <div className="space-y-2">
-            <PipeStep active={stage >= 1} label="INTAKE" note="raw item received">
-              <p className="text-sm text-ink-soft">“{last.text}”</p>
+          <div className=”space-y-2”>
+            <PipeStep active={stage >= 1} label=”INTAKE” note=”onbewerkt item ontvangen”>
+              <p className=”text-sm text-ink-soft”>”{last.text}”</p>
             </PipeStep>
-            <div className="flex justify-center">
+            <div className=”flex justify-center”>
               <ArrowDown className={`h-4 w-4 ${stage >= 2 ? 'text-buurtkaart' : 'text-faint'}`} />
             </div>
-            <PipeStep active={stage >= 2} label="UNDERSTAND" note="classified & summarized">
-              <div className="flex flex-wrap gap-1.5">
+            <PipeStep active={stage >= 2} label=”BEGRIJPEN” note=”geclassificeerd & samengevat”>
+              <div className=”flex flex-wrap gap-1.5”>
                 <DomainChip domain={last.domain} small />
                 <KindChip kind={last.kind} />
                 <SentimentChip sentiment={last.sentiment} />
               </div>
-              <p className="text-xs text-muted mt-1.5">“{last.summary}”</p>
+              <p className=”text-xs text-muted mt-1.5”>”{last.summary}”</p>
             </PipeStep>
-            <div className="flex justify-center">
+            <div className=”flex justify-center”>
               <ArrowDown className={`h-4 w-4 ${stage >= 3 ? 'text-buurtkaart' : 'text-faint'}`} />
             </div>
-            <PipeStep active={stage >= 3} label="REMEMBER" note="filed, findable forever">
-              <p className="text-sm text-ink-soft">
-                Stored in your one memory{last.kind === 'task' ? ' and opened as a thread (loop).' : '.'}
+            <PipeStep active={stage >= 3} label=”ONTHOUDEN” note=”opgeslagen, altijd vindbaar”>
+              <p className=”text-sm text-ink-soft”>
+                Opgeslagen in je geheugen{last.kind === 'task' ? ' en geopend als een thread (loop).' : '.'}
               </p>
             </PipeStep>
           </div>
@@ -121,7 +121,7 @@ export default function Capture() {
       )}
 
       <div>
-        <SectionTitle>Recently captured</SectionTitle>
+        <SectionTitle>Onlangs vastgelegd</SectionTitle>
         {recent.length ? (
           <div className="space-y-2">
             {recent.map((i) => (
@@ -136,7 +136,7 @@ export default function Capture() {
             ))}
           </div>
         ) : (
-          <Empty>Nothing captured yet.</Empty>
+          <Empty>Nog niks vastgelegd.</Empty>
         )}
       </div>
     </div>

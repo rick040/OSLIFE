@@ -63,35 +63,35 @@ export interface Screen {
 
 export const SCREENS: Screen[] = [
   // Surface
-  { id: 'dashboard', label: 'Dashboard', icon: Gauge, layer: 'Surface · one glance', group: 'Surface', primary: true, accent: 'text-forest' },
-  { id: 'today', label: 'Today', icon: LayoutDashboard, layer: 'Surface', group: 'Surface', accent: 'text-forest' },
-  { id: 'daybuilder', label: 'Day Builder', icon: CalendarRange, layer: 'Surface', group: 'Surface', accent: 'text-forest' },
+  { id: 'dashboard', label: 'Dashboard', icon: Gauge, layer: 'Overzicht · één oogopslag', group: 'Surface', primary: true, accent: 'text-forest' },
+  { id: 'today', label: 'Vandaag', icon: LayoutDashboard, layer: 'Overzicht', group: 'Surface', accent: 'text-forest' },
+  { id: 'daybuilder', label: 'Dagplanner', icon: CalendarRange, layer: 'Overzicht', group: 'Surface', accent: 'text-forest' },
 
   // Life
-  { id: 'vitals', label: 'Vitals', icon: Activity, layer: 'Life · health', group: 'Life', primary: true, accent: 'text-cross' },
-  { id: 'habits', label: 'Habits', icon: Repeat, layer: 'Life · gedrag', group: 'Life', accent: 'text-buurtkaart' },
-  { id: 'signals', label: 'Signalen', icon: Radar, layer: 'Life · gedrag', group: 'Life', accent: 'text-personal' },
-  { id: 'money', label: 'Money', icon: Wallet, layer: 'Life · finance', group: 'Life', primary: true, accent: 'text-buurtkaart' },
-  { id: 'dog', label: 'Kyra', icon: Dog, layer: 'Life · hond', group: 'Life', accent: 'text-personal' },
-  { id: 'inbox', label: 'Inbox', icon: Mail, layer: 'Life · mail', group: 'Life', accent: 'text-parkingyou' },
-  { id: 'northstar', label: 'North Star', icon: Target, layer: 'Life · goals', group: 'Life', accent: 'text-prjct' },
+  { id: 'vitals', label: 'Gezondheid', icon: Activity, layer: 'Leven · gezondheid', group: 'Life', primary: true, accent: 'text-cross' },
+  { id: 'habits', label: 'Gewoonten', icon: Repeat, layer: 'Leven · gedrag', group: 'Life', accent: 'text-buurtkaart' },
+  { id: 'signals', label: 'Signalen', icon: Radar, layer: 'Leven · gedrag', group: 'Life', accent: 'text-personal' },
+  { id: 'money', label: 'Geld', icon: Wallet, layer: 'Leven · financiën', group: 'Life', primary: true, accent: 'text-buurtkaart' },
+  { id: 'dog', label: 'Kyra', icon: Dog, layer: 'Leven · hond', group: 'Life', accent: 'text-personal' },
+  { id: 'inbox', label: 'Inbox', icon: Mail, layer: 'Leven · mail', group: 'Life', accent: 'text-parkingyou' },
+  { id: 'northstar', label: 'Noordster', icon: Target, layer: 'Leven · doelen', group: 'Life', accent: 'text-prjct' },
 
   // Business
   { id: 'crm', label: 'CRM', icon: Users, layer: 'Business · klanten', group: 'Business', primary: true, accent: 'text-prjct' },
-  { id: 'projects', label: 'Projects', icon: FolderKanban, layer: 'Business · werk', group: 'Business', accent: 'text-prjct' },
+  { id: 'projects', label: 'Projecten', icon: FolderKanban, layer: 'Business · werk', group: 'Business', accent: 'text-prjct' },
   { id: 'strategiehq', label: 'Strategie HQ', icon: Compass, layer: 'Business · strategie', group: 'Business', accent: 'text-forest' },
   { id: 'buurtkaart', label: 'Buurtkaart', icon: Map, layer: 'Business · Geldrop', group: 'Business', accent: 'text-buurtkaart' },
   { id: 'eyes', label: 'The Eyes', icon: Eye, layer: 'Business · monitoring', group: 'Business', accent: 'text-cross' },
   { id: 'dakmeester', label: 'Dakmeester', icon: Home, layer: 'Business · klant', group: 'Business', accent: 'text-parkingyou' },
 
   // Intake
-  { id: 'heyra', label: 'HEYRA', icon: MessageSquare, layer: 'Intake · Understand', group: 'Intake', accent: 'text-prjct' },
-  { id: 'capture', label: 'Capture', icon: Inbox, layer: 'Intake', group: 'Intake', primary: true, accent: 'text-forest' },
+  { id: 'heyra', label: 'HEYRA', icon: MessageSquare, layer: 'Intake · Begrijpen', group: 'Intake', accent: 'text-prjct' },
+  { id: 'capture', label: 'Vastleggen', icon: Inbox, layer: 'Intake', group: 'Intake', primary: true, accent: 'text-forest' },
 
   // Reflect
-  { id: 'memory', label: 'Memory', icon: Database, layer: 'Remember', group: 'Reflect', accent: 'text-muted' },
-  { id: 'reflect', label: 'Reflect', icon: Brain, layer: 'Reflect', group: 'Reflect', accent: 'text-cross' },
-  { id: 'mindmap', label: 'Verbanden', icon: Network, layer: 'Reflect · graph', group: 'Reflect', accent: 'text-prjct' },
+  { id: 'memory', label: 'Geheugen', icon: Database, layer: 'Herinnering', group: 'Reflect', accent: 'text-muted' },
+  { id: 'reflect', label: 'Reflectie', icon: Brain, layer: 'Reflectie', group: 'Reflect', accent: 'text-cross' },
+  { id: 'mindmap', label: 'Verbanden', icon: Network, layer: 'Reflectie · grafiek', group: 'Reflect', accent: 'text-prjct' },
 ]
 
 export const GROUP_ORDER: ScreenGroup[] = ['Surface', 'Life', 'Business', 'Intake', 'Reflect']

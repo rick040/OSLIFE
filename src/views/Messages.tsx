@@ -17,7 +17,7 @@ function timeAgo(iso: string): string {
   if (h < 24) return `${h}u`
   const d = Math.round(h / 24)
   if (d < 7) return `${d}d`
-  return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
+  return new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', timeZone: 'Europe/Amsterdam' })
 }
 
 interface Conversation {

@@ -27,7 +27,7 @@ export default function Vitals() {
       <div className="space-y-6 max-w-4xl mx-auto">
         <div>
           <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Activity className="h-5 w-5 text-buurtkaart" /> Vitals
+            <Activity className="h-5 w-5 text-buurtkaart" /> Gezondheid
           </h1>
           <p className="text-sm text-muted mt-1">Geen gezondheidsdata beschikbaar.</p>
         </div>
