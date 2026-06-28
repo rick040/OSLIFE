@@ -11,9 +11,9 @@ export default function Memory() {
   const [tab, setTab] = useState<Tab>('threads')
 
   const tabs: { id: Tab; label: string; icon: typeof Lock; count: number; desc: string }[] = [
-    { id: ‘essentials’, label: ‘Feiten’, icon: Lock, count: essentials.length, desc: ‘Permanente feiten. Ze veranderen niet en verlopen niet.’ },
-    { id: ‘threads’, label: ‘Threads’, icon: GitBranch, count: threads.filter((t) => t.status === ‘open’).length, desc: ‘Open loops & openstaande beloften. Deze vragen om afsluiting.’ },
-    { id: ‘patterns’, label: ‘Patronen’, icon: Repeat, count: patterns.length, desc: ‘Terugkerende observaties, gewogen op betrouwbaarheid. Ze nemen af als ze niet worden versterkt.’ },
+    { id: 'essentials', label: 'Feiten', icon: Lock, count: essentials.length, desc: 'Permanente feiten. Ze veranderen niet en verlopen niet.' },
+    { id: 'threads', label: 'Threads', icon: GitBranch, count: threads.filter((t) => t.status === 'open').length, desc: 'Open loops & openstaande beloften. Deze vragen om afsluiting.' },
+    { id: 'patterns', label: 'Patronen', icon: Repeat, count: patterns.length, desc: 'Terugkerende observaties, gewogen op betrouwbaarheid. Ze nemen af als ze niet worden versterkt.' },
   ]
 
   return (
@@ -88,7 +88,7 @@ export default function Memory() {
                     <p className={`text-sm mt-0.5 truncate ${t.status === 'closed' ? 'line-through text-faint' : 'text-ink'}`}>
                       {t.title}
                     </p>
-                    <p className="text-[11px] text-faint">→ {t.owedTo}</p>
+                    <p className="text-[11px] text-faint">{'→'} {t.owedTo}</p>
                   </div>
                   {t.status === 'open' ? (
                     <button className="btn-ghost shrink-0 !py-1.5" onClick={() => closeThread(t.id)}>

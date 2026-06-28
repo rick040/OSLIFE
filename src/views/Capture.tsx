@@ -25,7 +25,7 @@ export default function Capture() {
     const item = store.capture(clean, source)
     setLast(item)
     setText('')
-    // animate the pipeline: intake → understand → remember
+    // animate the pipeline: intake -> understand -> remember
     setStage(1)
     setTimeout(() => setStage(2), 450)
     setTimeout(() => setStage(3), 950)
@@ -90,29 +90,29 @@ export default function Capture() {
       {/* pipeline visualization */}
       {last && (
         <div className="card p-4 animate-fade-up">
-          <SectionTitle hint=”Zie hoe het door de lagen beweegt — jij koos hier niks van.”>
-            Intake → Begrijpen → Onthouden
+          <SectionTitle hint="Zie hoe het door de lagen beweegt -- jij koos hier niks van.">
+            Intake {'->'} Begrijpen {'->'} Onthouden
           </SectionTitle>
-          <div className=”space-y-2”>
-            <PipeStep active={stage >= 1} label=”INTAKE” note=”onbewerkt item ontvangen”>
-              <p className=”text-sm text-ink-soft”>”{last.text}”</p>
+          <div className="space-y-2">
+            <PipeStep active={stage >= 1} label="INTAKE" note="onbewerkt item ontvangen">
+              <p className="text-sm text-ink-soft">"{last.text}"</p>
             </PipeStep>
-            <div className=”flex justify-center”>
+            <div className="flex justify-center">
               <ArrowDown className={`h-4 w-4 ${stage >= 2 ? 'text-buurtkaart' : 'text-faint'}`} />
             </div>
-            <PipeStep active={stage >= 2} label=”BEGRIJPEN” note=”geclassificeerd & samengevat”>
-              <div className=”flex flex-wrap gap-1.5”>
+            <PipeStep active={stage >= 2} label="BEGRIJPEN" note="geclassificeerd & samengevat">
+              <div className="flex flex-wrap gap-1.5">
                 <DomainChip domain={last.domain} small />
                 <KindChip kind={last.kind} />
                 <SentimentChip sentiment={last.sentiment} />
               </div>
-              <p className=”text-xs text-muted mt-1.5”>”{last.summary}”</p>
+              <p className="text-xs text-muted mt-1.5">"{last.summary}"</p>
             </PipeStep>
-            <div className=”flex justify-center”>
+            <div className="flex justify-center">
               <ArrowDown className={`h-4 w-4 ${stage >= 3 ? 'text-buurtkaart' : 'text-faint'}`} />
             </div>
-            <PipeStep active={stage >= 3} label=”ONTHOUDEN” note=”opgeslagen, altijd vindbaar”>
-              <p className=”text-sm text-ink-soft”>
+            <PipeStep active={stage >= 3} label="ONTHOUDEN" note="opgeslagen, altijd vindbaar">
+              <p className="text-sm text-ink-soft">
                 Opgeslagen in je geheugen{last.kind === 'task' ? ' en geopend als een thread (loop).' : '.'}
               </p>
             </PipeStep>
