@@ -16,6 +16,7 @@ import type {
   HealthDay,
   Project,
   ProjectStatus,
+  Task,
   Goal,
   Milestone,
   EmailItem,
@@ -130,6 +131,10 @@ interface State {
 
   // Projects + Money
   setProjectStatus: (id: string, status: ProjectStatus) => void
+  updateProject: (id: string, patch: Partial<Pick<Project, 'status' | 'priority' | 'deadline' | 'value'>>) => void
+  addProjectTask: (projectId: string, task: Omit<Task, 'id'>) => void
+  toggleProjectTask: (projectId: string, taskId: string, done: boolean) => void
+  deleteProjectTask: (projectId: string, taskId: string) => void
   addTransactions: (txns: Transaction[]) => void
   markPaymentPaid: (id: string) => void
 
@@ -446,6 +451,54 @@ export const useStore = create<State>()(
             }),
           }
         }),
+
+      updateProject: (id, patch) =>
+        set((s) => {
+          const p = s.projects.find((x) => x.id === id)
+          if (!p) return {}
+          const progress =
+            patch.status === 'done' ? 1
+            : patch.status === 'review' ? Math.max(p.progress, 0.85)
+            : p.progress
+          return {
+            projects: s.projects.map((x) =>
+              x.id === id ? { ...x, ...patch, progress } : x
+            ),
+            activity: pushSignal(s.activity, {
+              text: `Project "${p.name}" bijgewerkt`,
+              domain: p.domain,
+              loop: 'fast',
+            }),
+          }
+        }),
+
+      addProjectTask: (projectId, task) =>
+        set((s) => {
+          const t: Task = { id: uid('task'), ...task }
+          return {
+            projects: s.projects.map((p) =>
+              p.id === projectId ? { ...p, tasks: [...(p.tasks ?? []), t] } : p
+            ),
+          }
+        }),
+
+      toggleProjectTask: (projectId, taskId, done) =>
+        set((s) => ({
+          projects: s.projects.map((p) =>
+            p.id === projectId
+              ? { ...p, tasks: (p.tasks ?? []).map((t) => (t.id === taskId ? { ...t, done } : t)) }
+              : p
+          ),
+        })),
+
+      deleteProjectTask: (projectId, taskId) =>
+        set((s) => ({
+          projects: s.projects.map((p) =>
+            p.id === projectId
+              ? { ...p, tasks: (p.tasks ?? []).filter((t) => t.id !== taskId) }
+              : p
+          ),
+        })),
 
       addTransactions: (txns) =>
         set((s) => {

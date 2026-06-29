@@ -163,9 +163,19 @@ export default function Messages({
                           <span className="text-sm font-semibold truncate">{c.contact}</span>
                           <span className="text-[11px] text-faint shrink-0">{timeAgo(c.latest.ts)}</span>
                         </div>
-                        {c.projectName && (
-                          <span className="inline-block text-[10px] font-semibold text-prjct-deep bg-prjct/12 px-1.5 py-0.5 rounded mt-1 max-w-full truncate">{c.projectName}</span>
-                        )}
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          {c.projectName && (
+                            <span className="text-[10px] font-semibold text-prjct-deep bg-prjct/12 px-1.5 py-0.5 rounded max-w-[130px] truncate shrink-0">{c.projectName}</span>
+                          )}
+                          {c.channels.size > 1 && [...c.channels].map((ch) => (
+                            <span
+                              key={ch}
+                              className="h-1.5 w-1.5 rounded-full shrink-0"
+                              style={{ background: CH[ch].hex }}
+                              title={CH[ch].label}
+                            />
+                          ))}
+                        </div>
                         <div className="flex items-center gap-1.5 mt-1">
                           <span className={`flex-1 min-w-0 text-xs truncate ${c.unread ? 'text-ink font-medium' : 'text-faint'}`}>
                             {c.latest.subject ? c.latest.subject : c.latest.snippet}
