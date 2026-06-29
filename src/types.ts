@@ -180,10 +180,11 @@ export interface Project {
   deadline: string | null // ISO date
   progress: number // 0..1
   value: number // EUR
-  // CRM enrichment (mirrors Notion Projects DB)
+  // Enriched from Notion (synced via notion-sync edge function)
   type?: string[] // Website, Branding, Logo, Social Media, ...
   priority?: Priority
   clientId?: string
+  notionUrl?: string
   tasks?: Task[]
 }
 

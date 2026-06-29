@@ -148,7 +148,52 @@ function domainFor(text) {
   return 'personal';
 }
 
-// ── 1. NOTION → projects ─────────────────────────────────────────────────────
+// ── 1. NOTION → projects + clients ───────────────────────────────────────────
+
+var NOTION_STATUS_MAP = {
+  'In uitvoering': 'active',
+  'Gepland':       'lead',
+  'Gepauzeerd':    'blocked',
+  'Opgeleverd':    'done',
+};
+
+function notionFetch_(path, payload) {
+  var res = UrlFetchApp.fetch('https://api.notion.com/v1' + path, {
+    method: payload ? 'post' : 'get',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + prop('NOTION_TOKEN'), 'Notion-Version': '2022-06-28' },
+    payload: payload ? JSON.stringify(payload) : undefined,
+    muteHttpExceptions: true,
+  });
+  var code = res.getResponseCode();
+  if (code >= 300) throw new Error('Notion ' + path + ' HTTP ' + code + ': ' + res.getContentText().slice(0, 200));
+  return JSON.parse(res.getContentText());
+}
+
+function queryAllPages_(dbId) {
+  var pages = [], cursor;
+  do {
+    var body = { page_size: 100 };
+    if (cursor) body.start_cursor = cursor;
+    var data = notionFetch_('/databases/' + dbId + '/query', body);
+    pages = pages.concat(data.results || []);
+    cursor = data.has_more ? data.next_cursor : null;
+  } while (cursor);
+  return pages;
+}
+
+function notionText_(prop) {
+  if (!prop) return '';
+  var arr = prop.title || prop.rich_text || [];
+  return arr.map(function(t) { return t.plain_text; }).join('');
+}
+function notionSelect_(prop) { return prop && (prop.select || prop.status) ? (prop.select || prop.status).name : null; }
+function notionMultiSelect_(prop) { return prop && prop.multi_select ? prop.multi_select.map(function(o){return o.name;}) : []; }
+function notionDate_(prop) { return prop && prop.date ? prop.date.start : null; }
+function notionNumber_(prop) { return prop && typeof prop.number === 'number' ? prop.number : 0; }
+function notionEmail_(prop) { return prop && prop.email ? prop.email : null; }
+function notionUrl_(prop) { return prop && prop.url ? prop.url : null; }
+
 function syncNotion() {
   var lock = acquireLock_();
   if (!lock) { log('syncNotion: another run in progress — skipping'); return; }
@@ -157,41 +202,80 @@ function syncNotion() {
     var dbId = prop('NOTION_DB_ID');
     if (!dbId) { log('syncNotion: NOTION_DB_ID not set — aborting'); return; }
 
-    var res = UrlFetchApp.fetch('https://api.notion.com/v1/databases/' + dbId + '/query', {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { Authorization: 'Bearer ' + prop('NOTION_TOKEN'), 'Notion-Version': '2022-06-28' },
-      payload: '{}',
-      muteHttpExceptions: true
-    });
-    var code = res.getResponseCode();
-    log('syncNotion: Notion API HTTP ' + code);
-    if (code >= 300) {
-      log('syncNotion: error — ' + res.getContentText().slice(0, 300));
-      throw new Error('Notion API error (' + code + ')');
-    }
-
-    var pages = JSON.parse(res.getContentText()).results || [];
+    var pages = queryAllPages_(dbId);
     log('syncNotion: fetched ' + pages.length + ' pages');
 
-    var rows = pages.map(function (pg) {
-      var p = pg.properties;
-      var name      = (p.Name   && p.Name.title[0])      ? p.Name.title[0].plain_text        : 'Untitled';
-      var status    = (p.Status && p.Status.status)       ? p.Status.status.name.toLowerCase() : 'lead';
-      var client    = (p.Client && p.Client.rich_text[0]) ? p.Client.rich_text[0].plain_text  : '';
-      var deadline  = (p.Deadline && p.Deadline.date)     ? p.Deadline.date.start             : null;
-      var value     = (p.Value    && typeof p.Value.number    === 'number') ? p.Value.number    : 0;
-      var progress  = (p.Progress && typeof p.Progress.number === 'number') ? p.Progress.number : 0;
-      var validStatus = ['lead','active','review','blocked','done'].indexOf(status) >= 0 ? status : 'lead';
-      return {
-        name: name, client: client, domain: domainFor(name + ' ' + client),
-        status: validStatus, deadline: deadline, value: value, progress: progress,
-        source: 'notion', external_id: pg.id
-      };
-    });
+    var rows = pages
+      .map(function (pg) {
+        var p = pg.properties;
+        var name = notionText_(p['Name']) || 'Untitled';
+        if (name.charAt(0) === '{') return null; // skip template rows
+
+        var notionStatus = notionSelect_(p['Status']);
+        var appStatus    = NOTION_STATUS_MAP[notionStatus] || 'lead';
+        var client       = notionText_(p['Client']);
+        var types        = notionMultiSelect_(p['Type']);
+
+        return {
+          external_id: pg.id,
+          notion_url:  pg.url,
+          name:        name,
+          client:      client,
+          domain:      domainFor(name + ' ' + client),
+          status:      appStatus,
+          type:        types,
+          prioriteit:  notionSelect_(p['Prioriteit']),
+          start_datum: notionDate_(p['Start Datum']),
+          deadline:    notionDate_(p['Deadline']),
+          value:       notionNumber_(p['Budget']),
+          progress:    notionNumber_(p['Progress']),
+          source:      'notion',
+        };
+      })
+      .filter(function(r) { return r !== null; });
 
     supabaseUpsert('projects', rows, 'user_id,external_id');
     log('syncNotion: done — ' + rows.length + ' rows');
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ── 1b. NOTION Clients DB → clients table ────────────────────────────────────
+function syncClients() {
+  var lock = acquireLock_();
+  if (!lock) { log('syncClients: another run in progress — skipping'); return; }
+  try {
+    log('syncClients: start');
+    var dbId = prop('NOTION_CLIENTS_DB_ID');  // set in Script Properties: 239ddc8e-9208-8102-86b9-eda32f63e815
+    if (!dbId) { log('syncClients: NOTION_CLIENTS_DB_ID not set — skipping'); return; }
+
+    var pages = queryAllPages_(dbId);
+    log('syncClients: fetched ' + pages.length + ' pages');
+
+    var rows = pages
+      .map(function (pg) {
+        var p = pg.properties;
+        var name = notionText_(p['Name']);
+        if (!name) return null;
+        return {
+          external_id:   pg.id,
+          notion_url:    pg.url,
+          name:          name,
+          client_status: notionSelect_(p['Client Status']),
+          crm_status:    notionSelect_(p['CRM Status']),
+          first_contact: notionDate_(p['First Contact']),
+          email:         notionEmail_(p['Email']),
+          website_url:   notionUrl_(p['Website URL']),
+          potentie:      notionSelect_(p['Potentie']),
+          scope:         notionNumber_(p['Scope']),
+          domain:        domainFor(name),
+        };
+      })
+      .filter(function(r) { return r !== null; });
+
+    supabaseUpsert('clients', rows, 'user_id,external_id');
+    log('syncClients: done — ' + rows.length + ' rows');
   } finally {
     lock.releaseLock();
   }

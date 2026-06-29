@@ -55,6 +55,7 @@ import {
   fetchLocationDays,
   fetchMusicDays,
   fetchProjects,
+  fetchClients,
 } from './lib/supabase'
 
 export interface ActivitySignal {
@@ -569,6 +570,7 @@ export const useStore = create<State>()(
             locationDays,
             musicDays,
             projects,
+            clients,
           ] = await Promise.all([
             fetchHealthDays(),
             fetchTransactions(),
@@ -585,6 +587,7 @@ export const useStore = create<State>()(
             fetchLocationDays(),
             fetchMusicDays(),
             fetchProjects(),
+            fetchClients(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -604,6 +607,7 @@ export const useStore = create<State>()(
             ...(locationDays.length > 0 && { locationDays }),
             ...(musicDays.length > 0 && { musicDays }),
             ...(projects.length > 0 && { projects }),
+            ...(clients.length > 0 && { clients }),
             dataSource: 'live',
             isLoading: false,
           })
