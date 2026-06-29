@@ -17,6 +17,8 @@ import type {
   Pattern,
   Project,
   ProjectStatus,
+  Client,
+  ClientStatus,
   Payment,
 } from '../types'
 import { TODAY } from '../domains'
@@ -432,18 +434,40 @@ export async function fetchMusicDays(): Promise<MusicDay[]> {
 export async function fetchProjects(): Promise<Project[]> {
   const { data } = await supabase
     .from('projects')
-    .select('id,name,client,domain,status,deadline,value,progress')
+    .select('id,name,client,domain,status,deadline,value,progress,type,prioriteit,notion_url')
     .not('status', 'eq', 'done')
     .order('deadline', { ascending: true, nullsFirst: false })
 
   return (data ?? []).map((r) => ({
-    id: r.id as string,
-    name: r.name as string,
-    client: (r.client as string) ?? '',
-    domain: ((r.domain as Domain) ?? 'personal'),
-    status: ((r.status as ProjectStatus) ?? 'lead'),
-    deadline: (r.deadline as string) ?? null,
-    progress: (r.progress as number) ?? 0,
-    value: (r.value as number) ?? 0,
+    id:         r.id as string,
+    name:       r.name as string,
+    client:     (r.client as string) ?? '',
+    domain:     ((r.domain as Domain) ?? 'personal'),
+    status:     ((r.status as ProjectStatus) ?? 'lead'),
+    deadline:   (r.deadline as string) ?? null,
+    progress:   (r.progress as number) ?? 0,
+    value:      (r.value as number) ?? 0,
+    type:       (r.type as string[]) ?? [],
+    priority:   (r.prioriteit as Project['priority']) ?? undefined,
+    notionUrl:  (r.notion_url as string) ?? undefined,
+  }))
+}
+
+export async function fetchClients(): Promise<Client[]> {
+  const { data } = await supabase
+    .from('clients')
+    .select('id,name,domain,client_status,potentie,scope,first_contact,email,website_url,notion_url')
+    .order('name', { ascending: true })
+
+  return (data ?? []).map((r) => ({
+    id:           r.id as string,
+    name:         r.name as string,
+    domain:       ((r.domain as Domain) ?? 'personal'),
+    clientStatus: (r.client_status as ClientStatus) ?? null,
+    potentie:     (r.potentie as Client['potentie']) ?? null,
+    scope:        (r.scope as number) ?? null,
+    firstContact: (r.first_contact as string) ?? null,
+    email:        (r.email as string) ?? null,
+    website:      (r.website_url as string) ?? null,
   }))
 }
