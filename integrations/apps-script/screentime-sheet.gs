@@ -24,17 +24,41 @@ function syncScreentimeSheet() {
   try {
     var ss = openSheetById_('SCREENTIME_SHEET_ID');
     var rows = screentimeRows_(ss);
-    if (!rows.length) { log('syncScreentimeSheet: no rows'); return; }
+    var unlocks = screentimeUnlocks_(ss);
+    if (!rows.length && !unlocks.length) { log('syncScreentimeSheet: no rows'); return; }
+
+    // Unlocks are small (one per day) — send once.
+    if (unlocks.length) ingestPost_(url, { unlocks: unlocks });
 
     var CHUNK = 400, total = 0;
     for (var k = 0; k < rows.length; k += CHUNK) {
       var resp = ingestPost_(url, { rows: rows.slice(k, k + CHUNK) });
-      total += (resp && resp.upserted) || 0;
+      total += (resp && resp.apps && resp.apps.upserted) || 0;
     }
-    log('syncScreentimeSheet: ' + rows.length + ' rows (upserted ' + total + ')');
+    log('syncScreentimeSheet: ' + rows.length + ' app-rows (upserted ' + total + '), ' + unlocks.length + ' unlock-days');
   } finally {
     lock.releaseLock();
   }
+}
+
+// "Ontgrendelingen" tab: Datum | Aantal ontgrendelingen → pickups per day.
+function screentimeUnlocks_(ss) {
+  var sheets = ss.getSheets();
+  for (var s = 0; s < sheets.length; s++) {
+    if (sheets[s].getName().trim().toLowerCase().indexOf('ontgrendel') === -1) continue;
+    var d = sheets[s].getDataRange().getValues();
+    if (d.length < 2) return [];
+    var dateC = colIdx_(d[0], ['datum', 'date']);
+    var cntC = colIdx_(d[0], ['ontgrendel', 'unlock', 'aantal', 'count']);
+    if (dateC === -1 || cntC === -1) return [];
+    var out = [];
+    for (var i = 1; i < d.length; i++) {
+      var date = sheetDate_(d[i][dateC]); if (!date) continue;
+      out.push({ usage_date: date, count: sheetNum_(d[i][cntC]) });
+    }
+    return out;
+  }
+  return [];
 }
 
 function screentimeRows_(ss) {

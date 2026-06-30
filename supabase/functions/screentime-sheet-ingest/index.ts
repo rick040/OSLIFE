@@ -34,6 +34,11 @@ interface InRow {
   category?: string;
 }
 
+interface UnlockRow {
+  usage_date: string;
+  count?: number;
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -47,15 +52,28 @@ Deno.serve(async (req) => {
   const secret = req.headers.get("x-ingest-secret") ?? "";
   if (INGEST_SECRET && secret !== INGEST_SECRET) return json({ ok: false, error: "Unauthorized" }, 401);
 
-  let payload: { rows?: InRow[] };
+  let payload: { rows?: InRow[]; unlocks?: UnlockRow[] };
   try {
     payload = await req.json();
   } catch {
     return json({ ok: false, error: "Invalid JSON" }, 400);
   }
 
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  const result: Record<string, unknown> = { ok: true };
+
+  // ── Phone unlocks → screentime_daily.pickups ──────────────────────────────
+  const unlocksIn = (payload.unlocks ?? []).filter((u) => u && u.usage_date);
+  if (unlocksIn.length) {
+    const byDay = new Map<string, number>();
+    for (const u of unlocksIn) byDay.set(u.usage_date, (byDay.get(u.usage_date) ?? 0) + Math.round(u.count ?? 0));
+    const uRows = [...byDay.entries()].map(([usage_date, pickups]) => ({ user_id: USER_ID, usage_date, pickups }));
+    const { error } = await supabase.from("screentime_daily").upsert(uRows, { onConflict: "user_id,usage_date", ignoreDuplicates: false });
+    result.unlocks = error ? { error: error.message } : { upserted: uRows.length };
+  }
+
   const rowsIn = (payload.rows ?? []).filter((r) => r && r.usage_date);
-  if (!rowsIn.length) return json({ ok: true, upserted: 0 });
+  if (!rowsIn.length) return json(result);
 
   // Aggregate by (date, app, category): the same app can appear multiple times
   // per day (e.g. across devices, or repeated exports). Summing avoids the
@@ -75,11 +93,11 @@ Deno.serve(async (req) => {
   }
   const rows = [...byKey.values()];
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   const { error, count } = await supabase
     .from("screentime")
     .upsert(rows, { onConflict: "user_id,dedup_key", ignoreDuplicates: false, count: "exact" });
 
-  if (error) return json({ ok: false, error: error.message }, 500);
-  return json({ ok: true, received: rows.length, upserted: count ?? rows.length });
+  if (error) { result.ok = false; result.error = error.message; return json(result, 500); }
+  result.apps = { received: rows.length, upserted: count ?? rows.length };
+  return json(result);
 });
