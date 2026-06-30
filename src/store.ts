@@ -32,6 +32,7 @@ import type {
   DogMedical,
   DogReminder,
   DogProfile,
+  TaskDraft,
 } from './types'
 import { classify } from './understand'
 import { runReflect, computeCorrelations, computeAnomalies } from './reflect'
@@ -123,7 +124,10 @@ interface State {
   isLoading: boolean
 
   // INTAKE → UNDERSTAND → REMEMBER
-  capture: (text: string, source: CaptureSource) => StructuredItem
+  capture: (text: string, source: CaptureSource, opts?: { openThread?: boolean }) => StructuredItem
+
+  // HEYRA Taakmaker — commit a parsed task draft as an open loop (thread)
+  addTask: (draft: TaskDraft) => string
 
   // ACT (fast loop, writes outcomes back as signals)
   closeThread: (id: string) => void
@@ -239,8 +243,9 @@ export const useStore = create<State>()(
     (set, get) => ({
       ...seed(),
 
-      capture: (text, source) => {
+      capture: (text, source, opts) => {
         const c = classify(text, source)
+        const openThread = opts?.openThread !== false
         const item: StructuredItem = {
           id: uid('item'),
           text,
@@ -251,7 +256,7 @@ export const useStore = create<State>()(
         set((s) => {
           // a captured task or vent with a "promise" shape opens a thread (REMEMBER)
           const threads = [...s.threads]
-          if (c.kind === 'task') {
+          if (c.kind === 'task' && openThread) {
             threads.unshift({
               id: uid('thr'),
               domain: c.domain,
@@ -273,8 +278,34 @@ export const useStore = create<State>()(
           }
         })
         // a new thread (owed loop) changes the persisted brain state
-        if (c.kind === 'task') void persistBrainState(persistableThreads(get().threads), get().patterns)
+        if (c.kind === 'task' && openThread) void persistBrainState(persistableThreads(get().threads), get().patterns)
         return item
+      },
+
+      addTask: (draft) => {
+        const id = uid('thr')
+        const due = draft.due ?? null
+        set((s) => ({
+          threads: [
+            {
+              id,
+              domain: draft.domain,
+              title: draft.title,
+              owedTo: 'self (HEYRA)',
+              due,
+              status: 'open' as const,
+              createdAt: new Date().toISOString(),
+            },
+            ...s.threads,
+          ],
+          activity: pushSignal(s.activity, {
+            text: `Taak toegevoegd via HEYRA → ${DOMAIN_META[draft.domain].label}${draft.due ? ` · deadline ${draft.due.slice(5)}` : ''}`,
+            domain: draft.domain,
+            loop: 'fast',
+          }),
+        }))
+        void persistBrainState(persistableThreads(get().threads), get().patterns)
+        return id
       },
 
       closeThread: (id) => {
