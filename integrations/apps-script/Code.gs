@@ -1,16 +1,18 @@
 /**
  * OSLIFE · Google Apps Script ingestion hub
  * ------------------------------------------------------------------
- * Account-level pulls (Notion, Gmail, Calendar, payments-calendar) on a
- * time-driven trigger. Normalizes each source and upserts into Supabase via
- * PostgREST using the service_role key (bypasses RLS). Writes ONLY to the
- * OSLIFE project (nhyunnnmdcmojvkxrbpl) — no Vercel / rick-os middleman.
+ * ONE standalone Apps Script project handles ALL OSLIFE ingestion. Create it at
+ * script.google.com → New project (do NOT bind it to a sheet). It writes ONLY
+ * to the OSLIFE project (nhyunnnmdcmojvkxrbpl) — no Vercel / rick-os middleman.
  *
- * The Google-Sheet sources live in their own Sheet-bound projects, each
- * POSTing to a Supabase edge function:
- *   Health      → health-sheets.gs      → /functions/v1/health-sheets-ingest
- *   Betalingen  → payments-sheet.gs     → /functions/v1/payments-sheet-ingest
- *   Schermtijd  → screentime-sheet.gs   → /functions/v1/screentime-sheet-ingest
+ * Add these files to this one project:
+ *   Code.gs              (this file) — Notion, Gmail, Calendar, payments-calendar
+ *   health-sheets.gs     — reads your Health sheet  (by id)  → health-sheets-ingest
+ *   payments-sheet.gs    — reads your Betalingen sheet (by id) → payments-sheet-ingest
+ *   screentime-sheet.gs  — reads your Schermtijd sheet (by id) → screentime-sheet-ingest
+ *
+ * The sheet readers open your sheets BY ID (SpreadsheetApp.openById), so you do
+ * NOT touch the existing Apps Script that fills each sheet — leave those as-is.
  *
  * SETUP
  * 1. Project Settings → Script Properties, add:
@@ -18,22 +20,42 @@
  *      SUPABASE_SERVICE_KEY  <service_role key from Supabase dashboard>
  *      OSLIFE_USER_ID        <auth.users uuid of your account>
  *      NOTION_TOKEN          secret_xxx
- *      NOTION_DB_ID          <projects database id: 239ddc8e-9208-8186-b452-cc35f89677ff>
- *      NOTION_CLIENTS_DB_ID  <clients database id: 239ddc8e-9208-8102-86b9-eda32f63e815>
- *      PAYMENTS_CAL_ID       <your payments Google Calendar ID>
+ *      NOTION_DB_ID          239ddc8e-9208-8186-b452-cc35f89677ff   (Projects)
+ *      NOTION_CLIENTS_DB_ID  239ddc8e-9208-8102-86b9-eda32f63e815   (Clients)
+ *      PAYMENTS_CAL_ID       <your payments Google Calendar id>
+ *      INGEST_SECRET         <same secret as the edge-function secret>
+ *      HEALTH_SYNC_URL       https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/health-sheets-ingest
+ *      HEALTH_SHEET_ID       <id from the Health sheet URL>
+ *      PAYMENTS_SYNC_URL     https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/payments-sheet-ingest
+ *      PAYMENTS_SHEET_ID     <id from the Betalingen sheet URL>
+ *      SCREENTIME_SYNC_URL   https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/screentime-sheet-ingest
+ *      SCREENTIME_SHEET_ID   <id from the Schermtijd sheet URL>
+ *   (The sheet id is the long code in the URL:
+ *    docs.google.com/spreadsheets/d/<THIS_IS_THE_ID>/edit )
  *
- * 2. Triggers (Triggers → Add):
- *      syncNotion          every 15 min
- *      syncClients         every 15 min
- *      syncGmail           every 15 min
- *      syncCalendarBlocks  every hour
- *      syncPayments        every 15 min
+ * 2. Run installAllTriggers() once → authorize all scopes when prompted.
+ *    (Or add the triggers by hand — see installAllTriggers below.)
  *
- * 3. Run each function once manually → authorize OAuth scopes.
- *
- * LOGS
- * View → Executions (left sidebar) → click a run.
+ * LOGS: View → Executions.
  */
+
+/** One-click: install every time-driven trigger this project needs. */
+function installAllTriggers() {
+  var wanted = {
+    syncNotion: 15, syncClients: 15, syncGmail: 15, syncPayments: 15,   // every N minutes
+    syncCalendarBlocks: 60,                                             // hourly (minutes)
+    syncHealthSheet: 30, syncPaymentsSheet: 30, syncScreentimeSheet: 30,
+  };
+  var existing = {};
+  ScriptApp.getProjectTriggers().forEach(function (t) { existing[t.getHandlerFunction()] = true; });
+  Object.keys(wanted).forEach(function (fn) {
+    if (existing[fn]) return;
+    var b = ScriptApp.newTrigger(fn).timeBased();
+    if (wanted[fn] % 60 === 0) b.everyHours(wanted[fn] / 60).create();
+    else b.everyMinutes(wanted[fn]).create();
+    Logger.log('trigger installed: ' + fn + ' every ' + wanted[fn] + ' min');
+  });
+}
 
 // ── Calendar config ────────────────────────────────────────────────────────
 // List the calendar IDs to sync. Use ["all"] to sync every accessible calendar,
@@ -147,6 +169,100 @@ function supabaseUpsert(table, rows, conflict) {
     }
     throw new Error(table + ' upsert failed (' + code + '): ' + resBody.slice(0, 300));
   }
+}
+
+// ── Shared helpers for the Google-Sheet readers (health/payments/screentime) ──
+// The sheet readers live in THIS same project and POST to Supabase edge
+// functions with INGEST_SECRET, so they reuse these helpers instead of carrying
+// their own copies.
+
+/** Open a Google Sheet by the id stored in a Script Property (e.g. HEALTH_SHEET_ID). */
+function openSheetById_(idProp) {
+  var id = prop(idProp);
+  if (!id) throw new Error('Set Script Property ' + idProp + ' to the spreadsheet id (from its URL).');
+  return SpreadsheetApp.openById(id);
+}
+
+/** POST a JSON payload to an edge function with the shared INGEST_SECRET. Retries on 429/5xx. */
+function ingestPost_(url, payload) {
+  var secret = prop('INGEST_SECRET');
+  if (!url || !secret) throw new Error('Set INGEST_SECRET and the *_SYNC_URL Script Properties.');
+  var body = JSON.stringify(payload);
+  for (var attempt = 1; attempt <= 4; attempt++) {
+    var res = null;
+    try {
+      res = UrlFetchApp.fetch(url, {
+        method: 'post', contentType: 'application/json',
+        headers: { 'x-ingest-secret': secret }, payload: body, muteHttpExceptions: true,
+      });
+    } catch (e) {
+      if (attempt < 4) { Utilities.sleep(backoffMs_(attempt)); continue; }
+      throw new Error('ingest network error: ' + (e && e.message));
+    }
+    var code = res.getResponseCode(), text = res.getContentText();
+    if (code < 300) { try { return JSON.parse(text); } catch (_) { return {}; } }
+    if ((code === 429 || code >= 500) && attempt < 4) { Utilities.sleep(backoffMs_(attempt)); continue; }
+    throw new Error('ingest ' + code + ': ' + text.slice(0, 400));
+  }
+}
+
+/** 'YYYY-MM-DD' from a Date or a string cell. Supports dd-mm-yyyy too. */
+function sheetDate_(val) {
+  if (!val) return '';
+  if (val instanceof Date) return Utilities.formatDate(val, 'Europe/Amsterdam', 'yyyy-MM-dd');
+  var s = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  var m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (m) return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+  return '';
+}
+
+/** ISO datetime from a Date or string cell. */
+function sheetDatetime_(val) {
+  if (!val) return '';
+  if (val instanceof Date) return val.toISOString();
+  var s = String(val).trim();
+  if (!s) return '';
+  var d = new Date(s.replace(' ', 'T') + (s.indexOf('T') !== -1 || s.indexOf('+') !== -1 ? '' : 'Z'));
+  return isNaN(d.getTime()) ? '' : d.toISOString();
+}
+
+function sheetNum_(val) {
+  if (val == null || val === '') return 0;
+  if (typeof val === 'number') return val;
+  var n = parseFloat(String(val).replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+  return isNaN(n) ? 0 : n;
+}
+
+function sheetNumOrNull_(val) {
+  if (val == null || val === '') return null;
+  if (typeof val === 'number') return val;
+  var n = parseFloat(String(val).replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
+  return isNaN(n) ? null : n;
+}
+
+/** Convert a duration cell to ms. Plain numbers = minutes; "h:mm[:ss]" parsed; ≥600000 = already ms. */
+function toMs_(val) {
+  if (val == null || val === '') return 0;
+  if (val instanceof Date) return 0;
+  var s = String(val).trim();
+  if (s.indexOf(':') !== -1) {
+    var parts = s.split(':').map(function (p) { return parseInt(p, 10) || 0; });
+    var h = 0, m = 0, sec = 0;
+    if (parts.length === 3) { h = parts[0]; m = parts[1]; sec = parts[2]; }
+    else { m = parts[0]; sec = parts[1]; }
+    return ((h * 3600) + (m * 60) + sec) * 1000;
+  }
+  var n = parseFloat(s.replace(',', '.'));
+  if (isNaN(n)) return 0;
+  return n >= 600000 ? Math.round(n) : Math.round(n * 60000);
+}
+
+/** Find the column index whose header matches one of the aliases (case-insensitive). */
+function headerIndex_(headerRow, aliases) {
+  var norm = headerRow.map(function (h) { return String(h || '').trim().toLowerCase(); });
+  for (var c = 0; c < norm.length; c++) if (aliases.indexOf(norm[c]) !== -1) return c;
+  return null;
 }
 
 /** Map text to a domain. Tune keywords to your own senders/events. */
