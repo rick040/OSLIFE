@@ -169,16 +169,79 @@ export interface Project {
   client: string
   domain: Domain
   status: ProjectStatus
-  deadline: string | null // ISO date
-  progress: number // 0..1
-  value: number // EUR
-  // Enriched from Notion (synced via notion-sync edge function)
+  deadline: string | null // ISO date — the project due date
+  progress: number // 0..1 (derived from tasks/milestones)
+  value: number // EUR — project price
   type?: string[] // Website, Branding, Logo, Social Media, ...
   priority?: Priority
-  clientId?: string
+  clientId?: string | null // FK → clients.id (the connected client)
+  startDate?: string | null // ISO date
+  deliverables?: string[]
+  scope?: string | null // free-text project scope
+  notes?: string | null
+  archived?: boolean
   notionUrl?: string
-  notionId?: string // Notion page id (= projects.external_id) — used for write-back
-  tasks?: Task[]
+  notionId?: string // Notion page id (= projects.external_id) — legacy write-back
+}
+
+// ── Project template: milestones / tasks / hours / invoices / activity ────────
+
+export type Recurrence = 'daily' | 'weekly' | 'monthly'
+
+export interface ProjectMilestone {
+  id: string
+  projectId: string
+  title: string
+  dueDate: string | null // ISO date
+  progress: number // 0..1
+  done: boolean
+}
+
+export interface ProjectTask {
+  id: string
+  projectId: string
+  name: string
+  done: boolean
+  dueDate?: string | null
+  priority?: Priority | null
+  recurrence?: Recurrence | null // null = one-time
+  recurEvery?: number // every N periods (default 1)
+  lastDoneOn?: string | null // ISO date a recurring task last completed
+}
+
+export interface HourEntry {
+  id: string
+  projectId: string
+  date: string // ISO date
+  hours: number
+  note?: string | null
+  billable: boolean
+}
+
+export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue'
+
+export interface Invoice {
+  id: string
+  projectId: string
+  number: string
+  amount: number // EUR
+  status: InvoiceStatus
+  issuedOn?: string | null
+  dueOn?: string | null
+  paidOn?: string | null
+  note?: string | null
+}
+
+export type ActivityLink = 'task' | 'milestone'
+
+export interface ActivityEntry {
+  id: string
+  projectId: string
+  body: string
+  createdAt: string // ISO
+  linkType?: ActivityLink | null
+  linkId?: string | null
+  action?: 'completed' | 'progress' | 'linked' | null
 }
 
 // ── CRM: clients (mirrors Notion Clients DB) ─────────────────────────────────
@@ -199,11 +262,14 @@ export interface Client {
 // ── CRM: unified client messages (email / fiverr / whatsapp) ─────────────────
 export type Channel = 'email' | 'fiverr' | 'whatsapp'
 
+export type MessageSource = 'manual' | 'gmail' | 'whatsapp_import' | 'fiverr'
+
 export interface Message {
   id: string
   contact: string
   contactKey: string // groups messages into a conversation
   clientId?: string | null
+  projectId?: string | null
   projectName?: string | null
   channel: Channel
   direction: 'in' | 'out'
@@ -212,6 +278,8 @@ export interface Message {
   body?: string | null
   ts: string // ISO
   unread: boolean
+  source?: MessageSource
+  externalId?: string | null
 }
 
 // ── North Star: high-level goals + milestones ────────────────────────────────

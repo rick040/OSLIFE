@@ -1,403 +1,539 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { X, FolderKanban, Plus, Check, Clock } from 'lucide-react'
-import type { Project, ProjectStatus, Task } from '../types'
-import { fmtDate, TODAY } from '../domains'
+import { useMemo, useState } from 'react'
+import {
+  X, FolderKanban, Plus, Check, Clock, Trash2, Pencil, Repeat,
+  Flag, Timer, FileText, Sparkles, ListChecks, Info,
+} from 'lucide-react'
+import type { Project, ProjectTask, ProjectMilestone, Invoice, Recurrence, Priority } from '../types'
+import { fmtDate, TODAY, daysBetween } from '../domains'
 import { useStore } from '../store'
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-const eur = (n: number | null) => {
-  if (n == null) return '–'
-  if (Math.abs(n) >= 1000) return `€${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`
-  return `€${n.toLocaleString('nl-NL')}`
-}
-
-const CRM_STATUS: Record<ProjectStatus, string> = {
-  active: 'In uitvoering',
-  review: 'In uitvoering',
-  lead: 'Gepland',
-  blocked: 'Gepauzeerd',
-  done: 'Opgeleverd',
-}
-
-const STATUS_OPTIONS: ProjectStatus[] = ['lead', 'active', 'review', 'blocked', 'done']
-const STATUS_LABEL: Record<ProjectStatus, string> = {
-  lead: 'Gepland (lead)',
-  active: 'In uitvoering',
-  review: 'In review',
-  blocked: 'Gepauzeerd',
-  done: 'Opgeleverd',
-}
-
-const STATUS_HEX: Record<string, string> = {
-  'In uitvoering': '#6FA07C',
-  Gepland: '#6E8CA8',
-  Gepauzeerd: '#C6A05B',
-  Opgeleverd: '#9385B0',
-}
-
-const PRIO_HEX: Record<string, string> = { High: '#C58392', Medium: '#C6A05B', Low: '#8C9080' }
-const PRIO_NL: Record<string, string> = { High: 'Hoog', Medium: 'Gemiddeld', Low: 'Laag' }
+import ProjectForm from './ProjectForm'
+import {
+  eur, CRM_STATUS, STATUS_HEX, PRIO_HEX, PRIO_NL,
+  Field, TextInput, SelectInput,
+} from '../components/crm'
+import type { ActivityAnalysis } from '../lib/crm/activityAnalyzer'
 
 const DOMAIN_COLOR: Record<string, string> = {
-  parkingyou: '#6E8CA8',
-  prjct: '#9385B0',
-  buurtkaart: '#6FA07C',
-  personal: '#C6A05B',
-  cross: '#C58392',
+  parkingyou: '#6E8CA8', prjct: '#9385B0', buurtkaart: '#6FA07C', personal: '#C6A05B', cross: '#C58392',
 }
+const INVOICE_STATUS: Record<Invoice['status'], { label: string; hex: string }> = {
+  draft: { label: 'Concept', hex: '#8C9080' },
+  sent: { label: 'Verstuurd', hex: '#6E8CA8' },
+  paid: { label: 'Betaald', hex: '#6FA07C' },
+  overdue: { label: 'Te laat', hex: '#C58392' },
+}
+const RECUR_NL: Record<Recurrence, string> = { daily: 'dagelijks', weekly: 'wekelijks', monthly: 'maandelijks' }
 
-function deadlineLabel(iso: string | null): { label: string; urgent: boolean } | null {
+function dl(iso: string | null): { label: string; urgent: boolean } | null {
   if (!iso) return null
-  const days = Math.ceil((new Date(iso).getTime() - new Date(TODAY).getTime()) / 86400000)
-  if (days < 0) return { label: `${-days}d te laat`, urgent: true }
-  if (days === 0) return { label: 'Vandaag', urgent: true }
-  if (days <= 7) return { label: `over ${days}d`, urgent: true }
+  const d = daysBetween(TODAY, iso)
+  if (d < 0) return { label: `${-d}d te laat`, urgent: true }
+  if (d === 0) return { label: 'vandaag', urgent: true }
+  if (d <= 7) return { label: `over ${d}d`, urgent: true }
   return { label: fmtDate(iso), urgent: false }
 }
 
-// ── TaskItem ──────────────────────────────────────────────────────────────────
+type Tab = 'details' | 'taken' | 'mijlpalen' | 'uren' | 'facturen' | 'activiteit'
 
-function TaskItem({
-  task,
-  projectId,
-}: {
-  task: Task
-  projectId: string
-}) {
-  const { toggleProjectTask, deleteProjectTask } = useStore()
-  const [hovering, setHovering] = useState(false)
+export default function ProjectDetail({ project: initial, onClose }: { project: Project; onClose: () => void }) {
+  // Always read the live row from the store so edits/realtime reflect instantly.
+  const project = useStore((s) => s.projects.find((p) => p.id === initial.id)) ?? initial
+  const { clients, deleteProject } = useStore()
+  const tasks = useStore((s) => s.projectTasks.filter((t) => t.projectId === project.id))
+  const milestones = useStore((s) => s.projectMilestones.filter((m) => m.projectId === project.id))
+  const hours = useStore((s) => s.projectHours.filter((h) => h.projectId === project.id))
+  const invoices = useStore((s) => s.projectInvoices.filter((i) => i.projectId === project.id))
 
-  const dl = task.dueDate ? deadlineLabel(task.dueDate) : null
+  const [tab, setTab] = useState<Tab>('details')
+  const [editing, setEditing] = useState(false)
+  const [confirmDel, setConfirmDel] = useState(false)
+
+  const client = clients.find((c) => c.id === project.clientId)
+  const iconColor = DOMAIN_COLOR[project.domain] ?? '#9385B0'
+  const crmStatus = CRM_STATUS[project.status]
+  const statusColor = STATUS_HEX[crmStatus]
+
+  const doneTasks = tasks.filter((t) => t.done).length
+  const taskPct = tasks.length ? doneTasks / tasks.length : 0
+  const msPct = milestones.length ? milestones.reduce((a, m) => a + m.progress, 0) / milestones.length : 0
+  const computed = tasks.length || milestones.length
+    ? (taskPct * tasks.length + msPct * milestones.length) / (tasks.length + milestones.length)
+    : project.progress
+  const totalHours = hours.reduce((a, h) => a + h.hours, 0)
+  const invoiced = invoices.reduce((a, i) => a + i.amount, 0)
+  const paid = invoices.filter((i) => i.status === 'paid').reduce((a, i) => a + i.amount, 0)
+
+  const TABS: { id: Tab; label: string; icon: typeof Info; count?: number }[] = [
+    { id: 'details', label: 'Details', icon: Info },
+    { id: 'taken', label: 'Taken', icon: ListChecks, count: tasks.filter((t) => !t.done).length },
+    { id: 'mijlpalen', label: 'Mijlpalen', icon: Flag, count: milestones.filter((m) => !m.done).length },
+    { id: 'uren', label: 'Uren', icon: Timer },
+    { id: 'facturen', label: 'Facturen', icon: FileText, count: invoices.length },
+    { id: 'activiteit', label: 'Activiteit', icon: Sparkles },
+  ]
 
   return (
-    <div
-      onMouseEnter={() => setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-      className="flex items-center gap-2.5 px-3 py-2.5 border-b border-line last:border-0 hover:bg-sunken transition-colors"
-    >
-      <button
-        onClick={() => toggleProjectTask(projectId, task.id, !task.done)}
-        className="shrink-0 h-5 w-5 rounded-md border flex items-center justify-center transition-colors"
-        style={{
-          background: task.done ? '#6FA07C' : 'transparent',
-          borderColor: task.done ? '#6FA07C' : '#C8C8CC',
-        }}
-      >
-        {task.done && <Check className="h-3 w-3 text-white" strokeWidth={2.5} />}
-      </button>
+    <div className="fixed inset-0 z-50 flex flex-col md:items-center md:justify-center">
+      <div className="absolute inset-0 bg-scrim/55 backdrop-blur-md" onClick={onClose} />
+      <div className="relative mt-auto md:mt-0 w-full md:max-w-xl md:max-h-[92dvh] max-h-[94dvh] flex flex-col bg-canvas md:rounded-4xl rounded-t-4xl border border-line shadow-pop overflow-hidden">
 
-      <div className="flex-1 min-w-0">
-        <div className={`text-sm leading-snug ${task.done ? 'line-through text-faint' : 'text-ink'}`}>
-          {task.name}
-        </div>
-        {(dl || task.priority) && (
-          <div className="flex items-center gap-2 mt-0.5">
-            {dl && (
-              <span className={`text-[11px] flex items-center gap-1 ${dl.urgent ? 'text-personal-deep' : 'text-faint'}`}>
-                <Clock className="h-2.5 w-2.5" /> {dl.label}
-              </span>
-            )}
-            {task.priority && (
-              <span className="text-[11px] font-semibold" style={{ color: PRIO_HEX[task.priority] ?? '#8C9080' }}>
-                {PRIO_NL[task.priority] ?? task.priority}
-              </span>
-            )}
+        {/* Header */}
+        <div className="flex items-start gap-3 p-5 pb-3 border-b border-line shrink-0">
+          <span className="h-11 w-11 rounded-3xl flex items-center justify-center shrink-0" style={{ background: `${iconColor}28` }}>
+            <FolderKanban className="h-5 w-5" style={{ color: iconColor }} />
+          </span>
+          <div className="flex-1 min-w-0 pt-0.5">
+            <div className="font-semibold text-lg leading-tight truncate">{project.name}</div>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: statusColor, background: `${statusColor}22` }}>{crmStatus}</span>
+              {(client?.name || project.client) && <span className="text-xs text-faint truncate">{client?.name ?? project.client}</span>}
+            </div>
           </div>
-        )}
+          <button onClick={() => setEditing(true)} title="Bewerken" className="h-8 w-8 rounded-full bg-sunken flex items-center justify-center text-muted hover:text-ink shrink-0"><Pencil className="h-4 w-4" /></button>
+          <button onClick={() => setConfirmDel(true)} title="Verwijderen" className="h-8 w-8 rounded-full bg-sunken flex items-center justify-center text-muted hover:text-red-500 shrink-0"><Trash2 className="h-4 w-4" /></button>
+          <button onClick={onClose} className="h-8 w-8 rounded-full bg-sunken flex items-center justify-center text-muted hover:text-ink shrink-0"><X className="h-4 w-4" /></button>
+        </div>
+
+        {/* Summary strip */}
+        <div className="grid grid-cols-3 divide-x divide-line border-b border-line shrink-0">
+          <Stat label="Prijs" value={eur(project.value)} />
+          <Stat label="Uren" value={`${totalHours}u`} />
+          <Stat label="Voortgang" value={`${Math.round(computed * 100)}%`} />
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 px-3 py-2 overflow-x-auto border-b border-line shrink-0">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`chip whitespace-nowrap ${tab === t.id ? 'bg-forest text-white' : 'bg-surface border border-line text-muted'}`}
+            >
+              <t.icon className="h-3.5 w-3.5" /> {t.label}{t.count ? ` ·${t.count}` : ''}
+            </button>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {tab === 'details' && <Details project={project} invoiced={invoiced} paid={paid} />}
+          {tab === 'taken' && <Tasks projectId={project.id} tasks={tasks} />}
+          {tab === 'mijlpalen' && <Milestones projectId={project.id} milestones={milestones} />}
+          {tab === 'uren' && <Hours projectId={project.id} />}
+          {tab === 'facturen' && <Invoices projectId={project.id} invoices={invoices} />}
+          {tab === 'activiteit' && <Activity projectId={project.id} />}
+        </div>
       </div>
 
-      {hovering && (
-        <button
-          onClick={() => deleteProjectTask(projectId, task.id)}
-          className="text-faint hover:text-red-400 text-base leading-none px-1 shrink-0 transition-colors"
-          title="Verwijder taak"
-        >
-          ×
-        </button>
+      {editing && <ProjectForm project={project} onClose={() => setEditing(false)} />}
+      {confirmDel && (
+        <ConfirmDelete
+          label={`Project “${project.name}” verwijderen?`}
+          detail="Alle taken, mijlpalen, uren en facturen van dit project worden ook verwijderd."
+          onCancel={() => setConfirmDel(false)}
+          onConfirm={() => { deleteProject(project.id); onClose() }}
+        />
       )}
     </div>
   )
 }
 
-// ── AddTaskRow ────────────────────────────────────────────────────────────────
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="px-3 py-2.5 text-center">
+      <div className="text-base font-semibold tabular-nums">{value}</div>
+      <div className="text-[10px] uppercase tracking-wider text-faint">{label}</div>
+    </div>
+  )
+}
 
-function AddTaskRow({ projectId }: { projectId: string }) {
-  const { addProjectTask } = useStore()
-  const [open, setOpen] = useState(false)
-  const [name, setName] = useState('')
-  const [due, setDue] = useState('')
-  const inputRef = useRef<HTMLInputElement>(null)
+// ── Details ─────────────────────────────────────────────────────────────────
+function Details({ project, invoiced, paid }: { project: Project; invoiced: number; paid: number }) {
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl bg-surface border border-line overflow-hidden">
+        <Row label="Type" value={project.type?.length ? project.type.join(' · ') : '–'} />
+        <Row label="Startdatum" value={fmtDate(project.startDate ?? null)} />
+        <Row label="Deadline" value={fmtDate(project.deadline)} />
+        <Row label="Prioriteit" value={project.priority ? PRIO_NL[project.priority] : '–'} />
+        <Row label="Prijs" value={eur(project.value)} />
+        <Row label="Gefactureerd" value={`${eur(invoiced)} · ${eur(paid)} betaald`} />
+      </div>
 
-  function submit() {
-    if (!name.trim()) return
-    addProjectTask(projectId, { name: name.trim(), done: false, dueDate: due || null })
-    setName('')
-    setDue('')
-    setOpen(false)
-  }
+      {project.scope && (
+        <Block title="Scope"><p className="text-sm text-ink-soft whitespace-pre-wrap leading-relaxed">{project.scope}</p></Block>
+      )}
+      {project.deliverables && project.deliverables.length > 0 && (
+        <Block title="Deliverables">
+          <ul className="space-y-1.5">
+            {project.deliverables.map((d, i) => (
+              <li key={i} className="text-sm flex items-start gap-2"><span className="h-1.5 w-1.5 rounded-full bg-forest mt-1.5 shrink-0" />{d}</li>
+            ))}
+          </ul>
+        </Block>
+      )}
+      {project.notes && (
+        <Block title="Notities"><p className="text-sm text-ink-soft whitespace-pre-wrap leading-relaxed">{project.notes}</p></Block>
+      )}
+    </div>
+  )
+}
 
-  if (!open) {
-    return (
-      <button
-        onClick={() => { setOpen(true); setTimeout(() => inputRef.current?.focus(), 40) }}
-        className="flex items-center gap-1.5 w-full px-3 py-2.5 text-sm text-faint hover:text-muted transition-colors"
-      >
-        <Plus className="h-4 w-4" /> Taak toevoegen
-      </button>
-    )
-  }
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between px-4 py-3 border-b border-line last:border-0">
+      <span className="text-sm text-muted">{label}</span>
+      <span className="text-sm font-medium text-right">{value}</span>
+    </div>
+  )
+}
+function Block({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl bg-surface border border-line p-4">
+      <div className="text-[11px] font-bold text-faint uppercase tracking-wider mb-2">{title}</div>
+      {children}
+    </div>
+  )
+}
+
+// ── Tasks ───────────────────────────────────────────────────────────────────
+function Tasks({ projectId, tasks }: { projectId: string; tasks: ProjectTask[] }) {
+  const { toggleProjectTask, deleteProjectTask } = useStore()
+  const open = tasks.filter((t) => !t.done)
+  const done = tasks.filter((t) => t.done)
+  const [showDone, setShowDone] = useState(false)
 
   return (
-    <div className="px-3 py-2.5 border-t border-line space-y-2">
-      <input
-        ref={inputRef}
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') submit(); if (e.key === 'Escape') setOpen(false) }}
-        placeholder="Taaknaam…"
-        className="w-full text-sm bg-sunken rounded-lg px-3 py-2 outline-none border border-line focus:border-forest transition-colors"
-      />
-      <div className="flex gap-2">
-        <input
-          type="date"
-          value={due}
-          onChange={(e) => setDue(e.target.value)}
-          className="flex-1 text-sm bg-sunken rounded-lg px-3 py-1.5 outline-none border border-line focus:border-forest transition-colors"
-        />
-        <button
-          onClick={submit}
-          disabled={!name.trim()}
-          className="px-3 py-1.5 rounded-lg bg-forest text-white text-sm font-semibold disabled:opacity-40 transition-opacity"
-        >
-          Toevoegen
-        </button>
-        <button
-          onClick={() => setOpen(false)}
-          className="px-3 py-1.5 rounded-lg bg-sunken text-muted text-sm border border-line"
-        >
-          Annuleer
-        </button>
+    <div className="space-y-3">
+      <AddTask projectId={projectId} />
+      <div className="rounded-2xl bg-surface border border-line overflow-hidden">
+        {open.length === 0 && <div className="px-4 py-4 text-sm text-faint">Nog geen open taken.</div>}
+        {open.map((t) => <TaskRow key={t.id} t={t} onToggle={() => toggleProjectTask(t.id, true)} onDelete={() => deleteProjectTask(t.id)} />)}
+        {done.length > 0 && (
+          <>
+            <button onClick={() => setShowDone(!showDone)} className="w-full px-4 py-2 bg-sunken border-t border-line text-xs text-faint font-semibold text-left">
+              {showDone ? '▾' : '▸'} {done.length} afgerond
+            </button>
+            {showDone && done.map((t) => <TaskRow key={t.id} t={t} onToggle={() => toggleProjectTask(t.id, false)} onDelete={() => deleteProjectTask(t.id)} />)}
+          </>
+        )}
       </div>
     </div>
   )
 }
 
-// ── DoneTasks collapsible ─────────────────────────────────────────────────────
-
-function DoneTasks({ tasks, projectId }: { tasks: Task[]; projectId: string }) {
-  const [open, setOpen] = useState(false)
+function TaskRow({ t, onToggle, onDelete }: { t: ProjectTask; onToggle: () => void; onDelete: () => void }) {
+  const d = t.dueDate ? dl(t.dueDate) : null
   return (
-    <>
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 w-full px-3 py-2 bg-sunken border-t border-line text-xs text-faint font-semibold"
-      >
-        <svg
-          width="10" height="10" viewBox="0 0 10 10" fill="none"
-          style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}
-        >
-          <path d="M3 2L7 5L3 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        {tasks.length} afgerond
+    <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-line last:border-0 group">
+      <button onClick={onToggle} className="shrink-0 h-5 w-5 rounded-md border flex items-center justify-center" style={{ background: t.done ? '#6FA07C' : 'transparent', borderColor: t.done ? '#6FA07C' : '#C8C8CC' }}>
+        {t.done && <Check className="h-3 w-3 text-white" strokeWidth={2.5} />}
       </button>
-      {open && tasks.map((t) => <TaskItem key={t.id} task={t} projectId={projectId} />)}
-    </>
-  )
-}
-
-// ── InfoRow ───────────────────────────────────────────────────────────────────
-
-function InfoRow({ label, children, divider }: { label: string; children: React.ReactNode; divider?: boolean }) {
-  return (
-    <div className={`flex items-center justify-between px-4 py-3.5 ${divider ? 'border-t border-line' : ''}`}>
-      <span className="text-sm text-muted">{label}</span>
-      <span className="text-sm">{children}</span>
+      <div className="flex-1 min-w-0">
+        <div className={`text-sm leading-snug ${t.done ? 'line-through text-faint' : 'text-ink'}`}>{t.name}</div>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          {t.recurrence && <span className="text-[11px] text-prjct-deep flex items-center gap-1"><Repeat className="h-2.5 w-2.5" /> {RECUR_NL[t.recurrence]}</span>}
+          {d && <span className={`text-[11px] flex items-center gap-1 ${d.urgent ? 'text-personal-deep' : 'text-faint'}`}><Clock className="h-2.5 w-2.5" /> {d.label}</span>}
+          {t.priority && <span className="text-[11px] font-semibold" style={{ color: PRIO_HEX[t.priority] }}>{PRIO_NL[t.priority]}</span>}
+        </div>
+      </div>
+      <button onClick={onDelete} className="text-faint hover:text-red-400 opacity-0 group-hover:opacity-100 px-1 shrink-0"><Trash2 className="h-3.5 w-3.5" /></button>
     </div>
   )
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+function AddTask({ projectId }: { projectId: string }) {
+  const { addProjectTask } = useStore()
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [due, setDue] = useState('')
+  const [priority, setPriority] = useState<Priority | ''>('')
+  const [recurrence, setRecurrence] = useState<Recurrence | ''>('')
 
-export default function ProjectDetail({
-  project,
-  onClose,
-}: {
-  project: Project
-  onClose: () => void
-}) {
-  const { clients, updateProject } = useStore()
-  const client = clients.find((c) => c.id === project.clientId) ?? null
-  const iconColor = DOMAIN_COLOR[project.domain] ?? '#9385B0'
-
-  // Editable local state
-  const [status, setStatus] = useState<ProjectStatus>(project.status)
-  const [priority, setPriority] = useState(project.priority ?? '')
-  const [deadline, setDeadline] = useState(project.deadline?.slice(0, 10) ?? '')
-  const [value, setValue] = useState(project.value != null ? String(project.value) : '')
-  const [saved, setSaved] = useState(false)
-
-  const tasks = project.tasks ?? []
-  const openTasks = tasks.filter((t) => !t.done)
-  const doneTasks = tasks.filter((t) => t.done)
-  const progress = tasks.length > 0 ? Math.round((doneTasks.length / tasks.length) * 100) : null
-
-  useEffect(() => {
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = '' }
-  }, [])
-
-  const save = useCallback(() => {
-    updateProject(project.id, {
-      status,
-      priority: (priority as Project['priority']) || undefined,
-      deadline: deadline || null,
-      value: value ? parseFloat(value) : project.value,
+  function submit() {
+    if (!name.trim()) return
+    addProjectTask(projectId, {
+      name: name.trim(), done: false, dueDate: due || null,
+      priority: (priority || null) as Priority | null,
+      recurrence: (recurrence || null) as Recurrence | null,
+      recurEvery: 1,
     })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 1500)
-  }, [project.id, status, priority, deadline, value, updateProject, project.value])
+    setName(''); setDue(''); setPriority(''); setRecurrence('')
+  }
 
-  const crmStatus = CRM_STATUS[status]
-  const statusColor = STATUS_HEX[crmStatus]
+  if (!open) return (
+    <button onClick={() => setOpen(true)} className="flex items-center gap-1.5 text-sm text-forest font-medium"><Plus className="h-4 w-4" /> Taak toevoegen</button>
+  )
+  return (
+    <div className="rounded-2xl bg-surface border border-line p-3 space-y-2">
+      <TextInput value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} placeholder="Taaknaam…" autoFocus />
+      <div className="grid grid-cols-3 gap-2">
+        <TextInput type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+        <SelectInput value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
+          <option value="">Prio</option><option value="High">Hoog</option><option value="Medium">Gem.</option><option value="Low">Laag</option>
+        </SelectInput>
+        <SelectInput value={recurrence} onChange={(e) => setRecurrence(e.target.value as Recurrence)}>
+          <option value="">Eenmalig</option><option value="daily">Dagelijks</option><option value="weekly">Wekelijks</option><option value="monthly">Maandelijks</option>
+        </SelectInput>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={submit} disabled={!name.trim()} className="flex-1 py-1.5 rounded-lg bg-forest text-white text-sm font-semibold disabled:opacity-40">Toevoegen</button>
+        <button onClick={() => setOpen(false)} className="px-3 py-1.5 rounded-lg bg-sunken text-muted text-sm border border-line">Klaar</button>
+      </div>
+    </div>
+  )
+}
+
+// ── Milestones ──────────────────────────────────────────────────────────────
+function Milestones({ projectId, milestones }: { projectId: string; milestones: ProjectMilestone[] }) {
+  const { addMilestone, updateMilestone, deleteMilestone } = useStore()
+  const [open, setOpen] = useState(false)
+  const [title, setTitle] = useState('')
+  const [due, setDue] = useState('')
+
+  const sorted = [...milestones].sort((a, b) => (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999'))
+
+  function add() {
+    if (!title.trim()) return
+    addMilestone(projectId, { title: title.trim(), dueDate: due || null, progress: 0, done: false })
+    setTitle(''); setDue(''); setOpen(false)
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col md:items-center md:justify-center">
-      <div className="absolute inset-0 bg-scrim/55 backdrop-blur-md" onClick={onClose} />
-      <div className="relative mt-auto md:mt-0 w-full md:max-w-lg md:max-h-[90dvh] flex flex-col bg-canvas md:rounded-4xl rounded-t-4xl border border-line shadow-pop overflow-y-auto">
-
-        {/* Header */}
-        <div className="flex items-start gap-3 p-5 pb-4 sticky top-0 bg-canvas z-10 border-b border-line">
-          <span
-            className="h-12 w-12 rounded-3xl flex items-center justify-center shrink-0"
-            style={{ background: `${iconColor}28` }}
-          >
-            <FolderKanban className="h-6 w-6" style={{ color: iconColor }} />
-          </span>
-          <div className="flex-1 min-w-0 pt-0.5">
-            <div className="font-semibold text-lg leading-tight">{project.name}</div>
-            {project.type && project.type.length > 0 && (
-              <div className="text-sm text-faint mt-0.5">{project.type.join(' · ')}</div>
-            )}
-            <div className="flex items-center gap-2 mt-1.5">
-              <span
-                className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                style={{ color: statusColor, background: `${statusColor}22` }}
-              >
-                {crmStatus}
-              </span>
-              {priority && (
-                <span className="text-[11px] font-semibold" style={{ color: PRIO_HEX[priority] }}>
-                  · {PRIO_NL[priority] ?? priority}
-                </span>
-              )}
-            </div>
+    <div className="space-y-3">
+      {!open ? (
+        <button onClick={() => setOpen(true)} className="flex items-center gap-1.5 text-sm text-forest font-medium"><Plus className="h-4 w-4" /> Mijlpaal toevoegen</button>
+      ) : (
+        <div className="rounded-2xl bg-surface border border-line p-3 space-y-2">
+          <TextInput value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Mijlpaal…" autoFocus />
+          <div className="flex gap-2">
+            <TextInput type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+            <button onClick={add} disabled={!title.trim()} className="px-3 py-1.5 rounded-lg bg-forest text-white text-sm font-semibold disabled:opacity-40">Toevoegen</button>
+            <button onClick={() => setOpen(false)} className="px-3 py-1.5 rounded-lg bg-sunken text-muted text-sm border border-line">×</button>
           </div>
-          <button
-            onClick={onClose}
-            className="h-8 w-8 rounded-full bg-sunken flex items-center justify-center text-muted hover:text-ink shrink-0 mt-0.5"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </div>
+      )}
 
-        {/* Task progress bar */}
-        {tasks.length > 0 && (
-          <div className="mx-4 mt-4">
-            <div className="flex justify-between text-xs text-faint mb-1">
-              <span>Voortgang</span>
-              <span className="tabular-nums">{doneTasks.length}/{tasks.length} ({progress}%)</span>
+      {sorted.length === 0 && <div className="rounded-2xl bg-surface border border-line px-4 py-4 text-sm text-faint">Nog geen mijlpalen.</div>}
+      {sorted.map((m) => {
+        const d = m.dueDate ? dl(m.dueDate) : null
+        const pct = Math.round(m.progress * 100)
+        return (
+          <div key={m.id} className="rounded-2xl bg-surface border border-line p-3.5 group">
+            <div className="flex items-start gap-2">
+              <button onClick={() => updateMilestone(m.id, { done: !m.done })} className="mt-0.5 shrink-0 h-5 w-5 rounded-md border flex items-center justify-center" style={{ background: m.done ? '#6FA07C' : 'transparent', borderColor: m.done ? '#6FA07C' : '#C8C8CC' }}>
+                {m.done && <Check className="h-3 w-3 text-white" strokeWidth={2.5} />}
+              </button>
+              <div className="flex-1 min-w-0">
+                <div className={`text-sm font-medium ${m.done ? 'line-through text-faint' : ''}`}>{m.title}</div>
+                {d && <span className={`text-[11px] flex items-center gap-1 mt-0.5 ${d.urgent && !m.done ? 'text-personal-deep' : 'text-faint'}`}><Clock className="h-2.5 w-2.5" /> {d.label}</span>}
+              </div>
+              <span className="text-xs tabular-nums text-muted shrink-0">{pct}%</span>
+              <button onClick={() => deleteMilestone(m.id)} className="text-faint hover:text-red-400 opacity-0 group-hover:opacity-100 shrink-0"><Trash2 className="h-3.5 w-3.5" /></button>
             </div>
-            <div className="h-2 w-full rounded-full bg-line overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${Math.max(2, progress ?? 0)}%`,
-                  background: progress === 100 ? '#6FA07C' : statusColor,
-                }}
-              />
+            <input
+              type="range" min={0} max={100} value={pct}
+              onChange={(e) => updateMilestone(m.id, { progress: parseInt(e.target.value, 10) / 100 })}
+              className="w-full mt-2.5 accent-forest"
+            />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── Hours ───────────────────────────────────────────────────────────────────
+function Hours({ projectId }: { projectId: string }) {
+  const hours = useStore((s) => s.projectHours.filter((h) => h.projectId === projectId))
+  const { addHours, deleteHours } = useStore()
+  const [date, setDate] = useState(TODAY)
+  const [val, setVal] = useState('')
+  const [note, setNote] = useState('')
+  const [billable, setBillable] = useState(true)
+
+  const total = hours.reduce((a, h) => a + h.hours, 0)
+  const billableTotal = hours.filter((h) => h.billable).reduce((a, h) => a + h.hours, 0)
+
+  function add() {
+    const h = parseFloat(val)
+    if (!h || h <= 0) return
+    addHours(projectId, { date, hours: h, note: note.trim() || null, billable })
+    setVal(''); setNote('')
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 divide-x divide-line rounded-2xl bg-surface border border-line">
+        <Stat label="Totaal" value={`${total}u`} />
+        <Stat label="Declarabel" value={`${billableTotal}u`} />
+      </div>
+
+      <div className="rounded-2xl bg-surface border border-line p-3 space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <TextInput type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <TextInput type="number" step="0.25" value={val} onChange={(e) => setVal(e.target.value)} placeholder="uren" />
+        </div>
+        <TextInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="Waaraan gewerkt? (optioneel)" />
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-muted flex-1">
+            <input type="checkbox" checked={billable} onChange={(e) => setBillable(e.target.checked)} className="accent-forest" /> Declarabel
+          </label>
+          <button onClick={add} disabled={!val} className="px-4 py-1.5 rounded-lg bg-forest text-white text-sm font-semibold disabled:opacity-40">Log uren</button>
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-surface border border-line overflow-hidden">
+        {hours.length === 0 && <div className="px-4 py-4 text-sm text-faint">Nog geen uren gelogd.</div>}
+        {hours.map((h) => (
+          <div key={h.id} className="flex items-center gap-3 px-4 py-2.5 border-b border-line last:border-0 group">
+            <span className="text-sm font-semibold tabular-nums w-12 shrink-0">{h.hours}u</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm truncate">{h.note || <span className="text-faint">—</span>}</div>
+              <div className="text-[11px] text-faint">{fmtDate(h.date)}{!h.billable && ' · niet-declarabel'}</div>
             </div>
+            <button onClick={() => deleteHours(h.id)} className="text-faint hover:text-red-400 opacity-0 group-hover:opacity-100 shrink-0"><Trash2 className="h-3.5 w-3.5" /></button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Invoices ────────────────────────────────────────────────────────────────
+function Invoices({ projectId, invoices }: { projectId: string; invoices: Invoice[] }) {
+  const { addInvoice, updateInvoice, deleteInvoice } = useStore()
+  const [open, setOpen] = useState(false)
+  const [number, setNumber] = useState('')
+  const [amount, setAmount] = useState('')
+  const [status, setStatus] = useState<Invoice['status']>('draft')
+  const [issued, setIssued] = useState(TODAY)
+  const [due, setDue] = useState('')
+
+  function add() {
+    const a = parseFloat(amount)
+    if (!a) return
+    addInvoice(projectId, { number: number.trim(), amount: a, status, issuedOn: issued || null, dueOn: due || null, paidOn: status === 'paid' ? TODAY : null })
+    setNumber(''); setAmount(''); setStatus('draft'); setDue(''); setOpen(false)
+  }
+
+  return (
+    <div className="space-y-3">
+      {!open ? (
+        <button onClick={() => setOpen(true)} className="flex items-center gap-1.5 text-sm text-forest font-medium"><Plus className="h-4 w-4" /> Factuur toevoegen</button>
+      ) : (
+        <div className="rounded-2xl bg-surface border border-line p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <TextInput value={number} onChange={(e) => setNumber(e.target.value)} placeholder="Factuurnr." />
+            <TextInput type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="bedrag €" />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <SelectInput value={status} onChange={(e) => setStatus(e.target.value as Invoice['status'])}>
+              {Object.entries(INVOICE_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </SelectInput>
+            <TextInput type="date" value={issued} onChange={(e) => setIssued(e.target.value)} />
+            <TextInput type="date" value={due} onChange={(e) => setDue(e.target.value)} />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={add} disabled={!amount} className="flex-1 py-1.5 rounded-lg bg-forest text-white text-sm font-semibold disabled:opacity-40">Toevoegen</button>
+            <button onClick={() => setOpen(false)} className="px-3 py-1.5 rounded-lg bg-sunken text-muted text-sm border border-line">×</button>
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-2xl bg-surface border border-line overflow-hidden">
+        {invoices.length === 0 && <div className="px-4 py-4 text-sm text-faint">Nog geen facturen.</div>}
+        {invoices.map((inv) => {
+          const meta = INVOICE_STATUS[inv.status]
+          return (
+            <div key={inv.id} className="flex items-center gap-3 px-4 py-3 border-b border-line last:border-0 group">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold">{inv.number || 'Factuur'} · {eur(inv.amount)}</div>
+                <div className="text-[11px] text-faint">{fmtDate(inv.issuedOn ?? null)}{inv.dueOn && ` → ${fmtDate(inv.dueOn)}`}</div>
+              </div>
+              <select
+                value={inv.status}
+                onChange={(e) => updateInvoice(inv.id, { status: e.target.value as Invoice['status'], paidOn: e.target.value === 'paid' ? TODAY : null })}
+                className="text-[11px] font-semibold rounded-md px-1.5 py-0.5 border-0 outline-none shrink-0"
+                style={{ color: meta.hex, background: `${meta.hex}22` }}
+              >
+                {Object.entries(INVOICE_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+              <button onClick={() => deleteInvoice(inv.id)} className="text-faint hover:text-red-400 opacity-0 group-hover:opacity-100 shrink-0"><Trash2 className="h-3.5 w-3.5" /></button>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+// ── Activity logger ───────────────────────────────────────────────────────────
+function Activity({ projectId }: { projectId: string }) {
+  const entries = useStore((s) => s.projectActivity.filter((a) => a.projectId === projectId))
+  const { logActivity, deleteActivity } = useStore()
+  const [text, setText] = useState('')
+  const [lastResult, setLastResult] = useState<ActivityAnalysis | null>(null)
+
+  function submit() {
+    if (!text.trim()) return
+    const result = logActivity(projectId, text.trim())
+    setLastResult(result)
+    setText('')
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-2xl bg-surface border border-line p-3 space-y-2">
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          rows={2}
+          placeholder="bv. ‘Logo afgerond en gemaild naar klant’ — ik koppel het aan de juiste taak/mijlpaal"
+          className="w-full text-sm bg-sunken rounded-xl px-3 py-2 outline-none border border-line focus:border-forest resize-none"
+        />
+        <button onClick={submit} disabled={!text.trim()} className="w-full py-1.5 rounded-lg bg-forest text-white text-sm font-semibold disabled:opacity-40">Loggen &amp; analyseren</button>
+        {lastResult && (
+          <div className="text-xs rounded-lg px-3 py-2 flex items-start gap-2" style={{ background: lastResult.match ? '#6FA07C18' : '#8C908018' }}>
+            <Sparkles className="h-3.5 w-3.5 mt-0.5 shrink-0 text-forest" />
+            <span className="text-ink-soft">{lastResult.reason}{lastResult.match ? ` · ${Math.round(lastResult.confidence * 100)}% zeker` : ''}</span>
           </div>
         )}
+      </div>
 
-        {/* Edit fields */}
-        <div className="mx-4 mt-4 rounded-2xl bg-surface border border-line overflow-hidden">
-          <div className="px-4 pt-3 pb-1 text-[11px] font-bold text-faint uppercase tracking-wider">Details</div>
-
-          <InfoRow label="Status" divider>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as ProjectStatus)}
-              className="text-sm bg-sunken border border-line rounded-lg px-2 py-1 outline-none focus:border-forest"
-            >
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-              ))}
-            </select>
-          </InfoRow>
-
-          <InfoRow label="Klant" divider>
-            <span className="font-semibold">{client?.name ?? project.client}</span>
-          </InfoRow>
-
-          <InfoRow label="Prioriteit" divider>
-            <select
-              value={priority}
-              onChange={(e) => setPriority(e.target.value)}
-              className="text-sm bg-sunken border border-line rounded-lg px-2 py-1 outline-none focus:border-forest"
-            >
-              <option value="">—</option>
-              <option value="High">Hoog</option>
-              <option value="Medium">Gemiddeld</option>
-              <option value="Low">Laag</option>
-            </select>
-          </InfoRow>
-
-          <InfoRow label="Deadline" divider>
-            <input
-              type="date"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-              className="text-sm bg-sunken border border-line rounded-lg px-2 py-1 outline-none focus:border-forest"
-            />
-          </InfoRow>
-
-          <InfoRow label="Waarde (€)" divider>
-            <input
-              type="number"
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-              placeholder="0"
-              className="text-sm bg-sunken border border-line rounded-lg px-2 py-1 outline-none focus:border-forest w-28 text-right"
-            />
-          </InfoRow>
-
-          <div className="px-4 py-3 border-t border-line">
-            <button
-              onClick={save}
-              className="w-full py-2 rounded-xl bg-forest text-white text-sm font-semibold transition-opacity"
-            >
-              {saved ? '✓ Opgeslagen' : 'Wijzigingen opslaan'}
-            </button>
+      <div className="space-y-2">
+        {entries.length === 0 && <div className="rounded-2xl bg-surface border border-line px-4 py-4 text-sm text-faint">Nog geen activiteit.</div>}
+        {entries.map((a) => (
+          <div key={a.id} className="rounded-2xl bg-surface border border-line p-3 group">
+            <p className="text-sm text-ink-soft whitespace-pre-wrap leading-snug">{a.body}</p>
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className="text-[11px] text-faint">{fmtDate(a.createdAt.slice(0, 10))}</span>
+              {a.action && (
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ color: '#6FA07C', background: '#6FA07C22' }}>
+                  {a.action === 'completed' ? 'taak afgevinkt' : a.action === 'progress' ? 'voortgang bijgewerkt' : 'gekoppeld'}
+                </span>
+              )}
+              <button onClick={() => deleteActivity(a.id)} className="ml-auto text-faint hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 className="h-3.5 w-3.5" /></button>
+            </div>
           </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── shared confirm dialog ──────────────────────────────────────────────────────
+export function ConfirmDelete({ label, detail, onCancel, onConfirm }: { label: string; detail?: string; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
+      <div className="absolute inset-0 bg-scrim/60" onClick={onCancel} />
+      <div className="relative w-full max-w-sm bg-canvas rounded-3xl border border-line shadow-pop p-5">
+        <div className="font-semibold text-base">{label}</div>
+        {detail && <p className="text-sm text-muted mt-1.5">{detail}</p>}
+        <div className="flex gap-2 mt-4">
+          <button onClick={onCancel} className="flex-1 py-2 rounded-xl bg-sunken text-muted text-sm font-semibold border border-line">Annuleer</button>
+          <button onClick={onConfirm} className="flex-1 py-2 rounded-xl bg-red-500 text-white text-sm font-semibold">Verwijderen</button>
         </div>
-
-        {/* Tasks */}
-        <div className="mx-4 mt-3 mb-6">
-          <div className="flex items-baseline justify-between mb-2">
-            <div className="font-semibold text-sm">Taken</div>
-            {tasks.length > 0 && <span className="text-xs text-faint">{tasks.length}</span>}
-          </div>
-          <div className="rounded-2xl bg-surface border border-line overflow-hidden">
-            {tasks.length === 0 && openTasks.length === 0 && (
-              <div className="px-3 py-3 text-sm text-faint">Nog geen taken.</div>
-            )}
-            {openTasks.map((t) => <TaskItem key={t.id} task={t} projectId={project.id} />)}
-            {doneTasks.length > 0 && <DoneTasks tasks={doneTasks} projectId={project.id} />}
-            <AddTaskRow projectId={project.id} />
-          </div>
-        </div>
-
       </div>
     </div>
   )

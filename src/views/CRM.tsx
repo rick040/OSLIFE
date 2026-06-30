@@ -5,6 +5,8 @@ import { DomainChip, SectionTitle, Empty } from '../components/ui'
 import Messages from './Messages'
 import ProjectDetail from './ProjectDetail'
 import ClientDetail from './ClientDetail'
+import ProjectForm from './ProjectForm'
+import ClientForm from './ClientForm'
 import type { Project, ProjectStatus, ClientStatus, Client } from '../types'
 import {
   Users,
@@ -16,6 +18,8 @@ import {
   ChevronRight,
   LayoutGrid,
   List,
+  Plus,
+  UserPlus,
 } from 'lucide-react'
 
 const eur = (n: number | null) => {
@@ -76,6 +80,8 @@ export default function CRM() {
   const [showMessages, setShowMessages] = useState(false)
   const [openProject, setOpenProject] = useState<Project | null>(null)
   const [openClient, setOpenClient] = useState<Client | null>(null)
+  const [creatingProject, setCreatingProject] = useState(false)
+  const [creatingClient, setCreatingClient] = useState(false)
 
   const unread = messages.filter((m) => m.unread).length
 
@@ -108,12 +114,20 @@ export default function CRM() {
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Users className="h-5 w-5 text-prjct" />
         <h1 className="text-xl font-semibold">CRM</h1>
         <span className="chip bg-sunken text-muted ml-1">
           <span className="h-1.5 w-1.5 rounded-full bg-forest" /> {projects.length} projecten · {clients.length} klanten
         </span>
+        <div className="flex gap-2 ml-auto">
+          <button onClick={() => setCreatingClient(true)} className="chip bg-surface border border-line text-muted hover:text-ink">
+            <UserPlus className="h-3.5 w-3.5" /> Klant
+          </button>
+          <button onClick={() => setCreatingProject(true)} className="chip bg-forest text-white">
+            <Plus className="h-3.5 w-3.5" /> Project
+          </button>
+        </div>
       </div>
 
       {/* Berichten entry */}
@@ -242,6 +256,12 @@ export default function CRM() {
       )}
       {openClient && (
         <ClientDetail client={openClient} onClose={() => setOpenClient(null)} />
+      )}
+      {creatingProject && (
+        <ProjectForm project={null} onClose={() => setCreatingProject(false)} />
+      )}
+      {creatingClient && (
+        <ClientForm client={null} onClose={() => setCreatingClient(false)} />
       )}
     </div>
   )

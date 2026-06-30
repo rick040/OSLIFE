@@ -33,7 +33,15 @@ import type {
   DogReminder,
   DogProfile,
   TaskDraft,
+  ProjectMilestone,
+  ProjectTask,
+  HourEntry,
+  Invoice,
+  ActivityEntry,
 } from './types'
+import { analyzeActivity } from './lib/crm/activityAnalyzer'
+import type { ActivityAnalysis } from './lib/crm/activityAnalyzer'
+import { parseWhatsapp } from './lib/crm/whatsapp'
 import { classify } from './understand'
 import { runReflect, computeCorrelations, computeAnomalies } from './reflect'
 import {
@@ -80,6 +88,35 @@ import {
   createDogEntryRow,
   deleteDogEntryRow,
   updateDogEntryRow,
+  createClientRow,
+  updateClientRow,
+  deleteClientRow,
+  createProjectRow,
+  updateProjectRow,
+  deleteProjectRow,
+  fetchMilestones,
+  createMilestoneRow,
+  updateMilestoneRow,
+  deleteMilestoneRow,
+  fetchProjectTaskRows,
+  createProjectTaskRow,
+  updateProjectTaskRow,
+  deleteProjectTaskRow,
+  fetchHours,
+  createHourRow,
+  deleteHourRow,
+  fetchInvoices,
+  createInvoiceRow,
+  updateInvoiceRow,
+  deleteInvoiceRow,
+  fetchActivity,
+  createActivityRow,
+  deleteActivityRow,
+  fetchClientMessages,
+  createMessageRow,
+  insertMessages,
+  markMessagesReadRow,
+  deleteMessageRow,
 } from './lib/supabase'
 
 export interface ActivitySignal {
@@ -111,6 +148,11 @@ interface State {
   projects: Project[]
   clients: Client[]
   messages: Message[]
+  projectMilestones: ProjectMilestone[]
+  projectTasks: ProjectTask[]
+  projectHours: HourEntry[]
+  projectInvoices: Invoice[]
+  projectActivity: ActivityEntry[]
   goals: Goal[]
   milestones: Milestone[]
   emails: EmailItem[]
@@ -158,16 +200,45 @@ interface State {
   markEmailRead: (id: string) => void
   markAllEmailsRead: () => void
 
-  // CRM
+  // CRM — clients
+  addClient: (client: Omit<Client, 'id'>) => void
+  updateClient: (id: string, patch: Partial<Client>) => void
+  deleteClient: (id: string) => void
+
+  // CRM — messages (unified inbox)
   markMessageRead: (id: string) => void
   markConversationRead: (contactKey: string) => void
+  addMessage: (msg: Omit<Message, 'id'>) => void
+  deleteMessage: (id: string) => void
+  importWhatsapp: (
+    raw: string,
+    meNames: string[],
+    opts?: { clientId?: string | null; projectId?: string | null; contact?: string },
+  ) => Promise<{ imported: number; total: number }>
 
-  // Projects + Money
+  // Projects (native CRUD)
   setProjectStatus: (id: string, status: ProjectStatus) => void
-  updateProject: (id: string, patch: Partial<Pick<Project, 'status' | 'priority' | 'deadline' | 'value'>>) => void
-  addProjectTask: (projectId: string, task: Omit<Task, 'id'>) => void
-  toggleProjectTask: (projectId: string, taskId: string, done: boolean) => void
-  deleteProjectTask: (projectId: string, taskId: string) => void
+  updateProject: (id: string, patch: Partial<Project>) => void
+  addProject: (project: Omit<Project, 'id'>) => void
+  deleteProject: (id: string) => void
+
+  // Project template: milestones / tasks / hours / invoices / activity
+  addMilestone: (projectId: string, m: Omit<ProjectMilestone, 'id' | 'projectId'>) => void
+  updateMilestone: (id: string, patch: Partial<ProjectMilestone>) => void
+  deleteMilestone: (id: string) => void
+  addProjectTask: (projectId: string, task: Omit<ProjectTask, 'id' | 'projectId'>) => void
+  toggleProjectTask: (taskId: string, done: boolean) => void
+  updateProjectTask: (id: string, patch: Partial<ProjectTask>) => void
+  deleteProjectTask: (id: string) => void
+  addHours: (projectId: string, h: Omit<HourEntry, 'id' | 'projectId'>) => void
+  deleteHours: (id: string) => void
+  addInvoice: (projectId: string, inv: Omit<Invoice, 'id' | 'projectId'>) => void
+  updateInvoice: (id: string, patch: Partial<Invoice>) => void
+  deleteInvoice: (id: string) => void
+  logActivity: (projectId: string, body: string) => ActivityAnalysis
+  deleteActivity: (id: string) => void
+
+  // Money
   addTransactions: (txns: Transaction[]) => void
   importTransactions: (txns: Transaction[]) => Promise<{ inserted: number; duplicates: number }>
   markPaymentPaid: (id: string) => void
@@ -211,6 +282,11 @@ const seed = () => ({
   projects: mock.projects,
   clients: mock.clients,
   messages: mock.messages,
+  projectMilestones: [] as ProjectMilestone[],
+  projectTasks: [] as ProjectTask[],
+  projectHours: [] as HourEntry[],
+  projectInvoices: [] as Invoice[],
+  projectActivity: [] as ActivityEntry[],
   goals: mock.goals,
   milestones: mock.milestones,
   emails: mock.emails,
@@ -527,13 +603,70 @@ export const useStore = create<State>()(
         void persistAllEmailsRead()
       },
 
-      markMessageRead: (id) =>
-        set((s) => ({ messages: s.messages.map((m) => (m.id === id ? { ...m, unread: false } : m)) })),
+      // ── CRM: clients ──────────────────────────────────────────────────────
+      addClient: (client) => {
+        const tempId = uid('cli')
+        set((s) => ({
+          clients: [{ ...client, id: tempId }, ...s.clients],
+          activity: pushSignal(s.activity, { text: `Klant toegevoegd: ${client.name}`, domain: client.domain, loop: 'fast' }),
+        }))
+        void createClientRow(client).then((row) => {
+          if (row) set((s) => ({ clients: s.clients.map((c) => (c.id === tempId ? { ...c, id: row.id } : c)) }))
+        })
+      },
 
-      markConversationRead: (contactKey) =>
+      updateClient: (id, patch) => {
+        set((s) => ({ clients: s.clients.map((c) => (c.id === id ? { ...c, ...patch } : c)) }))
+        void updateClientRow(id, patch)
+      },
+
+      deleteClient: (id) => {
+        set((s) => ({
+          clients: s.clients.filter((c) => c.id !== id),
+          // orphan the projects locally too (FK does this server-side)
+          projects: s.projects.map((p) => (p.clientId === id ? { ...p, clientId: null } : p)),
+        }))
+        void deleteClientRow(id)
+      },
+
+      // ── CRM: messages ─────────────────────────────────────────────────────
+      markMessageRead: (id) => {
+        set((s) => ({ messages: s.messages.map((m) => (m.id === id ? { ...m, unread: false } : m)) }))
+        const m = get().messages.find((x) => x.id === id)
+        if (m) void markMessagesReadRow(m.contactKey)
+      },
+
+      markConversationRead: (contactKey) => {
         set((s) => ({
           messages: s.messages.map((m) => (m.contactKey === contactKey ? { ...m, unread: false } : m)),
-        })),
+        }))
+        void markMessagesReadRow(contactKey)
+      },
+
+      addMessage: (msg) => {
+        const tempId = uid('msg')
+        set((s) => ({ messages: [{ ...msg, id: tempId }, ...s.messages] }))
+        void createMessageRow(msg).then((realId) => {
+          if (realId) set((s) => ({ messages: s.messages.map((m) => (m.id === tempId ? { ...m, id: realId } : m)) }))
+        })
+      },
+
+      deleteMessage: (id) => {
+        set((s) => ({ messages: s.messages.filter((m) => m.id !== id) }))
+        void deleteMessageRow(id)
+      },
+
+      importWhatsapp: async (raw, meNames, opts) => {
+        const { messages } = parseWhatsapp(raw, meNames, opts ?? {})
+        if (!messages.length) return { imported: 0, total: 0 }
+        const imported = await insertMessages(messages)
+        const fresh = await fetchClientMessages()
+        if (fresh.length) set({ messages: fresh })
+        set((s) => ({
+          activity: pushSignal(s.activity, { text: `WhatsApp geïmporteerd: ${imported} bericht(en)`, domain: 'prjct', loop: 'fast' }),
+        }))
+        return { imported, total: messages.length }
+      },
 
       setProjectStatus: (id, status) => {
         set((s) => {
@@ -550,7 +683,7 @@ export const useStore = create<State>()(
           }
         })
         const updated = get().projects.find((x) => x.id === id)
-        if (updated) void persistProjectPatch(id, { status, progress: updated.progress }, updated.notionId)
+        if (updated) void updateProjectRow(id, { status, progress: updated.progress })
       },
 
       updateProject: (id, patch) => {
@@ -560,7 +693,7 @@ export const useStore = create<State>()(
           const progress =
             patch.status === 'done' ? 1
             : patch.status === 'review' ? Math.max(p.progress, 0.85)
-            : p.progress
+            : patch.progress ?? p.progress
           return {
             projects: s.projects.map((x) =>
               x.id === id ? { ...x, ...patch, progress } : x
@@ -573,36 +706,170 @@ export const useStore = create<State>()(
           }
         })
         const updated = get().projects.find((x) => x.id === id)
-        if (updated) void persistProjectPatch(id, { ...patch, progress: updated.progress }, updated.notionId)
+        if (updated) void updateProjectRow(id, { ...patch, progress: updated.progress })
       },
 
-      addProjectTask: (projectId, task) =>
-        set((s) => {
-          const t: Task = { id: uid('task'), ...task }
-          return {
-            projects: s.projects.map((p) =>
-              p.id === projectId ? { ...p, tasks: [...(p.tasks ?? []), t] } : p
-            ),
+      addProject: (project) => {
+        const tempId = uid('prj')
+        set((s) => ({
+          projects: [{ ...project, id: tempId }, ...s.projects],
+          activity: pushSignal(s.activity, { text: `Project aangemaakt: ${project.name}`, domain: project.domain, loop: 'fast' }),
+        }))
+        void createProjectRow(project).then((row) => {
+          if (row) set((s) => ({ projects: s.projects.map((p) => (p.id === tempId ? { ...p, id: row.id } : p)) }))
+        })
+      },
+
+      deleteProject: (id) => {
+        set((s) => ({
+          projects: s.projects.filter((p) => p.id !== id),
+          projectMilestones: s.projectMilestones.filter((m) => m.projectId !== id),
+          projectTasks: s.projectTasks.filter((t) => t.projectId !== id),
+          projectHours: s.projectHours.filter((h) => h.projectId !== id),
+          projectInvoices: s.projectInvoices.filter((i) => i.projectId !== id),
+          projectActivity: s.projectActivity.filter((a) => a.projectId !== id),
+        }))
+        void deleteProjectRow(id)
+      },
+
+      // ── Milestones ─────────────────────────────────────────────────────────
+      addMilestone: (projectId, m) => {
+        const tempId = uid('ms')
+        set((s) => ({ projectMilestones: [...s.projectMilestones, { ...m, id: tempId, projectId }] }))
+        void createMilestoneRow(projectId, m).then((realId) => {
+          if (realId) set((s) => ({ projectMilestones: s.projectMilestones.map((x) => (x.id === tempId ? { ...x, id: realId } : x)) }))
+        })
+      },
+
+      updateMilestone: (id, patch) => {
+        // keep done/progress coherent
+        const next = { ...patch }
+        if (patch.progress != null) next.done = patch.progress >= 1
+        if (patch.done != null) next.progress = patch.done ? 1 : Math.min(0.99, get().projectMilestones.find((m) => m.id === id)?.progress ?? 0)
+        set((s) => ({ projectMilestones: s.projectMilestones.map((m) => (m.id === id ? { ...m, ...next } : m)) }))
+        void updateMilestoneRow(id, next)
+      },
+
+      deleteMilestone: (id) => {
+        set((s) => ({ projectMilestones: s.projectMilestones.filter((m) => m.id !== id) }))
+        void deleteMilestoneRow(id)
+      },
+
+      // ── Project tasks (one-time + recurring) ───────────────────────────────
+      addProjectTask: (projectId, task) => {
+        const tempId = uid('ptask')
+        set((s) => ({ projectTasks: [...s.projectTasks, { ...task, id: tempId, projectId }] }))
+        void createProjectTaskRow(projectId, task).then((realId) => {
+          if (realId) set((s) => ({ projectTasks: s.projectTasks.map((t) => (t.id === tempId ? { ...t, id: realId } : t)) }))
+        })
+      },
+
+      toggleProjectTask: (taskId, done) => {
+        const t = get().projectTasks.find((x) => x.id === taskId)
+        if (!t) return
+        // A recurring task isn't "done" — it rolls its due date to the next cycle.
+        if (done && t.recurrence) {
+          const every = t.recurEvery ?? 1
+          const base = t.dueDate ? new Date(t.dueDate) : new Date(TODAY)
+          if (t.recurrence === 'daily') base.setDate(base.getDate() + every)
+          else if (t.recurrence === 'weekly') base.setDate(base.getDate() + 7 * every)
+          else base.setMonth(base.getMonth() + every)
+          const nextDue = base.toISOString().slice(0, 10)
+          const patch = { done: false, lastDoneOn: TODAY, dueDate: nextDue }
+          set((s) => ({ projectTasks: s.projectTasks.map((x) => (x.id === taskId ? { ...x, ...patch } : x)) }))
+          void updateProjectTaskRow(taskId, patch)
+          return
+        }
+        set((s) => ({ projectTasks: s.projectTasks.map((x) => (x.id === taskId ? { ...x, done } : x)) }))
+        void updateProjectTaskRow(taskId, { done, lastDoneOn: done ? TODAY : null })
+      },
+
+      updateProjectTask: (id, patch) => {
+        set((s) => ({ projectTasks: s.projectTasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
+        void updateProjectTaskRow(id, patch)
+      },
+
+      deleteProjectTask: (id) => {
+        set((s) => ({ projectTasks: s.projectTasks.filter((t) => t.id !== id) }))
+        void deleteProjectTaskRow(id)
+      },
+
+      // ── Hours (time tracker) ───────────────────────────────────────────────
+      addHours: (projectId, h) => {
+        const tempId = uid('hr')
+        set((s) => ({ projectHours: [{ ...h, id: tempId, projectId }, ...s.projectHours] }))
+        void createHourRow(projectId, h).then((realId) => {
+          if (realId) set((s) => ({ projectHours: s.projectHours.map((x) => (x.id === tempId ? { ...x, id: realId } : x)) }))
+        })
+      },
+
+      deleteHours: (id) => {
+        set((s) => ({ projectHours: s.projectHours.filter((h) => h.id !== id) }))
+        void deleteHourRow(id)
+      },
+
+      // ── Invoices ───────────────────────────────────────────────────────────
+      addInvoice: (projectId, inv) => {
+        const tempId = uid('inv')
+        set((s) => ({ projectInvoices: [{ ...inv, id: tempId, projectId }, ...s.projectInvoices] }))
+        void createInvoiceRow(projectId, inv).then((realId) => {
+          if (realId) set((s) => ({ projectInvoices: s.projectInvoices.map((x) => (x.id === tempId ? { ...x, id: realId } : x)) }))
+        })
+      },
+
+      updateInvoice: (id, patch) => {
+        set((s) => ({ projectInvoices: s.projectInvoices.map((i) => (i.id === id ? { ...i, ...patch } : i)) }))
+        void updateInvoiceRow(id, patch)
+      },
+
+      deleteInvoice: (id) => {
+        set((s) => ({ projectInvoices: s.projectInvoices.filter((i) => i.id !== id) }))
+        void deleteInvoiceRow(id)
+      },
+
+      // ── Activity logger (analyse → take action) ────────────────────────────
+      logActivity: (projectId, body) => {
+        const s0 = get()
+        const tasks = s0.projectTasks.filter((t) => t.projectId === projectId)
+        const milestones = s0.projectMilestones.filter((m) => m.projectId === projectId)
+        const analysis = analyzeActivity(body, tasks, milestones)
+
+        // Take the proposed action when it's confident enough.
+        const apply = analysis.confidence >= 0.45 && analysis.match
+        if (apply && analysis.match) {
+          if (analysis.action === 'complete' && analysis.match.type === 'task') {
+            get().toggleProjectTask(analysis.match.id, true)
+          } else if (analysis.action === 'progress' && analysis.match.type === 'milestone' && analysis.progress != null) {
+            get().updateMilestone(analysis.match.id, { progress: analysis.progress })
           }
-        }),
+        }
 
-      toggleProjectTask: (projectId, taskId, done) =>
+        const tempId = uid('act')
+        const entry: ActivityEntry = {
+          id: tempId,
+          projectId,
+          body,
+          createdAt: new Date().toISOString(),
+          linkType: analysis.match?.type ?? null,
+          linkId: analysis.match?.id ?? null,
+          action: apply ? (analysis.action === 'complete' ? 'completed' : analysis.action === 'progress' ? 'progress' : 'linked') : analysis.match ? 'linked' : null,
+        }
         set((s) => ({
-          projects: s.projects.map((p) =>
-            p.id === projectId
-              ? { ...p, tasks: (p.tasks ?? []).map((t) => (t.id === taskId ? { ...t, done } : t)) }
-              : p
-          ),
-        })),
+          projectActivity: [entry, ...s.projectActivity],
+          activity: pushSignal(s.activity, { text: `Activiteit gelogd${analysis.match ? ` → ${analysis.reason}` : ''}`, domain: 'prjct', loop: 'fast' }),
+        }))
+        void createActivityRow(projectId, {
+          body: entry.body, linkType: entry.linkType, linkId: entry.linkId, action: entry.action,
+        }).then((realId) => {
+          if (realId) set((s) => ({ projectActivity: s.projectActivity.map((a) => (a.id === tempId ? { ...a, id: realId } : a)) }))
+        })
+        return analysis
+      },
 
-      deleteProjectTask: (projectId, taskId) =>
-        set((s) => ({
-          projects: s.projects.map((p) =>
-            p.id === projectId
-              ? { ...p, tasks: (p.tasks ?? []).filter((t) => t.id !== taskId) }
-              : p
-          ),
-        })),
+      deleteActivity: (id) => {
+        set((s) => ({ projectActivity: s.projectActivity.filter((a) => a.id !== id) }))
+        void deleteActivityRow(id)
+      },
 
       addTransactions: (txns) =>
         set((s) => {
@@ -777,6 +1044,15 @@ export const useStore = create<State>()(
             fetchClients(),
             fetchCheckins(),
           ])
+          // Load the native CRM slices (project template + messages) separately.
+          const [milestones, projectTasks, hours, invoices, projActivity, messages] = await Promise.all([
+            fetchMilestones(),
+            fetchProjectTaskRows(),
+            fetchHours(),
+            fetchInvoices(),
+            fetchActivity(),
+            fetchClientMessages(),
+          ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
             ...(healthDays.length > 0 && { healthDays }),
@@ -795,6 +1071,14 @@ export const useStore = create<State>()(
             ...(projects.length > 0 && { projects }),
             ...(clients.length > 0 && { clients }),
             ...(checkins.length > 0 && { checkins }),
+            // CRM template slices: these are app-owned (no mock fallback) so set
+            // them directly — an empty result genuinely means "none yet".
+            projectMilestones: milestones,
+            projectTasks,
+            projectHours: hours,
+            projectInvoices: invoices,
+            projectActivity: projActivity,
+            ...(messages.length > 0 && { messages }),
             dataSource: 'live',
             isLoading: false,
           })
@@ -839,6 +1123,20 @@ export const useStore = create<State>()(
               ...(b.threads.length > 0 && { threads: b.threads }),
               ...(b.patterns.length > 0 && { patterns: b.patterns }),
             })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' },
+            () => fetchClients().then((d) => { if (d.length > 0) { set({ clients: d }); get().recomputeBrain() } }))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'project_milestones' },
+            () => fetchMilestones().then((d) => set({ projectMilestones: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'project_tasks' },
+            () => fetchProjectTaskRows().then((d) => set({ projectTasks: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'project_hours' },
+            () => fetchHours().then((d) => set({ projectHours: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'project_invoices' },
+            () => fetchInvoices().then((d) => set({ projectInvoices: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'project_activity' },
+            () => fetchActivity().then((d) => set({ projectActivity: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'client_messages' },
+            () => fetchClientMessages().then((d) => set({ messages: d })))
           .subscribe()
       },
 
@@ -860,6 +1158,11 @@ export const useStore = create<State>()(
         if (!state.projects?.length) state.projects = s.projects
         if (!state.clients?.length) state.clients = s.clients
         if (!state.messages?.length) state.messages = s.messages
+        if (!state.projectMilestones) state.projectMilestones = []
+        if (!state.projectTasks) state.projectTasks = []
+        if (!state.projectHours) state.projectHours = []
+        if (!state.projectInvoices) state.projectInvoices = []
+        if (!state.projectActivity) state.projectActivity = []
         if (!state.goals?.length) state.goals = s.goals
         if (!state.milestones?.length) state.milestones = s.milestones
         if (!state.payments?.length) state.payments = s.payments
