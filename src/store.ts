@@ -634,6 +634,19 @@ export const useStore = create<State>()(
             () => fetchProjects().then((d) => d.length > 0 && set({ projects: d })))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'spotify_history' },
             () => fetchMusicDays().then((d) => d.length > 0 && set({ musicDays: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' },
+            () => fetchPayments().then((d) => d.length > 0 && set({ payments: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'habits' },
+            () => fetchHabits().then((d) => d.length > 0 && set({ habits: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'habit_log' },
+            () => fetchHabits().then((d) => d.length > 0 && set({ habits: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'goals' },
+            () => fetchGoals().then((d) => d.length > 0 && set({ goals: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'brain_state' },
+            () => fetchBrainState().then((b) => set({
+              ...(b.threads.length > 0 && { threads: b.threads }),
+              ...(b.patterns.length > 0 && { patterns: b.patterns }),
+            })))
           .subscribe()
       },
 
