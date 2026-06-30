@@ -1,27 +1,18 @@
 /**
  * OSLIFE Health-sheet reader — part of the standalone "OSLIFE ingest" project.
  * ---------------------------------------------------------------------------
- * Opens your Health Google Sheet BY ID (Script Property HEALTH_SHEET_ID), reads
- * the tabs and POSTs to the health-sheets-ingest edge function. It does NOT
- * touch the script that fills the sheet — leave that one alone.
+ * Opens your Health Google Sheet BY ID (HEALTH_SHEET_ID) and POSTs to
+ * health-sheets-ingest. Tailored to the Samsung-Health/Health-Sync export:
  *
- * Shared helpers (openSheetById_, ingestPost_, sheetDate_, sheetNum_,
- * sheetNumOrNull_, sheetDatetime_) live in Code.gs in the same project.
+ *   Tab "Stappen"      : Datum | Tijd | Stappen                 (per-interval → summed per day)
+ *   Tab "Activiteiten" : … | Datum | … | Actieve tijd | Afstand (km)
+ *   Tab "Gewicht"      : Datum | Tijd | Gewicht | Lichaamsvet percentage | …
+ *   Tab "Slaap"        : Datum | Tijd | Duur in seconden | Slaap stadium
  *
- * Trigger: installAllTriggers() in Code.gs installs syncHealthSheet (every 30 min).
- *
- * Expected tabs (Date in column A):
- *   "Steps" | "Distance" | "Calories Burned" | "Weight" | "Body Fat" |
- *   "Sleep" (Date|Start|End|Duration hrs) | "Exercise" (Date|Type|Title|Start|End|Duration min)
+ * Tab + column names are matched case-insensitively with NL/EN aliases, so
+ * small renames keep working. Shared helpers live in Code.gs.
+ * Trigger: installAllTriggers() installs syncHealthSheet (every 30 min).
  */
-
-var H_TAB_STEPS    = "Steps";
-var H_TAB_DISTANCE = "Distance";
-var H_TAB_CALORIES = "Calories Burned";
-var H_TAB_WEIGHT   = "Weight";
-var H_TAB_BODY_FAT = "Body Fat";
-var H_TAB_SLEEP    = "Sleep";
-var H_TAB_EXERCISE = "Exercise";
 
 function syncHealthSheet() {
   var url = prop('HEALTH_SYNC_URL');
@@ -41,21 +32,46 @@ function syncHealthSheet() {
   }
 }
 
+/** Find a tab by name aliases (case-insensitive, contains). */
+function healthTab_(ss, names) {
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    var n = sheets[i].getName().trim().toLowerCase();
+    for (var j = 0; j < names.length; j++) if (n.indexOf(names[j]) !== -1) return sheets[i];
+  }
+  return null;
+}
+
+// health_daily_stats: steps (Stappen) + distance/duration (Activiteiten), merged per day.
 function healthActivity_(ss) {
   var byDate = {};
   function ensure(d) { if (!byDate[d]) byDate[d] = { steps: 0, distance_m: 0, calories_kcal: 0, duration_min: 0 }; return byDate[d]; }
 
-  var steps = ss.getSheetByName(H_TAB_STEPS);
-  if (steps) { var d = steps.getDataRange().getValues(); for (var i = 1; i < d.length; i++) { var dt = sheetDate_(d[i][0]); if (dt) ensure(dt).steps = Math.max(ensure(dt).steps, sheetNum_(d[i][1])); } }
+  var stappen = healthTab_(ss, ['stappen', 'steps']);
+  if (stappen) {
+    var d = stappen.getDataRange().getValues();
+    var dateC = colIdx_(d[0], ['datum', 'date']);
+    var stepC = colIdx_(d[0], ['stappen', 'steps', 'aantal']);
+    if (dateC !== -1 && stepC !== -1) {
+      for (var i = 1; i < d.length; i++) { var dt = sheetDate_(d[i][dateC]); if (!dt) continue; ensure(dt).steps += sheetNum_(d[i][stepC]); }
+    }
+  }
 
-  var dist = ss.getSheetByName(H_TAB_DISTANCE);
-  if (dist) { var d2 = dist.getDataRange().getValues(); for (var j = 1; j < d2.length; j++) { var dt2 = sheetDate_(d2[j][0]); if (dt2) ensure(dt2).distance_m = Math.max(ensure(dt2).distance_m, sheetNum_(d2[j][1])); } }
-
-  var cal = ss.getSheetByName(H_TAB_CALORIES);
-  if (cal) { var d3 = cal.getDataRange().getValues(); for (var k = 1; k < d3.length; k++) { var dt3 = sheetDate_(d3[k][0]); if (!dt3) continue; var raw = sheetNum_(d3[k][1]); ensure(dt3).calories_kcal = Math.max(ensure(dt3).calories_kcal, raw >= 10000 ? raw / 1000 : raw); } }
-
-  var ex = ss.getSheetByName(H_TAB_EXERCISE);
-  if (ex) { var d4 = ex.getDataRange().getValues(); for (var m = 1; m < d4.length; m++) { var dt4 = sheetDate_(d4[m][0]); if (dt4) ensure(dt4).duration_min = Math.max(ensure(dt4).duration_min, sheetNum_(d4[m][5])); } }
+  var act = healthTab_(ss, ['activiteit', 'activities', 'exercise', 'workout']);
+  if (act) {
+    var a = act.getDataRange().getValues();
+    var dateA = colIdx_(a[0], ['datum', 'date']);
+    var distA = colIdx_(a[0], ['afstand', 'distance']);
+    var durA = colIdx_(a[0], ['actieve tijd', 'active', 'duur', 'duration'], ['verstreken']);
+    if (dateA !== -1) {
+      for (var k = 1; k < a.length; k++) {
+        var dtA = sheetDate_(a[k][dateA]); if (!dtA) continue;
+        var row = ensure(dtA);
+        if (distA !== -1) row.distance_m += Math.round(sheetNum_(a[k][distA]) * 1000); // km → m
+        if (durA !== -1) row.duration_min += Math.round(durationMin_(a[k][durA]));
+      }
+    }
+  }
 
   var rows = [];
   for (var date in byDate) {
@@ -66,39 +82,58 @@ function healthActivity_(ss) {
   return rows;
 }
 
+// health_body_metrics: weight + body-fat from "Gewicht".
 function healthBody_(ss) {
-  var byDate = {};
-  function ensure(d) { if (!byDate[d]) byDate[d] = { weight_kg: null, body_fat_pct: null }; return byDate[d]; }
-
-  var w = ss.getSheetByName(H_TAB_WEIGHT);
-  if (w) { var d = w.getDataRange().getValues(); for (var i = 1; i < d.length; i++) { var dt = sheetDate_(d[i][0]); if (!dt) continue; var raw = sheetNumOrNull_(d[i][1]); if (raw == null) continue; ensure(dt).weight_kg = raw >= 1000 ? raw / 1000 : raw; } }
-
-  var f = ss.getSheetByName(H_TAB_BODY_FAT);
-  if (f) { var d2 = f.getDataRange().getValues(); for (var j = 1; j < d2.length; j++) { var dt2 = sheetDate_(d2[j][0]); if (!dt2) continue; var raw2 = sheetNumOrNull_(d2[j][1]); if (raw2 == null) continue; ensure(dt2).body_fat_pct = raw2 >= 100 ? raw2 / 100 : raw2; } }
-
+  var sheet = healthTab_(ss, ['gewicht', 'weight', 'body']);
+  if (!sheet) return [];
+  var d = sheet.getDataRange().getValues();
+  if (d.length < 2) return [];
+  var dateC = colIdx_(d[0], ['datum', 'date']);
+  var wC = colIdx_(d[0], ['gewicht', 'weight'], ['vrij', 'massa']);
+  var fatC = colIdx_(d[0], ['lichaamsvet perc', 'vetpercentage', 'body fat', 'lichaamsvet'], ['massa', 'vrij']);
+  if (dateC === -1) return [];
   var rows = [];
-  for (var date in byDate) { var v = byDate[date]; if (v.weight_kg == null && v.body_fat_pct == null) continue; rows.push({ datetime: date + 'T12:00:00Z', weight_kg: v.weight_kg, body_fat_pct: v.body_fat_pct }); }
+  for (var i = 1; i < d.length; i++) {
+    var dtFull = sheetDatetime_(d[i][dateC]); if (!dtFull) continue;
+    var w = wC !== -1 ? sheetNumOrNull_(d[i][wC]) : null;
+    var fat = fatC !== -1 ? sheetNumOrNull_(d[i][fatC]) : null;
+    if (fat === 0) fat = null;          // 0% = not actually measured
+    if (w === 0) w = null;
+    if (w == null && fat == null) continue;
+    rows.push({ datetime: dtFull, weight_kg: w, body_fat_pct: fat });
+  }
   return rows;
 }
 
+// health_sleep: aggregate segment minutes per stage per day from "Slaap".
 function healthSleep_(ss) {
-  var sheet = ss.getSheetByName(H_TAB_SLEEP);
+  var sheet = healthTab_(ss, ['slaap', 'sleep']);
   if (!sheet) return [];
-  var data = sheet.getDataRange().getValues();
-  if (data.length < 2) return [];
+  var d = sheet.getDataRange().getValues();
+  if (d.length < 2) return [];
+  var dateC = colIdx_(d[0], ['datum', 'date']);
+  var secC = colIdx_(d[0], ['seconden', 'seconds', 'duur', 'duration']);
+  var stageC = colIdx_(d[0], ['stadium', 'stage', 'fase']);
+  if (dateC === -1 || secC === -1) return [];
+
+  var byDate = {};
+  function ensure(dt) { if (!byDate[dt]) byDate[dt] = { light_min: 0, deep_min: 0, rem_min: 0, awake_min: 0 }; return byDate[dt]; }
+  for (var i = 1; i < d.length; i++) {
+    var dt = sheetDate_(d[i][dateC]); if (!dt) continue;
+    var min = sheetNum_(d[i][secC]) / 60;
+    var stage = stageC !== -1 ? String(d[i][stageC] || '').toLowerCase() : '';
+    var b = ensure(dt);
+    if (/diep|deep/.test(stage)) b.deep_min += min;
+    else if (/rem/.test(stage)) b.rem_min += min;
+    else if (/wakker|awake|ontwaak/.test(stage)) b.awake_min += min;
+    else b.light_min += min; // licht/light/onbekend
+  }
   var rows = [];
-  for (var i = 1; i < data.length; i++) {
-    var row = data[i];
-    var date = sheetDate_(row[0]);
-    if (!date) continue;
-    var start = sheetDatetime_(row[1]);
-    var end = sheetDatetime_(row[2]);
-    var hrs = sheetNumOrNull_(row[3]);
-    var ms = hrs != null ? Math.round(hrs * 3600000) : null;
-    if (start && !end && ms != null) end = new Date(new Date(start).getTime() + ms).toISOString();
-    else if (!start && end && ms != null) start = new Date(new Date(end).getTime() - ms).toISOString();
-    if (!start && !end) continue;
-    rows.push({ date: date, start_time: start || null, end_time: end || null, light_min: 0, deep_min: 0, rem_min: 0, awake_min: 0 });
+  for (var date in byDate) {
+    var v = byDate[date];
+    rows.push({ date: date, start_time: null, end_time: null,
+      light_min: Math.round(v.light_min), deep_min: Math.round(v.deep_min),
+      rem_min: Math.round(v.rem_min), awake_min: Math.round(v.awake_min) });
   }
   return rows;
 }

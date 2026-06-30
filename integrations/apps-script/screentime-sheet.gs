@@ -1,23 +1,20 @@
 /**
  * OSLIFE Schermtijd-sheet reader — part of the standalone "OSLIFE ingest" project.
  * --------------------------------------------------------------------------------
- * Opens your Schermtijd Google Sheet BY ID (Script Property SCREENTIME_SHEET_ID).
- * Each tab is a category; tabs are flattened to one row per (date, app, category)
- * and POSTed to screentime-sheet-ingest (→ screentime). Leave the filling script
- * untouched. Shared helpers live in Code.gs.
+ * Opens your Schermtijd Google Sheet BY ID (SCREENTIME_SHEET_ID) and POSTs to
+ * screentime-sheet-ingest (→ screentime). Tailored to the StayFree export:
  *
- * Two tab layouts are auto-detected:
- *   LONG  — a tab has an "App" column:  Datum | App | Duur (min)
- *   WIDE  — no App column; col A is Date, every other header is an app name.
- * Durations: plain numbers = minutes; "h:mm[:ss]" parsed; ≥600000 = already ms.
+ *   Tab "Gebruikstijd" : Datum | App | Device | Tijd (string) | Totaal (string)   ← ingested
+ *   Tab "Aantal keren gebruikt"  ← skipped (open-counts, no duration column)
+ *   Tab "Ontgrendelingen"        ← skipped (unlock counts; no place in the schema yet)
  *
- * Trigger: installAllTriggers() in Code.gs installs syncScreentimeSheet (every 30 min).
+ * Duration strings like "2m 27s" / "1u 3m" are parsed to ms. The category is the
+ * tab name. dedup_key (date|app|category) keeps re-syncs idempotent.
+ * Trigger: installAllTriggers() installs syncScreentimeSheet (every 30 min).
  */
 
-var ST_DATE = ["datum", "date", "dag", "day"];
-var ST_APP  = ["app", "applicatie", "application", "app name", "naam"];
-var ST_DUR  = ["duur", "duration", "tijd", "time", "minuten", "minutes", "gebruik", "usage"];
-var ST_IGNORE_TABS = ["overzicht", "overview", "totaal", "samenvatting", "summary"];
+// Tabs to skip: counts/unlocks/summaries — they have no usable duration column.
+var ST_SKIP = ['aantal keren', 'ontgrendel', 'unlock', 'count', 'overzicht', 'overview', 'totaal', 'summary', 'samenvatting'];
 
 function syncScreentimeSheet() {
   var url = prop('SCREENTIME_SYNC_URL');
@@ -45,41 +42,28 @@ function screentimeRows_(ss) {
   var sheets = ss.getSheets();
   for (var s = 0; s < sheets.length; s++) {
     var sheet = sheets[s];
-    var category = sheet.getName().trim();
-    if (ST_IGNORE_TABS.indexOf(category.toLowerCase()) !== -1) continue;
+    var name = sheet.getName().trim();
+    var lname = name.toLowerCase();
+    var skip = false;
+    for (var z = 0; z < ST_SKIP.length; z++) if (lname.indexOf(ST_SKIP[z]) !== -1) { skip = true; break; }
+    if (skip) continue;
 
-    var data = sheet.getDataRange().getValues();
-    if (data.length < 2) continue;
+    var d = sheet.getDataRange().getValues();
+    if (d.length < 2) continue;
 
-    var header = data[0];
-    var dateCol = headerIndex_(header, ST_DATE);
-    if (dateCol == null) continue;
-    var appCol = headerIndex_(header, ST_APP);
-    var durCol = headerIndex_(header, ST_DUR);
-    var cat = category.toLowerCase();
+    var dateC = colIdx_(d[0], ['datum', 'date', 'dag']);
+    var appC  = colIdx_(d[0], ['app', 'applicatie', 'application']);
+    // duration = a "tijd/duur/time/usage" column, but NOT a cumulative "totaal/total" one.
+    var durC  = colIdx_(d[0], ['tijd', 'duur', 'duration', 'time', 'gebruik', 'usage'], ['totaal', 'total', 'device']);
+    if (dateC === -1 || appC === -1 || durC === -1) continue; // not a usable usage tab
 
-    if (appCol != null && durCol != null) {
-      for (var i = 1; i < data.length; i++) {
-        var date = sheetDate_(data[i][dateCol]);
-        if (!date) continue;
-        var app = String(data[i][appCol] || '').trim() || 'all';
-        var ms = toMs_(data[i][durCol]);
-        if (ms <= 0) continue;
-        out.push({ usage_date: date, app_name: app, duration_ms: ms, category: cat });
-      }
-    } else {
-      for (var c = 0; c < header.length; c++) {
-        if (c === dateCol) continue;
-        var appName = String(header[c] || '').trim();
-        if (!appName) continue;
-        for (var r = 1; r < data.length; r++) {
-          var d2 = sheetDate_(data[r][dateCol]);
-          if (!d2) continue;
-          var ms2 = toMs_(data[r][c]);
-          if (ms2 <= 0) continue;
-          out.push({ usage_date: d2, app_name: appName, duration_ms: ms2, category: cat });
-        }
-      }
+    var cat = lname;
+    for (var i = 1; i < d.length; i++) {
+      var date = sheetDate_(d[i][dateC]); if (!date) continue;
+      var app = String(d[i][appC] || '').trim(); if (!app) continue;
+      var ms = durStringMs_(d[i][durC]);
+      if (ms <= 0) continue;
+      out.push({ usage_date: date, app_name: app, duration_ms: ms, category: cat });
     }
   }
   return out;

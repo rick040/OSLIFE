@@ -1,28 +1,18 @@
 /**
  * OSLIFE Betalingen-sheet reader — part of the standalone "OSLIFE ingest" project.
  * --------------------------------------------------------------------------------
- * Opens your Betalingen Google Sheet BY ID (Script Property PAYMENTS_SHEET_ID),
- * reads the card-payment rows and POSTs them to the payments-sheet-ingest edge
- * function (→ finance_tx). Leave the script that fills the sheet untouched.
+ * Opens your Betalingen Google Sheet BY ID (PAYMENTS_SHEET_ID) and POSTs to
+ * payments-sheet-ingest (→ finance_tx). Tailored to the phone card-log export:
  *
- * These rows share a dedup_key (`date|amount`) with the in-app ABN AMRO CSV
- * import, so a purchase in BOTH the sheet and the monthly ABN export is stored
- * only once.
+ *   Timestamp | Merchant | Amount | Currency | Payment Method | Account Type | Raw Title | Raw Text
  *
- * Columns (header row, matched case-insensitively; order/extra columns don't matter):
- *   Datum|Date  ·  Bedrag|Amount  ·  Omschrijving|Merchant|Naam|Winkel  ·  Categorie|Category  ·  Domein|Domain
+ * Card payments are spend → stored negative. Account Type ("Persoonlijk"/"Zakelijk")
+ * maps to the app domain. dedup_key (`date|amount`) matches the in-app ABN AMRO
+ * CSV import, so a purchase in both sources is stored once.
  *
- * Trigger: installAllTriggers() in Code.gs installs syncPaymentsSheet (every 30 min).
- * Shared helpers live in Code.gs.
+ * Column names matched case-insensitively (contains). Shared helpers in Code.gs.
+ * Trigger: installAllTriggers() installs syncPaymentsSheet (every 30 min).
  */
-
-var PAY_ALIASES = {
-  date:     ["datum", "date", "transactiedatum", "boekdatum"],
-  amount:   ["bedrag", "amount", "value", "afschrijving"],
-  merchant: ["omschrijving", "merchant", "naam", "winkel", "tegenpartij", "description", "payee"],
-  category: ["categorie", "category"],
-  domain:   ["domein", "domain"],
-};
 
 function syncPaymentsSheet() {
   var url = prop('PAYMENTS_SYNC_URL');
@@ -32,25 +22,28 @@ function syncPaymentsSheet() {
   try {
     var ss = openSheetById_('PAYMENTS_SHEET_ID');
     var sheet = ss.getSheets()[0];
-    var data = sheet.getDataRange().getValues();
-    if (data.length < 2) { log('syncPaymentsSheet: no rows'); return; }
+    var d = sheet.getDataRange().getValues();
+    if (d.length < 2) { log('syncPaymentsSheet: no rows'); return; }
 
-    var idx = {};
-    for (var f in PAY_ALIASES) idx[f] = headerIndex_(data[0], PAY_ALIASES[f]);
-    if (idx.date == null || idx.amount == null) { log('syncPaymentsSheet: Date/Amount column not found'); return; }
+    var dateC = colIdx_(d[0], ['timestamp', 'datum', 'date']);
+    var amtC  = colIdx_(d[0], ['amount', 'bedrag', 'afschrijving']);
+    var merC  = colIdx_(d[0], ['merchant', 'omschrijving', 'naam', 'winkel', 'tegenpartij', 'payee'], ['raw']);
+    var rawC  = colIdx_(d[0], ['raw title', 'raw text']);
+    var domC  = colIdx_(d[0], ['account type', 'rekening', 'soort', 'domein', 'domain']);
+    var catC  = colIdx_(d[0], ['categorie', 'category']);
+    if (dateC === -1 || amtC === -1) { log('syncPaymentsSheet: Timestamp/Amount column not found'); return; }
 
     var txns = [];
-    for (var i = 1; i < data.length; i++) {
-      var date = sheetDate_(data[i][idx.date]);
-      if (!date) continue;
-      var amount = sheetNumOrNull_(data[i][idx.amount]);
-      if (amount == null) continue;
+    for (var i = 1; i < d.length; i++) {
+      var date = sheetDate_(d[i][dateC]); if (!date) continue;
+      var amount = sheetNumOrNull_(d[i][amtC]); if (amount == null) continue;
+      var merchant = merC !== -1 ? String(d[i][merC] || '') : (rawC !== -1 ? String(d[i][rawC] || '') : '');
       txns.push({
         date: date,
-        amount: -Math.abs(amount), // card payments are spend → negative
-        merchant: idx.merchant != null ? String(data[i][idx.merchant] || '').slice(0, 200) : '',
-        category: idx.category != null ? String(data[i][idx.category] || '').toLowerCase() : '',
-        domain: idx.domain != null ? String(data[i][idx.domain] || '').toLowerCase() : '',
+        amount: -Math.abs(amount),
+        merchant: merchant.slice(0, 200),
+        category: catC !== -1 ? String(d[i][catC] || '').toLowerCase() : '',
+        domain: payDomain_(domC !== -1 ? d[i][domC] : ''),
       });
     }
     if (!txns.length) { log('syncPaymentsSheet: no usable rows'); return; }
@@ -64,4 +57,13 @@ function syncPaymentsSheet() {
   } finally {
     lock.releaseLock();
   }
+}
+
+/** Map "Account Type" / domain text to an app domain. */
+function payDomain_(val) {
+  var s = String(val || '').toLowerCase();
+  if (/zakelijk|business|prjct|zaak/.test(s)) return 'prjct';
+  if (/parking|strijp/.test(s)) return 'parkingyou';
+  if (/buurtkaart|geldrop/.test(s)) return 'buurtkaart';
+  return 'personal'; // persoonlijk / privé / leeg
 }

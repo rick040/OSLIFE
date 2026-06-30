@@ -206,25 +206,66 @@ function ingestPost_(url, payload) {
   }
 }
 
-/** 'YYYY-MM-DD' from a Date or a string cell. Supports dd-mm-yyyy too. */
+/**
+ * 'YYYY-MM-DD' from a Date or string cell. Handles:
+ *   Date object → Amsterdam date
+ *   '2026.06.25 02:46:00' (dots) and '2026-06-25 ...'
+ *   ISO with time+Z → converted to the Amsterdam calendar date
+ *   '25-06-2026' (dd-mm-yyyy)
+ */
 function sheetDate_(val) {
   if (!val) return '';
   if (val instanceof Date) return Utilities.formatDate(val, 'Europe/Amsterdam', 'yyyy-MM-dd');
   var s = String(val).trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  if (/^\d{4}[.\-/]\d{2}[.\-/]\d{2}/.test(s)) {
+    if (s.indexOf('T') !== -1) {
+      var d = new Date(s);
+      if (!isNaN(d.getTime())) return Utilities.formatDate(d, 'Europe/Amsterdam', 'yyyy-MM-dd');
+    }
+    return s.slice(0, 10).replace(/[.\/]/g, '-');
+  }
   var m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
   if (m) return m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
   return '';
 }
 
-/** ISO datetime from a Date or string cell. */
+/** Full ISO datetime from a Date or string cell (keeps the time-of-day). */
 function sheetDatetime_(val) {
   if (!val) return '';
   if (val instanceof Date) return val.toISOString();
   var s = String(val).trim();
   if (!s) return '';
-  var d = new Date(s.replace(' ', 'T') + (s.indexOf('T') !== -1 || s.indexOf('+') !== -1 ? '' : 'Z'));
-  return isNaN(d.getTime()) ? '' : d.toISOString();
+  if (s.indexOf('T') !== -1) { var iso = new Date(s); if (!isNaN(iso.getTime())) return iso.toISOString(); }
+  var m = s.match(/^(\d{4})[.\-/](\d{2})[.\-/](\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (m) return m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4] + ':' + m[5] + ':' + (m[6] || '00') + 'Z';
+  var dd = sheetDate_(val);
+  return dd ? dd + 'T12:00:00Z' : '';
+}
+
+/** Minutes from a duration cell: a Sheets time-Date (1899 epoch), 'h:mm:ss', or '2m 27s'. */
+function durationMin_(val) {
+  if (val == null || val === '') return 0;
+  if (val instanceof Date) return val.getUTCHours() * 60 + val.getUTCMinutes() + val.getUTCSeconds() / 60;
+  var s = String(val).trim();
+  if (/^\d{4}[.\-/]\d{2}[.\-/]\d{2}T/.test(s)) { var d = new Date(s); if (!isNaN(d.getTime())) return d.getUTCHours() * 60 + d.getUTCMinutes() + d.getUTCSeconds() / 60; }
+  return durStringMs_(s) / 60000;
+}
+
+/** Milliseconds from a duration string: '2m 27s', '1u 3m', '1:23:45', 'mm:ss', or a bare number (minutes). */
+function durStringMs_(val) {
+  if (val == null || val === '') return 0;
+  var s = String(val).trim().toLowerCase();
+  if (s.indexOf(':') !== -1) {
+    var p = s.split(':').map(function (x) { return parseInt(x, 10) || 0; });
+    if (p.length === 3) return (p[0] * 3600 + p[1] * 60 + p[2]) * 1000;
+    if (p.length === 2) return (p[0] * 60 + p[1]) * 1000;
+  }
+  var ms = 0, m;
+  if ((m = s.match(/(\d+)\s*(?:u|uur|h|hr)\b/))) ms += parseInt(m[1], 10) * 3600000;
+  if ((m = s.match(/(\d+)\s*m(?:in)?\b/)))        ms += parseInt(m[1], 10) * 60000;
+  if ((m = s.match(/(\d+)\s*s(?:ec)?\b/)))        ms += parseInt(m[1], 10) * 1000;
+  if (ms === 0) { var n = parseFloat(s.replace(',', '.')); if (!isNaN(n)) ms = Math.round(n * 60000); }
+  return ms;
 }
 
 function sheetNum_(val) {
@@ -258,11 +299,27 @@ function toMs_(val) {
   return n >= 600000 ? Math.round(n) : Math.round(n * 60000);
 }
 
-/** Find the column index whose header matches one of the aliases (case-insensitive). */
+/** Exact-match column index (case-insensitive) for one of the aliases; null if none. */
 function headerIndex_(headerRow, aliases) {
   var norm = headerRow.map(function (h) { return String(h || '').trim().toLowerCase(); });
   for (var c = 0; c < norm.length; c++) if (aliases.indexOf(norm[c]) !== -1) return c;
   return null;
+}
+
+/** First column whose lowercased header CONTAINS any of `inc` and none of `exc`; -1 if none. */
+function colIdx_(headerRow, inc, exc) {
+  exc = exc || [];
+  for (var c = 0; c < headerRow.length; c++) {
+    var h = String(headerRow[c] || '').trim().toLowerCase();
+    if (!h) continue;
+    var hit = false, i;
+    for (i = 0; i < inc.length; i++) if (h.indexOf(inc[i]) !== -1) { hit = true; break; }
+    if (!hit) continue;
+    var bad = false;
+    for (i = 0; i < exc.length; i++) if (h.indexOf(exc[i]) !== -1) { bad = true; break; }
+    if (!bad) return c;
+  }
+  return -1;
 }
 
 /** Map text to a domain. Tune keywords to your own senders/events. */
