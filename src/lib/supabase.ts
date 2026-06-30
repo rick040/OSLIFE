@@ -6,8 +6,6 @@ import type {
   MeetingDay,
   Domain,
   ScreenDay,
-  LocationDay,
-  MusicDay,
   Habit,
   Subscription,
   Goal,
@@ -59,7 +57,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const isDbId = (id: string): boolean => UUID_RE.test(id)
 
 function warnWrite(label: string, error: unknown): void {
-  if (error) console.warn(`[RICK-OS] write failed: ${label}`, error)
+  if (error) console.warn(`[OSLIFE] write failed: ${label}`, error)
 }
 
 // ── Brain state (threads + patterns) — one jsonb row per user ───────────────────
@@ -79,6 +77,33 @@ export async function persistPaymentStatus(id: string, status: Payment['status']
   if (!isDbId(id)) return
   const { error } = await supabase.from('payments').update({ status }).eq('id', id)
   warnWrite('payments.status', error)
+}
+
+// ── Finance: ABN AMRO CSV import ──────────────────────────────────────────────
+// Persists imported bank transactions to finance_tx. The dedup_key matches the
+// one payments-sheet-ingest uses (`date|amount`), so a purchase already logged
+// via the Betalingen Google Sheet is NOT duplicated (ignoreDuplicates keeps the
+// existing row). Returns the number of NEW rows actually inserted.
+export async function insertFinanceTx(txns: Transaction[]): Promise<number> {
+  const user_id = await currentUserId()
+  if (!user_id || !txns.length) return 0
+  const rows = txns.map((t) => ({
+    user_id,
+    occurred_on: t.date,
+    amount: t.amount,
+    counterparty: t.merchant,
+    description: '',
+    category: t.category,
+    domain: t.domain,
+    source: 'abn_csv',
+    payment_method: 'unknown',
+    dedup_key: `${t.date}|${t.amount.toFixed(2)}`,
+  }))
+  const { error, count } = await supabase
+    .from('finance_tx')
+    .upsert(rows, { onConflict: 'user_id,dedup_key', ignoreDuplicates: true, count: 'exact' })
+  warnWrite('finance_tx.import', error)
+  return count ?? 0
 }
 
 // ── Email / Inbox ─────────────────────────────────────────────────────────────
@@ -101,6 +126,7 @@ export async function persistAllEmailsRead(): Promise<void> {
 export async function persistProjectPatch(
   id: string,
   patch: Partial<Pick<Project, 'status' | 'priority' | 'deadline' | 'value' | 'progress'>>,
+  notionId?: string,
 ): Promise<void> {
   if (!isDbId(id)) return
   const row: Record<string, unknown> = {}
@@ -112,6 +138,28 @@ export async function persistProjectPatch(
   if (Object.keys(row).length === 0) return
   const { error } = await supabase.from('projects').update(row).eq('id', id)
   warnWrite('projects', error)
+  // Write the same change back to Notion (source of truth) — progress is an
+  // app-derived field, so we don't push it back.
+  if (notionId) {
+    const { progress: _drop, ...notionPatch } = patch
+    if (Object.keys(notionPatch).length > 0) void mutateNotion('project', notionId, notionPatch)
+  }
+}
+
+/** Push a single project/client change back to Notion via the notion-mutate edge function. */
+export async function mutateNotion(
+  kind: 'project' | 'client',
+  externalId: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const { error } = await supabase.functions.invoke('notion-mutate', {
+      body: { kind, external_id: externalId, patch },
+    })
+    warnWrite('notion-mutate', error)
+  } catch (err) {
+    warnWrite('notion-mutate', err)
+  }
 }
 
 // ── Habits ────────────────────────────────────────────────────────────────────
@@ -564,81 +612,10 @@ export async function fetchScreenDays(): Promise<ScreenDay[]> {
   }))
 }
 
-export async function fetchLocationDays(): Promise<LocationDay[]> {
-  const { data } = await supabase
-    .from('location_visits')
-    .select('date,place_name,place_type,start_at,end_at')
-    .order('date', { ascending: false })
-    .limit(300)
-
-  const byDate = new Map<string, LocationDay>()
-  for (const r of data ?? []) {
-    const date = r.date as string
-    const start = new Date(r.start_at as string)
-    const end = r.end_at ? new Date(r.end_at as string) : start
-    const mins = Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000))
-    const place = (r.place_name as string) ?? 'Unknown'
-    const type = (r.place_type as string) ?? ''
-
-    const existing = byDate.get(date)
-    if (existing) {
-      if (/home|thuis/i.test(type)) existing.timeHome += mins
-      else existing.timeOut += mins
-      existing.places.push({ name: place, domain: 'personal', minutes: mins })
-    } else {
-      const timeHome = /home|thuis/i.test(type) ? mins : 0
-      byDate.set(date, {
-        date,
-        timeHome,
-        timeOut: timeHome ? 0 : mins,
-        timeCommute: 0,
-        distanceKm: 0,
-        places: [{ name: place, domain: 'personal', minutes: mins }],
-      })
-    }
-  }
-  return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date))
-}
-
-export async function fetchMusicDays(): Promise<MusicDay[]> {
-  const { data } = await supabase
-    .from('spotify_history')
-    .select('played_at,genres,duration_ms')
-    .order('played_at', { ascending: false })
-    .limit(500)
-
-  const byDate = new Map<string, { totalMs: number; genreCounts: Map<string, number>; tempos: number[] }>()
-  for (const r of data ?? []) {
-    const date = (r.played_at as string).slice(0, 10)
-    const ms = (r.duration_ms as number) ?? 0
-    const genres = (r.genres as string[]) ?? []
-    const existing = byDate.get(date)
-    if (existing) {
-      existing.totalMs += ms
-      for (const g of genres) existing.genreCounts.set(g, (existing.genreCounts.get(g) ?? 0) + 1)
-    } else {
-      const genreCounts = new Map<string, number>()
-      for (const g of genres) genreCounts.set(g, 1)
-      byDate.set(date, { totalMs: ms, genreCounts, tempos: [] })
-    }
-  }
-
-  return Array.from(byDate.entries()).map(([date, d]) => {
-    const topGenre = [...d.genreCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? ''
-    return {
-      date,
-      minutes: Math.round(d.totalMs / 60000),
-      topGenre,
-      tempo: 0,
-      valence: 0,
-    }
-  }).sort((a, b) => a.date.localeCompare(b.date))
-}
-
 export async function fetchProjects(): Promise<Project[]> {
   const { data } = await supabase
     .from('projects')
-    .select('id,name,client,domain,status,deadline,value,progress,type,prioriteit,notion_url')
+    .select('id,external_id,name,client,domain,status,deadline,value,progress,type,prioriteit,notion_url')
     .not('status', 'eq', 'done')
     .order('deadline', { ascending: true, nullsFirst: false })
 
@@ -654,6 +631,7 @@ export async function fetchProjects(): Promise<Project[]> {
     type:       (r.type as string[]) ?? [],
     priority:   (r.prioriteit as Project['priority']) ?? undefined,
     notionUrl:  (r.notion_url as string) ?? undefined,
+    notionId:   (r.external_id as string) ?? undefined,
   }))
 }
 

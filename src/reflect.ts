@@ -8,8 +8,6 @@ import type {
   ReflectDigest,
   ScreenDay,
   MeetingDay,
-  LocationDay,
-  MusicDay,
 } from './types'
 import { TODAY, daysBetween } from './domains'
 
@@ -31,13 +29,10 @@ export function computeCorrelations(
   txns: Transaction[],
   screen: ScreenDay[] = [],
   meetings: MeetingDay[] = [],
-  location: LocationDay[] = [],
-  music: MusicDay[] = [],
 ): Correlation[] {
   const out: Correlation[] = []
 
   const energyByDate = new Map(logs.map((l) => [l.date, l.energy]))
-  const moodByDate = new Map(logs.map((l) => [l.date, l.mood]))
 
   // 1) SLEEP ↔ ENERGY (personal ↔ personal/health)
   const low = logs.filter((l) => l.sleepHours < 6)
@@ -154,49 +149,6 @@ export function computeCorrelations(
     }
   }
 
-  // 6) LOCATIE ↔ DEADLINES (gedrag ↔ work, cross-domain)
-  if (location.length) {
-    const lotMin = (l: LocationDay) =>
-      l.places.filter((p) => p.domain === 'parkingyou').reduce((a, b) => a + b.minutes, 0)
-    const near = location.filter((l) => DEADLINE_DATES.some((dl) => Math.abs(daysBetween(dl, l.date)) <= 1))
-    const far = location.filter((l) => !DEADLINE_DATES.some((dl) => Math.abs(daysBetween(dl, l.date)) <= 1))
-    const lotNear = avg(near.map(lotMin))
-    const lotFar = avg(far.map(lotMin))
-    if (near.length) {
-      out.push({
-        id: 'c6',
-        title: `Tijd op de lots piekt rond campagne-deadlines`,
-        detail: `Rond deadlines sta je gemiddeld ${Math.round(lotNear)} min op de ParkingYou-lots (Strijp-S / Geldrop) vs ${Math.round(
-          lotFar,
-        )} min daarbuiten, met meer commute. Plan reistijd vooraf in.`,
-        domains: ['parkingyou', 'cross'],
-        strength: Math.min(1, lotFar ? (lotNear - lotFar) / (lotFar + 120) : 0.6),
-        evidence: `${location.length} dagen locatie vs deadline-kalender`,
-      })
-    }
-  }
-
-  // 7) MUZIEK ↔ MOOD (gedrag ↔ personal)
-  if (music.length) {
-    const lowMood = music.filter((m) => (moodByDate.get(m.date) ?? 3) <= 2)
-    const highMood = music.filter((m) => (moodByDate.get(m.date) ?? 3) >= 4)
-    if (lowMood.length && highMood.length) {
-      const vLow = avg(lowMood.map((m) => m.valence))
-      const vHigh = avg(highMood.map((m) => m.valence))
-      const drop = round((vHigh - vLow) * 100)
-      out.push({
-        id: 'c7',
-        title: `Muziek-valence ~${drop} punten lager op lage-mood dagen`,
-        detail: `Op sombere dagen draai je rustiger, lagere-valence muziek (gem. ${vLow.toFixed(
-          2,
-        )} vs ${vHigh.toFixed(2)}), vaak Lo-fi/Ambient. Je luistergedrag is een vroege mood-indicator.`,
-        domains: ['personal'],
-        strength: Math.min(1, (vHigh - vLow) / 0.4),
-        evidence: `${music.length} dagen luistergedrag vs mood-logs`,
-      })
-    }
-  }
-
   return out
 }
 
@@ -270,10 +222,8 @@ export function runReflect(
   patterns: Pattern[],
   screen: ScreenDay[] = [],
   meetings: MeetingDay[] = [],
-  location: LocationDay[] = [],
-  music: MusicDay[] = [],
 ): { digest: ReflectDigest; patterns: Pattern[] } {
-  const correlations = computeCorrelations(logs, txns, screen, meetings, location, music)
+  const correlations = computeCorrelations(logs, txns, screen, meetings)
   const anomalies = computeAnomalies(logs, txns, threads)
   const { patterns: nextPatterns, reinforced, decayed } = applyReflection(patterns)
   return {

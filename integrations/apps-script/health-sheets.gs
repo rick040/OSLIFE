@@ -1,8 +1,8 @@
 /**
- * rick-os Health Sheets ingest — Google Apps Script
+ * OSLIFE Health Sheets ingest — Google Apps Script
  *
- * Reads data from your health export Google Sheet and upserts to rick-os
- * via /api/health/sync-sheets.
+ * Reads data from your health export Google Sheet and upserts to the OSLIFE
+ * Supabase project via the health-sheets-ingest edge function.
  *
  * This file is bound to your Google Sheet (its own Apps Script project), so it
  * is fully self-contained — it carries its own HTTP/retry/lock helpers rather
@@ -41,19 +41,19 @@ function installTrigger() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
   ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === "syncHealthToRickOs")
+    .filter(t => t.getHandlerFunction() === "syncHealthToOslife")
     .forEach(t => ScriptApp.deleteTrigger(t));
 
-  ScriptApp.newTrigger("syncHealthToRickOs")
+  ScriptApp.newTrigger("syncHealthToOslife")
     .forSpreadsheet(ss)
     .onChange()
     .create();
 
-  Logger.log("Trigger installed: syncHealthToRickOs on onChange");
+  Logger.log("Trigger installed: syncHealthToOslife on onChange");
 }
 
 // ── Main sync function (called by trigger) ─────────────────────────────────
-function syncHealthToRickOs() {
+function syncHealthToOslife() {
   const cfg = requireProps_(["HEALTH_SYNC_URL", "INGEST_SECRET"]);
 
   // onChange fires on every edit; the lock coalesces bursts so we don't fire a

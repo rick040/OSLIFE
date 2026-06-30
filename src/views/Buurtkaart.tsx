@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Map, RefreshCw, ChevronDown, Plus } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 
-// Buurtkaart — 1-op-1 port van rick-os /geldrop (Geldrop Buurtkaart beheer).
-// In rick-os WordPress-API gedreven; hier met representatieve mock data + lokale
-// state (status wijzigen, editie activeren/verwijderen, nieuwe editie).
+// Buurtkaart — Geldrop Buurtkaart beheer. Live data komt uit de WordPress-plugin
+// API (geldropbuurtkaart.nl) via de gbk-overview edge function; lokale state
+// (status wijzigen, editie activeren/verwijderen) blijft als snelle UI-laag.
 
 type Tab = 'edities' | 'klanten' | 'facturen'
 
@@ -40,6 +41,63 @@ const fmt = (iso: string) => (iso ? new Date(iso).toLocaleDateString('nl-NL', { 
 const ED0: Edition[] = []
 const SUB0: Submission[] = []
 
+// ── Defensive normalisers for the GBK WordPress payload ──────────────────────
+// The /overview endpoint shape isn't fully fixed, so every field is read by a
+// list of likely key names and coerced, falling back to sane defaults.
+type AnyObj = Record<string, unknown>
+const gnum = (v: unknown) => (typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.')) || 0)
+const gstr = (v: unknown) => (v == null ? '' : String(v))
+function pick(obj: unknown, keys: string[]): unknown {
+  if (!obj || typeof obj !== 'object') return undefined
+  for (const k of keys) if ((obj as AnyObj)[k] != null) return (obj as AnyObj)[k]
+  return undefined
+}
+function asArray(obj: unknown, keys: string[]): AnyObj[] {
+  const v = pick(obj, keys)
+  return Array.isArray(v) ? (v as AnyObj[]) : []
+}
+const coerce = (s: string, allowed: string[], fallback: string) =>
+  allowed.includes(s.toLowerCase()) ? s.toLowerCase() : fallback
+
+function normEditions(data: unknown): Edition[] {
+  return asArray(data, ['editions', 'edities', 'edition', 'editie']).map((e, i) => ({
+    id: gnum(pick(e, ['id'])) || i + 1,
+    name: gstr(pick(e, ['name', 'title', 'naam', 'label'])) || `Editie ${i + 1}`,
+    deadline: gstr(pick(e, ['deadline', 'deadline_date', 'aanmeld_deadline'])),
+    delivery: gstr(pick(e, ['delivery', 'bezorging', 'delivery_date', 'verschijning'])),
+    spotsTotal: gnum(pick(e, ['spotsTotal', 'spots', 'spots_total', 'plekken', 'total_spots'])),
+    submissions: gnum(pick(e, ['submissions', 'aanmeldingen', 'count', 'klanten'])),
+    status: coerce(gstr(pick(e, ['status'])), Object.keys(ED_STATUS), 'upcoming'),
+    active: Boolean(pick(e, ['active', 'is_active', 'actief'])),
+  }))
+}
+
+function normSubs(data: unknown): Submission[] {
+  return asArray(data, ['customers', 'klanten', 'submissions', 'aanmeldingen', 'advertisers', 'adverteerders']).map(
+    (s, i) => ({
+      id: gnum(pick(s, ['id'])) || i + 1,
+      company: gstr(pick(s, ['company', 'bedrijf', 'name', 'naam', 'company_name'])) || 'Onbekend',
+      plan: gstr(pick(s, ['plan', 'pakket', 'package'])).toLowerCase().includes('prem') ? 'premium' : 'standard',
+      contact: gstr(pick(s, ['contact', 'contactpersoon', 'contact_name'])),
+      edition: gstr(pick(s, ['edition', 'editie', 'edition_name'])),
+      status: coerce(gstr(pick(s, ['status'])), Object.keys(SUB_STATUS), 'nieuw'),
+      industry: gstr(pick(s, ['industry', 'branche'])) || undefined,
+      phone: gstr(pick(s, ['phone', 'telefoon', 'tel'])) || undefined,
+      address: gstr(pick(s, ['address', 'adres'])) || undefined,
+      website: gstr(pick(s, ['website', 'site', 'url'])) || undefined,
+      pitch: gstr(pick(s, ['pitch', 'omschrijving', 'description'])) || undefined,
+      invoices: asArray(s, ['invoices', 'facturen']).map((inv, j) => ({
+        id: gnum(pick(inv, ['id'])) || j + 1,
+        label: gstr(pick(inv, ['label', 'description', 'omschrijving', 'title'])) || 'Factuur',
+        amount: gnum(pick(inv, ['amount', 'bedrag', 'total'])),
+        status: coerce(gstr(pick(inv, ['status'])), Object.keys(INV_STATUS), 'open'),
+      })),
+    }),
+  )
+}
+
+type LiveStatus = 'loading' | 'live' | 'empty' | 'error'
+
 export default function Buurtkaart() {
   const [tab, setTab] = useState<Tab>('edities')
   const [editions, setEditions] = useState(ED0)
@@ -47,6 +105,31 @@ export default function Buurtkaart() {
   const [expanded, setExpanded] = useState<number | null>(null)
   const [edForm, setEdForm] = useState(false)
   const [edName, setEdName] = useState('')
+  const [status, setStatus] = useState<LiveStatus>('loading')
+
+  const loadGbk = async () => {
+    setStatus('loading')
+    try {
+      const { data, error } = await supabase.functions.invoke('gbk-overview')
+      const payload = (data as { ok?: boolean; data?: unknown } | null)?.data
+      if (error || !payload) {
+        setStatus('error')
+        return
+      }
+      const eds = normEditions(payload)
+      const ss = normSubs(payload)
+      setEditions(eds)
+      setSubs(ss)
+      setStatus(eds.length || ss.length ? 'live' : 'empty')
+    } catch {
+      setStatus('error')
+    }
+  }
+
+  useEffect(() => {
+    void loadGbk()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const invoices = useMemo(() => subs.flatMap((s) => s.invoices.map((i) => ({ ...i, sub: s }))), [subs])
   const openInv = invoices.filter((i) => ['open', 'te_laat'].includes(i.status))
@@ -72,7 +155,7 @@ export default function Buurtkaart() {
           <div className="text-xs font-semibold uppercase tracking-wider text-faint">Geldrop · beheer</div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><Map className="h-6 w-6 text-buurtkaart" /> Buurtkaart</h1>
         </div>
-        <button className="h-9 w-9 rounded-full bg-buurtkaart/15 text-buurtkaart-deep flex items-center justify-center" aria-label="Vernieuwen"><RefreshCw className="h-4 w-4" /></button>
+        <button onClick={loadGbk} className="h-9 w-9 rounded-full bg-buurtkaart/15 text-buurtkaart-deep flex items-center justify-center" aria-label="Vernieuwen"><RefreshCw className={`h-4 w-4 ${status === 'loading' ? 'animate-spin' : ''}`} /></button>
       </div>
 
       {/* stats */}
@@ -207,7 +290,12 @@ export default function Buurtkaart() {
         </div>
       )}
 
-      <div className="text-[11px] text-faint">gesynchroniseerd met geldropbuurtkaart.nl · mock</div>
+      <div className="text-[11px] text-faint">
+        {status === 'loading' && 'verbinden met geldropbuurtkaart.nl…'}
+        {status === 'live' && 'live · geldropbuurtkaart.nl (WordPress API)'}
+        {status === 'empty' && 'verbonden met geldropbuurtkaart.nl · nog geen data'}
+        {status === 'error' && 'kon geldropbuurtkaart.nl niet bereiken — controleer GBK_API_KEY'}
+      </div>
     </div>
   )
 }

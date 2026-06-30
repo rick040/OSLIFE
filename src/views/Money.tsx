@@ -142,6 +142,7 @@ export default function Money() {
     payments,
     subscriptions,
     addTransactions,
+    importTransactions,
     markPaymentPaid,
     addSubscription,
     toggleSubscription,
@@ -191,10 +192,17 @@ export default function Money() {
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
-    f.text().then((txt) => {
+    f.text().then(async (txt) => {
       const txns = parseCsv(txt)
-      if (txns.length) addTransactions(txns)
-      else alert('Geen herkenbare transacties gevonden in dit bestand.')
+      if (!txns.length) {
+        alert('Geen herkenbare transacties gevonden in dit bestand.')
+        return
+      }
+      const { inserted, duplicates } = await importTransactions(txns)
+      alert(
+        `${inserted} transactie(s) geïmporteerd` +
+          (duplicates ? `, ${duplicates} al bekend (overgeslagen).` : '.'),
+      )
     })
     e.target.value = ''
   }

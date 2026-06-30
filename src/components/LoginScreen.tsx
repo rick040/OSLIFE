@@ -23,7 +23,7 @@ export default function LoginScreen() {
         <div className="flex items-center gap-3">
           <Orb size={40} onTap={() => {}} onLongPress={() => {}} />
           <div>
-            <div className="font-semibold text-lg">RICK-OS</div>
+            <div className="font-semibold text-lg">OSLIFE</div>
             <div className="text-xs text-faint">Personal operating system</div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-// ── Core domain model for RICK-OS ────────────────────────────────────────────
+// ── Core domain model for OSLIFE ─────────────────────────────────────────────
 
 export type Domain = 'parkingyou' | 'prjct' | 'buurtkaart' | 'personal' | 'cross'
 
@@ -121,23 +121,6 @@ export interface ScreenDay {
   topApps: AppUse[]
 }
 
-// ── Behaviour sense: location / most-visited places ──────────────────────────
-
-export interface PlaceVisit {
-  name: string
-  domain: Domain
-  minutes: number
-}
-
-export interface LocationDay {
-  date: string // ISO date
-  timeHome: number // minutes
-  timeOut: number // minutes (work sites, errands)
-  timeCommute: number // minutes driving/travelling
-  distanceKm: number
-  places: PlaceVisit[]
-}
-
 // ── Behaviour sense: calendar load / meetings ────────────────────────────────
 
 export interface MeetingDay {
@@ -145,16 +128,6 @@ export interface MeetingDay {
   count: number
   minutes: number
   fragmented: boolean // many short meetings broke up the day
-}
-
-// ── Behaviour sense: music / listening (mood proxy) ──────────────────────────
-
-export interface MusicDay {
-  date: string // ISO date
-  minutes: number
-  topGenre: string
-  tempo: number // avg BPM
-  valence: number // 0..1, higher = brighter/happier
 }
 
 // ── Projects (mirrors a Notion projects database) ────────────────────────────
@@ -185,6 +158,7 @@ export interface Project {
   priority?: Priority
   clientId?: string
   notionUrl?: string
+  notionId?: string // Notion page id (= projects.external_id) — used for write-back
   tasks?: Task[]
 }
 

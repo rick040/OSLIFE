@@ -34,7 +34,7 @@ import {
 
 const SUPABASE_URL         = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const USER_ID              = Deno.env.get("RICK_USER_ID")!;
+const USER_ID              = Deno.env.get("OSLIFE_USER_ID") ?? Deno.env.get("RICK_USER_ID")!;
 const SYNC_SECRET          = Deno.env.get("SYNC_SECRET") ?? "";
 
 const DB_PROJECTS = "239ddc8e-9208-8186-b452-cc35f89677ff";

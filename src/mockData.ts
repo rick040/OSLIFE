@@ -15,9 +15,7 @@ import type {
   EmailItem,
   Payment,
   ScreenDay,
-  LocationDay,
   MeetingDay,
-  MusicDay,
   Client,
   Message,
   Subscription,
@@ -27,7 +25,7 @@ import type {
   DogProfile,
 } from './types'
 
-export const STORAGE_KEY = 'rick-os-state-v8'
+export const STORAGE_KEY = 'oslife-state-v1'
 export const OPENING_BALANCE = 0
 
 export const essentials: Essential[] = []
@@ -41,9 +39,7 @@ export const initialNudge: Nudge = { id: 'nudge-default', domain: 'personal', te
 export const seedItems: StructuredItem[] = []
 export const healthDays: HealthDay[] = []
 export const screenDays: ScreenDay[] = []
-export const locationDays: LocationDay[] = []
 export const meetingDays: MeetingDay[] = []
-export const musicDays: MusicDay[] = []
 export const projects: Project[] = []
 export const clients: Client[] = []
 export const messages: Message[] = []

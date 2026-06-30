@@ -139,6 +139,27 @@ export async function queryDatabase(
   return pages;
 }
 
+export async function getPage(pageId: string): Promise<NotionPage> {
+  const token = getToken();
+  const res = await fetch(`${NOTION_API}/pages/${pageId}`, { headers: headers(token) });
+  if (!res.ok) throw new Error(`Notion getPage ${res.status}: ${await res.text()}`);
+  return res.json() as Promise<NotionPage>;
+}
+
+export async function updatePage(
+  pageId: string,
+  properties: Record<string, unknown>,
+): Promise<NotionPage> {
+  const token = getToken();
+  const res = await fetch(`${NOTION_API}/pages/${pageId}`, {
+    method: "PATCH",
+    headers: headers(token),
+    body: JSON.stringify({ properties }),
+  });
+  if (!res.ok) throw new Error(`Notion updatePage ${res.status}: ${await res.text()}`);
+  return res.json() as Promise<NotionPage>;
+}
+
 export async function getBlocks(blockId: string): Promise<NotionBlock[]> {
   const token = getToken();
   const blocks: NotionBlock[] = [];

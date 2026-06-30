@@ -1,49 +1,44 @@
-# RICK-OS · connecties & datastromen (uitvoering)
+# OSLIFE · connecties & datastromen
 
-Implementatie van het blueprint. Architectuur: **Google Apps Script** (ingestie) → **Supabase**
-(store + Realtime + Edge Functions) → **React app** (live reads). Zie het goedgekeurde plan voor de
-volledige redenering.
+Architectuur: **Google Apps Script + Google Sheets + Notion + de Geldrop Buurtkaart WordPress
+API** (ingestie) → **Supabase** (Postgres + Realtime + Edge Functions) → **React app** (live
+reads). Alles schrijft uitsluitend naar het OSLIFE-project `nhyunnnmdcmojvkxrbpl` — geen Vercel /
+rick-os tussenlaag.
 
-## Wat hier al klaarstaat (geen credentials nodig)
+## Apps Script (`apps-script/`)
 
-- `../supabase/migrations/0001_init.sql` — volledig Postgres-schema + RLS + realtime, spiegelt
-  `src/types.ts`. Eén tabel per store-slice, dedup via `external_id` / `dedup_key`.
-- `apps-script/Code.gs` — paste-klare ingestie voor Notion, Gmail, Agenda, betalingen-agenda,
-  GoCardless (ABN) en Google Fit, die **rechtstreeks** naar Supabase REST schrijft (`supabaseUpsert`).
-- `apps-script/{common,gmail,calendar,health-sheets}.gs` — nieuwere ingest-scripts die naar de
-  **Vercel** endpoints (`/api/ingest/*`, `/api/health/sync-sheets`) POST-en met `INGEST_SECRET`.
-  `common.gs` bevat gedeelde helpers (retry + backoff, `LockService`-guard, property-checks) en
-  hoort in hetzelfde project als `gmail.gs` + `calendar.gs`; `health-sheets.gs` is Sheet-gebonden
-  (eigen project) en is daarom self-contained.
-- `apps-script/appsscript.json` — manifest met de benodigde OAuth-scopes (Gmail, Calendar, Fit).
-- `../.env.example` — env-contract voor de app (alleen publieke Supabase URL + anon key).
+| Bestand | Project | Schrijft naar |
+|---------|---------|---------------|
+| `Code.gs` | Account-level hub (één project) | Notion→`projects`/`clients`, Gmail→`gmail_messages`, Calendar→`day_blocks`, betalingen-agenda→`payments`, **rechtstreeks via PostgREST** |
+| `health-sheets.gs` | Gebonden aan de Health-sheet | `health-sheets-ingest` → `health_*` |
+| `payments-sheet.gs` | Gebonden aan de Betalingen-sheet | `payments-sheet-ingest` → `finance_tx` |
+| `screentime-sheet.gs` | Gebonden aan de Schermtijd-sheet | `screentime-sheet-ingest` → `screentime` |
+| `setup-health-sheet.gs` | Eenmalig hulpscript | maakt de Health-sheet tabs aan |
+| `appsscript.json` | Manifest (Gmail + Calendar scopes) | — |
 
-## Stappen om live te gaan (hebben jouw accounts/keys nodig)
+Elk script leest kolommen **op header-naam** (case-insensitief), dus de volgorde en extra kolommen
+maken niet uit. De setup-instructies + verwachte kolommen staan boven in elk bestand.
 
-1. **Supabase-project** aanmaken. SQL editor → plak `0001_init.sql` (of `supabase db push`).
-   Auth aanzetten, jouw account aanmaken, `RICK_USER_ID` (= `auth.users.id`) noteren.
-2. **App koppelen**: `npm i @supabase/supabase-js`, `.env.local` vullen (`VITE_SUPABASE_URL`,
-   `VITE_SUPABASE_ANON_KEY`, `VITE_DATA_SOURCE=supabase`). `src/lib/supabase.ts` client toevoegen en
-   de store ([src/store.ts](../src/store.ts)) van `seed()`/localStorage omzetten naar Supabase-queries
-   + realtime-subscriptions. Vaste `TODAY` ([src/domains.ts](../src/domains.ts)) vervangen door echte datum.
-3. **Apps Script** project maken, `Code.gs` + `appsscript.json` plakken, Script Properties invullen
-   (zie kop van `Code.gs`), triggers instellen. Run elke functie één keer handmatig → autoriseer scopes
-   → controleer dat rijen in Supabase verschijnen en live in de app verschijnen.
-4. **Edge Functions** (volgende artefact): `understand` (Claude `claude-haiku-4-5`, vervangt de
-   keyword-classifier in [src/understand.ts](../src/understand.ts)), `reflect` (port van
-   [src/reflect.ts](../src/reflect.ts) die uit Postgres leest, draait op `pg_cron`), `capture`
-   (intake-endpoint voor Telegram/web). Claude-key in Supabase Function Secrets.
+## Edge Functions (`../supabase/functions/`)
 
-## Benodigde gegevens van jou (open punten uit het plan)
+- `notion-sync` — leest Projects + Clients uit Notion → `projects` / `clients`.
+- `notion-mutate` — schrijft app-wijzigingen **terug** naar Notion (status, prioriteit, deadline,
+  budget, …). Detecteert per property het type (select vs status) zodat de payload altijd klopt.
+- `notion-hq` — live callouts van de 3 side-business pagina's (Buurtkaart, The Eyes, Dakmeester).
+- `gbk-overview` — proxyt de Geldrop Buurtkaart WordPress API (`/wp-json/gbk/v1/overview`) met de
+  `X-GBK-Key` header; de key blijft server-side (secret `GBK_API_KEY`).
+- `health-sheets-ingest`, `payments-sheet-ingest`, `screentime-sheet-ingest` — ontvangen de
+  Sheet-payloads en upserten idempotent.
+- `wallet-ingest` (`edge-functions/wallet-ingest.ts`) — Google Wallet notificaties (MacroDroid) →
+  `finance_tx`.
 
-- Notion: database-id + property-namen (Name/Status/Client/Deadline/Value/Progress).
-- Gmail: welke labels/filters tellen als "belangrijk"; afzender→domein-regels in `domainFor()`.
-- GoCardless: account aanmaken (gratis), ABN koppelen (consent), `GC_ACCOUNT_ID`.
-- Betalingen-agenda: hoe markeer je richting (in/uit) en betaald (bv. `[in]`/`[uit]` in titel, ✓ voor betaald).
-- Health: Fit REST nu; eventueel later een Health Connect companion-app.
+## Finance dedup
+
+`payments-sheet-ingest` en de in-app ABN AMRO CSV-import gebruiken dezelfde
+`dedup_key = "YYYY-MM-DD|bedrag"`. Door `UNIQUE (user_id, dedup_key)` + `ignoreDuplicates` wordt een
+betaling die in beide bronnen voorkomt precies één keer opgeslagen.
 
 ## Secrets
 
-- App-bundle: alleen `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (publiek, RLS beschermt data).
-- Apps Script Script Properties: `SUPABASE_SERVICE_KEY`, `NOTION_TOKEN`, `GC_SECRET_*`, etc.
-- Edge Functions: Claude API key in Supabase Function Secrets / Vault.
+Zie `../.env.example` voor het volledige contract (edge-function secrets + Script Properties per
+project). Niets hiervan hoort in git of in de frontend-bundle.
