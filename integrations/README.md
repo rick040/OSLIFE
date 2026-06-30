@@ -5,19 +5,24 @@ API** (ingestie) → **Supabase** (Postgres + Realtime + Edge Functions) → **R
 reads). Alles schrijft uitsluitend naar het OSLIFE-project `nhyunnnmdcmojvkxrbpl` — geen Vercel /
 rick-os tussenlaag.
 
-## Apps Script (`apps-script/`)
+## Apps Script — één los project (`apps-script/`)
 
-| Bestand | Project | Schrijft naar |
-|---------|---------|---------------|
-| `Code.gs` | Account-level hub (één project) | Notion→`projects`/`clients`, Gmail→`gmail_messages`, Calendar→`day_blocks`, betalingen-agenda→`payments`, **rechtstreeks via PostgREST** |
-| `health-sheets.gs` | Gebonden aan de Health-sheet | `health-sheets-ingest` → `health_*` |
-| `payments-sheet.gs` | Gebonden aan de Betalingen-sheet | `payments-sheet-ingest` → `finance_tx` |
-| `screentime-sheet.gs` | Gebonden aan de Schermtijd-sheet | `screentime-sheet-ingest` → `screentime` |
-| `setup-health-sheet.gs` | Eenmalig hulpscript | maakt de Health-sheet tabs aan |
-| `appsscript.json` | Manifest (Gmail + Calendar scopes) | — |
+Alle ingestie zit in **één standalone project** ("OSLIFE ingest", script.google.com → New project,
+níet aan een sheet gekoppeld). De sheet-lezers openen je sheets **op ID** — je raakt de scripts die
+de sheets vullen dus niet aan. Voeg alle bestanden toe aan dit ene project en run `installAllTriggers()`.
 
-Elk script leest kolommen **op header-naam** (case-insensitief), dus de volgorde en extra kolommen
-maken niet uit. De setup-instructies + verwachte kolommen staan boven in elk bestand.
+| Bestand | Doet | Schrijft naar |
+|---------|------|---------------|
+| `Code.gs` | hub + gedeelde helpers + `installAllTriggers()` | Notion→`projects`/`clients`, Gmail→`gmail_messages`, Calendar→`day_blocks`, betalingen-agenda→`payments` (direct via PostgREST) |
+| `health-sheets.gs` | leest Health-sheet (id) | `health-sheets-ingest` → `health_*` |
+| `payments-sheet.gs` | leest Betalingen-sheet (id) | `payments-sheet-ingest` → `finance_tx` |
+| `screentime-sheet.gs` | leest Schermtijd-sheet (id) | `screentime-sheet-ingest` → `screentime` |
+| `setup-health-sheet.gs` | eenmalig hulpscript (los te draaien) | maakt de Health-sheet tabs aan |
+| `appsscript.json` | manifest (Gmail/Calendar/Sheets scopes) | — |
+
+De sheet-lezers lezen kolommen **op header-naam** (case-insensitief), dus volgorde en extra kolommen
+maken niet uit. De verwachte tabs/kolommen + sheet-id properties staan boven in elk bestand en in
+`../.env.example`.
 
 ## Edge Functions (`../supabase/functions/`)
 
