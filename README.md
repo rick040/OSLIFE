@@ -1,73 +1,112 @@
-# RICK-OS (prototype)
+# RICK-OS
 
-A clickable, high-fidelity preview of **RICK-OS**: a personal life-management "operating
-system" that turns scattered noticing into one accumulating memory and surfaces the
-cross-domain connections (sleep↔energy, finance↔stress) no single tracker could show.
+A personal life-management **operating system**: it turns scattered noticing into one
+accumulating memory and surfaces the cross-domain connections (sleep↔energy, finance↔stress)
+no single tracker could show.
 
-This is a **prototype** to feel the architecture, not the production system. No backend,
-no auth, no real integrations. All state is in-memory + localStorage.
+This is no longer a prototype. It is a working single-user app on a real backend: Supabase
+(Postgres + Auth + Realtime + Edge Functions), live ingestion pipelines (Google Apps Script,
+Python, GitHub Actions), and a React/Vite frontend that reads live data with realtime updates.
+When a data source has no rows yet, the matching screen falls back to seeded demo data so the
+UI is never empty.
 
 ## Run it
 
 ```bash
 npm install
+cp .env.example .env.local   # fill in VITE_SUPABASE_ANON_KEY
 npm run dev
 ```
 
-Open http://localhost:5173. Use **Reset demo** (bottom-left) to restore the seeded state.
+Open http://localhost:5173 and sign in with the Supabase account that owns the data
+(`auth.users.id` = `RICK_USER_ID`). The sidebar shows a **live data / mock data** dot so you
+always know which you're looking at.
+
+```bash
+npm run build     # type-check + production build
+npm run preview   # serve the production build
+```
+
+## Architecture
+
+```
+Ingestion                         Supabase (nhyunnnmdcmojvkxrbpl, eu-west-1)        Frontend
+─────────                         ─────────────────────────────────────────       ────────
+Apps Script (Gmail/Cal/Health) ┐                                                ┌ React + Vite
+Python (Spotify/YT/Maps/ActDash)├─▶ Edge Functions ─▶ Postgres (RLS, per-user) ─▶│ Zustand store
+GitHub Actions (Spotify poll)   ┘   wallet-ingest        + Realtime channel ─────▶│ live reads
+Notion (projects/clients)      ───▶ notion-sync/-hq                              └ + realtime
+ABN AMRO CSV (manual import)   ───▶ (in-app parser)
+```
+
+- **Auth**: Supabase email/password (`src/components/LoginScreen.tsx`). Sign-in only — the
+  account is provisioned in the Supabase dashboard. RLS scopes every table to the owner.
+- **Store**: `src/store.ts` (Zustand + localStorage). `loadLiveData()` fetches all slices on
+  login and subscribes to a single Realtime channel; it only overwrites a slice when the query
+  returns rows, so empty tables keep their seeded demo values.
+- **Data access**: `src/lib/supabase.ts` — one typed fetcher per slice.
+
+## Data sources — live status
+
+The app's Supabase project is `nhyunnnmdcmojvkxrbpl` ("oslife"). Status as of this writing:
+
+| Source | Table(s) | Pipeline | Status |
+|--------|----------|----------|--------|
+| Payments / agenda | `payments` | wallet-ingest / Apps Script calendar | ✅ live (data present) |
+| Day blocks & meetings | `day_blocks` | Apps Script calendar | ✅ live (data present) |
+| Email / inbox | `gmail_messages` | Apps Script gmail | ✅ live (data present) |
+| Projects | `projects` | notion-sync | ✅ live (data present) |
+| Clients / CRM | `clients` | notion-sync | ⚪ wired, table empty |
+| Bank transactions | `finance_tx` | wallet-ingest / CSV import | ⚪ wired, table empty |
+| Health (steps/sleep/HR) | `health_daily_stats`, `health_sleep`, `health_body_metrics` | health-sheets-ingest | ⚪ wired, table empty |
+| Habits | `habits`, `habit_log` | manual / app | ⚪ wired, table empty |
+| Goals | `goals` | manual / Notion | ⚪ wired, table empty |
+| Subscriptions | `subscriptions` | manual / app | ⚪ wired, table empty |
+| Dog (Kyra) | `dog_log` | app logging | ⚪ wired, table empty |
+| Screen time | `screentime` | Python (ActionDash) | ⚪ wired, table empty |
+| Location | `location_visits` | Python (Google Maps Timeline) | ⚪ wired, table empty |
+| Music | `spotify_history` | GitHub Actions + Python | ⚪ wired, table empty |
+| Reflect memory | `brain_state` | reflect (planned edge fn) | ⚪ wired, table empty |
+
+✅ = rows flowing today · ⚪ = code + table + RLS exist, source not yet connected (needs your
+account/keys — see `integrations/README.md`).
 
 ## The six layers, mapped to the UI
 
 | Layer | Where to see it |
 |------|------------------|
-| 1. Intake | **Capture** (active) + seeded passive sense data (sleep, bank, calendar) |
-| 2. Understand | **Capture** / **Jarvis** show live classification (domain, kind, sentiment, summary) |
-| 3. Remember | **Memory** : three separate stores (Essentials, Threads, Patterns) |
-| 4. Reflect | **Reflect** : the keystone, cross-domain correlations + anomalies + pattern write-back |
-| 5. Surface | **Today** + **Day Builder** + the nudge + **Jarvis** chat |
+| 1. Intake | **Vastleggen** (Capture) + passive sense data (health, bank, calendar, music) |
+| 2. Understand | **Vastleggen** / **HEYRA** show live classification (domain, kind, sentiment, summary) |
+| 3. Remember | **Geheugen** (Memory): three stores (Essentials, Threads, Patterns) |
+| 4. Reflect | **Reflectie**: cross-domain correlations + anomalies + pattern write-back |
+| 5. Surface | **Dashboard** + **Vandaag** + **Dagplanner** + the nudge + **HEYRA** |
 | 6. Act | Complete/skip blocks, close threads, tick habits, accept plan, mark paid |
 
-The **two loops** are explained in an in-app diagram ("The two loops" in the sidebar).
+## Screens
 
-## Demo script (≈ 2 min, makes the keystone land)
+20+ screens grouped into **Surface** (Dashboard, Vandaag, Dagplanner), **Life** (Gezondheid,
+Gewoonten, Signalen, Geld, Kyra, Inbox, Noordster), **Business** (CRM, Projecten, Strategie HQ,
+Buurtkaart, The Eyes, Dakmeester), **Intake** (HEYRA, Vastleggen) and **Reflect** (Geheugen,
+Reflectie, Verbanden). See `src/nav.ts` for the single source of truth.
 
-1. **Capture** : type *"need to chase the van Dijk invoice, getting stressed"* and drop it
-   in. Watch it run Intake → Understand → Remember (classified PRJCT / vent / stressed) with
-   zero filing decision from you.
-2. **Memory** : see it landed as a Thread, sitting beside Patterns (with confidence bars) and
-   Essentials, three structurally separate stores.
-3. **Reflect** : read the three cross-domain correlations computed live (sleep↔energy,
-   spend↔deadlines, takeout↔low-energy) and the two charts that prove them. This is the
-   whole point: one brain reading every domain at once.
-4. Hit **Run nightly reflect**: confidence scores visibly climb (reinforced) or fall
-   (decayed), and it tells you tomorrow's Surface was reshaped.
-5. **Day Builder** / **Today**: the plan now has a Reflect-added evening wind-down block and
-   the nudge has changed, the slow loop silently reshaped your day.
+Buurtkaart, The Eyes and Dakmeester are currently self-contained business screens that do not
+yet read from Supabase.
 
-## Mocked vs. what a real build would wire up
+## Still on the roadmap to "fully wired"
 
-**Mocked here**
-- Understand uses a transparent keyword classifier (instant, explainable). Real: an LLM call.
-- Passive sense (email, calendar, bank, health, location) is seeded static data.
-- Jarvis replies are canned but read from the live seeded memory.
-- "Nightly" reflect is a button, not a scheduler.
-
-**A real build would wire up**
-- Real intake pipelines: Telegram/voice capture, email + calendar + bank (PSD2) + health APIs.
-- An LLM for Understand (classification, summary, embeddings) and for Reflect's correlations.
-- A persistent vector + relational store instead of localStorage.
-- A scheduler (nightly/weekly) driving Reflect, and push notifications for nudges.
-- Auth + multi-device sync.
+- Connect the remaining ingestion sources (health, finance, music, location, screen time) — all
+  code exists; each needs your account/keys (`integrations/README.md`).
+- LLM-backed **Understand** and **Reflect** edge functions (today: a transparent keyword
+  classifier in `src/understand.ts` + a deterministic correlator in `src/reflect.ts`).
+- A scheduler (`pg_cron`) driving nightly Reflect, plus push notifications for nudges.
 
 ## Stack
 
-Vite · React · TypeScript · Tailwind CSS · Zustand · lucide-react · recharts. Nothing else.
+Vite · React · TypeScript · Tailwind CSS · Zustand · lucide-react · recharts · Supabase.
 
-## Product decisions made along the way
+## Secrets
 
-- **Fixed "today" = 2026-06-22** so seeded data lines up deterministically for the demo.
-- A captured **task** auto-opens a Thread (an owed loop); other kinds just file as memory.
-- Reflect **reinforces** the patterns its current pass has evidence for and **decays** the
-  rest (faster when already stale), so confidence is always a live signal.
-- Domain color-coding is global: ParkingYou blue, PRJCT purple, Buurtkaart green, Personal
-  amber, Cross-domain pink (reserved for the Reflect layer and the slow loop).
+The frontend only ships the public Supabase URL + anon key (RLS protects the data). Service-role
+keys, Notion tokens and ingestion secrets live in Apps Script Script Properties, Supabase Edge
+Function secrets, and GitHub Actions secrets — never in the bundle or in git. See `.env.example`
+for the full contract.
