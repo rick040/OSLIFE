@@ -1,4 +1,4 @@
-// ── Core domain model for RICK-OS ────────────────────────────────────────────
+// ── Core domain model for OSLIFE ────────────────────────────────────────────
 
 export type Domain = 'parkingyou' | 'prjct' | 'buurtkaart' | 'personal' | 'cross'
 

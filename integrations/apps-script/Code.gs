@@ -1,5 +1,5 @@
 /**
- * RICK-OS · Google Apps Script ingestion hub
+ * OSLIFE · Google Apps Script ingestion hub
  * ------------------------------------------------------------------
  * Pulls each source on a time-driven trigger, normalizes it, and upserts
  * into Supabase via PostgREST using the service_role key (bypasses RLS).

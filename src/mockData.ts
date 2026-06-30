@@ -27,7 +27,7 @@ import type {
   DogProfile,
 } from './types'
 
-export const STORAGE_KEY = 'rick-os-state-v8'
+export const STORAGE_KEY = 'oslife-state-v1'
 export const OPENING_BALANCE = 0
 
 export const essentials: Essential[] = []

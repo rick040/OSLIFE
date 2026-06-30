@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ExternalLink, Check } from 'lucide-react'
 
-// The Eyes — 1-op-1 port van rick-os /projects/eyes.
+// The Eyes — beheerview voor side-business The Eyes.
 const ROADMAP0 = [
   { label: 'Business plan compleet', done: true },
   { label: 'Afspraak inplannen met Brandon', done: false, deadline: 'nu' },

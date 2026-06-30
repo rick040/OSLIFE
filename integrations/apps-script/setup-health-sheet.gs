@@ -1,5 +1,5 @@
 /**
- * rick-os · Health Sheet setup script
+ * oslife · Health Sheet setup script
  * ------------------------------------
  * Run setupHealthSheet() ONCE in any Google Sheet to create all the tabs
  * that health-sheets.gs expects, with the correct column headers and a

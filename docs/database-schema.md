@@ -17,6 +17,8 @@
 > De overige Supabase-projecten in de organisatie (`rick-os`, `OSLIFE`, `brain-dump`)
 > worden door deze applicatie **niet** gebruikt. De frontend, Python-ingest, Apps Script
 > en Edge Functions wijzen allemaal naar `nhyunnnmdcmojvkxrbpl` (zie `.env.example`).
+> Het oude **rick-os** project (en de bijbehorende Vercel-deployment) wordt uitgefaseerd;
+> oslife draait volledig standalone op `oslife-iota.vercel.app` + dit Supabase-project.
 
 ## Algemene conventies
 

@@ -93,7 +93,7 @@ export default function App() {
         <div className="flex items-center gap-2.5 px-2 mb-7">
           <Orb size={36} onTap={() => setView('heyra')} onLongPress={() => setShowGrid(true)} />
           <div>
-            <div className="font-semibold leading-tight tracking-tight">RICK-OS</div>
+            <div className="font-semibold leading-tight tracking-tight">OSLIFE</div>
             <div className="text-[10px] leading-tight flex items-center gap-1">
               <span className={`inline-block h-1.5 w-1.5 rounded-full ${dataSource === 'live' ? 'bg-forest' : 'bg-faint'}`} />
               <span className="text-faint">{dataSource === 'live' ? 'live data' : 'mock data'}</span>
@@ -155,7 +155,7 @@ export default function App() {
       <header className="md:hidden sticky top-0 z-30 flex items-center justify-between border-b border-line bg-canvas/85 backdrop-blur px-4 py-3">
         <div className="flex items-center gap-2.5">
           <Orb size={32} onTap={() => setView('heyra')} onLongPress={() => setShowGrid(true)} />
-          <span className="font-semibold">RICK-OS</span>
+          <span className="font-semibold">OSLIFE</span>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={() => setShowGrid(true)} className="text-muted" aria-label="Alle apps">

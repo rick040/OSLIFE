@@ -680,7 +680,7 @@ export const useStore = create<State>()(
             isLoading: false,
           })
         } catch (err) {
-          console.warn('[RICK-OS] Supabase fetch failed', err)
+          console.warn('[OSLIFE] Supabase fetch failed', err)
           set({ isLoading: false })
         }
 

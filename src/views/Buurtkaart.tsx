@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Map, RefreshCw, ChevronDown, Plus } from 'lucide-react'
 
-// Buurtkaart — 1-op-1 port van rick-os /geldrop (Geldrop Buurtkaart beheer).
-// In rick-os WordPress-API gedreven; hier met representatieve mock data + lokale
+// Buurtkaart — beheerview voor Geldrop Buurtkaart.
+// WordPress-API gedreven (geldropbuurtkaart.nl); hier met representatieve mock data + lokale
 // state (status wijzigen, editie activeren/verwijderen, nieuwe editie).
 
 type Tab = 'edities' | 'klanten' | 'facturen'

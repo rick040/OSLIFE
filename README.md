@@ -1,4 +1,4 @@
-# RICK-OS
+# OSLIFE
 
 A personal life-management **operating system**: it turns scattered noticing into one
 accumulating memory and surfaces the cross-domain connections (sleep↔energy, finance↔stress)

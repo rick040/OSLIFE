@@ -59,7 +59,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export const isDbId = (id: string): boolean => UUID_RE.test(id)
 
 function warnWrite(label: string, error: unknown): void {
-  if (error) console.warn(`[RICK-OS] write failed: ${label}`, error)
+  if (error) console.warn(`[OSLIFE] write failed: ${label}`, error)
 }
 
 // ── Brain state (threads + patterns) — one jsonb row per user ───────────────────

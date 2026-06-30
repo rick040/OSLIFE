@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ExternalLink, Check } from 'lucide-react'
 
-// Dakmeester — 1-op-1 port van rick-os /projects/dakmeester.
+// Dakmeester — beheerview voor side-business Dakmeester.
 const ROADMAP0 = [
   { label: 'Website gebouwd + live (dakdekker-iota.vercel.app)', done: true },
   { label: '7 email templates klaar (aanvraag, afspraak, offerte, opvolging, betaling)', done: true },
