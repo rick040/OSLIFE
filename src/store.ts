@@ -56,6 +56,20 @@ import {
   fetchMusicDays,
   fetchProjects,
   fetchClients,
+  persistBrainState,
+  persistPaymentStatus,
+  persistEmailRead,
+  persistAllEmailsRead,
+  persistProjectPatch,
+  createHabitRow,
+  softDeleteHabitRow,
+  persistHabitTick,
+  createSubscriptionRow,
+  updateSubscriptionRow,
+  deleteSubscriptionRow,
+  createDogEntryRow,
+  deleteDogEntryRow,
+  updateDogEntryRow,
 } from './lib/supabase'
 
 export interface ActivitySignal {
@@ -236,10 +250,12 @@ export const useStore = create<State>()(
             }),
           }
         })
+        // a new thread (owed loop) changes the persisted brain state
+        if (c.kind === 'task') void persistBrainState(get().threads, get().patterns)
         return item
       },
 
-      closeThread: (id) =>
+      closeThread: (id) => {
         set((s) => {
           const t = s.threads.find((x) => x.id === id)
           return {
@@ -248,18 +264,23 @@ export const useStore = create<State>()(
               ? pushSignal(s.activity, { text: `Closed loop: ${t.title}`, domain: t.domain, loop: 'fast' })
               : s.activity,
           }
-        }),
+        })
+        void persistBrainState(get().threads, get().patterns)
+      },
 
-      reopenThread: (id) =>
+      reopenThread: (id) => {
         set((s) => ({
           threads: s.threads.map((x) => (x.id === id ? { ...x, status: 'open' } : x)),
-        })),
+        }))
+        void persistBrainState(get().threads, get().patterns)
+      },
 
-      tickHabit: (id) =>
+      tickHabit: (id) => {
+        const prev = get().habits.find((x) => x.id === id)
+        if (!prev) return
+        const doneToday = !prev.doneToday
         set((s) => {
-          const h = s.habits.find((x) => x.id === id)
-          if (!h) return {}
-          const doneToday = !h.doneToday
+          const h = s.habits.find((x) => x.id === id)!
           const hist = new Set(h.history ?? [])
           if (doneToday) hist.add(TODAY)
           else hist.delete(TODAY)
@@ -280,17 +301,27 @@ export const useStore = create<State>()(
               loop: 'fast',
             }),
           }
-        }),
+        })
+        void persistHabitTick(id, TODAY, doneToday)
+      },
 
-      addHabit: (name, emoji, color) =>
+      addHabit: (name, emoji, color) => {
+        const tempId = uid('h')
         set((s) => ({
           habits: [
             ...s.habits,
-            { id: uid('h'), name, emoji: emoji || '✅', color, streak: 0, doneToday: false, history: [] },
+            { id: tempId, name, emoji: emoji || '✅', color, streak: 0, doneToday: false, history: [] },
           ],
-        })),
+        }))
+        void createHabitRow(name, emoji || '✅', color).then((realId) => {
+          if (realId) set((s) => ({ habits: s.habits.map((x) => (x.id === tempId ? { ...x, id: realId } : x)) }))
+        })
+      },
 
-      deleteHabit: (id) => set((s) => ({ habits: s.habits.filter((x) => x.id !== id) })),
+      deleteHabit: (id) => {
+        set((s) => ({ habits: s.habits.filter((x) => x.id !== id) }))
+        void softDeleteHabitRow(id)
+      },
 
       completeBlock: (id) =>
         set((s) => {
@@ -340,7 +371,7 @@ export const useStore = create<State>()(
           }),
         })),
 
-      runNightlyReflect: () =>
+      runNightlyReflect: () => {
         set((s) => {
           const { digest, patterns } = runReflect(
             s.dayLogs,
@@ -392,7 +423,9 @@ export const useStore = create<State>()(
               loop: 'slow',
             }),
           }
-        }),
+        })
+        void persistBrainState(get().threads, get().patterns)
+      },
 
       toggleMilestone: (id) =>
         set((s) => {
@@ -408,12 +441,14 @@ export const useStore = create<State>()(
           }
         }),
 
-      markEmailRead: (id) =>
+      markEmailRead: (id) => {
         set((s) => ({
           emails: s.emails.map((x) => (x.id === id ? { ...x, unread: false } : x)),
-        })),
+        }))
+        void persistEmailRead(id, true)
+      },
 
-      markPaymentPaid: (id) =>
+      markPaymentPaid: (id) => {
         set((s) => {
           const p = s.payments.find((x) => x.id === id)
           if (!p) return {}
@@ -425,10 +460,14 @@ export const useStore = create<State>()(
               loop: 'fast',
             }),
           }
-        }),
+        })
+        void persistPaymentStatus(id, 'paid')
+      },
 
-      markAllEmailsRead: () =>
-        set((s) => ({ emails: s.emails.map((x) => ({ ...x, unread: false })) })),
+      markAllEmailsRead: () => {
+        set((s) => ({ emails: s.emails.map((x) => ({ ...x, unread: false })) }))
+        void persistAllEmailsRead()
+      },
 
       markMessageRead: (id) =>
         set((s) => ({ messages: s.messages.map((m) => (m.id === id ? { ...m, unread: false } : m)) })),
@@ -438,7 +477,7 @@ export const useStore = create<State>()(
           messages: s.messages.map((m) => (m.contactKey === contactKey ? { ...m, unread: false } : m)),
         })),
 
-      setProjectStatus: (id, status) =>
+      setProjectStatus: (id, status) => {
         set((s) => {
           const p = s.projects.find((x) => x.id === id)
           if (!p) return {}
@@ -451,9 +490,12 @@ export const useStore = create<State>()(
               loop: 'fast',
             }),
           }
-        }),
+        })
+        const updated = get().projects.find((x) => x.id === id)
+        if (updated) void persistProjectPatch(id, { status, progress: updated.progress })
+      },
 
-      updateProject: (id, patch) =>
+      updateProject: (id, patch) => {
         set((s) => {
           const p = s.projects.find((x) => x.id === id)
           if (!p) return {}
@@ -471,7 +513,10 @@ export const useStore = create<State>()(
               loop: 'fast',
             }),
           }
-        }),
+        })
+        const updated = get().projects.find((x) => x.id === id)
+        if (updated) void persistProjectPatch(id, { ...patch, progress: updated.progress })
+      },
 
       addProjectTask: (projectId, task) =>
         set((s) => {
@@ -515,19 +560,30 @@ export const useStore = create<State>()(
           }
         }),
 
-      logDog: (entry) =>
-        set((s) => {
-          const e: DogEntry = { id: uid('dog'), at: entry.at ?? new Date().toISOString(), ...entry }
-          return {
-            dogEntries: [e, ...s.dogEntries],
-            activity: pushSignal(s.activity, { text: `Kyra: ${entry.kind} gelogd`, domain: 'personal', loop: 'fast' }),
-          }
-        }),
+      logDog: (entry) => {
+        const tempId = uid('dog')
+        const at = entry.at ?? new Date().toISOString()
+        const e: DogEntry = { id: tempId, at, ...entry }
+        set((s) => ({
+          dogEntries: [e, ...s.dogEntries],
+          activity: pushSignal(s.activity, { text: `Kyra: ${entry.kind} gelogd`, domain: 'personal', loop: 'fast' }),
+        }))
+        void createDogEntryRow({
+          kind: e.kind, at: e.at, durationMin: e.durationMin, distanceKm: e.distanceKm, note: e.note,
+        }).then((realId) => {
+          if (realId) set((s) => ({ dogEntries: s.dogEntries.map((x) => (x.id === tempId ? { ...x, id: realId } : x)) }))
+        })
+      },
 
-      deleteDogEntry: (id) => set((s) => ({ dogEntries: s.dogEntries.filter((x) => x.id !== id) })),
+      deleteDogEntry: (id) => {
+        set((s) => ({ dogEntries: s.dogEntries.filter((x) => x.id !== id) }))
+        void deleteDogEntryRow(id)
+      },
 
-      updateDogEntry: (id, patch) =>
-        set((s) => ({ dogEntries: s.dogEntries.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
+      updateDogEntry: (id, patch) => {
+        set((s) => ({ dogEntries: s.dogEntries.map((x) => (x.id === id ? { ...x, ...patch } : x)) }))
+        void updateDogEntryRow(id, patch)
+      },
 
       addDogMedical: (m) =>
         set((s) => ({ dogMedical: [{ ...m, id: uid('dmed') }, ...s.dogMedical] })),
@@ -540,17 +596,29 @@ export const useStore = create<State>()(
       toggleDogReminder: (id) =>
         set((s) => ({ dogReminders: s.dogReminders.map((x) => (x.id === id ? { ...x, done: !x.done } : x)) })),
 
-      addSubscription: (sub) =>
-        set((s) => ({ subscriptions: [{ ...sub, id: uid('sub') }, ...s.subscriptions] })),
+      addSubscription: (sub) => {
+        const tempId = uid('sub')
+        set((s) => ({ subscriptions: [{ ...sub, id: tempId }, ...s.subscriptions] }))
+        void createSubscriptionRow(sub).then((realId) => {
+          if (realId) set((s) => ({ subscriptions: s.subscriptions.map((x) => (x.id === tempId ? { ...x, id: realId } : x)) }))
+        })
+      },
 
-      updateSubscription: (id, patch) =>
-        set((s) => ({ subscriptions: s.subscriptions.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
+      updateSubscription: (id, patch) => {
+        set((s) => ({ subscriptions: s.subscriptions.map((x) => (x.id === id ? { ...x, ...patch } : x)) }))
+        void updateSubscriptionRow(id, patch)
+      },
 
-      toggleSubscription: (id) =>
-        set((s) => ({ subscriptions: s.subscriptions.map((x) => (x.id === id ? { ...x, active: !x.active } : x)) })),
+      toggleSubscription: (id) => {
+        set((s) => ({ subscriptions: s.subscriptions.map((x) => (x.id === id ? { ...x, active: !x.active } : x)) }))
+        const updated = get().subscriptions.find((x) => x.id === id)
+        if (updated) void updateSubscriptionRow(id, { active: updated.active })
+      },
 
-      deleteSubscription: (id) =>
-        set((s) => ({ subscriptions: s.subscriptions.filter((x) => x.id !== id) })),
+      deleteSubscription: (id) => {
+        set((s) => ({ subscriptions: s.subscriptions.filter((x) => x.id !== id) }))
+        void deleteSubscriptionRow(id)
+      },
 
       loadLiveData: async () => {
         try {
