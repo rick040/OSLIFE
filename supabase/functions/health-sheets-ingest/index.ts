@@ -60,6 +60,17 @@ interface Payload {
 
 // ── Handler ────────────────────────────────────────────────────────────────
 
+/**
+ * Postgres can't upsert two rows with the same ON CONFLICT key in one statement
+ * ("cannot affect row a second time"). Collapse duplicates by key, keeping the
+ * last occurrence, before sending the batch.
+ */
+function dedupeBy<T>(rows: T[], keyFn: (r: T) => string): T[] {
+  const m = new Map<string, T>()
+  for (const r of rows) m.set(keyFn(r), r)
+  return [...m.values()]
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return json({ ok: false, error: 'Method not allowed' }, 405)
@@ -84,16 +95,14 @@ Deno.serve(async (req) => {
 
   // ── Activity → health_daily_stats ──────────────────────────────────────
   if (payload.activity?.length) {
-    const rows = payload.activity.map((r) => ({
+    const rows = dedupeBy(payload.activity.map((r) => ({
       user_id:       USER_ID,
       date:          r.date,
       steps:         r.steps         ?? 0,
       distance_m:    r.distance_m    ?? 0,
       calories_kcal: r.calories_kcal ?? 0,
       duration_min:  r.duration_min  ?? 0,
-      // Leave sleep_min / avg_resting_hr / active_min untouched —
-      // those come from the Fit sync (Code.gs) and we don't want to clobber them.
-    }))
+    })), (r) => r.date)
 
     const { error } = await supabase
       .from('health_daily_stats')
@@ -109,14 +118,17 @@ Deno.serve(async (req) => {
 
   // ── Body metrics → health_body_metrics ────────────────────────────────
   if (payload.body?.length) {
-    const rows = payload.body
-      .filter((r) => r.weight_kg != null || r.body_fat_pct != null)
-      .map((r) => ({
-        user_id:      USER_ID,
-        datetime:     r.datetime,
-        weight_kg:    r.weight_kg    ?? null,
-        body_fat_pct: r.body_fat_pct ?? null,
-      }))
+    const rows = dedupeBy(
+      payload.body
+        .filter((r) => r.weight_kg != null || r.body_fat_pct != null)
+        .map((r) => ({
+          user_id:      USER_ID,
+          datetime:     r.datetime,
+          weight_kg:    r.weight_kg    ?? null,
+          body_fat_pct: r.body_fat_pct ?? null,
+        })),
+      (r) => r.datetime,
+    )
 
     if (rows.length) {
       const { error } = await supabase
@@ -134,7 +146,7 @@ Deno.serve(async (req) => {
 
   // ── Sleep → health_sleep ───────────────────────────────────────────────
   if (payload.sleep?.length) {
-    const rows = payload.sleep.map((r) => ({
+    const rows = dedupeBy(payload.sleep.map((r) => ({
       user_id:   USER_ID,
       date:      r.date,
       start_time: r.start_time ?? null,
@@ -143,7 +155,7 @@ Deno.serve(async (req) => {
       deep_min:   r.deep_min   ?? 0,
       rem_min:    r.rem_min    ?? 0,
       awake_min:  r.awake_min  ?? 0,
-    }))
+    })), (r) => r.date)
 
     const { error } = await supabase
       .from('health_sleep')
