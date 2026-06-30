@@ -1,5 +1,6 @@
 import type { Domain, Sentiment } from '../types'
 import { DOMAIN_META, SENTIMENT_META } from '../domains'
+import { ArrowRight } from 'lucide-react'
 
 export function DomainChip({ domain, small }: { domain: Domain; small?: boolean }) {
   const m = DOMAIN_META[domain]
@@ -97,6 +98,45 @@ export function Empty({ children }: { children: React.ReactNode }) {
   return (
     <div className="text-sm text-faint italic py-6 text-center border border-dashed border-line rounded-xl">
       {children}
+    </div>
+  )
+}
+
+/**
+ * Empty state with a concrete "here's the fastest way to set this up" suggestion
+ * and an optional call-to-action. Shown when a domain has no data yet, so the
+ * homescreen tells you how to wire it up instead of rendering a blank card.
+ */
+export function SetupHint({
+  icon: Icon,
+  title,
+  children,
+  cta,
+  onCta,
+}: {
+  icon?: React.ComponentType<{ className?: string }>
+  title: string
+  children?: React.ReactNode
+  cta?: string
+  onCta?: () => void
+}) {
+  return (
+    <div className="rounded-xl border border-dashed border-line p-4 text-center">
+      {Icon && (
+        <div className="mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-sunken">
+          <Icon className="h-4 w-4 text-muted" />
+        </div>
+      )}
+      <div className="text-sm font-medium text-ink">{title}</div>
+      {children && <p className="text-xs text-faint mt-1 leading-relaxed">{children}</p>}
+      {cta && onCta && (
+        <button
+          onClick={onCta}
+          className="btn-ghost mx-auto mt-3 !py-1.5 text-xs"
+        >
+          {cta} <ArrowRight className="h-3.5 w-3.5" />
+        </button>
+      )}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useStore } from '../store'
 import { TODAY, DOMAIN_META, fmtDate, daysBetween } from '../domains'
-import { DomainChip, SectionTitle, Empty, Ring } from '../components/ui'
+import { OPENING_BALANCE } from '../mockData'
+import { DomainChip, Empty, Ring, SetupHint } from '../components/ui'
 import {
   Bell,
   CheckCircle2,
@@ -18,10 +19,23 @@ import {
   Receipt,
   ArrowDownLeft,
   ArrowUpRight,
+  Activity,
+  CalendarRange,
+  Inbox as InboxIcon,
 } from 'lucide-react'
 
 const eur = (n: number) =>
   `${n < 0 ? '-' : ''}€${Math.abs(n).toLocaleString('nl-NL', { maximumFractionDigits: 0 })}`
+
+/** Real local hour in Rick's timezone, so the greeting tracks the actual time of day. */
+function amsterdamHour(): number {
+  const h = new Intl.DateTimeFormat('en-GB', {
+    hour: 'numeric',
+    hour12: false,
+    timeZone: 'Europe/Amsterdam',
+  }).format(new Date())
+  return parseInt(h, 10) % 24
+}
 
 export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const {
@@ -45,6 +59,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   } = useStore()
 
   const today = healthDays.find((d) => d.date === TODAY) ?? healthDays[healthDays.length - 1]
+  const todayIsLive = !!today && today.date === TODAY
   const nextBlock = blocks.filter((b) => b.status === 'planned')[0]
 
   const openThreads = threads
@@ -58,12 +73,13 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const importantMail = emails.filter((e) => e.important).slice(0, 3)
   const unreadCount = emails.filter((e) => e.unread).length
 
-  // money
+  // money — balance is computed identically to the Money screen (opening balance
+  // + every known transaction) so the two screens never disagree.
   const month = TODAY.slice(0, 7)
   const monthTx = transactions.filter((t) => t.date.slice(0, 7) === month)
   const earned = monthTx.filter((t) => t.amount > 0).reduce((a, t) => a + t.amount, 0)
   const spent = monthTx.filter((t) => t.amount < 0).reduce((a, t) => a + t.amount, 0)
-  const balance = 2840 + earned + spent
+  const balance = OPENING_BALANCE + transactions.reduce((a, t) => a + t.amount, 0)
 
   // outstanding payments
   const openPayments = payments
@@ -72,13 +88,51 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const toReceive = openPayments.filter((p) => p.direction === 'incoming').reduce((a, p) => a + p.amount, 0)
   const toPay = openPayments.filter((p) => p.direction === 'outgoing').reduce((a, p) => a + p.amount, 0)
 
-  const revenueGoal = goals.find((g) => g.id === 'g1')
-  const goalPct = revenueGoal ? revenueGoal.current / revenueGoal.target : 0
-  const goalDays = revenueGoal ? daysBetween(TODAY, revenueGoal.deadline) : 0
-  const nextMilestone = milestones.find((m) => !m.done)
+  // north star — pick the seeded revenue goal if present, otherwise the first live
+  // goal (live goals carry generated ids, not "g1"), preferring the nearest deadline.
+  const sortedGoals = [...goals].sort(
+    (a, b) => (a.deadline ? daysBetween(TODAY, a.deadline) : 9999) - (b.deadline ? daysBetween(TODAY, b.deadline) : 9999),
+  )
+  const revenueGoal = goals.find((g) => g.id === 'g1') ?? sortedGoals[0]
+  const goalPct = revenueGoal && revenueGoal.target ? revenueGoal.current / revenueGoal.target : 0
+  const goalDays = revenueGoal && revenueGoal.deadline ? daysBetween(TODAY, revenueGoal.deadline) : 0
+  const nextMilestone = revenueGoal
+    ? milestones.find((m) => !m.done && (m.goalId === revenueGoal.id || m.goalId === null)) ?? milestones.find((m) => !m.done)
+    : milestones.find((m) => !m.done)
 
-  const hour = 9
+  const hour = amsterdamHour()
   const greeting = hour < 12 ? 'Goedemorgen' : hour < 18 ? 'Goedemiddag' : 'Goedenavond'
+
+  // Nudge: a Reflect pass writes a rich cross-domain nudge. Until then (e.g. fresh
+  // live data, before any nightly reflect), derive the single most pressing nudge
+  // from the live data so the card is never blank.
+  const overduePay = openPayments.filter((p) => p.due && daysBetween(TODAY, p.due) < 0)
+  const overdueProjects = activeProjects.filter((p) => p.deadline && daysBetween(TODAY, p.deadline) < 0)
+  const habitsLeft = habits.filter((h) => !h.doneToday)
+  const computedNudge = (() => {
+    if (overduePay.length)
+      return `Je hebt ${overduePay.length} betaling${overduePay.length > 1 ? 'en' : ''} over de vervaldatum (o.a. ${overduePay[0].payee}). Regel die eerst — ze blokkeren je hoofd.`
+    if (overdueProjects.length)
+      return `${overdueProjects[0].name} staat over de deadline. Plan vandaag één concreet blok om 'm los te trekken.`
+    if (todayIsLive && today && today.sleepHours > 0 && today.sleepHours < 6.5)
+      return `Maar ${today.sleepHours}u geslapen. Houd vandaag je zwaarste denkwerk in de ochtend en plan niks na 22:30.`
+    if (importantMail.some((e) => e.unread))
+      return `${importantMail.filter((e) => e.unread).length} belangrijke mail wacht op antwoord. Beantwoord 'm nu het nog klein is.`
+    if (habitsLeft.length && habits.length)
+      return `Nog ${habitsLeft.length}/${habits.length} gewoonten open vandaag. Pak de makkelijkste eerst voor de momentum.`
+    if (habits.length)
+      return 'Alle gewoonten staan, geen betaling te laat. Mooie dag — kies één ding dat je vooruit helpt.'
+    return ''
+  })()
+  const nudgeText = nudge.text?.trim() || computedNudge
+
+  // header summary — only show the stat line once there's something to count,
+  // so a freshly-connected account doesn't read "0 · 0 · 0 · 0/0".
+  const summaryParts: string[] = []
+  if (threads.length) summaryParts.push(`${openThreads.length} open loops`)
+  if (projects.length) summaryParts.push(`${activeProjects.length} actieve projecten`)
+  if (emails.length) summaryParts.push(`${unreadCount} nieuwe mails`)
+  if (habits.length) summaryParts.push(`${habits.filter((h) => h.doneToday).length}/${habits.length} gewoonten`)
 
   return (
     <div className="space-y-6">
@@ -87,23 +141,24 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         <div className="text-sm text-muted">{fmtDate(TODAY)} · Geldrop</div>
         <h1 className="text-2xl font-semibold mt-1">{greeting}, Rick.</h1>
         <p className="text-muted text-sm mt-1">
-          {openThreads.length} open loops · {activeProjects.length} actieve projecten · {unreadCount} nieuwe mails ·{' '}
-          {habits.filter((h) => h.doneToday).length}/{habits.length} gewoonten
+          {summaryParts.length ? summaryParts.join(' · ') : 'Verbind je data hieronder om je dag in één oogopslag te zien.'}
         </p>
       </div>
 
       {/* nudge */}
-      <div className="card p-4 border-cross/40 bg-cross/5 animate-fade-up" style={{ animationDelay: '40ms' }}>
-        <div className="flex items-start gap-3">
-          <div className="rounded-xl bg-cross/15 p-2 animate-pulse-ring">
-            <Bell className="h-4 w-4 text-cross" />
-          </div>
-          <div>
-            <div className="text-xs uppercase tracking-wider text-cross font-semibold">Nudge van vandaag</div>
-            <p className="text-sm text-ink mt-1">{nudge.text}</p>
+      {nudgeText && (
+        <div className="card p-4 border-cross/40 bg-cross/5 animate-fade-up" style={{ animationDelay: '40ms' }}>
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-cross/15 p-2 animate-pulse-ring">
+              <Bell className="h-4 w-4 text-cross" />
+            </div>
+            <div>
+              <div className="text-xs uppercase tracking-wider text-cross font-semibold">Nudge van vandaag</div>
+              <p className="text-sm text-ink mt-1">{nudgeText}</p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* hero row: right-now + vitals */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-up" style={{ animationDelay: '80ms' }}>
@@ -136,8 +191,17 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
                 </button>
               </div>
             </>
+          ) : blocks.length ? (
+            <Empty>Niks meer gepland vandaag. 🎉</Empty>
           ) : (
-            <Empty>Niks meer gepland vandaag. Open Day Builder.</Empty>
+            <SetupHint
+              icon={CalendarRange}
+              title="Nog geen dagplan"
+              cta="Bouw je dag"
+              onCta={() => onNav('daybuilder')}
+            >
+              Laat de Dagplanner je dag in blokken zetten op basis van je agenda en energie — sneller dan zelf plannen.
+            </SetupHint>
           )}
         </div>
 
@@ -151,32 +215,39 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
             {today && <span className="text-[11px] text-faint">{today.restingHR} bpm rust</span>}
           </div>
           {today ? (
-            <div className="flex items-center justify-around mt-3">
-              <div className="flex flex-col items-center gap-1">
-                <Ring
-                  value={today.steps / today.stepGoal}
-                  color="stroke-buurtkaart"
-                  label={(today.steps / 1000).toFixed(1) + 'k'}
-                  sub="stappen"
-                />
-                <Footprints className="h-3.5 w-3.5 text-buurtkaart" />
+            <>
+              <div className="flex items-center justify-around mt-3">
+                <div className="flex flex-col items-center gap-1">
+                  <Ring
+                    value={today.steps / today.stepGoal}
+                    color="stroke-buurtkaart"
+                    label={(today.steps / 1000).toFixed(1) + 'k'}
+                    sub="stappen"
+                  />
+                  <Footprints className="h-3.5 w-3.5 text-buurtkaart" />
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <Ring
+                    value={today.sleepHours / 8}
+                    color="stroke-parkingyou"
+                    label={today.sleepHours + 'u'}
+                    sub="slaap"
+                  />
+                  <Moon className="h-3.5 w-3.5 text-parkingyou" />
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <Ring value={today.energy / 5} color="stroke-personal" label={today.energy + '/5'} sub="energie" />
+                  <Zap className="h-3.5 w-3.5 text-personal" />
+                </div>
               </div>
-              <div className="flex flex-col items-center gap-1">
-                <Ring
-                  value={today.sleepHours / 8}
-                  color="stroke-parkingyou"
-                  label={today.sleepHours + 'u'}
-                  sub="slaap"
-                />
-                <Moon className="h-3.5 w-3.5 text-parkingyou" />
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <Ring value={today.energy / 5} color="stroke-personal" label={today.energy + '/5'} sub="energie" />
-                <Zap className="h-3.5 w-3.5 text-personal" />
-              </div>
-            </div>
+              {!todayIsLive && (
+                <div className="text-[10px] text-faint text-center mt-2">laatste meting · {fmtDate(today.date)}</div>
+              )}
+            </>
           ) : (
-            <Empty>Geen gezondheidsdata vandaag.</Empty>
+            <SetupHint icon={Activity} title="Geen gezondheidsdata">
+              Koppel Health Connect / Apple Health via het Apps Script — daarna stromen stappen, slaap en hartslag hier vanzelf binnen.
+            </SetupHint>
           )}
         </button>
       </div>
@@ -193,21 +264,32 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               alles <ArrowRight className="h-3 w-3" />
             </button>
           </div>
-          {revenueGoal && (
+          {revenueGoal ? (
             <>
-              <div className="flex items-baseline justify-between">
+              <div className="text-sm text-ink truncate">{revenueGoal.title}</div>
+              <div className="flex items-baseline justify-between mt-1">
                 <span className="text-2xl font-semibold">{eur(revenueGoal.current)}</span>
                 <span className="text-sm text-muted">van {eur(revenueGoal.target)}</span>
               </div>
               <div className="h-2 w-full rounded-full bg-line overflow-hidden mt-2">
-                <div className="h-full rounded-full bg-prjct transition-all duration-700" style={{ width: `${goalPct * 100}%` }} />
+                <div className="h-full rounded-full bg-prjct transition-all duration-700" style={{ width: `${Math.min(1, goalPct) * 100}%` }} />
               </div>
               <p className="text-xs text-faint mt-1.5">
-                {Math.round(goalPct * 100)}% · nog {goalDays} dagen tot {fmtDate(revenueGoal.deadline)}
+                {Math.round(goalPct * 100)}%
+                {revenueGoal.deadline && ` · ${goalDays >= 0 ? `nog ${goalDays} dagen tot` : 'verlopen'} ${fmtDate(revenueGoal.deadline)}`}
               </p>
             </>
+          ) : (
+            <SetupHint
+              icon={Target}
+              title="Nog geen doel ingesteld"
+              cta="Stel je North Star in"
+              onCta={() => onNav('northstar')}
+            >
+              Eén meetbaar doel met deadline (bv. €10k omzet) geeft alle andere schermen richting. Begint het snelst in Noordster.
+            </SetupHint>
           )}
-          {nextMilestone && (
+          {revenueGoal && nextMilestone && (
             <button
               onClick={() => toggleMilestone(nextMilestone.id)}
               className="mt-3 w-full flex items-center gap-2 rounded-xl border border-line p-2.5 text-left hover:border-prjct/50 transition-colors"
@@ -233,20 +315,28 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
             </span>
             <span className="text-xs text-faint">ABN AMRO · deze maand</span>
           </div>
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-semibold">{eur(balance)}</span>
-            <span className="text-sm text-muted">saldo</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2 mt-3">
-            <div className="rounded-xl bg-buurtkaart/10 p-2">
-              <div className="text-[11px] text-muted">in</div>
-              <div className="text-sm font-medium text-buurtkaart">{eur(earned)}</div>
-            </div>
-            <div className="rounded-xl bg-cross/10 p-2">
-              <div className="text-[11px] text-muted">uit</div>
-              <div className="text-sm font-medium text-cross">{eur(spent)}</div>
-            </div>
-          </div>
+          {transactions.length ? (
+            <>
+              <div className="flex items-baseline justify-between">
+                <span className="text-2xl font-semibold">{eur(balance)}</span>
+                <span className="text-sm text-muted">saldo</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-3">
+                <div className="rounded-xl bg-buurtkaart/10 p-2">
+                  <div className="text-[11px] text-muted">in</div>
+                  <div className="text-sm font-medium text-buurtkaart">{eur(earned)}</div>
+                </div>
+                <div className="rounded-xl bg-cross/10 p-2">
+                  <div className="text-[11px] text-muted">uit</div>
+                  <div className="text-sm font-medium text-cross">{eur(spent)}</div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <SetupHint icon={Wallet} title="Nog geen transacties">
+              Open Geld en importeer je ABN AMRO CSV (of klik “Demo-import”) — saldo en uitgaven per categorie verschijnen meteen.
+            </SetupHint>
+          )}
         </button>
 
         {/* Outstanding payments */}
@@ -317,24 +407,37 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               alle {projects.length} <ArrowRight className="h-3 w-3" />
             </button>
           </div>
-          <div className="space-y-2">
-            {activeProjects.slice(0, 4).map((p) => {
-              const dd = p.deadline ? daysBetween(TODAY, p.deadline) : null
-              const overdue = dd !== null && dd < 0
-              return (
-                <div key={p.id} className="flex items-center gap-2">
-                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${DOMAIN_META[p.domain].dot}`} />
-                  <span className="text-sm text-ink truncate flex-1">
-                    {p.name} <span className="text-faint">· {p.client}</span>
-                  </span>
-                  {p.status === 'blocked' && <span className="chip bg-cross/15 text-cross !py-0">geblokkeerd</span>}
-                  <span className={`text-[11px] shrink-0 ${overdue ? 'text-cross' : 'text-faint'}`}>
-                    {p.deadline ? (overdue ? `${-dd!}d te laat` : fmtDate(p.deadline)) : '–'}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
+          {activeProjects.length ? (
+            <div className="space-y-2">
+              {activeProjects.slice(0, 4).map((p) => {
+                const dd = p.deadline ? daysBetween(TODAY, p.deadline) : null
+                const overdue = dd !== null && dd < 0
+                return (
+                  <div key={p.id} className="flex items-center gap-2">
+                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${DOMAIN_META[p.domain].dot}`} />
+                    <span className="text-sm text-ink truncate flex-1">
+                      {p.name} <span className="text-faint">· {p.client}</span>
+                    </span>
+                    {p.status === 'blocked' && <span className="chip bg-cross/15 text-cross !py-0">geblokkeerd</span>}
+                    <span className={`text-[11px] shrink-0 ${overdue ? 'text-cross' : 'text-faint'}`}>
+                      {p.deadline ? (overdue ? `${-dd!}d te laat` : fmtDate(p.deadline)) : '–'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          ) : projects.length ? (
+            <Empty>Geen actieve projecten. 🎉</Empty>
+          ) : (
+            <SetupHint
+              icon={FolderKanban}
+              title="Nog geen projecten"
+              cta="Open Projecten"
+              onCta={() => onNav('projects')}
+            >
+              Projecten synchroniseren automatisch uit Notion. Koppel je Notion-database, dan staan deadlines en status hier vanzelf.
+            </SetupHint>
+          )}
         </div>
 
         {/* Inbox */}
@@ -347,27 +450,40 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               inbox <ArrowRight className="h-3 w-3" />
             </button>
           </div>
-          <div className="space-y-2">
-            {importantMail.map((e) => (
-              <button
-                key={e.id}
-                onClick={() => markEmailRead(e.id)}
-                className="w-full text-left flex items-start gap-2"
-              >
-                {e.unread ? (
-                  <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-personal shrink-0" />
-                ) : (
-                  <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-line shrink-0" />
-                )}
-                <span className="min-w-0 flex-1">
-                  <span className={`text-sm truncate block ${e.unread ? 'text-ink font-medium' : 'text-muted'}`}>
-                    {e.from} <span className="text-faint font-normal">· {e.subject}</span>
+          {importantMail.length ? (
+            <div className="space-y-2">
+              {importantMail.map((e) => (
+                <button
+                  key={e.id}
+                  onClick={() => markEmailRead(e.id)}
+                  className="w-full text-left flex items-start gap-2"
+                >
+                  {e.unread ? (
+                    <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-personal shrink-0" />
+                  ) : (
+                    <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-line shrink-0" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className={`text-sm truncate block ${e.unread ? 'text-ink font-medium' : 'text-muted'}`}>
+                      {e.from} <span className="text-faint font-normal">· {e.subject}</span>
+                    </span>
+                    <span className="text-[11px] text-faint truncate block">{e.snippet}</span>
                   </span>
-                  <span className="text-[11px] text-faint truncate block">{e.snippet}</span>
-                </span>
-              </button>
-            ))}
-          </div>
+                </button>
+              ))}
+            </div>
+          ) : emails.length ? (
+            <Empty>Geen belangrijke mail. Inbox is rustig. 🎉</Empty>
+          ) : (
+            <SetupHint
+              icon={Mail}
+              title="Inbox nog niet gekoppeld"
+              cta="Open Inbox"
+              onCta={() => onNav('inbox')}
+            >
+              Koppel Gmail via het Apps Script — belangrijke mails worden automatisch geclassificeerd en hier gesurfaced.
+            </SetupHint>
+          )}
         </div>
 
         {/* Open loops */}
@@ -394,37 +510,64 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
                 )
               })}
             </div>
-          ) : (
+          ) : threads.length ? (
             <Empty>Alle loops gesloten. 🎉</Empty>
+          ) : (
+            <SetupHint
+              icon={InboxIcon}
+              title="Geen open loops"
+              cta="Leg iets vast"
+              onCta={() => onNav('capture')}
+            >
+              Loops ontstaan vanzelf: leg een taak of gedachte vast in Vastleggen en HEYRA opent er een loop voor.
+            </SetupHint>
           )}
         </div>
 
         {/* Habits */}
         <div className="card p-4 animate-fade-up" style={{ animationDelay: '220ms' }}>
-          <div className="flex items-center gap-2 text-sm font-semibold mb-3">
-            <Flame className="h-4 w-4 text-personal" /> Gewoonten
-          </div>
-          <div className="space-y-2">
-            {habits.map((h) => (
-              <button
-                key={h.id}
-                onClick={() => tickHabit(h.id)}
-                className={`w-full p-2.5 rounded-xl border flex items-center justify-between transition-colors ${
-                  h.doneToday ? 'border-buurtkaart/50 bg-buurtkaart/5' : 'border-line hover:border-line'
-                }`}
-              >
-                <span className="flex items-center gap-2 text-sm">
-                  <span className="text-base">{h.emoji}</span> {h.name}
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="text-xs text-muted flex items-center gap-0.5">
-                    <Flame className="h-3 w-3 text-personal" /> {h.streak}
-                  </span>
-                  <CheckCircle2 className={`h-5 w-5 ${h.doneToday ? 'text-buurtkaart' : 'text-faint'}`} />
-                </span>
+          <div className="flex items-center justify-between mb-3">
+            <span className="flex items-center gap-2 text-sm font-semibold">
+              <Flame className="h-4 w-4 text-personal" /> Gewoonten
+            </span>
+            {habits.length > 0 && (
+              <button className="text-xs text-muted hover:text-ink flex items-center gap-1" onClick={() => onNav('habits')}>
+                {habits.filter((h) => h.doneToday).length}/{habits.length} <ArrowRight className="h-3 w-3" />
               </button>
-            ))}
+            )}
           </div>
+          {habits.length ? (
+            <div className="space-y-2">
+              {habits.map((h) => (
+                <button
+                  key={h.id}
+                  onClick={() => tickHabit(h.id)}
+                  className={`w-full p-2.5 rounded-xl border flex items-center justify-between transition-colors ${
+                    h.doneToday ? 'border-buurtkaart/50 bg-buurtkaart/5' : 'border-line hover:border-line'
+                  }`}
+                >
+                  <span className="flex items-center gap-2 text-sm">
+                    <span className="text-base">{h.emoji}</span> {h.name}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-xs text-muted flex items-center gap-0.5">
+                      <Flame className="h-3 w-3 text-personal" /> {h.streak}
+                    </span>
+                    <CheckCircle2 className={`h-5 w-5 ${h.doneToday ? 'text-buurtkaart' : 'text-faint'}`} />
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <SetupHint
+              icon={Flame}
+              title="Nog geen gewoonten"
+              cta="Voeg een gewoonte toe"
+              onCta={() => onNav('habits')}
+            >
+              Begin met één gewoonte (bv. 8.000 stappen). Streaks en afvinken verschijnen daarna direct hier.
+            </SetupHint>
+          )}
         </div>
       </div>
     </div>

@@ -162,7 +162,8 @@ export default function Money() {
   const monthTx = transactions.filter((t) => t.date.slice(0, 7) === month)
   const earned = monthTx.filter((t) => t.amount > 0).reduce((a, t) => a + t.amount, 0)
   const spent = monthTx.filter((t) => t.amount < 0).reduce((a, t) => a + t.amount, 0)
-  const revenueGoal = goals.find((g) => g.id === 'g1')
+  // seeded revenue goal if present, otherwise the first live goal in EUR (live ids are generated)
+  const revenueGoal = goals.find((g) => g.id === 'g1') ?? goals.find((g) => g.metric === 'EUR') ?? goals[0]
 
   const subsMonthly = subscriptions.filter((s) => s.active).reduce((a, s) => a + monthly(s.amount, s.cadence), 0)
 
@@ -271,12 +272,12 @@ export default function Money() {
             </div>
             {revenueGoal && (
               <div className="card p-4">
-                <div className="text-xs uppercase tracking-wider text-muted flex items-center gap-1">
-                  <Target className="h-3.5 w-3.5 text-prjct" /> Doel €10k
+                <div className="text-xs uppercase tracking-wider text-muted flex items-center gap-1 truncate">
+                  <Target className="h-3.5 w-3.5 text-prjct shrink-0" /> Doel {eur0(revenueGoal.target)}
                 </div>
                 <div className="text-2xl font-semibold mt-1">{Math.round((revenueGoal.current / revenueGoal.target) * 100)}%</div>
                 <div className="h-1.5 w-full rounded-full bg-line overflow-hidden mt-2">
-                  <div className="h-full rounded-full bg-prjct" style={{ width: `${(revenueGoal.current / revenueGoal.target) * 100}%` }} />
+                  <div className="h-full rounded-full bg-prjct" style={{ width: `${Math.min(1, revenueGoal.current / revenueGoal.target) * 100}%` }} />
                 </div>
                 <div className="text-[11px] text-faint mt-1">nog {eur0(revenueGoal.target - revenueGoal.current)} te gaan</div>
               </div>
