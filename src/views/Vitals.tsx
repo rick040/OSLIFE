@@ -14,6 +14,7 @@ import {
 import { useStore } from '../store'
 import { TODAY } from '../domains'
 import { Ring, SectionTitle } from '../components/ui'
+import CheckinCard from '../components/CheckinCard'
 import { Activity, Footprints, Moon, Heart, Zap, Smile } from 'lucide-react'
 
 const d = (iso: string) => iso.slice(8)
@@ -29,8 +30,9 @@ export default function Vitals() {
           <h1 className="text-xl font-semibold flex items-center gap-2">
             <Activity className="h-5 w-5 text-buurtkaart" /> Gezondheid
           </h1>
-          <p className="text-sm text-muted mt-1">Geen gezondheidsdata beschikbaar.</p>
+          <p className="text-sm text-muted mt-1">Nog geen sensordata — log wel hoe je je voelt.</p>
         </div>
+        <CheckinCard />
       </div>
     )
   }
@@ -63,6 +65,8 @@ export default function Vitals() {
         </h1>
         <p className="text-sm text-muted mt-1">Health overzicht, samengevoegd uit je stappen-, slaap- en hartslagdata.</p>
       </div>
+
+      <CheckinCard />
 
       {/* today */}
       <div className="card p-4">

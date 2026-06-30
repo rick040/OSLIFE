@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type {
   HealthDay,
+  Checkin,
   Transaction,
   EmailItem,
   MeetingDay,
@@ -316,22 +317,81 @@ function toHHMM(t: string | null | undefined): string {
 // ── Health ────────────────────────────────────────────────────────────────────
 
 export async function fetchHealthDays(): Promise<HealthDay[]> {
+  // Sleep lives in its own table (stage breakdown per day); active minutes are
+  // written to duration_min. The denormalised sleep_min/active_min columns are
+  // only populated by newer ingests, so fall back to the authoritative sources.
+  const [statsRes, sleepRes] = await Promise.all([
+    supabase
+      .from('health_daily_stats')
+      .select('date,steps,sleep_min,avg_resting_hr,active_min,duration_min')
+      .order('date', { ascending: false })
+      .limit(90),
+    supabase
+      .from('health_sleep')
+      .select('date,light_min,deep_min,rem_min')
+      .order('date', { ascending: false })
+      .limit(90),
+  ])
+
+  // Minutes actually asleep per day = light + deep + rem (awake excluded).
+  const asleepByDate = new Map<string, number>()
+  for (const s of sleepRes.data ?? []) {
+    const mins = ((s.light_min as number) ?? 0) + ((s.deep_min as number) ?? 0) + ((s.rem_min as number) ?? 0)
+    asleepByDate.set(s.date as string, mins)
+  }
+
+  return (statsRes.data ?? []).map((r) => {
+    const date = r.date as string
+    const sleepMin = asleepByDate.get(date) ?? (r.sleep_min as number) ?? 0
+    const activeMin = (r.active_min as number) || (r.duration_min as number) || 0
+    return {
+      date,
+      steps: (r.steps as number) ?? 0,
+      stepGoal: 8000,
+      sleepHours: Math.round((sleepMin / 60) * 10) / 10,
+      restingHR: (r.avg_resting_hr as number) ?? 0,
+      activeMinutes: activeMin,
+      // energy/mood come from daily_checkin; merged into HealthDay in the store.
+      energy: 3,
+      mood: 3,
+    }
+  })
+}
+
+// ── Daily check-in (energy / mood) ──────────────────────────────────────────
+
+export async function fetchCheckins(): Promise<Checkin[]> {
   const { data } = await supabase
-    .from('health_daily_stats')
-    .select('date,steps,sleep_min,avg_resting_hr,active_min')
+    .from('daily_checkin')
+    .select('date,energy,mood,note')
     .order('date', { ascending: false })
-    .limit(90)
+    .limit(120)
 
   return (data ?? []).map((r) => ({
     date: r.date as string,
-    steps: (r.steps as number) ?? 0,
-    stepGoal: 8000,
-    sleepHours: Math.round(((r.sleep_min as number) ?? 0) / 60 * 10) / 10,
-    restingHR: (r.avg_resting_hr as number) ?? 0,
-    activeMinutes: (r.active_min as number) ?? 0,
-    energy: 3,
-    mood: 3,
+    energy: (r.energy as number) ?? 3,
+    mood: (r.mood as number) ?? 3,
+    note: (r.note as string) ?? null,
   }))
+}
+
+/** Upsert today's (or any day's) felt energy/mood. Returns true on success. */
+export async function upsertCheckin(c: Checkin): Promise<boolean> {
+  const user_id = await currentUserId()
+  if (!user_id) return false
+  const { error } = await supabase.from('daily_checkin').upsert(
+    {
+      user_id,
+      date: c.date,
+      energy: c.energy,
+      mood: c.mood,
+      note: c.note ?? null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,date' },
+  )
+  warnWrite('daily_checkin', error)
+  return !error
 }
 
 // ── Finance ───────────────────────────────────────────────────────────────────

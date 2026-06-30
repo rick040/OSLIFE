@@ -104,6 +104,15 @@ export interface HealthDay {
   mood: number // 1..5
 }
 
+// ── Daily check-in: the felt signal (energy/mood) no sensor captures ─────────
+
+export interface Checkin {
+  date: string // ISO date (YYYY-MM-DD)
+  energy: number // 1..5
+  mood: number // 1..5
+  note?: string | null
+}
+
 // ── Behaviour sense: screen time + app usage ─────────────────────────────────
 
 export interface AppUse {

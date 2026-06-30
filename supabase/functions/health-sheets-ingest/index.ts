@@ -93,6 +93,13 @@ Deno.serve(async (req) => {
   const counts = { activity: 0, body: 0, sleep: 0 }
   const errors: string[] = []
 
+  // Denormalise sleep (asleep minutes per day) so health_daily_stats is a
+  // self-contained daily row the app can read without joining health_sleep.
+  const sleepMinByDate = new Map<string, number>()
+  for (const s of payload.sleep ?? []) {
+    sleepMinByDate.set(s.date, (s.light_min ?? 0) + (s.deep_min ?? 0) + (s.rem_min ?? 0))
+  }
+
   // ── Activity → health_daily_stats ──────────────────────────────────────
   if (payload.activity?.length) {
     const rows = dedupeBy(payload.activity.map((r) => ({
@@ -102,6 +109,9 @@ Deno.serve(async (req) => {
       distance_m:    r.distance_m    ?? 0,
       calories_kcal: r.calories_kcal ?? 0,
       duration_min:  r.duration_min  ?? 0,
+      // active_min mirrors duration_min; sleep_min denormalised from health_sleep.
+      active_min:    r.duration_min  ?? 0,
+      sleep_min:     sleepMinByDate.get(r.date) ?? 0,
     })), (r) => r.date)
 
     const { error } = await supabase
