@@ -47,7 +47,9 @@ export default function Memory() {
 
       <p className="text-xs text-faint -mt-2">{tabs.find((t) => t.id === tab)!.desc}</p>
 
-      {tab === 'essentials' && (
+      {tab === 'essentials' && (essentials.length === 0 ? (
+        <Empty>Nog geen feiten afgeleid. Verbind je databronnen.</Empty>
+      ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 animate-fade-up">
           {essentials.map((e) => (
             <div key={e.id} className="card p-3">
@@ -59,7 +61,7 @@ export default function Memory() {
             </div>
           ))}
         </div>
-      )}
+      ))}
 
       {tab === 'threads' && (
         <div className="space-y-2 animate-fade-up">
@@ -108,7 +110,9 @@ export default function Memory() {
         </div>
       )}
 
-      {tab === 'patterns' && (
+      {tab === 'patterns' && (patterns.length === 0 ? (
+        <Empty>Nog geen patronen. Voer een reflectie uit zodra er genoeg data is.</Empty>
+      ) : (
         <div className="space-y-2 animate-fade-up">
           {patterns
             .slice()
@@ -136,7 +140,7 @@ export default function Memory() {
               )
             })}
         </div>
-      )}
+      ))}
     </div>
   )
 }

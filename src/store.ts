@@ -33,8 +33,16 @@ import type {
   DogProfile,
 } from './types'
 import { classify } from './understand'
-import { runReflect } from './reflect'
-import { TODAY } from './domains'
+import { runReflect, computeCorrelations, computeAnomalies } from './reflect'
+import {
+  deriveEssentials,
+  deriveThreads,
+  deriveDayLogs,
+  deriveDeadlines,
+  deriveBaselinePatterns,
+  buildNudge,
+} from './derive'
+import { TODAY, DOMAIN_META, KIND_LABEL } from './domains'
 import * as mock from './mockData'
 import {
   supabase,
@@ -129,6 +137,9 @@ interface State {
 
   // LIVE DATA
   loadLiveData: () => Promise<void>
+  // Rebuild the REMEMBER layer (essentials/threads/dayLogs/baseline patterns)
+  // and today's nudge from whatever live data is currently loaded.
+  recomputeBrain: () => void
 
   // North Star + Inbox
   toggleMilestone: (id: string) => void
@@ -206,6 +217,14 @@ function pushSignal(activity: ActivitySignal[], s: Omit<ActivitySignal, 'id' | '
   return [{ id: uid('sig'), ts: new Date().toISOString(), ...s }, ...activity].slice(0, 30)
 }
 
+/** True for threads derived live from projects/clients (not worth persisting). */
+const isDerivedThreadId = (id: string) => /^thr-(prj|cli)-/.test(id)
+
+/** Only persist closed-state and captured threads — derived ones come from projects. */
+function persistableThreads(threads: Thread[]): Thread[] {
+  return threads.filter((t) => t.status === 'closed' || !isDerivedThreadId(t.id))
+}
+
 export const useStore = create<State>()(
   persist(
     (set, get) => ({
@@ -238,14 +257,14 @@ export const useStore = create<State>()(
             items: [item, ...s.items],
             threads,
             activity: pushSignal(s.activity, {
-              text: `Captured & classified → ${c.domain} · ${c.kind}`,
+              text: `Vastgelegd & geclassificeerd → ${DOMAIN_META[c.domain].label} · ${KIND_LABEL[c.kind]}`,
               domain: c.domain,
               loop: 'fast',
             }),
           }
         })
         // a new thread (owed loop) changes the persisted brain state
-        if (c.kind === 'task') void persistBrainState(get().threads, get().patterns)
+        if (c.kind === 'task') void persistBrainState(persistableThreads(get().threads), get().patterns)
         return item
       },
 
@@ -255,18 +274,18 @@ export const useStore = create<State>()(
           return {
             threads: s.threads.map((x) => (x.id === id ? { ...x, status: 'closed' } : x)),
             activity: t
-              ? pushSignal(s.activity, { text: `Closed loop: ${t.title}`, domain: t.domain, loop: 'fast' })
+              ? pushSignal(s.activity, { text: `Loop gesloten: ${t.title}`, domain: t.domain, loop: 'fast' })
               : s.activity,
           }
         })
-        void persistBrainState(get().threads, get().patterns)
+        void persistBrainState(persistableThreads(get().threads), get().patterns)
       },
 
       reopenThread: (id) => {
         set((s) => ({
           threads: s.threads.map((x) => (x.id === id ? { ...x, status: 'open' } : x)),
         }))
-        void persistBrainState(get().threads, get().patterns)
+        void persistBrainState(persistableThreads(get().threads), get().patterns)
       },
 
       tickHabit: (id) => {
@@ -323,7 +342,7 @@ export const useStore = create<State>()(
           return {
             blocks: s.blocks.map((x) => (x.id === id ? { ...x, status: 'done' } : x)),
             activity: b
-              ? pushSignal(s.activity, { text: `Completed block: ${b.title}`, domain: b.domain, loop: 'fast' })
+              ? pushSignal(s.activity, { text: `Blok voltooid: ${b.title}`, domain: b.domain, loop: 'fast' })
               : s.activity,
           }
         }),
@@ -335,7 +354,7 @@ export const useStore = create<State>()(
             blocks: s.blocks.map((x) => (x.id === id ? { ...x, status: 'skipped' } : x)),
             activity: b
               ? pushSignal(s.activity, {
-                  text: `Skipped block: ${b.title} (training signal)`,
+                  text: `Blok overgeslagen: ${b.title} (trainingssignaal)`,
                   domain: b.domain,
                   loop: 'fast',
                 })
@@ -359,7 +378,7 @@ export const useStore = create<State>()(
       acceptPlan: () =>
         set((s) => ({
           activity: pushSignal(s.activity, {
-            text: 'Accepted today’s Day Builder plan',
+            text: 'Dagplan van vandaag geaccepteerd',
             domain: 'personal',
             loop: 'fast',
           }),
@@ -367,56 +386,46 @@ export const useStore = create<State>()(
 
       runNightlyReflect: () => {
         set((s) => {
+          const deadlines = deriveDeadlines(s.projects)
+          // Live baseline observations are the evidence re-checked each pass.
+          const evidenced = deriveBaselinePatterns(
+            s.healthDays,
+            s.screenDays,
+            s.transactions,
+            s.projects,
+            s.clients,
+          )
           const { digest, patterns } = runReflect(
             s.dayLogs,
             s.transactions,
             s.threads,
             s.patterns,
+            evidenced,
             s.screenDays,
             s.meetingDays,
+            deadlines,
           )
 
-          // SLOW LOOP made visible: reflection reshapes what Surface shows tomorrow.
-          let blocks = s.blocks
-          let planAdapted = s.planAdapted
-          if (!s.planAdapted) {
-            planAdapted = true
-            // reinforced sleep↔energy + deep-work-peak patterns → insert an evening
-            // wind-down block and re-assert the protected morning focus window.
-            const windDown: Block = {
-              id: uid('blk'),
-              title: 'Wind-down, no screens (protect tomorrow’s sleep)',
-              domain: 'personal',
-              start: '22:30',
-              end: '23:00',
-              status: 'planned',
-              rationale: 'Added by Reflect: sleep↔energy pattern reinforced (p1)',
-            }
-            blocks = [...s.blocks, windDown]
-          }
+          const reflectCount = s.reflectCount + 1
 
-          const newNudge: Nudge = {
-            id: uid('nud'),
-            domain: 'cross',
-            text: `Reflect pass #${s.reflectCount + 1}: short nights are stacking, en op die dagen lopen schermtijd, pickups en meeting-druk op terwijl je focus zakt. Tomorrow’s plan protects sleep, schermt je 09:30 deep-work blok af en houdt meetings uit de ochtend. Watch convenience spend on low-energy days.`,
-            reason: 'cross-domain digest (sleep↔energy, schermtijd↔focus, meetings↔output)',
-          }
+          // SLOW LOOP made visible: the nudge is regenerated from THIS pass's
+          // digest — same builder as Today, so it's always coherent Dutch.
+          const newNudge = buildNudge(s.threads, s.projects, digest.correlations, digest.anomalies, reflectCount)
 
           return {
             patterns,
             lastDigest: digest,
-            reflectCount: s.reflectCount + 1,
-            blocks,
-            planAdapted,
+            reflectCount,
+            planAdapted: true,
             nudge: newNudge,
             activity: pushSignal(s.activity, {
-              text: `Ran nightly Reflect → ${digest.correlations.length} correlations, ${digest.reinforced.length} patterns reinforced`,
+              text: `Nachtelijke reflectie uitgevoerd → ${digest.correlations.length} verband(en), ${digest.reinforced.length} patroon/patronen versterkt`,
               domain: 'cross',
               loop: 'slow',
             }),
           }
         })
-        void persistBrainState(get().threads, get().patterns)
+        void persistBrainState(persistableThreads(get().threads), get().patterns)
       },
 
       toggleMilestone: (id) =>
@@ -426,7 +435,7 @@ export const useStore = create<State>()(
           return {
             milestones: s.milestones.map((x) => (x.id === id ? { ...x, done: !x.done } : x)),
             activity: pushSignal(s.activity, {
-              text: `${m.done ? 'Re-opened' : 'Hit'} milestone: ${m.title}`,
+              text: `Mijlpaal ${m.done ? 'heropend' : 'behaald'}: ${m.title}`,
               domain: 'cross',
               loop: 'fast',
             }),
@@ -545,7 +554,7 @@ export const useStore = create<State>()(
           return {
             transactions: merged,
             activity: pushSignal(s.activity, {
-              text: `Imported ${txns.length} bank transaction(s)`,
+              text: `${txns.length} banktransactie(s) geïmporteerd`,
               domain: 'personal',
               loop: 'fast',
             }),
@@ -636,6 +645,44 @@ export const useStore = create<State>()(
         void deleteSubscriptionRow(id)
       },
 
+      recomputeBrain: () => {
+        const s = get()
+        const essentials = deriveEssentials(s.clients, s.projects, s.goals, s.dogEntries)
+        const dayLogs = deriveDayLogs(s.healthDays)
+        const deadlines = deriveDeadlines(s.projects)
+        const baseline = deriveBaselinePatterns(
+          s.healthDays,
+          s.screenDays,
+          s.transactions,
+          s.projects,
+          s.clients,
+        )
+
+        // Threads: re-derive open loops from projects/clients, but preserve the
+        // status of any thread already in the store (a closed loop stays closed)
+        // and keep captured / brain_state threads that aren't derived.
+        const derived = deriveThreads(s.projects, s.clients)
+        const derivedIds = new Set(derived.map((t) => t.id))
+        const existingById = new Map(s.threads.map((t) => [t.id, t]))
+        const merged = [
+          ...derived.map((t) => {
+            const prev = existingById.get(t.id)
+            return prev ? { ...t, status: prev.status } : t
+          }),
+          ...s.threads.filter((t) => !derivedIds.has(t.id)),
+        ]
+
+        // Patterns: keep what Reflect has already written; otherwise seed the
+        // live baseline observations so "Patronen" is never empty with data.
+        const patterns = s.patterns.length ? s.patterns : baseline
+
+        const correlations = computeCorrelations(dayLogs, s.transactions, s.screenDays, s.meetingDays, deadlines)
+        const anomalies = computeAnomalies(dayLogs, s.transactions, merged)
+        const nudge = buildNudge(merged, s.projects, correlations, anomalies, s.reflectCount)
+
+        set({ essentials, dayLogs, threads: merged, patterns, nudge })
+      },
+
       loadLiveData: async () => {
         try {
           const [
@@ -689,9 +736,14 @@ export const useStore = create<State>()(
             dataSource: 'live',
             isLoading: false,
           })
+          // REMEMBER + SURFACE run off live data: rebuild essentials, threads,
+          // dayLogs, baseline patterns and today's nudge now that it has loaded.
+          get().recomputeBrain()
         } catch (err) {
           console.warn('[OSLIFE] Supabase fetch failed', err)
           set({ isLoading: false })
+          // Still rebuild from whatever is loaded so REMEMBER isn't blank.
+          get().recomputeBrain()
         }
 
         // One Realtime channel for all passively-ingested tables.
@@ -699,9 +751,9 @@ export const useStore = create<State>()(
         supabase
           .channel('oslife-live')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'health_daily_stats' },
-            () => fetchHealthDays().then((d) => d.length > 0 && set({ healthDays: d })))
+            () => fetchHealthDays().then((d) => { if (d.length > 0) { set({ healthDays: d }); get().recomputeBrain() } }))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_tx' },
-            () => fetchTransactions().then((d) => d.length > 0 && set({ transactions: d })))
+            () => fetchTransactions().then((d) => { if (d.length > 0) { set({ transactions: d }); get().recomputeBrain() } }))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'gmail_messages' },
             () => fetchEmails().then((d) => d.length > 0 && set({ emails: d })))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'day_blocks' },
@@ -709,7 +761,7 @@ export const useStore = create<State>()(
               set({ ...(b.length > 0 && { blocks: b }), ...(m.length > 0 && { meetingDays: m }) })
             }))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' },
-            () => fetchProjects().then((d) => d.length > 0 && set({ projects: d })))
+            () => fetchProjects().then((d) => { if (d.length > 0) { set({ projects: d }); get().recomputeBrain() } }))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' },
             () => fetchPayments().then((d) => d.length > 0 && set({ payments: d })))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'habits' },
