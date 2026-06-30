@@ -9,18 +9,20 @@ import {
   ReferenceLine,
   Cell,
 } from 'recharts'
+import { useMemo } from 'react'
 import { useStore } from '../store'
 import { TODAY, DOMAIN_HEX } from '../domains'
+import { deriveDeadlines } from '../derive'
 import { SectionTitle } from '../components/ui'
 import { Radar, Smartphone, Hand, Brain } from 'lucide-react'
 
 const d = (iso: string) => iso.slice(8)
-const DEADLINES = ['2026-06-12', '2026-06-17', '2026-06-18']
 const tip = { background: '#FFFFFF', border: '1px solid #E7E9DE', color: '#1B1D17', borderRadius: 12, fontSize: 12 }
 const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}u ${m % 60}m` : `${m}m`)
 
 export default function Signals() {
-  const { screenDays, meetingDays } = useStore()
+  const { screenDays, meetingDays, projects } = useStore()
+  const deadlines = useMemo(() => deriveDeadlines(projects), [projects])
 
   const screenToday = screenDays.find((s) => s.date === TODAY) ?? screenDays[screenDays.length - 1] ?? null
 
@@ -104,7 +106,7 @@ export default function Signals() {
             <ReferenceLine y={3} stroke="#C58392" strokeDasharray="4 4" />
             <Bar dataKey="count" radius={[4, 4, 0, 0]}>
               {meetingData.map((m) => (
-                <Cell key={m.iso} fill={DEADLINES.includes(m.iso) ? '#C58392' : '#D4D7C8'} />
+                <Cell key={m.iso} fill={deadlines.includes(m.iso) ? '#C58392' : '#D4D7C8'} />
               ))}
             </Bar>
           </BarChart>

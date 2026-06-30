@@ -14,23 +14,41 @@ import {
 } from 'recharts'
 import { useStore } from '../store'
 import { computeCorrelations, computeAnomalies } from '../reflect'
+import { deriveDeadlines, hasSleepSignal, hasEnergySignal } from '../derive'
 import { fmtDate } from '../domains'
-import { DomainChip, SectionTitle } from '../components/ui'
-import { Brain, Moon, Wallet, AlertTriangle, ArrowUpRight, ArrowDownRight, Play, Smartphone, CalendarClock } from 'lucide-react'
-
-const DEADLINES = ['2026-06-12', '2026-06-17', '2026-06-18']
+import { DomainChip, SectionTitle, Empty } from '../components/ui'
+import { Brain, Moon, Wallet, AlertTriangle, ArrowUpRight, ArrowDownRight, Play, Smartphone, CalendarClock, Database } from 'lucide-react'
 
 export default function Reflect() {
-  const { dayLogs, transactions, threads, patterns, lastDigest, reflectCount, runNightlyReflect, screenDays, meetingDays } = useStore()
+  const { dayLogs, transactions, threads, patterns, lastDigest, reflectCount, runNightlyReflect, screenDays, meetingDays, projects, healthDays, emails } = useStore()
+
+  const deadlines = useMemo(() => deriveDeadlines(projects), [projects])
 
   const correlations = useMemo(
-    () => computeCorrelations(dayLogs, transactions, screenDays, meetingDays),
-    [dayLogs, transactions, screenDays, meetingDays],
+    () => computeCorrelations(dayLogs, transactions, screenDays, meetingDays, deadlines),
+    [dayLogs, transactions, screenDays, meetingDays, deadlines],
   )
   const anomalies = useMemo(
     () => computeAnomalies(dayLogs, transactions, threads),
     [dayLogs, transactions, threads],
   )
+
+  // Honest data coverage — REFLECT can only correlate what's actually flowing.
+  const coverage = useMemo(() => {
+    const spend = transactions.filter((t) => t.amount < 0).length
+    return [
+      { key: 'Slaap', ok: hasSleepSignal(dayLogs), detail: hasSleepSignal(dayLogs) ? `${dayLogs.filter((l) => l.sleepHours > 0).length} dagen` : 'geen ingest' },
+      { key: 'Energie', ok: hasEnergySignal(dayLogs), detail: hasEnergySignal(dayLogs) ? 'gevarieerd' : 'niet gemeten' },
+      { key: 'Stappen', ok: healthDays.some((h) => h.steps > 0), detail: `${healthDays.filter((h) => h.steps > 0).length} dagen` },
+      { key: 'Schermtijd', ok: screenDays.length >= 4, detail: `${screenDays.length} dagen` },
+      { key: 'Financiën', ok: spend >= 5, detail: `${spend} uitgaven` },
+      { key: 'Agenda', ok: meetingDays.length > 0, detail: `${meetingDays.length} dagen` },
+      { key: 'Projecten', ok: deadlines.length > 0, detail: `${deadlines.length} deadlines` },
+      { key: 'Mail', ok: emails.length > 0, detail: `${emails.length} berichten` },
+    ]
+  }, [dayLogs, healthDays, screenDays, transactions, meetingDays, deadlines, emails])
+
+  const noSleep = !hasSleepSignal(dayLogs)
 
   const sleepEnergy = dayLogs.map((l) => ({
     date: fmtDate(l.date).replace(/\s*(jan|feb|mrt|apr|mei|jun|jul|aug|sep|okt|nov|dec)\s*/i, ''),
@@ -48,9 +66,9 @@ export default function Reflect() {
       date: fmtDate(l.date).replace(/\s*(jan|feb|mrt|apr|mei|jun|jul|aug|sep|okt|nov|dec)\s*/i, ''),
       iso: l.date,
       spend: Math.round(map.get(l.date) || 0),
-      deadline: DEADLINES.includes(l.date),
+      deadline: deadlines.includes(l.date),
     }))
-  }, [transactions, dayLogs])
+  }, [transactions, dayLogs, deadlines])
 
   const corrIcon: Record<string, typeof Brain> = {
     c1: Moon,
@@ -79,15 +97,38 @@ export default function Reflect() {
 
       {lastDigest && (
         <div className="card p-3 border-cross/40 bg-cross/5 text-sm text-ink-soft animate-fade-up">
-          Reflectie heeft <b>{reflectCount}×</b> gedraaid. Patronen zijn versterkt en het Overzicht van morgen (dagelijkse nudge + Dagplanner) is bijgewerkt.
+          Reflectie heeft <b>{reflectCount}×</b> gedraaid. Patronen zijn versterkt en het Overzicht (dagelijkse nudge) is bijgewerkt.
         </div>
       )}
 
+      {/* DATA COVERAGE — what REFLECT actually has to work with */}
+      <div>
+        <SectionTitle hint="Reflectie kan alleen verbanden vinden tussen databronnen die binnenkomen.">
+          Databronnen & dekking
+        </SectionTitle>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {coverage.map((c) => (
+            <div key={c.key} className="card p-2.5">
+              <div className="flex items-center gap-1.5">
+                <span className={`h-2 w-2 rounded-full ${c.ok ? 'bg-buurtkaart' : 'bg-cross/60'}`} />
+                <span className="text-sm font-medium">{c.key}</span>
+              </div>
+              <p className="text-[11px] text-faint mt-0.5">{c.detail}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* CROSS-DOMAIN CORRELATIONS */}
       <div>
-        <SectionTitle hint="Live berekend op basis van slaap, energie, uitgaven en deadlinedata.">
+        <SectionTitle hint="Live berekend; alleen getoond als er genoeg data is voor een betrouwbaar verband.">
           Domein-overstijgende verbanden
         </SectionTitle>
+        {correlations.length === 0 && (
+          <Empty>
+            Nog te weinig signaal voor betrouwbare verbanden. Zie de dekking hierboven — zodra slaap, energie of meer financiële data binnenkomt, verschijnen hier de cross-domein correlaties.
+          </Empty>
+        )}
         <div className="space-y-3">
           {correlations.map((c, idx) => {
             const Icon = corrIcon[c.id] || Brain
@@ -125,9 +166,15 @@ export default function Reflect() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="card p-4">
           <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
-            <Moon className="h-4 w-4 text-personal" /> Sleep vs. energy
+            <Moon className="h-4 w-4 text-personal" /> Slaap vs. energie
           </h3>
-          <p className="text-[11px] text-faint mb-2">Lijnen bewegen mee, korte nachten trekken energie omlaag.</p>
+          {noSleep ? (
+            <p className="text-[11px] text-cross mb-2 flex items-center gap-1">
+              <Database className="h-3 w-3" /> Slaapdata komt nog niet binnen — koppel je slaapbron om dit verband te activeren.
+            </p>
+          ) : (
+            <p className="text-[11px] text-faint mb-2">Lijnen bewegen mee; korte nachten trekken energie omlaag.</p>
+          )}
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={sleepEnergy} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
