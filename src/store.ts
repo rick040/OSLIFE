@@ -22,9 +22,7 @@ import type {
   EmailItem,
   Payment,
   ScreenDay,
-  LocationDay,
   MeetingDay,
-  MusicDay,
   Client,
   Message,
   Subscription,
@@ -52,12 +50,11 @@ import {
   fetchDogEntries,
   fetchBrainState,
   fetchScreenDays,
-  fetchLocationDays,
-  fetchMusicDays,
   fetchProjects,
   fetchClients,
   persistBrainState,
   persistPaymentStatus,
+  insertFinanceTx,
   persistEmailRead,
   persistAllEmailsRead,
   persistProjectPatch,
@@ -96,9 +93,7 @@ interface State {
   activity: ActivitySignal[]
   healthDays: HealthDay[]
   screenDays: ScreenDay[]
-  locationDays: LocationDay[]
   meetingDays: MeetingDay[]
-  musicDays: MusicDay[]
   projects: Project[]
   clients: Client[]
   messages: Message[]
@@ -151,6 +146,7 @@ interface State {
   toggleProjectTask: (projectId: string, taskId: string, done: boolean) => void
   deleteProjectTask: (projectId: string, taskId: string) => void
   addTransactions: (txns: Transaction[]) => void
+  importTransactions: (txns: Transaction[]) => Promise<{ inserted: number; duplicates: number }>
   markPaymentPaid: (id: string) => void
 
   // Kyra
@@ -187,9 +183,7 @@ const seed = () => ({
   activity: [] as ActivitySignal[],
   healthDays: mock.healthDays,
   screenDays: mock.screenDays,
-  locationDays: mock.locationDays,
   meetingDays: mock.meetingDays,
-  musicDays: mock.musicDays,
   projects: mock.projects,
   clients: mock.clients,
   messages: mock.messages,
@@ -380,8 +374,6 @@ export const useStore = create<State>()(
             s.patterns,
             s.screenDays,
             s.meetingDays,
-            s.locationDays,
-            s.musicDays,
           )
 
           // SLOW LOOP made visible: reflection reshapes what Surface shows tomorrow.
@@ -492,7 +484,7 @@ export const useStore = create<State>()(
           }
         })
         const updated = get().projects.find((x) => x.id === id)
-        if (updated) void persistProjectPatch(id, { status, progress: updated.progress })
+        if (updated) void persistProjectPatch(id, { status, progress: updated.progress }, updated.notionId)
       },
 
       updateProject: (id, patch) => {
@@ -515,7 +507,7 @@ export const useStore = create<State>()(
           }
         })
         const updated = get().projects.find((x) => x.id === id)
-        if (updated) void persistProjectPatch(id, { ...patch, progress: updated.progress })
+        if (updated) void persistProjectPatch(id, { ...patch, progress: updated.progress }, updated.notionId)
       },
 
       addProjectTask: (projectId, task) =>
@@ -559,6 +551,30 @@ export const useStore = create<State>()(
             }),
           }
         }),
+
+      // ABN AMRO CSV import → persists to finance_tx (dedup vs the Betalingen
+      // sheet via a shared date|amount key) and reconciles from the server.
+      importTransactions: async (txns) => {
+        if (!txns.length) return { inserted: 0, duplicates: 0 }
+        const key = (t: Transaction) => `${t.date}|${t.amount}|${t.merchant.toLowerCase()}`
+        set((s) => {
+          const seen = new Set(s.transactions.map(key))
+          const fresh = txns.filter((t) => !seen.has(key(t)))
+          if (!fresh.length) return {}
+          return {
+            transactions: [...fresh, ...s.transactions].sort((a, b) => (a.date < b.date ? 1 : -1)),
+            activity: pushSignal(s.activity, {
+              text: `Geïmporteerd: ${fresh.length} banktransactie(s)`,
+              domain: 'personal',
+              loop: 'fast',
+            }),
+          }
+        })
+        const inserted = await insertFinanceTx(txns)
+        const fresh = await fetchTransactions()
+        if (fresh.length) set({ transactions: fresh })
+        return { inserted, duplicates: txns.length - inserted }
+      },
 
       logDog: (entry) => {
         const tempId = uid('dog')
@@ -635,8 +651,6 @@ export const useStore = create<State>()(
             dogEntries,
             brainState,
             screenDays,
-            locationDays,
-            musicDays,
             projects,
             clients,
           ] = await Promise.all([
@@ -652,8 +666,6 @@ export const useStore = create<State>()(
             fetchDogEntries(),
             fetchBrainState(),
             fetchScreenDays(),
-            fetchLocationDays(),
-            fetchMusicDays(),
             fetchProjects(),
             fetchClients(),
           ])
@@ -672,15 +684,13 @@ export const useStore = create<State>()(
             ...(brainState.threads.length > 0 && { threads: brainState.threads }),
             ...(brainState.patterns.length > 0 && { patterns: brainState.patterns }),
             ...(screenDays.length > 0 && { screenDays }),
-            ...(locationDays.length > 0 && { locationDays }),
-            ...(musicDays.length > 0 && { musicDays }),
             ...(projects.length > 0 && { projects }),
             ...(clients.length > 0 && { clients }),
             dataSource: 'live',
             isLoading: false,
           })
         } catch (err) {
-          console.warn('[RICK-OS] Supabase fetch failed', err)
+          console.warn('[OSLIFE] Supabase fetch failed', err)
           set({ isLoading: false })
         }
 
@@ -700,8 +710,6 @@ export const useStore = create<State>()(
             }))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' },
             () => fetchProjects().then((d) => d.length > 0 && set({ projects: d })))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'spotify_history' },
-            () => fetchMusicDays().then((d) => d.length > 0 && set({ musicDays: d })))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' },
             () => fetchPayments().then((d) => d.length > 0 && set({ payments: d })))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'habits' },
@@ -751,8 +759,6 @@ export const useStore = create<State>()(
         if (!state.essentials?.length) state.essentials = s.essentials
         if (!state.patterns?.length) state.patterns = s.patterns
         if (!state.screenDays?.length) state.screenDays = s.screenDays
-        if (!state.locationDays?.length) state.locationDays = s.locationDays
-        if (!state.musicDays?.length) state.musicDays = s.musicDays
         if (!state.dataSource) state.dataSource = 'mock'
       },
     },

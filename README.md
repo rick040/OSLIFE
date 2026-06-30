@@ -1,14 +1,17 @@
-# RICK-OS
+# OSLIFE
 
 A personal life-management **operating system**: it turns scattered noticing into one
 accumulating memory and surfaces the cross-domain connections (sleep↔energy, finance↔stress)
 no single tracker could show.
 
-This is no longer a prototype. It is a working single-user app on a real backend: Supabase
-(Postgres + Auth + Realtime + Edge Functions), live ingestion pipelines (Google Apps Script,
-Python, GitHub Actions), and a React/Vite frontend that reads live data with realtime updates.
-When a data source has no rows yet, the matching screen falls back to seeded demo data so the
-UI is never empty.
+A working single-user app on a real backend: Supabase (Postgres + Auth + Realtime + Edge
+Functions), live ingestion pipelines (Google Apps Script + Google Sheets + Notion + the Geldrop
+Buurtkaart WordPress API), and a React/Vite frontend that reads live data with realtime updates.
+When a data source has no rows yet, the matching screen falls back to seeded demo data so the UI
+is never empty.
+
+This app talks to exactly one backend — the Supabase project **`nhyunnnmdcmojvkxrbpl` ("oslife")**
+and the Vercel project **oslife**. There is no connection to any other database project.
 
 ## Run it
 
@@ -19,8 +22,7 @@ npm run dev
 ```
 
 Open http://localhost:5173 and sign in with the Supabase account that owns the data
-(`auth.users.id` = `RICK_USER_ID`). The sidebar shows a **live data / mock data** dot so you
-always know which you're looking at.
+(`auth.users.id` = `OSLIFE_USER_ID`). The sidebar shows a **live data / mock data** dot.
 
 ```bash
 npm run build     # type-check + production build
@@ -30,57 +32,64 @@ npm run preview   # serve the production build
 ## Architecture
 
 ```
-Ingestion                         Supabase (nhyunnnmdcmojvkxrbpl, eu-west-1)        Frontend
-─────────                         ─────────────────────────────────────────       ────────
-Apps Script (Gmail/Cal/Health) ┐                                                ┌ React + Vite
-Python (Spotify/YT/Maps/ActDash)├─▶ Edge Functions ─▶ Postgres (RLS, per-user) ─▶│ Zustand store
-GitHub Actions (Spotify poll)   ┘   wallet-ingest        + Realtime channel ─────▶│ live reads
-Notion (projects/clients)      ───▶ notion-sync/-hq                              └ + realtime
-ABN AMRO CSV (manual import)   ───▶ (in-app parser)
+Ingestion                                  Supabase (nhyunnnmdcmojvkxrbpl)         Frontend
+─────────                                  ──────────────────────────────         ────────
+Apps Script hub (Code.gs)                                                       ┌ React + Vite
+  Notion → projects/clients      ┐                                              │ Zustand store
+  Gmail  → gmail_messages        │                                              │ live reads
+  Calendar → day_blocks          ├──▶ PostgREST ─▶ Postgres (RLS, per-user) ───▶│ + realtime
+  payments-calendar → payments   │                  + Realtime channel ─────────▶│
+Sheet-bound Apps Script          │                                              └ Notion write-back
+  Health  → health-sheets-ingest │                                                 (notion-mutate)
+  Betalingen → payments-sheet-ingest ─▶ Edge Functions ─▶ finance_tx
+  Schermtijd → screentime-sheet-ingest                 ─▶ screentime
+Notion (read)  → notion-sync / notion-hq
+Notion (write) ◀── notion-mutate  (app edits a project/client → Notion)
+Geldrop Buurtkaart WordPress API ─▶ gbk-overview ─▶ Buurtkaart screen
+Google Wallet (MacroDroid)       ─▶ wallet-ingest ─▶ finance_tx
+ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betalingen sheet)
 ```
 
-- **Auth**: Supabase email/password (`src/components/LoginScreen.tsx`). Sign-in only — the
-  account is provisioned in the Supabase dashboard. RLS scopes every table to the owner.
-- **Store**: `src/store.ts` (Zustand + localStorage). `loadLiveData()` fetches all slices on
-  login and subscribes to a single Realtime channel; it only overwrites a slice when the query
-  returns rows, so empty tables keep their seeded demo values.
-- **Data access**: `src/lib/supabase.ts` — one typed fetcher per slice.
+- **Auth**: Supabase email/password (`src/components/LoginScreen.tsx`). RLS scopes every table to the owner.
+- **Store**: `src/store.ts` (Zustand + localStorage). `loadLiveData()` fetches all slices on login
+  and subscribes to one Realtime channel; it only overwrites a slice when the query returns rows.
+- **Data access**: `src/lib/supabase.ts` — one typed fetcher per slice, plus the write-back helpers
+  (`persistProjectPatch` → Notion via `mutateNotion`, `insertFinanceTx` for the CSV import).
 
-## Data sources — live status
+## Data sources — one per module
 
-The app's Supabase project is `nhyunnnmdcmojvkxrbpl` ("oslife"). Status as of this writing:
+| Module | Source | Pipeline | Table(s) |
+|--------|--------|----------|----------|
+| Projecten | **Notion** (read+write) | `notion-sync` ↓ · `notion-mutate` ↑ | `projects` |
+| CRM / Klanten | **Notion** (read+write) | `notion-sync` ↓ · `notion-mutate` ↑ | `clients` |
+| Strategie HQ · Buurtkaart/Eyes/Dakmeester callouts | **Notion** | `notion-hq` (live) | — |
+| Buurtkaart beheer | **Geldrop Buurtkaart WordPress API** | `gbk-overview` (header `X-GBK-Key`) | — (live read) |
+| Geld · transacties | **Betalingen Google Sheet** + **ABN AMRO CSV** (in-app) + Google Wallet | `payments-sheet-ingest` · in-app import · `wallet-ingest` | `finance_tx` |
+| Geld · Te betalen | **Payments Google Calendar** | Code.gs `syncPayments` | `payments` |
+| Schermtijd | **Schermtijd Google Sheet** (tab per categorie) | `screentime-sheet-ingest` | `screentime` |
+| Gezondheid | **Health Google Sheet** (slaap/activiteiten/gewicht/stappen) | `health-sheets-ingest` | `health_daily_stats`, `health_sleep`, `health_body_metrics` |
+| Inbox / mail | **Gmail** | Code.gs `syncGmail` | `gmail_messages` |
+| Dagplanner / agenda | **Google Calendar** | Code.gs `syncCalendarBlocks` | `day_blocks` |
+| Gewoonten · Doelen · Kyra · Abonnementen | in-app (handmatig) | app write-back | `habits`, `goals`, `dog_log`, `subscriptions` |
+| Geheugen / Reflectie | afgeleid in-app | reflect engine | `brain_state` |
 
-| Source | Table(s) | Pipeline | Status |
-|--------|----------|----------|--------|
-| Payments / agenda | `payments` | wallet-ingest / Apps Script calendar | ✅ live (data present) |
-| Day blocks & meetings | `day_blocks` | Apps Script calendar | ✅ live (data present) |
-| Email / inbox | `gmail_messages` | Apps Script gmail | ✅ live (data present) |
-| Projects | `projects` | notion-sync | ✅ live (data present) |
-| Clients / CRM | `clients` | notion-sync | ⚪ wired, table empty |
-| Bank transactions | `finance_tx` | wallet-ingest / CSV import | ⚪ wired, table empty |
-| Health (steps/sleep/HR) | `health_daily_stats`, `health_sleep`, `health_body_metrics` | health-sheets-ingest | ⚪ wired, table empty |
-| Habits | `habits`, `habit_log` | manual / app | ⚪ wired, table empty |
-| Goals | `goals` | manual / Notion | ⚪ wired, table empty |
-| Subscriptions | `subscriptions` | manual / app | ⚪ wired, table empty |
-| Dog (Kyra) | `dog_log` | app logging | ⚪ wired, table empty |
-| Screen time | `screentime` | Python (ActionDash) | ⚪ wired, table empty |
-| Location | `location_visits` | Python (Google Maps Timeline) | ⚪ wired, table empty |
-| Music | `spotify_history` | GitHub Actions + Python | ⚪ wired, table empty |
-| Reflect memory | `brain_state` | reflect (planned edge fn) | ⚪ wired, table empty |
+### Finance dedup
+The Betalingen sheet and the in-app ABN AMRO CSV import both write `finance_tx` with the same
+`dedup_key = "YYYY-MM-DD|amount"`. The `UNIQUE (user_id, dedup_key)` constraint plus
+`ignoreDuplicates` means a purchase that appears in both is stored exactly once — importing the
+monthly ABN export never duplicates what your phone already logged.
 
-✅ = rows flowing today · ⚪ = code + table + RLS exist, source not yet connected (needs your
-account/keys — see `integrations/README.md`).
+## Going live (secrets + triggers)
 
-## The six layers, mapped to the UI
+All code is deployed. To turn a source on, set its secret(s) and triggers — see `.env.example` for
+the full contract. Summary:
 
-| Layer | Where to see it |
-|------|------------------|
-| 1. Intake | **Vastleggen** (Capture) + passive sense data (health, bank, calendar, music) |
-| 2. Understand | **Vastleggen** / **HEYRA** show live classification (domain, kind, sentiment, summary) |
-| 3. Remember | **Geheugen** (Memory): three stores (Essentials, Threads, Patterns) |
-| 4. Reflect | **Reflectie**: cross-domain correlations + anomalies + pattern write-back |
-| 5. Surface | **Dashboard** + **Vandaag** + **Dagplanner** + the nudge + **HEYRA** |
-| 6. Act | Complete/skip blocks, close threads, tick habits, accept plan, mark paid |
+1. **Edge-function secrets** (Supabase → Edge Functions → Manage secrets): `OSLIFE_USER_ID`,
+   `NOTION_TOKEN`, `INGEST_SECRET`, `GBK_API_KEY`, `WALLET_WEBHOOK_SECRET`, `SYNC_SECRET`.
+2. **Apps Script** (`integrations/apps-script/`): paste `Code.gs` into the account-level project and
+   `health-sheets.gs` / `payments-sheet.gs` / `screentime-sheet.gs` each into their own
+   Sheet-bound project; fill Script Properties; run `installTrigger()` / add time-driven triggers.
+3. **Notion**: share the Projects, Clients and the 3 side-business pages with your integration.
 
 ## Screens
 
@@ -89,17 +98,6 @@ Gewoonten, Signalen, Geld, Kyra, Inbox, Noordster), **Business** (CRM, Projecten
 Buurtkaart, The Eyes, Dakmeester), **Intake** (HEYRA, Vastleggen) and **Reflect** (Geheugen,
 Reflectie, Verbanden). See `src/nav.ts` for the single source of truth.
 
-Buurtkaart, The Eyes and Dakmeester are currently self-contained business screens that do not
-yet read from Supabase.
-
-## Still on the roadmap to "fully wired"
-
-- Connect the remaining ingestion sources (health, finance, music, location, screen time) — all
-  code exists; each needs your account/keys (`integrations/README.md`).
-- LLM-backed **Understand** and **Reflect** edge functions (today: a transparent keyword
-  classifier in `src/understand.ts` + a deterministic correlator in `src/reflect.ts`).
-- A scheduler (`pg_cron`) driving nightly Reflect, plus push notifications for nudges.
-
 ## Stack
 
 Vite · React · TypeScript · Tailwind CSS · Zustand · lucide-react · recharts · Supabase.
@@ -107,6 +105,5 @@ Vite · React · TypeScript · Tailwind CSS · Zustand · lucide-react · rechar
 ## Secrets
 
 The frontend only ships the public Supabase URL + anon key (RLS protects the data). Service-role
-keys, Notion tokens and ingestion secrets live in Apps Script Script Properties, Supabase Edge
-Function secrets, and GitHub Actions secrets — never in the bundle or in git. See `.env.example`
-for the full contract.
+keys, the Notion token, the GBK API key and ingestion secrets live in Supabase Edge Function
+secrets and Apps Script Script Properties — never in the bundle or in git. See `.env.example`.

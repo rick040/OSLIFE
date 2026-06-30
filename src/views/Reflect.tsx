@@ -16,16 +16,16 @@ import { useStore } from '../store'
 import { computeCorrelations, computeAnomalies } from '../reflect'
 import { fmtDate } from '../domains'
 import { DomainChip, SectionTitle } from '../components/ui'
-import { Brain, Moon, Wallet, AlertTriangle, ArrowUpRight, ArrowDownRight, Play, Smartphone, CalendarClock, MapPin, Music } from 'lucide-react'
+import { Brain, Moon, Wallet, AlertTriangle, ArrowUpRight, ArrowDownRight, Play, Smartphone, CalendarClock } from 'lucide-react'
 
 const DEADLINES = ['2026-06-12', '2026-06-17', '2026-06-18']
 
 export default function Reflect() {
-  const { dayLogs, transactions, threads, patterns, lastDigest, reflectCount, runNightlyReflect, screenDays, meetingDays, locationDays, musicDays } = useStore()
+  const { dayLogs, transactions, threads, patterns, lastDigest, reflectCount, runNightlyReflect, screenDays, meetingDays } = useStore()
 
   const correlations = useMemo(
-    () => computeCorrelations(dayLogs, transactions, screenDays, meetingDays, locationDays, musicDays),
-    [dayLogs, transactions, screenDays, meetingDays, locationDays, musicDays],
+    () => computeCorrelations(dayLogs, transactions, screenDays, meetingDays),
+    [dayLogs, transactions, screenDays, meetingDays],
   )
   const anomalies = useMemo(
     () => computeAnomalies(dayLogs, transactions, threads),
@@ -58,8 +58,6 @@ export default function Reflect() {
     c3: Wallet,
     c4: Smartphone,
     c5: CalendarClock,
-    c6: MapPin,
-    c7: Music,
   }
 
   return (

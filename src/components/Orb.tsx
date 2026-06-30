@@ -2,7 +2,7 @@ import { useRef } from 'react'
 
 /**
  * HEYRA orb. Tap → open HEYRA. Long-press (~450ms) → open the app-grid.
- * Lightweight animated gradient sphere in the RICK-OS palette.
+ * Lightweight animated gradient sphere in the OSLIFE palette.
  */
 export default function Orb({
   size = 40,

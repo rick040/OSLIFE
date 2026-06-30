@@ -1,29 +1,35 @@
 /**
- * RICK-OS · Google Apps Script ingestion hub
+ * OSLIFE · Google Apps Script ingestion hub
  * ------------------------------------------------------------------
- * Pulls each source on a time-driven trigger, normalizes it, and upserts
- * into Supabase via PostgREST using the service_role key (bypasses RLS).
+ * Account-level pulls (Notion, Gmail, Calendar, payments-calendar) on a
+ * time-driven trigger. Normalizes each source and upserts into Supabase via
+ * PostgREST using the service_role key (bypasses RLS). Writes ONLY to the
+ * OSLIFE project (nhyunnnmdcmojvkxrbpl) — no Vercel / rick-os middleman.
+ *
+ * The Google-Sheet sources live in their own Sheet-bound projects, each
+ * POSTing to a Supabase edge function:
+ *   Health      → health-sheets.gs      → /functions/v1/health-sheets-ingest
+ *   Betalingen  → payments-sheet.gs     → /functions/v1/payments-sheet-ingest
+ *   Schermtijd  → screentime-sheet.gs   → /functions/v1/screentime-sheet-ingest
  *
  * SETUP
  * 1. Project Settings → Script Properties, add:
  *      SUPABASE_URL          https://nhyunnnmdcmojvkxrbpl.supabase.co
  *      SUPABASE_SERVICE_KEY  <service_role key from Supabase dashboard>
- *      RICK_USER_ID          <auth.users uuid of your account>
+ *      OSLIFE_USER_ID        <auth.users uuid of your account>
  *      NOTION_TOKEN          secret_xxx
- *      NOTION_DB_ID          <projects database id>
+ *      NOTION_DB_ID          <projects database id: 239ddc8e-9208-8186-b452-cc35f89677ff>
+ *      NOTION_CLIENTS_DB_ID  <clients database id: 239ddc8e-9208-8102-86b9-eda32f63e815>
  *      PAYMENTS_CAL_ID       <your payments Google Calendar ID>
  *
  * 2. Triggers (Triggers → Add):
  *      syncNotion          every 15 min
+ *      syncClients         every 15 min
  *      syncGmail           every 15 min
  *      syncCalendarBlocks  every hour
  *      syncPayments        every 15 min
- *      syncFit             every hour
  *
  * 3. Run each function once manually → authorize OAuth scopes.
- *
- * 4. For screen time + wallet: use MacroDroid on Android (see README).
- *    Those POST directly to the Supabase REST API — no trigger needed here.
  *
  * LOGS
  * View → Executions (left sidebar) → click a run.
@@ -46,6 +52,10 @@ var GMAIL_LAST_RUN_KEY   = 'GMAIL_LAST_RUN_SEC';
 
 var P = PropertiesService.getScriptProperties();
 function prop(k) { return P.getProperty(k); }
+
+// User id under which all rows are scoped (RLS owner). Prefer OSLIFE_USER_ID,
+// fall back to the legacy RICK_USER_ID property so existing setups keep working.
+function userId_() { return prop('OSLIFE_USER_ID') || prop('RICK_USER_ID'); }
 
 function log(msg) {
   Logger.log('[%s] %s', new Date().toISOString(), msg);
@@ -88,7 +98,7 @@ function supabaseUpsert(table, rows, conflict) {
 
   var url = prop('SUPABASE_URL') + '/rest/v1/' + table +
             (conflict ? '?on_conflict=' + conflict : '');
-  var userId = prop('RICK_USER_ID');
+  var userId = userId_();
   var withUser = rows.map(function (r) {
     return Object.assign({}, r, { user_id: userId });
   });
@@ -470,81 +480,6 @@ function syncPayments() {
   }
 }
 
-// ── 5. GOOGLE FIT / SAMSUNG HEALTH → health_daily_stats ──────────────────────
-// Samsung Health syncs to Google Fit via Health Connect (Android 14+).
-// Phone: Samsung Health → Settings → Connected apps → Health Connect → Allow all.
-function syncFit() {
-  var lock = acquireLock_();
-  if (!lock) { log('syncFit: another run in progress — skipping'); return; }
-  try {
-    log('syncFit: start');
-    var token   = ScriptApp.getOAuthToken();
-    var endMs   = Date.now();
-    var startMs = endMs - 13 * 86400000;
-
-    function aggregate(dataTypeName) {
-      var res = UrlFetchApp.fetch('https://fitness.googleapis.com/fitness/v1/users/me/dataset:aggregate', {
-        method: 'post', contentType: 'application/json',
-        headers: { Authorization: 'Bearer ' + token },
-        payload: JSON.stringify({
-          aggregateBy:    [{ dataTypeName: dataTypeName }],
-          bucketByTime:   { durationMillis: 86400000 },
-          startTimeMillis: startMs, endTimeMillis: endMs
-        }),
-        muteHttpExceptions: true
-      });
-      var code = res.getResponseCode();
-      if (code >= 300) {
-        log('syncFit: Fit API error ' + code + ' for ' + dataTypeName + ' — ' + res.getContentText().slice(0, 200));
-        return [];
-      }
-      return JSON.parse(res.getContentText()).bucket || [];
-    }
-
-    var byDate = {};
-    function ensureDay(d) {
-      if (!byDate[d]) byDate[d] = { date: d, steps: 0, sleep_min: 0, avg_resting_hr: 0, active_min: 0 };
-    }
-
-    aggregate('com.google.step_count.delta').forEach(function (b) {
-      var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      var v = 0;
-      (b.dataset[0].point || []).forEach(function (p) { v += p.value[0].intVal || 0; });
-      ensureDay(d); byDate[d].steps = v;
-    });
-
-    // Sleep stages: 2=generic, 4=light, 5=deep, 6=REM — exclude 1=awake, 3=out-of-bed
-    aggregate('com.google.sleep.segment').forEach(function (b) {
-      var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      var mins = 0;
-      (b.dataset[0].point || []).forEach(function (p) {
-        var stage = p.value[0].intVal;
-        if (stage === 2 || stage >= 4) {
-          mins += Math.round((parseInt(p.endTimeNanos, 10) - parseInt(p.startTimeNanos, 10)) / 60000000000);
-        }
-      });
-      ensureDay(d); byDate[d].sleep_min = mins;
-    });
-
-    aggregate('com.google.heart_rate.bpm').forEach(function (b) {
-      var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      var total = 0, count = 0;
-      (b.dataset[0].point || []).forEach(function (p) { total += p.value[0].fpVal || 0; count++; });
-      if (count > 0) { ensureDay(d); byDate[d].avg_resting_hr = Math.round(total / count); }
-    });
-
-    aggregate('com.google.active_minutes').forEach(function (b) {
-      var d = Utilities.formatDate(new Date(parseInt(b.startTimeMillis, 10)), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      var v = 0;
-      (b.dataset[0].point || []).forEach(function (p) { v += p.value[0].intVal || 0; });
-      ensureDay(d); byDate[d].active_min = v;
-    });
-
-    var rows = Object.keys(byDate).map(function (d) { return byDate[d]; });
-    log('syncFit: ' + rows.length + ' days collected');
-    supabaseUpsert('health_daily_stats', rows, 'user_id,date');
-    log('syncFit: done');
-  } finally {
-    lock.releaseLock();
-  }
-}
+// Health data is ingested from the Health Google Sheet by health-sheets.gs
+// (its own Sheet-bound project → /functions/v1/health-sheets-ingest), so there
+// is no Google Fit sync here anymore.
