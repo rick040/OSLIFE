@@ -2,21 +2,27 @@ import { useState, useRef, useEffect } from 'react'
 import { useStore } from '../store'
 import { DOMAIN_META } from '../domains'
 import { DomainChip, SentimentChip, KindChip } from '../components/ui'
-import type { StructuredItem } from '../types'
-import { Send, Sparkles, Database, Mic, MicOff } from 'lucide-react'
+import type { StructuredItem, TaskDraft } from '../types'
+import { detectSkill, parseTaskDraft, SKILLS, type SkillId } from '../heyra/skills'
+import TaskCard from '../components/TaskCard'
+import { Send, Sparkles, Database, Mic, MicOff, Wand2 } from 'lucide-react'
 
 interface Msg {
   id: string
   role: 'rick' | 'heyra'
   text: string
   classified?: StructuredItem
+  skill?: SkillId
+  trigger?: string | null
+  draft?: TaskDraft
+  taskAdded?: boolean
 }
 
 const SUGGESTIONS = [
   'Wat staat er nog open bij klanten?',
-  'Waarom ben ik vandaag zo moe?',
-  'Ik baal van de factuur van Bakkerij van Dijk',
-  'Herinner me aan de jaarlijkse vet-check van Kyra',
+  'Herinner me morgen 10:00 Marco te bellen over Strijp-S',
+  'Plan vrijdag de offerte voor Bakkerij van Dijk af te maken',
+  'Niet vergeten: over 2 weken de jaarlijkse vet-check van Kyra',
 ]
 
 // Minimal typings for the Web Speech API (not in TS lib by default).
@@ -32,7 +38,7 @@ export default function Heyra() {
       id: 'm0',
       role: 'heyra',
       text:
-        'Ik lees uit je ene geheugen over ParkingYou, PRJCT, Buurtkaart en je persoonlijke leven. Vraag me iets, praat tegen me, of dump een gedachte. Ik classificeer en archiveer het voor je, geen beslissing nodig.',
+        'Ik lees uit je ene geheugen over ParkingYou, PRJCT, Buurtkaart en je persoonlijke leven. Vraag me iets, praat tegen me, of dump een gedachte. Hoor ik een taak of herinnering, dan schakel ik over naar de Taakmaker en maak ik er een kaart van — met deadline en knoppen om ’m in je taken of Google Agenda te zetten.',
     },
   ])
   const endRef = useRef<HTMLDivElement>(null)
@@ -96,12 +102,43 @@ export default function Heyra() {
     return `Genoteerd, geclassificeerd in ${DOMAIN_META[item.domain].label} als ${item.kind} en aan het geheugen toegevoegd. Je hebt daar ${inDomain.length} andere open loop(s).`
   }
 
+  function addTaskFromCard(msgId: string, draft: TaskDraft) {
+    store.addTask(draft)
+    setMsgs((m) => m.map((x) => (x.id === msgId ? { ...x, draft, taskAdded: true } : x)))
+  }
+
   function send(text: string) {
     const clean = text.trim()
     if (!clean) return
+    setInput('')
+
+    const detection = detectSkill(clean)
+
+    if (detection.skill === 'task') {
+      // Function switch → Taakmaker. Still log the raw thought to memory, but
+      // don't auto-open a loop — the card's "Toevoegen" button does that.
+      const item = store.capture(clean, 'chat', { openThread: false })
+      const draft = parseTaskDraft(clean)
+      setMsgs((m) => [...m, { id: 'r' + item.id, role: 'rick', text: clean, classified: item }])
+      setTimeout(() => {
+        setMsgs((m) => [
+          ...m,
+          {
+            id: 'h' + item.id,
+            role: 'heyra',
+            text: 'Ik heb dit als taak begrepen. Kijk de kaart na, pas aan waar nodig, en zet ’m in je taken of in Google Agenda.',
+            skill: 'task',
+            trigger: detection.trigger,
+            draft,
+          },
+        ])
+      }, 400)
+      return
+    }
+
+    // Default → answer from memory.
     const item = store.capture(clean, 'chat')
     setMsgs((m) => [...m, { id: 'r' + item.id, role: 'rick', text: clean, classified: item }])
-    setInput('')
     setTimeout(() => {
       setMsgs((m) => [...m, { id: 'h' + item.id, role: 'heyra', text: reply(item) }])
     }, 400)
@@ -119,6 +156,16 @@ export default function Heyra() {
         {msgs.map((m) => (
           <div key={m.id} className={`flex ${m.role === 'rick' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[85%] ${m.role === 'rick' ? 'order-2' : ''}`}>
+              {m.skill === 'task' && (
+                <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-prjct-deep animate-fade-up">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-prjct/12 px-2 py-0.5 font-medium">
+                    <Wand2 className="h-3 w-3" /> Functie gewisseld → {SKILLS.task.label}
+                  </span>
+                  {m.trigger && m.trigger !== 'imperatief' && (
+                    <span className="text-faint">herkende “{m.trigger.trim()}”</span>
+                  )}
+                </div>
+              )}
               <div
                 className={`rounded-2xl px-4 py-2.5 text-sm whitespace-pre-line ${
                   m.role === 'rick' ? 'bg-forest text-white rounded-br-sm' : 'card rounded-bl-sm text-ink'
@@ -126,6 +173,15 @@ export default function Heyra() {
               >
                 {m.text}
               </div>
+              {m.draft && (
+                <div className="mt-2">
+                  <TaskCard
+                    draft={m.draft}
+                    added={!!m.taskAdded}
+                    onAdd={(d) => addTaskFromCard(m.id, d)}
+                  />
+                </div>
+              )}
               {m.classified && (
                 <div className="mt-1.5 animate-fade-up">
                   <div className="card p-2.5 bg-surface/80">

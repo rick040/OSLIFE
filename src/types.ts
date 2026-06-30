@@ -153,6 +153,16 @@ export interface Task {
   priority?: Priority | null
 }
 
+/** HEYRA Taakmaker draft — a parsed, editable task before it is committed. */
+export interface TaskDraft {
+  title: string
+  due: string | null // ISO date YYYY-MM-DD
+  time: string | null // HH:MM (24h), optional
+  domain: Domain
+  priority: Priority
+  notes?: string
+}
+
 export interface Project {
   id: string
   name: string
