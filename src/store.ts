@@ -23,6 +23,7 @@ import type {
   Payment,
   ScreenDay,
   MeetingDay,
+  Checkin,
   Client,
   Message,
   Subscription,
@@ -40,6 +41,7 @@ import {
   deriveDayLogs,
   deriveDeadlines,
   deriveBaselinePatterns,
+  applyCheckins,
   buildNudge,
 } from './derive'
 import { TODAY, DOMAIN_META, KIND_LABEL } from './domains'
@@ -60,6 +62,8 @@ import {
   fetchScreenDays,
   fetchProjects,
   fetchClients,
+  fetchCheckins,
+  upsertCheckin,
   persistBrainState,
   persistPaymentStatus,
   insertFinanceTx,
@@ -100,6 +104,7 @@ interface State {
   planAdapted: boolean
   activity: ActivitySignal[]
   healthDays: HealthDay[]
+  checkins: Checkin[]
   screenDays: ScreenDay[]
   meetingDays: MeetingDay[]
   projects: Project[]
@@ -131,6 +136,9 @@ interface State {
   resetBlock: (id: string) => void
   moveBlock: (id: string, dir: -1 | 1) => void
   acceptPlan: () => void
+
+  // INTAKE (felt signal) → energy/mood check-in, feeds REFLECT
+  logCheckin: (energy: number, mood: number, note?: string) => void
 
   // REFLECT (slow loop)
   runNightlyReflect: () => void
@@ -193,6 +201,7 @@ const seed = () => ({
   planAdapted: false,
   activity: [] as ActivitySignal[],
   healthDays: mock.healthDays,
+  checkins: [] as Checkin[],
   screenDays: mock.screenDays,
   meetingDays: mock.meetingDays,
   projects: mock.projects,
@@ -383,6 +392,23 @@ export const useStore = create<State>()(
             loop: 'fast',
           }),
         })),
+
+      logCheckin: (energy, mood, note) => {
+        set((s) => {
+          const others = s.checkins.filter((c) => c.date !== TODAY)
+          return {
+            checkins: [{ date: TODAY, energy, mood, note: note ?? null }, ...others],
+            activity: pushSignal(s.activity, {
+              text: `Check-in: energie ${energy}/5 · stemming ${mood}/5`,
+              domain: 'personal',
+              loop: 'fast',
+            }),
+          }
+        })
+        void upsertCheckin({ date: TODAY, energy, mood, note: note ?? null })
+        // Felt signal feeds Reflect immediately: rebuild dayLogs + nudge.
+        get().recomputeBrain()
+      },
 
       runNightlyReflect: () => {
         set((s) => {
@@ -648,7 +674,9 @@ export const useStore = create<State>()(
       recomputeBrain: () => {
         const s = get()
         const essentials = deriveEssentials(s.clients, s.projects, s.goals, s.dogEntries)
-        const dayLogs = deriveDayLogs(s.healthDays)
+        // Fold the felt signal (energy/mood) onto health days + day logs.
+        const healthDays = applyCheckins(s.healthDays, s.checkins)
+        const dayLogs = deriveDayLogs(healthDays, s.checkins)
         const deadlines = deriveDeadlines(s.projects)
         const baseline = deriveBaselinePatterns(
           s.healthDays,
@@ -680,7 +708,7 @@ export const useStore = create<State>()(
         const anomalies = computeAnomalies(dayLogs, s.transactions, merged)
         const nudge = buildNudge(merged, s.projects, correlations, anomalies, s.reflectCount)
 
-        set({ essentials, dayLogs, threads: merged, patterns, nudge })
+        set({ essentials, healthDays, dayLogs, threads: merged, patterns, nudge })
       },
 
       loadLiveData: async () => {
@@ -700,6 +728,7 @@ export const useStore = create<State>()(
             screenDays,
             projects,
             clients,
+            checkins,
           ] = await Promise.all([
             fetchHealthDays(),
             fetchTransactions(),
@@ -715,6 +744,7 @@ export const useStore = create<State>()(
             fetchScreenDays(),
             fetchProjects(),
             fetchClients(),
+            fetchCheckins(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -733,6 +763,7 @@ export const useStore = create<State>()(
             ...(screenDays.length > 0 && { screenDays }),
             ...(projects.length > 0 && { projects }),
             ...(clients.length > 0 && { clients }),
+            ...(checkins.length > 0 && { checkins }),
             dataSource: 'live',
             isLoading: false,
           })
@@ -770,6 +801,8 @@ export const useStore = create<State>()(
             () => fetchHabits().then((d) => d.length > 0 && set({ habits: d })))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'goals' },
             () => fetchGoals().then((d) => d.length > 0 && set({ goals: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_checkin' },
+            () => fetchCheckins().then((d) => { set({ checkins: d }); get().recomputeBrain() }))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'brain_state' },
             () => fetchBrainState().then((b) => set({
               ...(b.threads.length > 0 && { threads: b.threads }),
@@ -811,6 +844,7 @@ export const useStore = create<State>()(
         if (!state.essentials?.length) state.essentials = s.essentials
         if (!state.patterns?.length) state.patterns = s.patterns
         if (!state.screenDays?.length) state.screenDays = s.screenDays
+        if (!state.checkins) state.checkins = []
         if (!state.dataSource) state.dataSource = 'mock'
       },
     },

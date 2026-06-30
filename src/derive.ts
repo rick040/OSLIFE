@@ -6,6 +6,7 @@ import type {
   Project,
   Client,
   HealthDay,
+  Checkin,
   ScreenDay,
   Transaction,
   Goal,
@@ -133,19 +134,37 @@ export function deriveDeadlines(projects: Project[]): string[] {
   )
 }
 
-// ── DAYLOGS — REFLECT's sleep/energy substrate, mapped from health sense ──────
-// energy/mood aren't captured by any sensor yet, so they arrive as a neutral 3;
-// REFLECT guards every energy-based correlation behind hasEnergySignal() so we
-// never report a fabricated "energy dropped ~0%".
+// ── DAYLOGS — REFLECT's sleep/energy substrate ───────────────────────────────
+// Sleep comes from the health sense; energy/mood come from the daily check-in.
+// A day without a check-in falls back to a neutral 3, and REFLECT guards every
+// energy-based correlation behind hasEnergySignal() so we never report a
+// fabricated "energy dropped ~0%" before any check-ins exist.
 
-export function deriveDayLogs(healthDays: HealthDay[]): DayLog[] {
-  return healthDays
-    .map((h) => ({
-      date: h.date,
-      sleepHours: h.sleepHours,
-      energy: h.energy,
-      mood: h.mood,
-    }))
+/** Stamp check-in energy/mood onto the matching health day (for the Vitals view). */
+export function applyCheckins(healthDays: HealthDay[], checkins: Checkin[]): HealthDay[] {
+  const byDate = new Map(checkins.map((c) => [c.date, c]))
+  return healthDays.map((h) => {
+    const c = byDate.get(h.date)
+    return c ? { ...h, energy: c.energy, mood: c.mood } : h
+  })
+}
+
+export function deriveDayLogs(healthDays: HealthDay[], checkins: Checkin[] = []): DayLog[] {
+  const checkinByDate = new Map(checkins.map((c) => [c.date, c]))
+  const healthByDate = new Map(healthDays.map((h) => [h.date, h]))
+  const dates = new Set<string>([...healthByDate.keys(), ...checkinByDate.keys()])
+
+  return [...dates]
+    .map((date) => {
+      const h = healthByDate.get(date)
+      const c = checkinByDate.get(date)
+      return {
+        date,
+        sleepHours: h?.sleepHours ?? 0,
+        energy: c?.energy ?? h?.energy ?? 3,
+        mood: c?.mood ?? h?.mood ?? 3,
+      }
+    })
     .sort((a, b) => a.date.localeCompare(b.date))
 }
 

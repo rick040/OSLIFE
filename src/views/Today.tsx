@@ -1,6 +1,7 @@
 import { useStore } from '../store'
 import { TODAY, DOMAIN_META, fmtDate, daysBetween } from '../domains'
 import { DomainChip, SectionTitle, Empty } from '../components/ui'
+import CheckinCard from '../components/CheckinCard'
 import { Sun, Bell, CheckCircle2, SkipForward, Flame, Clock, ArrowRight } from 'lucide-react'
 
 export default function Today({ onNav }: { onNav: (v: string) => void }) {
@@ -124,8 +125,12 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
           </div>
         </div>
 
-        {/* right: habits + activity */}
+        {/* right: check-in + habits + activity */}
         <div className="space-y-6">
+          <div className="animate-fade-up" style={{ animationDelay: '100ms' }}>
+            <CheckinCard compact />
+          </div>
+
           <div className="animate-fade-up" style={{ animationDelay: '120ms' }}>
             <SectionTitle>Gewoonten</SectionTitle>
             <div className="space-y-2">
