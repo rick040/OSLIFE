@@ -57,18 +57,23 @@ Deno.serve(async (req) => {
   const rowsIn = (payload.rows ?? []).filter((r) => r && r.usage_date);
   if (!rowsIn.length) return json({ ok: true, upserted: 0 });
 
-  const rows = rowsIn.map((r) => {
+  // Aggregate by (date, app, category): the same app can appear multiple times
+  // per day (e.g. across devices, or repeated exports). Summing avoids the
+  // "ON CONFLICT cannot affect row a second time" error AND gives the true
+  // per-app daily total.
+  const byKey = new Map<string, {
+    user_id: string; usage_date: string; app_name: string; duration_ms: number; category: string; dedup_key: string;
+  }>();
+  for (const r of rowsIn) {
     const app = (r.app_name ?? "all").slice(0, 120);
     const category = (r.category ?? "other").slice(0, 60);
-    return {
-      user_id: USER_ID,
-      usage_date: r.usage_date,
-      app_name: app,
-      duration_ms: Math.round(r.duration_ms ?? 0),
-      category,
-      dedup_key: `${r.usage_date}|${app}|${category}`,
-    };
-  });
+    const dedup_key = `${r.usage_date}|${app}|${category}`;
+    const existing = byKey.get(dedup_key);
+    const ms = Math.round(r.duration_ms ?? 0);
+    if (existing) existing.duration_ms += ms;
+    else byKey.set(dedup_key, { user_id: USER_ID, usage_date: r.usage_date, app_name: app, duration_ms: ms, category, dedup_key });
+  }
+  const rows = [...byKey.values()];
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
   const { error, count } = await supabase
