@@ -576,40 +576,59 @@ export async function fetchBrainState(): Promise<{ threads: Thread[]; patterns: 
 
 // ── Screen time (if available) ────────────────────────────────────────────────
 
-export async function fetchScreenDays(): Promise<ScreenDay[]> {
-  const { data } = await supabase
-    .from('screentime')
-    .select('usage_date,app_name,duration_ms')
-    .order('usage_date', { ascending: false })
-    .limit(500)
+/** Classify an app by name into the four ScreenDay app categories. */
+function classifyApp(name: string): 'work' | 'social' | 'media' | 'comms' {
+  const n = name.toLowerCase()
+  if (/whatsapp|instagram|snapchat|tinder|reddit|facebook|tiktok|discord|messenger|twitter|\bx\b|threads|bereal|linkedin/.test(n)) return 'social'
+  if (/youtube|spotify|soundcloud|netflix|videoland|twitch|disney|prime video|podcast|muziek|music|film/.test(n)) return 'media'
+  if (/gmail|\bmail\b|telefoon|phone|berichten|messages|\bsms\b|teams|outlook|signal|telegram/.test(n)) return 'comms'
+  return 'work'
+}
 
-  const byDate = new Map<string, { totalMs: number; apps: Map<string, number> }>()
-  for (const r of data ?? []) {
+export async function fetchScreenDays(): Promise<ScreenDay[]> {
+  const [appsRes, dailyRes] = await Promise.all([
+    supabase
+      .from('screentime')
+      .select('usage_date,app_name,duration_ms')
+      .order('usage_date', { ascending: false })
+      .limit(2000),
+    supabase
+      .from('screentime_daily')
+      .select('usage_date,pickups')
+      .order('usage_date', { ascending: false })
+      .limit(120),
+  ])
+
+  const pickupsByDate = new Map<string, number>()
+  for (const r of dailyRes.data ?? []) pickupsByDate.set(r.usage_date as string, (r.pickups as number) ?? 0)
+
+  const byDate = new Map<string, { totalMs: number; focusMs: number; distractMs: number; apps: Map<string, number> }>()
+  for (const r of appsRes.data ?? []) {
     const date = r.usage_date as string
     const ms = (r.duration_ms as number) ?? 0
     const app = (r.app_name as string) ?? 'Unknown'
-    const existing = byDate.get(date)
-    if (existing) {
-      existing.totalMs += ms
-      existing.apps.set(app, (existing.apps.get(app) ?? 0) + ms)
-    } else {
-      const apps = new Map<string, number>()
-      apps.set(app, ms)
-      byDate.set(date, { totalMs: ms, apps })
-    }
+    const cat = classifyApp(app)
+    const d = byDate.get(date) ?? { totalMs: 0, focusMs: 0, distractMs: 0, apps: new Map<string, number>() }
+    d.totalMs += ms
+    if (cat === 'work') d.focusMs += ms
+    else if (cat === 'social' || cat === 'media') d.distractMs += ms
+    d.apps.set(app, (d.apps.get(app) ?? 0) + ms)
+    byDate.set(date, d)
   }
 
-  return Array.from(byDate.entries()).map(([date, d]) => ({
-    date,
-    totalMinutes: Math.round(d.totalMs / 60000),
-    pickups: 0,
-    focusMinutes: 0,
-    distractMinutes: 0,
-    topApps: [...d.apps.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([name, ms]) => ({ name, minutes: Math.round(ms / 60000), category: 'work' as const })),
-  }))
+  return Array.from(byDate.entries())
+    .map(([date, d]) => ({
+      date,
+      totalMinutes: Math.round(d.totalMs / 60000),
+      pickups: pickupsByDate.get(date) ?? 0,
+      focusMinutes: Math.round(d.focusMs / 60000),
+      distractMinutes: Math.round(d.distractMs / 60000),
+      topApps: [...d.apps.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([name, ms]) => ({ name, minutes: Math.round(ms / 60000), category: classifyApp(name) })),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date))
 }
 
 export async function fetchProjects(): Promise<Project[]> {
