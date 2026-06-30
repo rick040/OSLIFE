@@ -34,6 +34,210 @@ const SUPABASE_ANON_KEY =
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
+// ── Write-back layer ────────────────────────────────────────────────────────────
+// The app reads live data and updates the UI optimistically; these helpers push
+// those mutations back to Supabase so they survive reloads and sync across devices.
+// RLS scopes every row to auth.uid(); inserts must therefore set user_id.
+
+let cachedUserId: string | null = null
+
+/** Current authenticated user id (cached). Null when signed out → writes are skipped. */
+export async function currentUserId(): Promise<string | null> {
+  if (cachedUserId) return cachedUserId
+  const { data } = await supabase.auth.getUser()
+  cachedUserId = data.user?.id ?? null
+  return cachedUserId
+}
+
+// Reset the cache on auth changes so a re-login can't write under a stale id.
+supabase.auth.onAuthStateChange((_e, session) => {
+  cachedUserId = session?.user?.id ?? null
+})
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+/** True for real Supabase row ids — distinguishes live rows from local/seeded ones. */
+export const isDbId = (id: string): boolean => UUID_RE.test(id)
+
+function warnWrite(label: string, error: unknown): void {
+  if (error) console.warn(`[RICK-OS] write failed: ${label}`, error)
+}
+
+// ── Brain state (threads + patterns) — one jsonb row per user ───────────────────
+
+export async function persistBrainState(threads: Thread[], patterns: Pattern[]): Promise<void> {
+  const user_id = await currentUserId()
+  if (!user_id) return
+  const { error } = await supabase
+    .from('brain_state')
+    .upsert({ user_id, threads, patterns, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
+  warnWrite('brain_state', error)
+}
+
+// ── Payments ────────────────────────────────────────────────────────────────────
+
+export async function persistPaymentStatus(id: string, status: Payment['status']): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('payments').update({ status }).eq('id', id)
+  warnWrite('payments.status', error)
+}
+
+// ── Email / Inbox ─────────────────────────────────────────────────────────────
+
+export async function persistEmailRead(id: string, read: boolean): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('gmail_messages').update({ read }).eq('id', id)
+  warnWrite('gmail_messages.read', error)
+}
+
+export async function persistAllEmailsRead(): Promise<void> {
+  const user_id = await currentUserId()
+  if (!user_id) return
+  const { error } = await supabase.from('gmail_messages').update({ read: true }).eq('read', false)
+  warnWrite('gmail_messages.read(all)', error)
+}
+
+// ── Projects ────────────────────────────────────────────────────────────────────
+
+export async function persistProjectPatch(
+  id: string,
+  patch: Partial<Pick<Project, 'status' | 'priority' | 'deadline' | 'value' | 'progress'>>,
+): Promise<void> {
+  if (!isDbId(id)) return
+  const row: Record<string, unknown> = {}
+  if (patch.status !== undefined) row.status = patch.status
+  if (patch.priority !== undefined) row.prioriteit = patch.priority
+  if (patch.deadline !== undefined) row.deadline = patch.deadline
+  if (patch.value !== undefined) row.value = patch.value
+  if (patch.progress !== undefined) row.progress = patch.progress
+  if (Object.keys(row).length === 0) return
+  const { error } = await supabase.from('projects').update(row).eq('id', id)
+  warnWrite('projects', error)
+}
+
+// ── Habits ────────────────────────────────────────────────────────────────────
+
+/** Returns the new DB id, or null if the write was skipped/failed. */
+export async function createHabitRow(name: string, icon: string, color?: string): Promise<string | null> {
+  const user_id = await currentUserId()
+  if (!user_id) return null
+  const { data, error } = await supabase
+    .from('habits')
+    .insert({ user_id, name, icon, color: color ?? null, active: true })
+    .select('id')
+    .single()
+  warnWrite('habits.insert', error)
+  return (data?.id as string) ?? null
+}
+
+export async function softDeleteHabitRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('habits').update({ active: false }).eq('id', id)
+  warnWrite('habits.deactivate', error)
+}
+
+export async function persistHabitTick(habitId: string, onDate: string, done: boolean): Promise<void> {
+  const user_id = await currentUserId()
+  if (!user_id || !isDbId(habitId)) return
+  // No unique (habit_id,on_date) constraint, so clear the day then re-insert when done.
+  const del = await supabase.from('habit_log').delete().eq('habit_id', habitId).eq('on_date', onDate)
+  warnWrite('habit_log.clear', del.error)
+  if (done) {
+    const { error } = await supabase.from('habit_log').insert({ user_id, habit_id: habitId, on_date: onDate, done: true })
+    warnWrite('habit_log.insert', error)
+  }
+}
+
+// ── Subscriptions ───────────────────────────────────────────────────────────────
+
+export async function createSubscriptionRow(sub: Omit<Subscription, 'id'>): Promise<string | null> {
+  const user_id = await currentUserId()
+  if (!user_id) return null
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .insert({
+      user_id,
+      name: sub.name,
+      amount: sub.amount,
+      cadence: sub.cadence,
+      next_charge_on: sub.nextCharge,
+      active: sub.active,
+      notes: sub.notes ?? null,
+    })
+    .select('id')
+    .single()
+  warnWrite('subscriptions.insert', error)
+  return (data?.id as string) ?? null
+}
+
+export async function updateSubscriptionRow(id: string, patch: Partial<Subscription>): Promise<void> {
+  if (!isDbId(id)) return
+  const row: Record<string, unknown> = {}
+  if (patch.name !== undefined) row.name = patch.name
+  if (patch.amount !== undefined) row.amount = patch.amount
+  if (patch.cadence !== undefined) row.cadence = patch.cadence
+  if (patch.nextCharge !== undefined) row.next_charge_on = patch.nextCharge
+  if (patch.active !== undefined) row.active = patch.active
+  if (patch.notes !== undefined) row.notes = patch.notes
+  if (Object.keys(row).length === 0) return
+  const { error } = await supabase.from('subscriptions').update(row).eq('id', id)
+  warnWrite('subscriptions.update', error)
+}
+
+export async function deleteSubscriptionRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('subscriptions').delete().eq('id', id)
+  warnWrite('subscriptions.delete', error)
+}
+
+// ── Dog (Kyra) log ──────────────────────────────────────────────────────────────
+
+export async function createDogEntryRow(entry: {
+  kind: string
+  at: string
+  durationMin?: number | null
+  distanceKm?: number | null
+  note?: string | null
+}): Promise<string | null> {
+  const user_id = await currentUserId()
+  if (!user_id) return null
+  const { data, error } = await supabase
+    .from('dog_log')
+    .insert({
+      user_id,
+      kind: entry.kind,
+      happened_at: entry.at,
+      duration_min: entry.durationMin ?? null,
+      distance_km: entry.distanceKm ?? null,
+      notes: entry.note ?? null,
+    })
+    .select('id')
+    .single()
+  warnWrite('dog_log.insert', error)
+  return (data?.id as string) ?? null
+}
+
+export async function deleteDogEntryRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('dog_log').delete().eq('id', id)
+  warnWrite('dog_log.delete', error)
+}
+
+export async function updateDogEntryRow(
+  id: string,
+  patch: { kind?: string; at?: string; durationMin?: number | null; distanceKm?: number | null; note?: string | null },
+): Promise<void> {
+  if (!isDbId(id)) return
+  const row: Record<string, unknown> = {}
+  if (patch.kind !== undefined) row.kind = patch.kind
+  if (patch.at !== undefined) row.happened_at = patch.at
+  if (patch.durationMin !== undefined) row.duration_min = patch.durationMin
+  if (patch.distanceKm !== undefined) row.distance_km = patch.distanceKm
+  if (patch.note !== undefined) row.notes = patch.note
+  if (Object.keys(row).length === 0) return
+  const { error } = await supabase.from('dog_log').update(row).eq('id', id)
+  warnWrite('dog_log.update', error)
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function inferTxDomain(counterparty: string, description: string): Domain {
