@@ -1,14 +1,33 @@
 import type { Domain, ItemKind, Sentiment, CaptureSource } from './types'
+import { askBrain } from './heyra/brainClient'
+import { parseBrainJson } from './heyra/brainJson'
 
 // ── Layer 2: UNDERSTAND ───────────────────────────────────────────────────────
-// A deliberately simple, transparent keyword classifier. In a real build this is
-// an LLM call; here it's rules so the demo is instant and explainable.
+// classify() is the deliberately simple, transparent keyword fallback: kept
+// exactly as-is so HEYRA still works with no brain configured. classifyWithBrain()
+// is the primary path — real understanding instead of substring luck (e.g. it
+// won't mistake "callsheets" for a phone call or "rebranding" for a task the
+// way keyword-hint scoring can).
 
-interface Classification {
+export interface Classification {
   domain: Domain
   kind: ItemKind
   sentiment: Sentiment
   summary: string
+}
+
+export const VALID_DOMAINS: Domain[] = ['parkingyou', 'prjct', 'buurtkaart', 'personal', 'cross']
+export const VALID_KINDS: ItemKind[] = ['task', 'note', 'vent', 'link', 'voice', 'transaction', 'event', 'health', 'email', 'idea']
+export const VALID_SENTIMENTS: Sentiment[] = ['positive', 'neutral', 'negative', 'stressed']
+
+/** Validates a brain-returned object against the real enum values. Null on any invalid/missing field — callers fall back to the rule-based classify(). */
+export function validateClassification(parsed: Record<string, unknown>): Classification | null {
+  const domain = VALID_DOMAINS.includes(parsed.domain as Domain) ? (parsed.domain as Domain) : null
+  const kind = VALID_KINDS.includes(parsed.kind as ItemKind) ? (parsed.kind as ItemKind) : null
+  const sentiment = VALID_SENTIMENTS.includes(parsed.sentiment as Sentiment) ? (parsed.sentiment as Sentiment) : null
+  const summary = typeof parsed.summary === 'string' && parsed.summary.trim() ? parsed.summary.trim() : null
+  if (!domain || !kind || !sentiment || !summary) return null
+  return { domain, kind, sentiment, summary: summary.charAt(0).toUpperCase() + summary.slice(1) }
 }
 
 const DOMAIN_HINTS: { domain: Domain; words: string[] }[] = [
@@ -76,4 +95,30 @@ export function classify(text: string, source: CaptureSource): Classification {
   const summary = clean.length > 64 ? clean.slice(0, 61) + '…' : clean
 
   return { domain, kind, sentiment, summary: summary.charAt(0).toUpperCase() + summary.slice(1) }
+}
+
+const CLASSIFY_SYSTEM = `Je bent de "Begrijpen"-laag van HEYRA (OSLIFE). Gegeven een los stukje tekst (notitie, gedachte, chatbericht) classificeer je het kort en accuraat, op basis van de BETEKENIS van de tekst, niet op losse woorden die toevallig voorkomen (bijvoorbeeld: "callsheets" is geen telefoontje, "rebranding" is geen taak).
+- domain: een van ${VALID_DOMAINS.join(', ')} — welk levensgebied dit raakt (parkingyou/prjct/buurtkaart zijn Ricks bedrijven, personal = privé, cross = raakt meerdere).
+- kind: een van ${VALID_KINDS.join(', ')}.
+- sentiment: een van ${VALID_SENTIMENTS.join(', ')}.
+- summary: een korte, natuurlijke one-line samenvatting (max ~12 woorden), geen letterlijke kopie van de hele tekst.
+Antwoord ALLEEN met een fenced \`\`\`json blok: {"domain":"...","kind":"...","sentiment":"...","summary":"..."}`
+
+/**
+ * Brain-first classification. Sources that already force a deterministic
+ * `kind` in classify() ('link'/'voice'/'task') skip the brain call entirely —
+ * that determinism is intentional and shouldn't become brain-dependent. Falls
+ * back to the exact rule-based classify() on any brain failure or invalid output.
+ */
+export async function classifyWithBrain(text: string, source: CaptureSource): Promise<Classification> {
+  const fallback = classify(text, source)
+  if (source === 'link' || source === 'voice' || source === 'task') return fallback
+
+  const guess = await askBrain(CLASSIFY_SYSTEM, `Tekst:\n"""\n${text}\n"""`, { maxTokens: 200, timeoutMs: 8000 })
+  if (!guess) return fallback
+
+  const parsed = parseBrainJson(guess)
+  if (!parsed) return fallback
+
+  return validateClassification(parsed) ?? fallback
 }

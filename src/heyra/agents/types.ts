@@ -15,7 +15,7 @@ export type Store = ReturnType<typeof useStore.getState>
 export interface AgentContext {
   store: Store
   memory: ConversationMemory
-  /** The just-captured, classified item for this message (domain/kind/sentiment) — same StructuredItem Heyra.tsx has always produced via store.capture(). */
+  /** The resolved classification for this message (domain/kind/sentiment/summary), built by routeMessage() before this agent ever runs — never a placeholder. */
   item: StructuredItem
 }
 

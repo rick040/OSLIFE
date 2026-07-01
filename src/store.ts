@@ -42,7 +42,7 @@ import type {
 import { analyzeActivity } from './lib/crm/activityAnalyzer'
 import type { ActivityAnalysis } from './lib/crm/activityAnalyzer'
 import { parseWhatsapp } from './lib/crm/whatsapp'
-import { classify } from './understand'
+import { classifyWithBrain, type Classification } from './understand'
 import { runReflect, computeCorrelations, computeAnomalies, buildNarrativePrompt, NARRATIVE_SYSTEM_PROMPT } from './reflect'
 import { askBrain } from './heyra/brainClient'
 import {
@@ -167,7 +167,12 @@ interface State {
   isLoading: boolean
 
   // INTAKE → UNDERSTAND → REMEMBER
-  capture: (text: string, source: CaptureSource, opts?: { openThread?: boolean }) => StructuredItem
+  capture: (
+    text: string,
+    source: CaptureSource,
+    opts?: { openThread?: boolean },
+    precomputed?: Classification,
+  ) => Promise<StructuredItem>
 
   // HEYRA Taakmaker — commit a parsed task draft as an open loop (thread)
   addTask: (draft: TaskDraft) => string
@@ -334,8 +339,8 @@ export const useStore = create<State>()(
     (set, get) => ({
       ...seed(),
 
-      capture: (text, source, opts) => {
-        const c = classify(text, source)
+      capture: async (text, source, opts, precomputed) => {
+        const c = precomputed ?? (await classifyWithBrain(text, source))
         const openThread = opts?.openThread !== false
         const item: StructuredItem = {
           id: uid('item'),

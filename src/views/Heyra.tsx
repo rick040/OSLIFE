@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useStore } from '../store'
-import { detectSkill, SKILLS, type AgentId } from '../heyra/skills'
+import { SKILLS, type AgentId } from '../heyra/skills'
 import { contextualSuggestions, followUpSuggestions, type Topic } from '../heyra/suggestions'
 import { routeMessage } from '../heyra/router'
 import { emptyMemory, remember, type ConversationMemory } from '../heyra/memory'
@@ -18,6 +18,7 @@ interface Msg {
   id: string
   role: 'rick' | 'heyra'
   text: string
+  pending?: boolean
   classified?: StructuredItem
   skill?: AgentId
   trigger?: string | null
@@ -159,41 +160,54 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
     if (!clean) return
     setInput('')
 
-    // task/project/chart/search capture the raw thought without opening a loop —
-    // only the default "chat" bucket (which finance/signal/briefing fall under
-    // too) opens one, exactly as before.
-    const openThread = detectSkill(clean).skill === 'chat'
-    const item = store.capture(clean, 'chat', { openThread })
-    setMsgs((m) => [...m, { id: 'r' + item.id, role: 'rick', text: clean, classified: item }])
+    const rickId = crypto.randomUUID()
+    const heyraId = crypto.randomUUID()
+    // The user's own bubble shows instantly (no classification chip yet — that
+    // lands once the brain-first routeMessage() call resolves), and a pending
+    // HEYRA bubble covers the real latency a brain call now takes.
+    setMsgs((m) => [
+      ...m,
+      { id: rickId, role: 'rick', text: clean },
+      { id: heyraId, role: 'heyra', text: '', pending: true },
+    ])
     memoryRef.current = remember(memoryRef.current, { role: 'rick', text: clean })
 
-    const { agent, trigger, result } = await routeMessage(clean, { store, memory: memoryRef.current, item })
+    try {
+      const { agent, trigger, result, item } = await routeMessage(clean, { store, memory: memoryRef.current })
 
-    memoryRef.current = remember(memoryRef.current, { role: 'heyra', text: result.text }, {
-      topic: result.topic,
-      domain: item.domain,
-      entity: result.entity,
-    })
+      setMsgs((m) => m.map((x) => (x.id === rickId ? { ...x, classified: item } : x)))
 
-    setTimeout(() => {
-      setMsgs((m) => [
-        ...m,
-        {
-          id: 'h' + item.id,
-          role: 'heyra',
-          text: result.text,
-          skill: agent === 'chat' ? undefined : agent,
-          trigger,
-          draft: result.draft,
-          search: result.search,
-          chart: result.chart,
-          project: result.project,
-          clientIntake: result.clientIntake,
-          topic: result.topic,
-        },
-      ])
+      memoryRef.current = remember(memoryRef.current, { role: 'heyra', text: result.text }, {
+        topic: result.topic,
+        domain: item.domain,
+        entity: result.entity,
+      })
+
+      setMsgs((m) =>
+        m.map((x) =>
+          x.id === heyraId
+            ? {
+                ...x,
+                text: result.text,
+                pending: false,
+                skill: agent === 'chat' ? undefined : agent,
+                trigger,
+                draft: result.draft,
+                search: result.search,
+                chart: result.chart,
+                project: result.project,
+                clientIntake: result.clientIntake,
+                topic: result.topic,
+              }
+            : x,
+        ),
+      )
       setSuggestions(followUpSuggestions(result.topic, store, { domain: item.domain }))
-    }, 400)
+    } catch {
+      setMsgs((m) =>
+        m.map((x) => (x.id === heyraId ? { ...x, pending: false, text: 'Er ging iets mis — probeer het nog eens.' } : x)),
+      )
+    }
   }
 
   return (
@@ -223,7 +237,15 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
                   m.role === 'rick' ? 'bg-forest text-white rounded-br-sm' : 'card rounded-bl-sm text-ink'
                 }`}
               >
-                {m.text}
+                {m.pending ? (
+                  <span className="inline-flex items-center gap-1 text-faint">
+                    <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse [animation-delay:150ms]" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse [animation-delay:300ms]" />
+                  </span>
+                ) : (
+                  m.text
+                )}
               </div>
               {m.draft && (
                 <div className="mt-2">

@@ -101,24 +101,36 @@ function scoreTriggers(t: string, triggers: string[]): { score: number; best: st
 export function detectSkill(text: string): SkillDetection {
   const t = ` ${text.toLowerCase()} `
 
+  // When the message is an instruction that wraps a quoted/pasted block
+  // ('Maak een nieuw project obv dit klantbericht: "Hey Rick, ... ik stuur je
+  // ... brandbook ..."'), score trigger words only against the instruction
+  // itself — a client's own message can easily contain incidental words like
+  // "stuur"/"brandbook" that would otherwise outscore Rick's actual explicit
+  // instruction. Only kicks in when a colon is directly followed by a quote
+  // mark; ordinary messages (no quoted block) are scored in full, unchanged.
+  const quoteStart = text.search(/:\s*["'„“‘]/)
+  const scoredText = quoteStart > 0 ? ` ${text.slice(0, quoteStart).toLowerCase()} ` : t
+
   const toDetection = (skill: SkillId, r: { score: number; best: string | null }): SkillDetection => ({
     skill,
     score: r.score,
     trigger: r.best,
   })
 
-  // Order doubles as the tie-break: an explicit "zoek …" should win over a
-  // softer project-status guess, but an explicit task trigger still wins over
-  // both (e.g. "herinner me te zoeken naar X" is a task, not a search).
   const candidates: SkillDetection[] = [
-    toDetection('task', scoreTriggers(t, TASK_TRIGGERS)),
-    toDetection('search', scoreTriggers(t, SEARCH_TRIGGERS)),
-    toDetection('project', scoreTriggers(t, PROJECT_TRIGGERS)),
-    toDetection('chart', scoreTriggers(t, CHART_TRIGGERS)),
-    toDetection('clientIntake', scoreTriggers(t, CLIENT_TRIGGERS)),
+    toDetection('task', scoreTriggers(scoredText, TASK_TRIGGERS)),
+    toDetection('search', scoreTriggers(scoredText, SEARCH_TRIGGERS)),
+    toDetection('project', scoreTriggers(scoredText, PROJECT_TRIGGERS)),
+    toDetection('chart', scoreTriggers(scoredText, CHART_TRIGGERS)),
+    toDetection('clientIntake', scoreTriggers(scoredText, CLIENT_TRIGGERS)),
   ]
 
-  const best = candidates.reduce((a, b) => (b.score > a.score ? b : a))
+  // On a tie, the more specific (longer) matched phrase wins rather than
+  // array position.
+  const best = candidates.reduce((a, b) => {
+    if (b.score !== a.score) return b.score > a.score ? b : a
+    return (b.trigger?.length ?? 0) > (a.trigger?.length ?? 0) ? b : a
+  })
 
   if (best.score > 0) return best
 
@@ -186,7 +198,12 @@ function cleanTitle(text: string, strip: string[]): string {
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
-/** Turn free text into a concrete, editable task draft. */
+/**
+ * Turn free text into a concrete, editable task draft. Deliberately stays on
+ * the rule-based classify() rather than classifyWithBrain() — taskAgent's
+ * whole design point is an instant, zero-brain-call reply once routing has
+ * already resolved to 'task'; spending a second brain call here would undo that.
+ */
 export function parseTaskDraft(text: string): TaskDraft {
   const when = parseWhen(text)
   const domain: Domain = classify(text, 'chat').domain
