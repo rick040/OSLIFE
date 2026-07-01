@@ -5,6 +5,7 @@ import { useStore } from './store'
 import LoginScreen from './components/LoginScreen'
 import Dashboard from './views/Dashboard'
 import Today from './views/Today'
+import Tasks from './views/Tasks'
 import Heyra from './views/Heyra'
 import Capture from './views/Capture'
 import Memory from './views/Memory'
@@ -56,6 +57,7 @@ export default function App() {
   const Current: Record<View, JSX.Element> = {
     dashboard: <Dashboard onNav={(v) => setView(v as View)} />,
     today: <Today onNav={(v) => setView(v as View)} />,
+    tasks: <Tasks />,
     daybuilder: <DayBuilder />,
     vitals: <Vitals />,
     signals: <Signals />,
@@ -63,7 +65,7 @@ export default function App() {
     projects: <Projects />,
     inbox: <InboxView />,
     northstar: <NorthStar />,
-    heyra: <Heyra />,
+    heyra: <Heyra onNav={(v) => setView(v as View)} />,
     capture: <Capture />,
     memory: <Memory />,
     reflect: <Reflect />,

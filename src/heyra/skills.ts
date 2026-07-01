@@ -9,7 +9,7 @@ import type { Domain, Priority, TaskDraft } from '../types'
 import { classify } from '../understand'
 import { parseWhen } from './datetime'
 
-export type SkillId = 'task' | 'chat'
+export type SkillId = 'task' | 'project' | 'chart' | 'search' | 'chat'
 
 export interface SkillMeta {
   id: SkillId
@@ -19,6 +19,9 @@ export interface SkillMeta {
 
 export const SKILLS: Record<SkillId, SkillMeta> = {
   task: { id: 'task', label: 'Taakmaker', blurb: 'Zet je gedachte om in een taak met deadline' },
+  project: { id: 'project', label: 'Projectkaart', blurb: 'Laat de status van een project zien' },
+  chart: { id: 'chart', label: 'Visualisatie', blurb: 'Zet cijfers uit je geheugen om in een grafiek' },
+  search: { id: 'search', label: 'Zoeken', blurb: 'Doorzoekt je ene geheugen op een steekwoord' },
   chat: { id: 'chat', label: 'Geheugen', blurb: 'Antwoordt uit je ene geheugen' },
 }
 
@@ -31,30 +34,71 @@ const TASK_TRIGGERS = [
   'regel ', 'fix ', 'afmaken', 'afronden', 'betalen', 'factuur sturen',
 ]
 
+// Phrases that ask for the status of a specific project/client.
+const PROJECT_TRIGGERS = [
+  'status van project', 'hoe staat het met', 'voortgang van project', 'project status',
+  'over project', 'voor project', 'welk project', 'project ', 'klant ',
+]
+
+// Phrases that ask for numbers over time — a chart answers better than prose.
+const CHART_TRIGGERS = [
+  'grafiek', 'chart', 'trend', 'trends', 'overzicht van', 'vergelijk', 'vergelijking',
+  'hoeveel heb ik', 'hoeveel uur', 'over tijd', 'progressie', 'voortgang', 'visualiseer',
+  'laat de cijfers zien', 'per dag', 'per week', 'per maand', 'ontwikkeling van',
+]
+
+// Phrases that ask HEYRA to look something up rather than answer from a script.
+const SEARCH_TRIGGERS = [
+  'zoek ', 'zoek naar', 'zoeken naar', 'wat weet je over', 'wat heb ik over', 'find ',
+  'search ', 'look up', 'opzoeken', 'zoek op', 'wat staat er over', 'heb ik iets over',
+]
+
 export interface SkillDetection {
   skill: SkillId
   score: number
   trigger: string | null
 }
 
-/** Decide which skill should handle the message. */
-export function detectSkill(text: string): SkillDetection {
-  const t = ` ${text.toLowerCase()} `
+function scoreTriggers(t: string, triggers: string[]): { score: number; best: string | null } {
   let best: string | null = null
   let score = 0
-  for (const w of TASK_TRIGGERS) {
+  for (const w of triggers) {
     if (t.includes(w)) {
       score += 1
       if (!best || w.length > best.length) best = w
     }
   }
+  return { score, best }
+}
+
+/** Decide which skill should handle the message. */
+export function detectSkill(text: string): SkillDetection {
+  const t = ` ${text.toLowerCase()} `
+
+  const toDetection = (skill: SkillId, r: { score: number; best: string | null }): SkillDetection => ({
+    skill,
+    score: r.score,
+    trigger: r.best,
+  })
+
+  const candidates: SkillDetection[] = [
+    toDetection('task', scoreTriggers(t, TASK_TRIGGERS)),
+    toDetection('project', scoreTriggers(t, PROJECT_TRIGGERS)),
+    toDetection('chart', scoreTriggers(t, CHART_TRIGGERS)),
+    toDetection('search', scoreTriggers(t, SEARCH_TRIGGERS)),
+  ]
+
+  const best = candidates.reduce((a, b) => (b.score > a.score ? b : a))
+
+  if (best.score > 0) return best
+
   // An imperative verb at the very start ("bel marco", "stuur de offerte") also
   // reads as a task even without an explicit trigger word.
-  if (score === 0 && /^(bel|mail|stuur|maak|regel|plan|koop|boek|vraag|check|betaal|afronden)\b/i.test(text.trim())) {
-    score = 1
-    best = 'imperatief'
+  if (/^(bel|mail|stuur|maak|regel|plan|koop|boek|vraag|check|betaal|afronden)\b/i.test(text.trim())) {
+    return { skill: 'task', score: 1, trigger: 'imperatief' }
   }
-  return { skill: score > 0 ? 'task' : 'chat', score, trigger: best }
+
+  return { skill: 'chat', score: 0, trigger: null }
 }
 
 const PRIORITY_HINTS: { p: Priority; words: string[] }[] = [

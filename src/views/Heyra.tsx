@@ -5,7 +5,12 @@ import { DomainChip, SentimentChip, KindChip } from '../components/ui'
 import type { StructuredItem, TaskDraft } from '../types'
 import { detectSkill, parseTaskDraft, SKILLS, type SkillId } from '../heyra/skills'
 import { contextualSuggestions, followUpSuggestions, type Topic } from '../heyra/suggestions'
+import { buildSearchCard, buildChartCard, findProject, type SearchCardData, type ChartCardData } from '../heyra/cards'
 import TaskCard from '../components/TaskCard'
+import SearchResultCard from '../components/SearchResultCard'
+import DataVizCard from '../components/DataVizCard'
+import ProjectCard from '../components/ProjectCard'
+import type { Project } from '../types'
 import { Send, Sparkles, Database, Mic, MicOff, Wand2, Lightbulb } from 'lucide-react'
 
 interface Msg {
@@ -17,13 +22,16 @@ interface Msg {
   trigger?: string | null
   draft?: TaskDraft
   taskAdded?: boolean
+  search?: SearchCardData
+  chart?: ChartCardData
+  project?: Project
   topic?: Topic
 }
 
 // Minimal typings for the Web Speech API (not in TS lib by default).
 type SpeechRec = { start: () => void; stop: () => void; onresult: ((e: any) => void) | null; onend: (() => void) | null; lang: string; interimResults: boolean; continuous: boolean }
 
-export default function Heyra() {
+export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
   const store = useStore()
   const [input, setInput] = useState('')
   const [listening, setListening] = useState(false)
@@ -33,7 +41,7 @@ export default function Heyra() {
       id: 'm0',
       role: 'heyra',
       text:
-        'Ik lees uit je ene geheugen over ParkingYou, PRJCT, Buurtkaart en je persoonlijke leven. Vraag me iets, praat tegen me, of dump een gedachte. Hoor ik een taak of herinnering, dan schakel ik over naar de Taakmaker en maak ik er een kaart van — met deadline en knoppen om ’m in je taken of Google Agenda te zetten.',
+        'Ik lees uit je ene geheugen over ParkingYou, PRJCT, Buurtkaart en je persoonlijke leven. Vraag me iets, praat tegen me, of dump een gedachte. Hoor ik een taak, dan maak ik een taakkaart. Vraag je naar een project, cijfers of iets specifieks, dan krijg je een projectkaart, grafiek of zoekresultaat terug — anders antwoord ik gewoon uit het geheugen.',
     },
   ])
   const endRef = useRef<HTMLDivElement>(null)
@@ -185,6 +193,61 @@ export default function Heyra() {
       return
     }
 
+    if (detection.skill === 'project') {
+      const project = findProject(clean, store)
+      if (project) {
+        const item = store.capture(clean, 'chat', { openThread: false })
+        setMsgs((m) => [...m, { id: 'r' + item.id, role: 'rick', text: clean, classified: item }])
+        setTimeout(() => {
+          setMsgs((m) => [
+            ...m,
+            { id: 'h' + item.id, role: 'heyra', text: `${project.name} bij ${project.client}:`, skill: 'project', trigger: detection.trigger, project, topic: 'domain' },
+          ])
+          setSuggestions(followUpSuggestions('domain', store, { domain: project.domain }))
+        }, 400)
+        return
+      }
+      // no matching project found → fall through to the default memory answer
+    }
+
+    if (detection.skill === 'chart') {
+      const item = store.capture(clean, 'chat', { openThread: false })
+      const chart = buildChartCard(clean, store)
+      setMsgs((m) => [...m, { id: 'r' + item.id, role: 'rick', text: clean, classified: item }])
+      setTimeout(() => {
+        setMsgs((m) => [
+          ...m,
+          { id: 'h' + item.id, role: 'heyra', text: 'Hier is het overzicht:', skill: 'chart', trigger: detection.trigger, chart, topic: 'domain' },
+        ])
+        setSuggestions(followUpSuggestions('domain', store, { domain: item.domain }))
+      }, 400)
+      return
+    }
+
+    if (detection.skill === 'search') {
+      const item = store.capture(clean, 'chat', { openThread: false })
+      const search = buildSearchCard(clean, store)
+      setMsgs((m) => [...m, { id: 'r' + item.id, role: 'rick', text: clean, classified: item }])
+      setTimeout(() => {
+        setMsgs((m) => [
+          ...m,
+          {
+            id: 'h' + item.id,
+            role: 'heyra',
+            text: search.results.length
+              ? `Ik vond ${search.results.length} match${search.results.length === 1 ? '' : 'es'} in je geheugen.`
+              : 'Ik heb je geheugen doorzocht, maar vond niks bij deze zoekopdracht.',
+            skill: 'search',
+            trigger: detection.trigger,
+            search,
+            topic: 'domain',
+          },
+        ])
+        setSuggestions(followUpSuggestions('domain', store, { domain: item.domain }))
+      }, 400)
+      return
+    }
+
     // Default → answer from memory.
     const item = store.capture(clean, 'chat')
     setMsgs((m) => [...m, { id: 'r' + item.id, role: 'rick', text: clean, classified: item }])
@@ -207,10 +270,10 @@ export default function Heyra() {
         {msgs.map((m) => (
           <div key={m.id} className={`flex ${m.role === 'rick' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[85%] ${m.role === 'rick' ? 'order-2' : ''}`}>
-              {m.skill === 'task' && (
+              {m.skill && m.skill !== 'chat' && (
                 <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-prjct-deep animate-fade-up">
                   <span className="inline-flex items-center gap-1 rounded-full bg-prjct/12 px-2 py-0.5 font-medium">
-                    <Wand2 className="h-3 w-3" /> Functie gewisseld → {SKILLS.task.label}
+                    <Wand2 className="h-3 w-3" /> Functie gewisseld → {SKILLS[m.skill].label}
                   </span>
                   {m.trigger && m.trigger !== 'imperatief' && (
                     <span className="text-faint">herkende “{m.trigger.trim()}”</span>
@@ -231,6 +294,21 @@ export default function Heyra() {
                     added={!!m.taskAdded}
                     onAdd={(d) => addTaskFromCard(m.id, d)}
                   />
+                </div>
+              )}
+              {m.search && (
+                <div className="mt-2">
+                  <SearchResultCard data={m.search} onNav={onNav} />
+                </div>
+              )}
+              {m.chart && (
+                <div className="mt-2">
+                  <DataVizCard data={m.chart} />
+                </div>
+              )}
+              {m.project && (
+                <div className="mt-2">
+                  <ProjectCard project={m.project} onNav={onNav} />
                 </div>
               )}
               {m.classified && (
