@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Message, Channel } from '../types'
-import { X, ChevronLeft, Mail, Zap, MessageSquare, Search } from 'lucide-react'
+import { X, ChevronLeft, Mail, Zap, MessageSquare, Search, Plus, Upload, Trash2 } from 'lucide-react'
+import { useStore } from '../store'
+import { TODAY } from '../domains'
+import { Sheet, Field, TextInput, TextArea, SelectInput, PrimaryBtn } from '../components/crm'
 
 const CH: Record<Channel, { label: string; hex: string; icon: typeof Mail }> = {
   email: { label: 'E-mail', hex: '#6E8CA8', icon: Mail },
@@ -43,6 +46,7 @@ export default function Messages({
   const [filter, setFilter] = useState<'all' | Channel>('all')
   const [query, setQuery] = useState('')
   const [openKey, setOpenKey] = useState<string | null>(null)
+  const [overlay, setOverlay] = useState<'none' | 'compose' | 'import'>('none')
 
   useEffect(() => {
     document.body.style.overflow = 'hidden'
@@ -103,11 +107,19 @@ export default function Messages({
           <Thread conv={openConv} onBack={() => setOpenKey(null)} />
         ) : (
           <>
-            <div className="flex items-center justify-between p-5 pb-3">
+            <div className="flex items-center justify-between p-5 pb-3 gap-2">
               <h1 className="text-lg font-semibold">Berichten</h1>
-              <button onClick={onClose} className="btn-ghost !rounded-full !p-2" aria-label="Sluiten">
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setOverlay('import')} className="chip bg-surface border border-line text-muted hover:text-ink" title="WhatsApp importeren">
+                  <Upload className="h-3.5 w-3.5" /> WhatsApp
+                </button>
+                <button onClick={() => setOverlay('compose')} className="chip bg-forest text-white">
+                  <Plus className="h-3.5 w-3.5" /> Bericht
+                </button>
+                <button onClick={onClose} className="btn-ghost !rounded-full !p-2" aria-label="Sluiten">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div className="px-5">
@@ -192,11 +204,15 @@ export default function Messages({
           </>
         )}
       </div>
+
+      {overlay === 'compose' && <ComposeMessage onClose={() => setOverlay('none')} />}
+      {overlay === 'import' && <ImportWhatsapp onClose={() => setOverlay('none')} />}
     </div>
   )
 }
 
 function Thread({ conv, onBack }: { conv: Conversation; onBack: () => void }) {
+  const { deleteMessage } = useStore()
   const meta = CH[conv.latest.channel]
   const ordered = [...conv.messages].sort((a, b) => a.ts.localeCompare(b.ts))
   return (
@@ -217,16 +233,18 @@ function Thread({ conv, onBack }: { conv: Conversation; onBack: () => void }) {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
-        {ordered.map((m) => (m.channel === 'whatsapp' ? <Bubble key={m.id} m={m} /> : <MailCard key={m.id} m={m} />))}
+        {ordered.map((m) => (m.channel === 'whatsapp'
+          ? <Bubble key={m.id} m={m} onDelete={() => deleteMessage(m.id)} />
+          : <MailCard key={m.id} m={m} onDelete={() => deleteMessage(m.id)} />))}
       </div>
     </>
   )
 }
 
-function Bubble({ m }: { m: Message }) {
+function Bubble({ m, onDelete }: { m: Message; onDelete: () => void }) {
   const out = m.direction === 'out'
   return (
-    <div className={`max-w-[82%] ${out ? 'ml-auto' : ''}`}>
+    <div className={`max-w-[82%] group ${out ? 'ml-auto' : ''}`}>
       <div
         className={`px-3 py-2 text-sm whitespace-pre-wrap break-words rounded-2xl ${
           out ? 'bg-forest text-white rounded-br-sm' : 'card rounded-bl-sm'
@@ -234,22 +252,162 @@ function Bubble({ m }: { m: Message }) {
       >
         {m.body || m.snippet}
       </div>
-      <div className={`text-[10px] text-faint mt-1 ${out ? 'text-right' : ''}`}>{timeAgo(m.ts)}</div>
+      <div className={`flex items-center gap-2 text-[10px] text-faint mt-1 ${out ? 'justify-end' : ''}`}>
+        {timeAgo(m.ts)}
+        <button onClick={onDelete} className="opacity-0 group-hover:opacity-100 hover:text-red-400"><Trash2 className="h-3 w-3" /></button>
+      </div>
     </div>
   )
 }
 
-function MailCard({ m }: { m: Message }) {
+function MailCard({ m, onDelete }: { m: Message; onDelete: () => void }) {
   const meta = CH[m.channel]
   return (
-    <div className="card p-3">
+    <div className="card p-3 group">
       <div className="flex items-center gap-1.5 mb-1">
         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ color: meta.hex, background: `${meta.hex}22` }}>{meta.label}</span>
         {m.direction === 'out' && <span className="text-[10px] text-faint">verzonden</span>}
+        <button onClick={onDelete} className="ml-auto text-faint opacity-0 group-hover:opacity-100 hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
       </div>
       {m.subject && <div className="text-sm font-semibold mb-1">{m.subject}</div>}
       <div className="text-[13px] text-muted leading-relaxed whitespace-pre-wrap">{m.body || m.snippet}</div>
       <div className="text-[11px] text-faint mt-2">{timeAgo(m.ts)}</div>
     </div>
+  )
+}
+
+// ── Compose a single message ────────────────────────────────────────────────
+function ComposeMessage({ onClose }: { onClose: () => void }) {
+  const { clients, projects, addMessage } = useStore()
+  const [channel, setChannel] = useState<Channel>('email')
+  const [direction, setDirection] = useState<'in' | 'out'>('in')
+  const [clientId, setClientId] = useState('')
+  const [projectId, setProjectId] = useState('')
+  const [contact, setContact] = useState('')
+  const [subject, setSubject] = useState('')
+  const [body, setBody] = useState('')
+
+  const clientProjects = projects.filter((p) => !clientId || p.clientId === clientId)
+
+  function submit() {
+    if (!body.trim() && !subject.trim()) return
+    const client = clients.find((c) => c.id === clientId)
+    const name = contact.trim() || client?.name || 'Onbekend'
+    addMessage({
+      contact: name,
+      contactKey: clientId ? `cli:${clientId}` : `c:${name.toLowerCase().replace(/\s+/g, '-')}`,
+      clientId: clientId || null,
+      projectId: projectId || null,
+      projectName: projects.find((p) => p.id === projectId)?.name ?? null,
+      channel,
+      direction,
+      subject: subject.trim() || null,
+      snippet: body.trim().slice(0, 140) || subject.trim(),
+      body: body.trim() || null,
+      ts: new Date().toISOString(),
+      unread: false,
+      source: 'manual',
+    })
+    onClose()
+  }
+
+  return (
+    <Sheet title="Bericht toevoegen" onClose={onClose} footer={<PrimaryBtn onClick={submit} disabled={!body.trim() && !subject.trim()}>Toevoegen</PrimaryBtn>}>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Kanaal">
+          <SelectInput value={channel} onChange={(e) => setChannel(e.target.value as Channel)}>
+            <option value="email">E-mail</option><option value="fiverr">Fiverr</option><option value="whatsapp">WhatsApp</option>
+          </SelectInput>
+        </Field>
+        <Field label="Richting">
+          <SelectInput value={direction} onChange={(e) => setDirection(e.target.value as 'in' | 'out')}>
+            <option value="in">Ontvangen</option><option value="out">Verzonden</option>
+          </SelectInput>
+        </Field>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Klant">
+          <SelectInput value={clientId} onChange={(e) => { setClientId(e.target.value); setProjectId('') }}>
+            <option value="">— geen —</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </SelectInput>
+        </Field>
+        <Field label="Project">
+          <SelectInput value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">— geen —</option>
+            {clientProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </SelectInput>
+        </Field>
+      </div>
+      <Field label="Contact" hint="leeg = klantnaam">
+        <TextInput value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Naam van afzender" />
+      </Field>
+      {channel !== 'whatsapp' && (
+        <Field label="Onderwerp"><TextInput value={subject} onChange={(e) => setSubject(e.target.value)} /></Field>
+      )}
+      <Field label="Bericht"><TextArea value={body} onChange={(e) => setBody(e.target.value)} rows={4} /></Field>
+    </Sheet>
+  )
+}
+
+// ── Import a WhatsApp export ─────────────────────────────────────────────────
+function ImportWhatsapp({ onClose }: { onClose: () => void }) {
+  const { clients, projects, importWhatsapp } = useStore()
+  const [raw, setRaw] = useState('')
+  const [meNames, setMeNames] = useState('Rick')
+  const [clientId, setClientId] = useState('')
+  const [projectId, setProjectId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<string | null>(null)
+
+  const clientProjects = projects.filter((p) => !clientId || p.clientId === clientId)
+
+  async function run() {
+    if (!raw.trim()) return
+    setBusy(true)
+    const r = await importWhatsapp(
+      raw,
+      meNames.split(',').map((s) => s.trim()).filter(Boolean),
+      { clientId: clientId || null, projectId: projectId || null },
+    )
+    setBusy(false)
+    setResult(`${r.imported} van ${r.total} bericht(en) geïmporteerd.`)
+  }
+
+  return (
+    <Sheet
+      title="WhatsApp importeren"
+      onClose={onClose}
+      footer={<PrimaryBtn onClick={result ? onClose : run} disabled={busy || (!raw.trim() && !result)}>{busy ? 'Bezig…' : result ? 'Klaar' : 'Importeren'}</PrimaryBtn>}
+    >
+      <p className="text-xs text-faint leading-relaxed">
+        Open een WhatsApp-chat → ⋮ → <b>Meer</b> → <b>Chat exporteren</b> → <b>Zonder media</b>, en plak de tekst hieronder.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Koppel aan klant">
+          <SelectInput value={clientId} onChange={(e) => { setClientId(e.target.value); setProjectId('') }}>
+            <option value="">— geen —</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </SelectInput>
+        </Field>
+        <Field label="Project">
+          <SelectInput value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">— geen —</option>
+            {clientProjects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </SelectInput>
+        </Field>
+      </div>
+      <Field label="Jouw naam(en) in de chat" hint="komma-gescheiden — bepaalt welke berichten ‘verzonden’ zijn">
+        <TextInput value={meNames} onChange={(e) => setMeNames(e.target.value)} placeholder="Rick, Rick Prjct" />
+      </Field>
+      <Field label="Geëxporteerde chat">
+        <TextArea value={raw} onChange={(e) => setRaw(e.target.value)} rows={8} placeholder="[12/06/2026, 14:32] Klant: Hoi Rick!…" />
+      </Field>
+      {result && (
+        <div className="text-sm rounded-xl px-3 py-2 flex items-center gap-2" style={{ background: '#6FA07C18' }}>
+          <Upload className="h-4 w-4 text-forest" /> {result}
+        </div>
+      )}
+    </Sheet>
   )
 }

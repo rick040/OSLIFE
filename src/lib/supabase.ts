@@ -19,6 +19,13 @@ import type {
   Client,
   ClientStatus,
   Payment,
+  ProjectMilestone,
+  ProjectTask,
+  HourEntry,
+  Invoice,
+  ActivityEntry,
+  Message,
+  Channel,
 } from '../types'
 import { TODAY } from '../domains'
 
@@ -694,23 +701,29 @@ export async function fetchScreenDays(): Promise<ScreenDay[]> {
 export async function fetchProjects(): Promise<Project[]> {
   const { data } = await supabase
     .from('projects')
-    .select('id,external_id,name,client,domain,status,deadline,value,progress,type,prioriteit,notion_url')
-    .not('status', 'eq', 'done')
+    .select('id,external_id,name,client,client_id,domain,status,deadline,start_datum,value,progress,type,prioriteit,deliverables,scope_text,notes,archived,notion_url')
+    .eq('archived', false)
     .order('deadline', { ascending: true, nullsFirst: false })
 
   return (data ?? []).map((r) => ({
-    id:         r.id as string,
-    name:       r.name as string,
-    client:     (r.client as string) ?? '',
-    domain:     ((r.domain as Domain) ?? 'personal'),
-    status:     ((r.status as ProjectStatus) ?? 'lead'),
-    deadline:   (r.deadline as string) ?? null,
-    progress:   (r.progress as number) ?? 0,
-    value:      (r.value as number) ?? 0,
-    type:       (r.type as string[]) ?? [],
-    priority:   (r.prioriteit as Project['priority']) ?? undefined,
-    notionUrl:  (r.notion_url as string) ?? undefined,
-    notionId:   (r.external_id as string) ?? undefined,
+    id:           r.id as string,
+    name:         r.name as string,
+    client:       (r.client as string) ?? '',
+    clientId:     (r.client_id as string) ?? null,
+    domain:       ((r.domain as Domain) ?? 'personal'),
+    status:       ((r.status as ProjectStatus) ?? 'lead'),
+    deadline:     (r.deadline as string) ?? null,
+    startDate:    (r.start_datum as string) ?? null,
+    progress:     (r.progress as number) ?? 0,
+    value:        (r.value as number) ?? 0,
+    type:         (r.type as string[]) ?? [],
+    priority:     (r.prioriteit as Project['priority']) ?? undefined,
+    deliverables: (r.deliverables as string[]) ?? [],
+    scope:        (r.scope_text as string) ?? null,
+    notes:        (r.notes as string) ?? null,
+    archived:     (r.archived as boolean) ?? false,
+    notionUrl:    (r.notion_url as string) ?? undefined,
+    notionId:     (r.external_id as string) ?? undefined,
   }))
 }
 
@@ -731,4 +744,471 @@ export async function fetchClients(): Promise<Client[]> {
     email:        (r.email as string) ?? null,
     website:      (r.website_url as string) ?? null,
   }))
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// NATIVE CRM — full CRUD for clients, projects and the project template.
+// The app is the source of truth (Supabase), no longer a read-only Notion
+// mirror. In-app rows get a `local-<uuid>` external_id to satisfy the existing
+// UNIQUE (user_id, external_id) constraint; Notion-synced rows keep theirs.
+// ════════════════════════════════════════════════════════════════════════════
+
+const localExternalId = () => `local-${crypto.randomUUID()}`
+
+// ── Clients ─────────────────────────────────────────────────────────────────
+
+export async function createClientRow(c: Omit<Client, 'id'>): Promise<Client | null> {
+  const user_id = await currentUserId()
+  if (!user_id) return null
+  const { data, error } = await supabase
+    .from('clients')
+    .insert({
+      user_id,
+      external_id: localExternalId(),
+      name: c.name,
+      client_status: c.clientStatus ?? null,
+      potentie: c.potentie ?? null,
+      scope: c.scope ?? null,
+      first_contact: c.firstContact ?? null,
+      email: c.email ?? null,
+      website_url: c.website ?? null,
+      domain: c.domain,
+    })
+    .select('id')
+    .single()
+  warnWrite('clients.insert', error)
+  if (!data?.id) return null
+  return { ...c, id: data.id as string }
+}
+
+export async function updateClientRow(id: string, patch: Partial<Client>): Promise<void> {
+  if (!isDbId(id)) return
+  const row: Record<string, unknown> = {}
+  if (patch.name !== undefined) row.name = patch.name
+  if (patch.clientStatus !== undefined) row.client_status = patch.clientStatus
+  if (patch.potentie !== undefined) row.potentie = patch.potentie
+  if (patch.scope !== undefined) row.scope = patch.scope
+  if (patch.firstContact !== undefined) row.first_contact = patch.firstContact
+  if (patch.email !== undefined) row.email = patch.email
+  if (patch.website !== undefined) row.website_url = patch.website
+  if (patch.domain !== undefined) row.domain = patch.domain
+  if (Object.keys(row).length === 0) return
+  const { error } = await supabase.from('clients').update(row).eq('id', id)
+  warnWrite('clients.update', error)
+}
+
+export async function deleteClientRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  // Detach projects first so the FK (on delete set null) leaves them orphaned-but-alive.
+  await supabase.from('projects').update({ client_id: null }).eq('client_id', id)
+  const { error } = await supabase.from('clients').delete().eq('id', id)
+  warnWrite('clients.delete', error)
+}
+
+// ── Projects (native create / update / delete) ──────────────────────────────
+
+export async function createProjectRow(p: Omit<Project, 'id'>): Promise<Project | null> {
+  const user_id = await currentUserId()
+  if (!user_id) return null
+  const { data, error } = await supabase
+    .from('projects')
+    .insert({
+      user_id,
+      external_id: localExternalId(),
+      name: p.name,
+      client: p.client ?? '',
+      client_id: p.clientId ?? null,
+      domain: p.domain,
+      status: p.status,
+      deadline: p.deadline ?? null,
+      start_datum: p.startDate ?? null,
+      value: p.value ?? 0,
+      progress: p.progress ?? 0,
+      type: p.type ?? [],
+      prioriteit: p.priority ?? null,
+      deliverables: p.deliverables ?? [],
+      scope_text: p.scope ?? null,
+      notes: p.notes ?? null,
+      source: 'app',
+    })
+    .select('id')
+    .single()
+  warnWrite('projects.insert', error)
+  if (!data?.id) return null
+  return { ...p, id: data.id as string }
+}
+
+/** Full update of any editable project field. */
+export async function updateProjectRow(id: string, patch: Partial<Project>): Promise<void> {
+  if (!isDbId(id)) return
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (patch.name !== undefined) row.name = patch.name
+  if (patch.client !== undefined) row.client = patch.client
+  if (patch.clientId !== undefined) row.client_id = patch.clientId
+  if (patch.domain !== undefined) row.domain = patch.domain
+  if (patch.status !== undefined) row.status = patch.status
+  if (patch.deadline !== undefined) row.deadline = patch.deadline
+  if (patch.startDate !== undefined) row.start_datum = patch.startDate
+  if (patch.value !== undefined) row.value = patch.value
+  if (patch.progress !== undefined) row.progress = patch.progress
+  if (patch.type !== undefined) row.type = patch.type
+  if (patch.priority !== undefined) row.prioriteit = patch.priority
+  if (patch.deliverables !== undefined) row.deliverables = patch.deliverables
+  if (patch.scope !== undefined) row.scope_text = patch.scope
+  if (patch.notes !== undefined) row.notes = patch.notes
+  if (patch.archived !== undefined) row.archived = patch.archived
+  const { error } = await supabase.from('projects').update(row).eq('id', id)
+  warnWrite('projects.update', error)
+}
+
+export async function deleteProjectRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('projects').delete().eq('id', id)
+  warnWrite('projects.delete', error)
+}
+
+// ── Milestones ──────────────────────────────────────────────────────────────
+
+export async function fetchMilestones(): Promise<ProjectMilestone[]> {
+  const { data } = await supabase
+    .from('project_milestones')
+    .select('id,project_id,title,due_date,progress,done,order_idx')
+    .order('order_idx', { ascending: true })
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    projectId: r.project_id as string,
+    title: r.title as string,
+    dueDate: (r.due_date as string) ?? null,
+    progress: (r.progress as number) ?? 0,
+    done: (r.done as boolean) ?? false,
+  }))
+}
+
+export async function createMilestoneRow(
+  projectId: string,
+  m: Omit<ProjectMilestone, 'id' | 'projectId'>,
+): Promise<string | null> {
+  const user_id = await currentUserId()
+  if (!user_id || !isDbId(projectId)) return null
+  const { data, error } = await supabase
+    .from('project_milestones')
+    .insert({
+      user_id, project_id: projectId,
+      title: m.title, due_date: m.dueDate ?? null,
+      progress: m.progress ?? 0, done: m.done ?? false,
+    })
+    .select('id')
+    .single()
+  warnWrite('project_milestones.insert', error)
+  return (data?.id as string) ?? null
+}
+
+export async function updateMilestoneRow(id: string, patch: Partial<ProjectMilestone>): Promise<void> {
+  if (!isDbId(id)) return
+  const row: Record<string, unknown> = {}
+  if (patch.title !== undefined) row.title = patch.title
+  if (patch.dueDate !== undefined) row.due_date = patch.dueDate
+  if (patch.progress !== undefined) row.progress = patch.progress
+  if (patch.done !== undefined) row.done = patch.done
+  if (Object.keys(row).length === 0) return
+  const { error } = await supabase.from('project_milestones').update(row).eq('id', id)
+  warnWrite('project_milestones.update', error)
+}
+
+export async function deleteMilestoneRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('project_milestones').delete().eq('id', id)
+  warnWrite('project_milestones.delete', error)
+}
+
+// ── Project tasks ─────────────────────────────────────────────────────────────
+
+export async function fetchProjectTaskRows(): Promise<ProjectTask[]> {
+  const { data } = await supabase
+    .from('project_tasks')
+    .select('id,project_id,name,done,due_date,priority,recurrence,recur_every,last_done_on,order_idx')
+    .order('order_idx', { ascending: true })
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    projectId: r.project_id as string,
+    name: r.name as string,
+    done: (r.done as boolean) ?? false,
+    dueDate: (r.due_date as string) ?? null,
+    priority: (r.priority as ProjectTask['priority']) ?? null,
+    recurrence: (r.recurrence as ProjectTask['recurrence']) ?? null,
+    recurEvery: (r.recur_every as number) ?? 1,
+    lastDoneOn: (r.last_done_on as string) ?? null,
+  }))
+}
+
+export async function createProjectTaskRow(
+  projectId: string,
+  t: Omit<ProjectTask, 'id' | 'projectId'>,
+): Promise<string | null> {
+  const user_id = await currentUserId()
+  if (!user_id || !isDbId(projectId)) return null
+  const { data, error } = await supabase
+    .from('project_tasks')
+    .insert({
+      user_id, project_id: projectId,
+      name: t.name, done: t.done ?? false, due_date: t.dueDate ?? null,
+      priority: t.priority ?? null, recurrence: t.recurrence ?? null,
+      recur_every: t.recurEvery ?? 1, last_done_on: t.lastDoneOn ?? null,
+    })
+    .select('id')
+    .single()
+  warnWrite('project_tasks.insert', error)
+  return (data?.id as string) ?? null
+}
+
+export async function updateProjectTaskRow(id: string, patch: Partial<ProjectTask>): Promise<void> {
+  if (!isDbId(id)) return
+  const row: Record<string, unknown> = {}
+  if (patch.name !== undefined) row.name = patch.name
+  if (patch.done !== undefined) row.done = patch.done
+  if (patch.dueDate !== undefined) row.due_date = patch.dueDate
+  if (patch.priority !== undefined) row.priority = patch.priority
+  if (patch.recurrence !== undefined) row.recurrence = patch.recurrence
+  if (patch.recurEvery !== undefined) row.recur_every = patch.recurEvery
+  if (patch.lastDoneOn !== undefined) row.last_done_on = patch.lastDoneOn
+  if (Object.keys(row).length === 0) return
+  const { error } = await supabase.from('project_tasks').update(row).eq('id', id)
+  warnWrite('project_tasks.update', error)
+}
+
+export async function deleteProjectTaskRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('project_tasks').delete().eq('id', id)
+  warnWrite('project_tasks.delete', error)
+}
+
+// ── Hours (time tracker) ──────────────────────────────────────────────────────
+
+export async function fetchHours(): Promise<HourEntry[]> {
+  const { data } = await supabase
+    .from('project_hours')
+    .select('id,project_id,on_date,hours,note,billable')
+    .order('on_date', { ascending: false })
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    projectId: r.project_id as string,
+    date: r.on_date as string,
+    hours: (r.hours as number) ?? 0,
+    note: (r.note as string) ?? null,
+    billable: (r.billable as boolean) ?? true,
+  }))
+}
+
+export async function createHourRow(
+  projectId: string,
+  h: Omit<HourEntry, 'id' | 'projectId'>,
+): Promise<string | null> {
+  const user_id = await currentUserId()
+  if (!user_id || !isDbId(projectId)) return null
+  const { data, error } = await supabase
+    .from('project_hours')
+    .insert({
+      user_id, project_id: projectId,
+      on_date: h.date, hours: h.hours, note: h.note ?? null, billable: h.billable ?? true,
+    })
+    .select('id')
+    .single()
+  warnWrite('project_hours.insert', error)
+  return (data?.id as string) ?? null
+}
+
+export async function deleteHourRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('project_hours').delete().eq('id', id)
+  warnWrite('project_hours.delete', error)
+}
+
+// ── Invoices ──────────────────────────────────────────────────────────────────
+
+export async function fetchInvoices(): Promise<Invoice[]> {
+  const { data } = await supabase
+    .from('project_invoices')
+    .select('id,project_id,number,amount,status,issued_on,due_on,paid_on,note')
+    .order('issued_on', { ascending: false, nullsFirst: false })
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    projectId: r.project_id as string,
+    number: (r.number as string) ?? '',
+    amount: (r.amount as number) ?? 0,
+    status: (r.status as Invoice['status']) ?? 'draft',
+    issuedOn: (r.issued_on as string) ?? null,
+    dueOn: (r.due_on as string) ?? null,
+    paidOn: (r.paid_on as string) ?? null,
+    note: (r.note as string) ?? null,
+  }))
+}
+
+export async function createInvoiceRow(
+  projectId: string,
+  inv: Omit<Invoice, 'id' | 'projectId'>,
+): Promise<string | null> {
+  const user_id = await currentUserId()
+  if (!user_id || !isDbId(projectId)) return null
+  const { data, error } = await supabase
+    .from('project_invoices')
+    .insert({
+      user_id, project_id: projectId,
+      number: inv.number ?? '', amount: inv.amount ?? 0, status: inv.status ?? 'draft',
+      issued_on: inv.issuedOn ?? null, due_on: inv.dueOn ?? null, paid_on: inv.paidOn ?? null,
+      note: inv.note ?? null,
+    })
+    .select('id')
+    .single()
+  warnWrite('project_invoices.insert', error)
+  return (data?.id as string) ?? null
+}
+
+export async function updateInvoiceRow(id: string, patch: Partial<Invoice>): Promise<void> {
+  if (!isDbId(id)) return
+  const row: Record<string, unknown> = {}
+  if (patch.number !== undefined) row.number = patch.number
+  if (patch.amount !== undefined) row.amount = patch.amount
+  if (patch.status !== undefined) row.status = patch.status
+  if (patch.issuedOn !== undefined) row.issued_on = patch.issuedOn
+  if (patch.dueOn !== undefined) row.due_on = patch.dueOn
+  if (patch.paidOn !== undefined) row.paid_on = patch.paidOn
+  if (patch.note !== undefined) row.note = patch.note
+  if (Object.keys(row).length === 0) return
+  const { error } = await supabase.from('project_invoices').update(row).eq('id', id)
+  warnWrite('project_invoices.update', error)
+}
+
+export async function deleteInvoiceRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('project_invoices').delete().eq('id', id)
+  warnWrite('project_invoices.delete', error)
+}
+
+// ── Activity log ──────────────────────────────────────────────────────────────
+
+export async function fetchActivity(): Promise<ActivityEntry[]> {
+  const { data } = await supabase
+    .from('project_activity')
+    .select('id,project_id,body,link_type,link_id,action,created_at')
+    .order('created_at', { ascending: false })
+    .limit(500)
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    projectId: r.project_id as string,
+    body: r.body as string,
+    linkType: (r.link_type as ActivityEntry['linkType']) ?? null,
+    linkId: (r.link_id as string) ?? null,
+    action: (r.action as ActivityEntry['action']) ?? null,
+    createdAt: r.created_at as string,
+  }))
+}
+
+export async function createActivityRow(
+  projectId: string,
+  a: Omit<ActivityEntry, 'id' | 'projectId' | 'createdAt'>,
+): Promise<string | null> {
+  const user_id = await currentUserId()
+  if (!user_id || !isDbId(projectId)) return null
+  const { data, error } = await supabase
+    .from('project_activity')
+    .insert({
+      user_id, project_id: projectId,
+      body: a.body, link_type: a.linkType ?? null, link_id: a.linkId ?? null, action: a.action ?? null,
+    })
+    .select('id')
+    .single()
+  warnWrite('project_activity.insert', error)
+  return (data?.id as string) ?? null
+}
+
+export async function deleteActivityRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('project_activity').delete().eq('id', id)
+  warnWrite('project_activity.delete', error)
+}
+
+// ── Client messages (unified inbox) ───────────────────────────────────────────
+
+export async function fetchClientMessages(): Promise<Message[]> {
+  const { data } = await supabase
+    .from('client_messages')
+    .select('id,client_id,project_id,channel,direction,contact,contact_key,subject,snippet,body,ts,unread,source,external_id')
+    .order('ts', { ascending: false })
+    .limit(2000)
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    clientId: (r.client_id as string) ?? null,
+    projectId: (r.project_id as string) ?? null,
+    channel: (r.channel as Channel) ?? 'email',
+    direction: (r.direction as Message['direction']) ?? 'in',
+    contact: (r.contact as string) ?? '',
+    contactKey: (r.contact_key as string) ?? '',
+    subject: (r.subject as string) ?? null,
+    snippet: (r.snippet as string) ?? '',
+    body: (r.body as string) ?? null,
+    ts: r.ts as string,
+    unread: (r.unread as boolean) ?? false,
+    source: (r.source as Message['source']) ?? 'manual',
+    externalId: (r.external_id as string) ?? null,
+  }))
+}
+
+function messageToRow(user_id: string, m: Omit<Message, 'id'>): Record<string, unknown> {
+  return {
+    user_id,
+    client_id: m.clientId ?? null,
+    project_id: m.projectId ?? null,
+    channel: m.channel,
+    direction: m.direction,
+    contact: m.contact,
+    contact_key: m.contactKey,
+    subject: m.subject ?? null,
+    snippet: m.snippet,
+    body: m.body ?? null,
+    ts: m.ts,
+    unread: m.unread,
+    source: m.source ?? 'manual',
+    external_id: m.externalId ?? null,
+  }
+}
+
+export async function createMessageRow(m: Omit<Message, 'id'>): Promise<string | null> {
+  const user_id = await currentUserId()
+  if (!user_id) return null
+  const { data, error } = await supabase
+    .from('client_messages')
+    .insert(messageToRow(user_id, m))
+    .select('id')
+    .single()
+  warnWrite('client_messages.insert', error)
+  return (data?.id as string) ?? null
+}
+
+/** Bulk insert (WhatsApp import); skips rows that already exist by external_id. */
+export async function insertMessages(msgs: Omit<Message, 'id'>[]): Promise<number> {
+  const user_id = await currentUserId()
+  if (!user_id || !msgs.length) return 0
+  const rows = msgs.map((m) => messageToRow(user_id, m))
+  const { error, count } = await supabase
+    .from('client_messages')
+    .upsert(rows, { onConflict: 'user_id,source,external_id', ignoreDuplicates: true, count: 'exact' })
+  warnWrite('client_messages.bulk', error)
+  return count ?? 0
+}
+
+export async function markMessagesReadRow(contactKey: string): Promise<void> {
+  const user_id = await currentUserId()
+  if (!user_id) return
+  const { error } = await supabase
+    .from('client_messages')
+    .update({ unread: false })
+    .eq('contact_key', contactKey)
+    .eq('unread', true)
+  warnWrite('client_messages.read', error)
+}
+
+export async function deleteMessageRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('client_messages').delete().eq('id', id)
+  warnWrite('client_messages.delete', error)
 }

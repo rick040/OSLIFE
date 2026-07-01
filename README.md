@@ -60,8 +60,8 @@ ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betaling
 
 | Module | Source | Pipeline | Table(s) |
 |--------|--------|----------|----------|
-| Projecten | **Notion** (read+write) | `notion-sync` ↓ · `notion-mutate` ↑ | `projects` |
-| CRM / Klanten | **Notion** (read+write) | `notion-sync` ↓ · `notion-mutate` ↑ | `clients` |
+| Projecten | **In-app (native CRM)** — full CRUD | app write-back (Supabase) | `projects`, `project_tasks`, `project_milestones`, `project_hours`, `project_invoices`, `project_activity` |
+| CRM / Klanten | **In-app (native CRM)** — full CRUD | app write-back (Supabase) | `clients`, `client_messages` |
 | Strategie HQ · Buurtkaart/Eyes/Dakmeester callouts | **Notion** | `notion-hq` (live) | — |
 | Buurtkaart beheer | **Geldrop Buurtkaart WordPress API** | `gbk-overview` (header `X-GBK-Key`) | — (live read) |
 | Geld · transacties | **Betalingen Google Sheet** + **ABN AMRO CSV** (in-app) + Google Wallet | `payments-sheet-ingest` · in-app import · `wallet-ingest` | `finance_tx` |
@@ -72,6 +72,19 @@ ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betaling
 | Dagplanner / agenda | **Google Calendar** | Code.gs `syncCalendarBlocks` | `day_blocks` |
 | Gewoonten · Doelen · Kyra · Abonnementen | in-app (handmatig) | app write-back | `habits`, `goals`, `dog_log`, `subscriptions` |
 | Geheugen / Reflectie | afgeleid in-app | reflect engine | `brain_state` |
+
+### Native CRM (Projecten / Klanten)
+The CRM is no longer a read-only Notion mirror — it's a full project-manager built
+on Supabase. You can add/edit/remove **clients** and **projects** in-app, and every
+client is connected to its projects (`projects.client_id → clients.id`). Each project
+carries a template: a **uren-tracker** (`project_hours`), **mijlpalen** with due dates
+and progress (`project_milestones`), one-time **and recurring tasks** (`project_tasks`),
+**facturen** (`project_invoices`), and an **activiteiten-log** (`project_activity`). The
+activity logger (`src/lib/crm/activityAnalyzer.ts`) reads a free-text note, matches it to
+an open task or milestone and takes the action — ticking the task or bumping the milestone's
+progress. The **berichten-inbox** (`client_messages`) unifies e-mail / Fiverr / WhatsApp;
+WhatsApp exports import via `src/lib/crm/whatsapp.ts`. Existing Notion-synced rows keep
+working; in-app rows get a `local-<uuid>` external id.
 
 ### Finance dedup
 The Betalingen sheet and the in-app ABN AMRO CSV import both write `finance_tx` with the same
