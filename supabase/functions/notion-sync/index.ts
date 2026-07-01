@@ -115,9 +115,13 @@ Deno.serve(async (req) => {
       })
       .filter(Boolean);
 
+    // Insert-only: once a project exists (whether from Notion or created natively
+    // in-app), the app is the source of truth. Re-syncing must never clobber
+    // edits the user made via the native CRM, so existing rows are left alone —
+    // this only seeds projects Notion has that Supabase doesn't have yet.
     const { error: projErr } = await supabase
       .from("projects")
-      .upsert(rows, { onConflict: "user_id,external_id" });
+      .upsert(rows, { onConflict: "user_id,external_id", ignoreDuplicates: true });
 
     results.projects = projErr
       ? { error: projErr.message }
@@ -153,9 +157,10 @@ Deno.serve(async (req) => {
       })
       .filter(Boolean);
 
+    // Same insert-only rule as projects — never overwrite a client the app owns.
     const { error: clientErr } = await supabase
       .from("clients")
-      .upsert(rows, { onConflict: "user_id,external_id" });
+      .upsert(rows, { onConflict: "user_id,external_id", ignoreDuplicates: true });
 
     results.clients = clientErr
       ? { error: clientErr.message }

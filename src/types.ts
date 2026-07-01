@@ -404,6 +404,7 @@ export interface EmailItem {
   domain: Domain
   importance?: 'high' | 'med' | 'low' | null
   threadId?: string | null
+  labels?: string[]
 }
 
 // ── Layer 5/6: SURFACE + ACT ──────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import { X, ChevronLeft, Mail, Zap, MessageSquare, Search, Plus, Upload, Trash2 
 import { useStore } from '../store'
 import { TODAY } from '../domains'
 import { Sheet, Field, TextInput, TextArea, SelectInput, PrimaryBtn } from '../components/crm'
+import { deriveGmailMessages } from '../lib/crm/gmailInbox'
 
 const CH: Record<Channel, { label: string; hex: string; icon: typeof Mail }> = {
   email: { label: 'E-mail', hex: '#6E8CA8', icon: Mail },
@@ -43,6 +44,7 @@ export default function Messages({
   onClose: () => void
   onReadConversation: (contactKey: string) => void
 }) {
+  const { emails, clients, markEmailRead } = useStore()
   const [filter, setFilter] = useState<'all' | Channel>('all')
   const [query, setQuery] = useState('')
   const [openKey, setOpenKey] = useState<string | null>(null)
@@ -55,9 +57,14 @@ export default function Messages({
     }
   }, [])
 
+  // Client/Fiverr correspondence mirrored from Gmail, merged in read-only
+  // alongside manually-added and WhatsApp-imported messages.
+  const gmailDerived = useMemo(() => deriveGmailMessages(emails, clients), [emails, clients])
+  const allMessages = useMemo(() => [...messages, ...gmailDerived], [messages, gmailDerived])
+
   const conversations = useMemo(() => {
     const map = new Map<string, Conversation>()
-    for (const m of messages) {
+    for (const m of allMessages) {
       let c = map.get(m.contactKey)
       if (!c) {
         c = { key: m.contactKey, contact: m.contact, projectName: m.projectName ?? null, latest: m, channels: new Set(), count: 0, unread: 0, messages: [] }
@@ -74,7 +81,7 @@ export default function Messages({
       }
     }
     return [...map.values()].sort((a, b) => b.latest.ts.localeCompare(a.latest.ts))
-  }, [messages])
+  }, [allMessages])
 
   const counts = {
     all: conversations.length,
@@ -159,6 +166,7 @@ export default function Messages({
                       onClick={() => {
                         setOpenKey(c.key)
                         onReadConversation(c.key)
+                        c.messages.filter((m) => m.source === 'gmail' || m.source === 'fiverr').forEach((m) => markEmailRead(m.id))
                       }}
                       className="card p-3 w-full flex items-center gap-3 text-left hover:bg-sunken transition-colors"
                     >
@@ -262,12 +270,17 @@ function Bubble({ m, onDelete }: { m: Message; onDelete: () => void }) {
 
 function MailCard({ m, onDelete }: { m: Message; onDelete: () => void }) {
   const meta = CH[m.channel]
+  const mirrored = m.source === 'gmail' || m.source === 'fiverr'
   return (
     <div className="card p-3 group">
       <div className="flex items-center gap-1.5 mb-1">
         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ color: meta.hex, background: `${meta.hex}22` }}>{meta.label}</span>
         {m.direction === 'out' && <span className="text-[10px] text-faint">verzonden</span>}
-        <button onClick={onDelete} className="ml-auto text-faint opacity-0 group-hover:opacity-100 hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
+        {mirrored ? (
+          <span className="ml-auto text-[10px] text-faint">via Gmail</span>
+        ) : (
+          <button onClick={onDelete} className="ml-auto text-faint opacity-0 group-hover:opacity-100 hover:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
+        )}
       </div>
       {m.subject && <div className="text-sm font-semibold mb-1">{m.subject}</div>}
       <div className="text-[13px] text-muted leading-relaxed whitespace-pre-wrap">{m.body || m.snippet}</div>
@@ -354,6 +367,7 @@ function ComposeMessage({ onClose }: { onClose: () => void }) {
 function ImportWhatsapp({ onClose }: { onClose: () => void }) {
   const { clients, projects, importWhatsapp } = useStore()
   const [raw, setRaw] = useState('')
+  const [fileName, setFileName] = useState<string | null>(null)
   const [meNames, setMeNames] = useState('Rick')
   const [clientId, setClientId] = useState('')
   const [projectId, setProjectId] = useState('')
@@ -361,6 +375,14 @@ function ImportWhatsapp({ onClose }: { onClose: () => void }) {
   const [result, setResult] = useState<string | null>(null)
 
   const clientProjects = projects.filter((p) => !clientId || p.clientId === clientId)
+
+  function onFile(file: File | null) {
+    if (!file) return
+    setFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = () => setRaw(String(reader.result ?? ''))
+    reader.readAsText(file)
+  }
 
   async function run() {
     if (!raw.trim()) return
@@ -381,8 +403,13 @@ function ImportWhatsapp({ onClose }: { onClose: () => void }) {
       footer={<PrimaryBtn onClick={result ? onClose : run} disabled={busy || (!raw.trim() && !result)}>{busy ? 'Bezig…' : result ? 'Klaar' : 'Importeren'}</PrimaryBtn>}
     >
       <p className="text-xs text-faint leading-relaxed">
-        Open een WhatsApp-chat → ⋮ → <b>Meer</b> → <b>Chat exporteren</b> → <b>Zonder media</b>, en plak de tekst hieronder.
+        Open een WhatsApp-chat → ⋮ → <b>Meer</b> → <b>Chat exporteren</b> → <b>Zonder media</b>, en upload het .txt-bestand — of plak de tekst hieronder.
       </p>
+      <label className="flex items-center gap-2 rounded-xl bg-sunken border border-dashed border-line px-3 py-2.5 text-sm cursor-pointer text-muted hover:text-ink transition-colors">
+        <Upload className="h-4 w-4 shrink-0" />
+        <span className="flex-1 min-w-0 truncate">{fileName ?? 'Kies .txt-bestand…'}</span>
+        <input type="file" accept=".txt,text/plain" className="hidden" onChange={(e) => onFile(e.target.files?.[0] ?? null)} />
+      </label>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Koppel aan klant">
           <SelectInput value={clientId} onChange={(e) => { setClientId(e.target.value); setProjectId('') }}>
