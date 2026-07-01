@@ -20,13 +20,13 @@ import { DomainChip, SectionTitle, Empty } from '../components/ui'
 import { Brain, Moon, Wallet, AlertTriangle, ArrowUpRight, ArrowDownRight, Play, Smartphone, CalendarClock, Database } from 'lucide-react'
 
 export default function Reflect() {
-  const { dayLogs, transactions, threads, patterns, lastDigest, reflectCount, runNightlyReflect, screenDays, meetingDays, projects, healthDays, emails } = useStore()
+  const { dayLogs, transactions, threads, patterns, lastDigest, reflectCount, runNightlyReflect, screenDays, meetingDays, projects, healthDays, emails, habits } = useStore()
 
   const deadlines = useMemo(() => deriveDeadlines(projects), [projects])
 
   const correlations = useMemo(
-    () => computeCorrelations(dayLogs, transactions, screenDays, meetingDays, deadlines),
-    [dayLogs, transactions, screenDays, meetingDays, deadlines],
+    () => computeCorrelations(dayLogs, transactions, screenDays, meetingDays, deadlines, habits),
+    [dayLogs, transactions, screenDays, meetingDays, deadlines, habits],
   )
   const anomalies = useMemo(
     () => computeAnomalies(dayLogs, transactions, threads),
@@ -98,6 +98,12 @@ export default function Reflect() {
       {lastDigest && (
         <div className="card p-3 border-cross/40 bg-cross/5 text-sm text-ink-soft animate-fade-up">
           Reflectie heeft <b>{reflectCount}×</b> gedraaid. Patronen zijn versterkt en het Overzicht (dagelijkse nudge) is bijgewerkt.
+          {lastDigest.narrative && (
+            <p className="mt-2 text-ink flex items-start gap-2">
+              <Brain className="h-4 w-4 shrink-0 mt-0.5 text-cross" />
+              <span>{lastDigest.narrative}</span>
+            </p>
+          )}
         </div>
       )}
 

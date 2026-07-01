@@ -43,7 +43,8 @@ import { analyzeActivity } from './lib/crm/activityAnalyzer'
 import type { ActivityAnalysis } from './lib/crm/activityAnalyzer'
 import { parseWhatsapp } from './lib/crm/whatsapp'
 import { classify } from './understand'
-import { runReflect, computeCorrelations, computeAnomalies } from './reflect'
+import { runReflect, computeCorrelations, computeAnomalies, buildNarrativePrompt, NARRATIVE_SYSTEM_PROMPT } from './reflect'
+import { askBrain } from './heyra/brainClient'
 import {
   deriveEssentials,
   deriveThreads,
@@ -557,6 +558,7 @@ export const useStore = create<State>()(
             s.screenDays,
             s.meetingDays,
             deadlines,
+            s.habits,
           )
 
           const reflectCount = s.reflectCount + 1
@@ -579,6 +581,21 @@ export const useStore = create<State>()(
           }
         })
         void persistBrainState(persistableThreads(get().threads), get().patterns)
+
+        // Brain-assisted narrative: non-blocking, only ever narrates THIS
+        // pass's already-evidenced correlations/anomalies (never invents new
+        // ones). Guarded by ranAt so a second reflect pass started before this
+        // resolves can't stamp a stale narrative onto a newer digest.
+        const digestAtCall = get().lastDigest
+        if (digestAtCall) {
+          const prompt = buildNarrativePrompt(digestAtCall.correlations, digestAtCall.anomalies)
+          if (prompt) {
+            void askBrain(NARRATIVE_SYSTEM_PROMPT, prompt).then((narrative) => {
+              if (!narrative) return
+              set((s) => (s.lastDigest?.ranAt === digestAtCall.ranAt ? { lastDigest: { ...s.lastDigest, narrative } } : {}))
+            })
+          }
+        }
       },
 
       toggleMilestone: (id) =>
@@ -1022,7 +1039,7 @@ export const useStore = create<State>()(
         // live baseline observations so "Patronen" is never empty with data.
         const patterns = s.patterns.length ? s.patterns : baseline
 
-        const correlations = computeCorrelations(dayLogs, s.transactions, s.screenDays, s.meetingDays, deadlines)
+        const correlations = computeCorrelations(dayLogs, s.transactions, s.screenDays, s.meetingDays, deadlines, s.habits)
         const anomalies = computeAnomalies(dayLogs, s.transactions, merged)
         const nudge = buildNudge(merged, s.projects, correlations, anomalies, s.reflectCount)
 

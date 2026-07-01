@@ -8,6 +8,7 @@ import type {
   ReflectDigest,
   ScreenDay,
   MeetingDay,
+  Habit,
 } from './types'
 import { TODAY, daysBetween } from './domains'
 import { hasSleepSignal, hasEnergySignal } from './derive'
@@ -32,6 +33,7 @@ export function computeCorrelations(
   screen: ScreenDay[] = [],
   meetings: MeetingDay[] = [],
   deadlines: string[] = [],
+  habits: Habit[] = [],
 ): Correlation[] {
   const out: Correlation[] = []
 
@@ -169,8 +171,55 @@ export function computeCorrelations(
     }
   }
 
+  // 6) GEWOONTEN ↔ ENERGIE (needs energy signal + at least one habit with real completion history)
+  if (energyOk && habits.some((h) => (h.history?.length ?? 0) > 0)) {
+    const completionsByDate = new Map<string, number>()
+    for (const h of habits) for (const d of h.history ?? []) completionsByDate.set(d, (completionsByDate.get(d) ?? 0) + 1)
+    const withHabits = logs.filter((l) => (completionsByDate.get(l.date) ?? 0) > 0)
+    const withoutHabits = logs.filter((l) => (completionsByDate.get(l.date) ?? 0) === 0)
+    if (withHabits.length >= 3 && withoutHabits.length >= 3) {
+      const eWith = avg(withHabits.map((l) => l.energy))
+      const eWithout = avg(withoutHabits.map((l) => l.energy))
+      const diff = round(eWith - eWithout, 1)
+      if (diff > 0) {
+        out.push({
+          id: 'c6',
+          title: `Dagen met afgeronde gewoontes → ~${diff} punt hogere energie`,
+          detail: `Op ${withHabits.length} dagen met minstens één afgeronde gewoonte was energie gemiddeld ${round(
+            eWith,
+            1,
+          )}/5, tegenover ${round(eWithout, 1)}/5 op ${withoutHabits.length} dagen zonder.`,
+          domains: ['personal'],
+          strength: Math.min(1, diff / 2),
+          evidence: `${withHabits.length + withoutHabits.length} dagen gewoonte-historie vs energie-logs`,
+        })
+      }
+    }
+  }
+
   return out
 }
+
+/**
+ * Turns THIS pass's real correlations/anomalies into a fact block the brain
+ * can narrate — never invents anything, only ever asked to prioritize/phrase
+ * what's already here. Returns null when there's nothing evidenced yet, so
+ * callers know not to bother calling the brain.
+ */
+export function buildNarrativePrompt(correlations: Correlation[], anomalies: Anomaly[]): string | null {
+  if (!correlations.length && !anomalies.length) return null
+  const parts: string[] = []
+  if (correlations.length) {
+    parts.push(`Verbanden:\n${correlations.map((c) => `- ${c.title}: ${c.detail} (sterkte ${Math.round(c.strength * 100)}%)`).join('\n')}`)
+  }
+  if (anomalies.length) {
+    parts.push(`Afwijkingen:\n${anomalies.map((a) => `- ${a.title}: ${a.detail}`).join('\n')}`)
+  }
+  return parts.join('\n\n')
+}
+
+export const NARRATIVE_SYSTEM_PROMPT =
+  'Je bent HEYRA, het Reflect-brein van OSLIFE. Je krijgt de daadwerkelijk berekende cross-domein verbanden en afwijkingen van een nachtelijke reflectiepas (nooit verzonnen). Schrijf een kort Nederlands antwoord (max 3 zinnen) dat het belangrijkste verband of de belangrijkste afwijking benoemt en daar ÉÉN concreet, uitvoerbaar advies aan verbindt. Noem geen percentages of feiten die niet in de gegevens staan.'
 
 export function computeAnomalies(logs: DayLog[], txns: Transaction[], threads: Thread[]): Anomaly[] {
   const out: Anomaly[] = []
@@ -272,8 +321,9 @@ export function runReflect(
   screen: ScreenDay[] = [],
   meetings: MeetingDay[] = [],
   deadlines: string[] = [],
+  habits: Habit[] = [],
 ): { digest: ReflectDigest; patterns: Pattern[] } {
-  const correlations = computeCorrelations(logs, txns, screen, meetings, deadlines)
+  const correlations = computeCorrelations(logs, txns, screen, meetings, deadlines, habits)
   const anomalies = computeAnomalies(logs, txns, threads)
   // Everything that carries signal this pass: live baseline observations + the
   // cross-domain correlations just found.
