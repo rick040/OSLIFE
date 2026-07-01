@@ -19,16 +19,20 @@ export default function Capture() {
   const [stage, setStage] = useState<0 | 1 | 2 | 3>(0)
   const [last, setLast] = useState<StructuredItem | null>(null)
 
-  function submit() {
+  async function submit() {
     const clean = text.trim()
     if (!clean) return
-    const item = store.capture(clean, source)
-    setLast(item)
     setText('')
-    // animate the pipeline: intake -> understand -> remember
+    // Show INTAKE immediately with a provisional item (only .text matters for
+    // that stage) — classify() is now brain-first and can take a second or
+    // two, and the whole point of this screen is to reveal each stage as it
+    // actually happens, not all at once once the promise resolves.
+    setLast({ id: crypto.randomUUID(), text: clean, source, createdAt: new Date().toISOString(), domain: 'personal', kind: 'note', sentiment: 'neutral', summary: clean })
     setStage(1)
-    setTimeout(() => setStage(2), 450)
-    setTimeout(() => setStage(3), 950)
+    const item = await store.capture(clean, source)
+    setLast(item)
+    setTimeout(() => setStage(2), 300)
+    setTimeout(() => setStage(3), 800)
   }
 
   const recent = store.items.slice(0, 8)

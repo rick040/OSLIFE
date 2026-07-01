@@ -6,6 +6,7 @@
 // existing-client decision is made in code (askBrain can't invent a client).
 
 import { askBrain } from '../brainClient'
+import { parseBrainJson } from '../brainJson'
 import type { Agent } from './types'
 import type { ClientIntakeDraft } from '../cards'
 import type { Channel } from '../../types'
@@ -69,18 +70,6 @@ function fallbackExtraction(input: string): ClientIntakeDraft {
   }
 }
 
-/** Pulls the first fenced ```json block (or the whole reply) and parses it. Returns null on any malformed output — callers fall back to the rule-based draft. */
-function parseExtraction(raw: string): Record<string, unknown> | null {
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)
-  const candidate = fenced ? fenced[1] : raw
-  try {
-    const parsed = JSON.parse(candidate.trim())
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null
-  } catch {
-    return null
-  }
-}
-
 function asStringArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.trim().length > 0) : []
 }
@@ -103,7 +92,7 @@ Antwoord ALLEEN met een fenced \`\`\`json blok, geen andere tekst, exact dit sch
   let draft: ClientIntakeDraft | null = null
 
   if (guess) {
-    const parsed = parseExtraction(guess)
+    const parsed = parseBrainJson(guess)
     const reply = parsed && typeof parsed.reply === 'string' ? parsed.reply.trim() : ''
     if (reply) {
       const claimedExisting = typeof parsed!.looksLikeExistingClient === 'string' ? parsed!.looksLikeExistingClient.trim().toLowerCase() : null
