@@ -26,6 +26,7 @@ import type {
   ActivityEntry,
   Message,
   Channel,
+  NotificationPrefs,
 } from '../types'
 import { TODAY } from '../domains'
 
@@ -398,6 +399,59 @@ export async function upsertCheckin(c: Checkin): Promise<boolean> {
     { onConflict: 'user_id,date' },
   )
   warnWrite('daily_checkin', error)
+  return !error
+}
+
+// ── Notification prefs (Telegram) ───────────────────────────────────────────
+// telegram_chat_id / telegram_username / linked_at are written exclusively by
+// the telegram-webhook Edge Function when /start is received — the frontend
+// only ever reads them and writes the toggles/times.
+
+export async function fetchNotificationPrefs(): Promise<NotificationPrefs | null> {
+  const { data } = await supabase
+    .from('notification_prefs')
+    .select(
+      'telegram_chat_id,telegram_username,linked_at,morning_briefing,evening_checkin,habit_reminders,urgent_alerts,morning_time,evening_time,habit_time,quiet_hours_start,quiet_hours_end',
+    )
+    .maybeSingle()
+  if (!data) return null
+  return {
+    telegramChatId: (data.telegram_chat_id as number) ?? null,
+    telegramUsername: (data.telegram_username as string) ?? null,
+    linkedAt: (data.linked_at as string) ?? null,
+    morningBriefing: (data.morning_briefing as boolean) ?? true,
+    eveningCheckin: (data.evening_checkin as boolean) ?? true,
+    habitReminders: (data.habit_reminders as boolean) ?? true,
+    urgentAlerts: (data.urgent_alerts as boolean) ?? true,
+    morningTime: (data.morning_time as string)?.slice(0, 5) ?? '07:30',
+    eveningTime: (data.evening_time as string)?.slice(0, 5) ?? '20:00',
+    habitTime: (data.habit_time as string)?.slice(0, 5) ?? '21:00',
+    quietHoursStart: (data.quiet_hours_start as string)?.slice(0, 5) ?? null,
+    quietHoursEnd: (data.quiet_hours_end as string)?.slice(0, 5) ?? null,
+  }
+}
+
+/** Frontend only ever writes toggles/times; see comment above. */
+export async function upsertNotificationPrefs(p: Partial<NotificationPrefs>): Promise<boolean> {
+  const user_id = await currentUserId()
+  if (!user_id) return false
+  const { error } = await supabase.from('notification_prefs').upsert(
+    {
+      user_id,
+      ...(p.morningBriefing !== undefined && { morning_briefing: p.morningBriefing }),
+      ...(p.eveningCheckin !== undefined && { evening_checkin: p.eveningCheckin }),
+      ...(p.habitReminders !== undefined && { habit_reminders: p.habitReminders }),
+      ...(p.urgentAlerts !== undefined && { urgent_alerts: p.urgentAlerts }),
+      ...(p.morningTime !== undefined && { morning_time: p.morningTime }),
+      ...(p.eveningTime !== undefined && { evening_time: p.eveningTime }),
+      ...(p.habitTime !== undefined && { habit_time: p.habitTime }),
+      ...(p.quietHoursStart !== undefined && { quiet_hours_start: p.quietHoursStart }),
+      ...(p.quietHoursEnd !== undefined && { quiet_hours_end: p.quietHoursEnd }),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id' },
+  )
+  warnWrite('notification_prefs', error)
   return !error
 }
 
