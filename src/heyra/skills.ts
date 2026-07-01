@@ -34,10 +34,12 @@ const TASK_TRIGGERS = [
   'regel ', 'fix ', 'afmaken', 'afronden', 'betalen', 'factuur sturen',
 ]
 
-// Phrases that ask for the status of a specific project/client.
+// Phrases that ask for the status of a specific project — deliberately narrow:
+// bare words like "project " or "klant " matched almost any sentence that
+// mentioned a client, stealing intent from task/search.
 const PROJECT_TRIGGERS = [
   'status van project', 'hoe staat het met', 'voortgang van project', 'project status',
-  'over project', 'voor project', 'welk project', 'project ', 'klant ',
+  'over project', 'voor project', 'welk project',
 ]
 
 // Phrases that ask for numbers over time — a chart answers better than prose.
@@ -81,11 +83,14 @@ export function detectSkill(text: string): SkillDetection {
     trigger: r.best,
   })
 
+  // Order doubles as the tie-break: an explicit "zoek …" should win over a
+  // softer project-status guess, but an explicit task trigger still wins over
+  // both (e.g. "herinner me te zoeken naar X" is a task, not a search).
   const candidates: SkillDetection[] = [
     toDetection('task', scoreTriggers(t, TASK_TRIGGERS)),
+    toDetection('search', scoreTriggers(t, SEARCH_TRIGGERS)),
     toDetection('project', scoreTriggers(t, PROJECT_TRIGGERS)),
     toDetection('chart', scoreTriggers(t, CHART_TRIGGERS)),
-    toDetection('search', scoreTriggers(t, SEARCH_TRIGGERS)),
   ]
 
   const best = candidates.reduce((a, b) => (b.score > a.score ? b : a))
