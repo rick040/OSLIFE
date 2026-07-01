@@ -1,11 +1,16 @@
 // ── HEYRA agent · Geheugen (default) ──────────────────────────────────────────
 // Everything that isn't a task/project/chart/search/finance/signal/briefing
-// falls here — the same open-loops query, task/vent confirmations and generic
-// domain reply that used to live inline in Heyra.tsx#answer(). No brain call:
-// these are cheap confirmations of what was just captured, not questions that
-// benefit from synthesis.
+// falls here. Open-loop queries and task/vent confirmations stay rule-based —
+// they're cheap confirmations of what was just captured. But a genuine
+// open-ended question ("hoe ziet mijn week eruit?") used to fall through to a
+// generic "genoteerd, geclassificeerd..." line with no real answer. That's the
+// gap: this now tries a brain-grounded answer first, built from a real memory
+// snapshot (heyra/agents/memoryContext.ts), and only falls back to the old
+// classification confirmation if the brain is unavailable.
 
 import { DOMAIN_META, TODAY, daysBetween } from '../../domains'
+import { buildMemorySnapshot, MEMORY_SYSTEM_PROMPT } from './memoryContext'
+import { askBrain } from '../brainClient'
 import type { Agent } from './types'
 
 export const runChatAgent: Agent = async (input, ctx) => {
@@ -42,8 +47,15 @@ export const runChatAgent: Agent = async (input, ctx) => {
     }
   }
 
-  return {
-    text: `Genoteerd, geclassificeerd in ${DOMAIN_META[item.domain].label} als ${item.kind} en aan het geheugen toegevoegd. Je hebt daar ${inDomain.length} andere open loop(s).`,
-    topic: 'domain',
-  }
+  const fallbackText = `Genoteerd, geclassificeerd in ${DOMAIN_META[item.domain].label} als ${item.kind} en aan het geheugen toegevoegd. Je hebt daar ${inDomain.length} andere open loop(s).`
+
+  // A real question ("hoe ziet mijn week eruit?") deserves a real answer, not
+  // just a confirmation that it was filed away. Ground the brain in an actual
+  // memory snapshot; a plain statement/note still gets a useful answer back
+  // since the snapshot is always there, and the honesty rule in the system
+  // prompt keeps it from inventing anything the snapshot doesn't cover.
+  const snapshot = buildMemorySnapshot(store)
+  const brainText = await askBrain(MEMORY_SYSTEM_PROMPT, `Momentopname van het geheugen:\n${snapshot}\n\nVraag: "${input}"`, { maxTokens: 220 })
+
+  return { text: brainText ?? fallbackText, topic: 'domain', fromBrain: !!brainText }
 }
