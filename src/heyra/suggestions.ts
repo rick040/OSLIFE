@@ -1,0 +1,209 @@
+// ── HEYRA · dynamic suggestions ───────────────────────────────────────────────
+// Two jobs:
+//  1. contextualSuggestions() — the chips shown before you've said anything,
+//     built from what's actually true in your memory today (a project deadline,
+//     an overdue loop, a payment due, an unread important email, ...).
+//  2. followUpSuggestions() — after HEYRA answers, chips for a natural next
+//     question, based on the topic of what you just asked.
+// Both are plain rule-based scoring over live store data — same philosophy as
+// understand.ts: transparent and instant, swappable for an LLM later.
+
+import type {
+  Project,
+  Thread,
+  Payment,
+  EmailItem,
+  Habit,
+  DogReminder,
+  Client,
+  Checkin,
+  Goal,
+  Milestone,
+  Domain,
+} from '../types'
+import { DOMAIN_META, TODAY, fmtDate, daysBetween } from '../domains'
+
+export type Topic = 'open-loops' | 'energy' | 'money' | 'task-note' | 'task-draft' | 'vent' | 'domain' | 'generic'
+
+/** The slice of store state suggestions read from. Store satisfies this shape. */
+export interface HeyraContext {
+  projects: Project[]
+  threads: Thread[]
+  payments: Payment[]
+  emails: EmailItem[]
+  habits: Habit[]
+  dogReminders: DogReminder[]
+  clients: Client[]
+  checkins: Checkin[]
+  goals: Goal[]
+  milestones: Milestone[]
+}
+
+interface Candidate {
+  text: string
+  score: number
+}
+
+function push(list: Candidate[], text: string, score: number) {
+  if (!list.some((c) => c.text === text)) list.push({ text, score })
+}
+
+/** Suggestions shown before the conversation starts, sourced from live data. */
+export function contextualSuggestions(ctx: HeyraContext): string[] {
+  const c: Candidate[] = []
+
+  // 1. Project deadlines today / very soon — the highest-signal prompt.
+  const liveProjects = ctx.projects.filter((p) => p.status !== 'done' && p.deadline)
+  for (const p of liveProjects) {
+    const dd = daysBetween(TODAY, p.deadline!)
+    if (dd < 0) continue // overdue projects surface as loops below
+    if (dd === 0) push(c, `Wat moet er nog gedaan worden voor ${p.name} (deadline vandaag)?`, 100)
+    else if (dd <= 2) push(c, `Wat moet er nog gedaan worden voor ${p.name} (deadline ${fmtDate(p.deadline)})?`, 90 - dd)
+  }
+
+  // 2. Overdue open loops (captured tasks, or project/lead loops past due).
+  const overdue = ctx.threads
+    .filter((t) => t.status === 'open' && t.due && daysBetween(t.due, TODAY) > 0)
+    .sort((a, b) => daysBetween(b.due!, TODAY) - daysBetween(a.due!, TODAY))
+  if (overdue.length) {
+    const t = overdue[0]
+    push(c, `"${t.title}" staat al ${daysBetween(t.due!, TODAY)}d te laat — wat nu?`, 95)
+  }
+
+  // 3. Blocked projects.
+  const blocked = ctx.projects.filter((p) => p.status === 'blocked')
+  if (blocked.length) {
+    push(c, blocked.length === 1
+      ? `Waarom staat ${blocked[0].name} geblokkeerd?`
+      : `Welke ${blocked.length} projecten staan geblokkeerd?`, 80)
+  }
+
+  // 4. Payments due soon / overdue.
+  const openPayments = ctx.payments.filter((p) => p.status === 'open' && p.due)
+  const outgoing = openPayments
+    .filter((p) => p.direction === 'outgoing')
+    .sort((a, b) => a.due!.localeCompare(b.due!))
+  if (outgoing.length) {
+    const soon = outgoing.filter((p) => daysBetween(TODAY, p.due!) <= 3)
+    if (soon.length === 1) push(c, `Moet ik ${soon[0].payee} nog betalen (€${soon[0].amount})?`, 85)
+    else if (soon.length > 1) push(c, `Welke betalingen moet ik deze week nog doen?`, 82)
+  }
+  const incoming = openPayments.filter((p) => p.direction === 'incoming' && daysBetween(p.due!, TODAY) > 0)
+  if (incoming.length) push(c, `Wie moet mij nog betalen?`, 70)
+
+  // 5. Unread, flagged-important email.
+  const importantUnread = ctx.emails.filter((e) => e.unread && e.important)
+  if (importantUnread.length) {
+    push(c, importantUnread.length === 1
+      ? `Wat staat er in de mail van ${importantUnread[0].from}?`
+      : `Wat staat er in mijn inbox dat aandacht nodig heeft?`, 75)
+  }
+
+  // 6. High-potential leads worth a follow-up.
+  const hotLeads = ctx.clients.filter((cl) => (cl.clientStatus === 'Lead' || cl.clientStatus === 'Prospect') && cl.potentie === 'Hoog')
+  if (hotLeads.length) push(c, `Moet ik ${hotLeads[0].name} nog opvolgen?`, 65)
+
+  // 7. Habits not done today.
+  const openHabits = ctx.habits.filter((h) => !h.doneToday)
+  if (openHabits.length >= 2) push(c, `Welke gewoontes moet ik vandaag nog afronden?`, 55)
+
+  // 8. Dog reminders due soon.
+  const dueReminders = ctx.dogReminders.filter((r) => !r.done && daysBetween(TODAY, r.due) <= 3)
+  if (dueReminders.length) push(c, `Wat moet ik nog regelen voor Kyra (${dueReminders[0].title})?`, 60)
+
+  // 9. Goals / milestones due soon.
+  const dueMilestones = ctx.milestones.filter((m) => !m.done && m.due && daysBetween(TODAY, m.due) >= 0 && daysBetween(TODAY, m.due) <= 7)
+  if (dueMilestones.length) {
+    const g = ctx.goals.find((x) => x.id === dueMilestones[0].goalId)
+    push(c, `Hoe dicht zit ik bij ${g ? g.title : 'die mijlpaal'} (${dueMilestones[0].title})?`, 58)
+  }
+
+  // 10. Low felt energy from today's check-in.
+  const today = ctx.checkins.find((k) => k.date === TODAY)
+  if (today && today.energy <= 2) push(c, `Waarom voel ik me vandaag zo moe?`, 62)
+
+  // Fallbacks so the bar is never empty on a quiet day.
+  push(c, 'Wat staat er nog open bij klanten?', 10)
+  push(c, 'Hoe staat het met mijn Noordster-doelen?', 8)
+
+  return c
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4)
+    .map((x) => x.text)
+}
+
+// ── follow-ups ────────────────────────────────────────────────────────────────
+
+function domainOpenCount(ctx: HeyraContext, domain: Domain): number {
+  return ctx.threads.filter((t) => t.status === 'open' && t.domain === domain).length
+}
+
+/** Suggested next questions, based on the topic of the exchange that just happened. */
+export function followUpSuggestions(
+  topic: Topic,
+  ctx: HeyraContext,
+  extra?: { domain?: Domain; title?: string },
+): string[] {
+  const c: Candidate[] = []
+
+  switch (topic) {
+    case 'open-loops': {
+      const overdue = ctx.threads.filter((t) => t.status === 'open' && t.due && daysBetween(t.due, TODAY) > 0)
+      if (overdue.length) push(c, `Welke loop staat het langst open?`, 90)
+      const byDomain = new Map<Domain, number>()
+      for (const t of ctx.threads.filter((t) => t.status === 'open')) {
+        byDomain.set(t.domain, (byDomain.get(t.domain) ?? 0) + 1)
+      }
+      const top = [...byDomain.entries()].sort((a, b) => b[1] - a[1])[0]
+      if (top) push(c, `Wat staat er open bij ${DOMAIN_META[top[0]].label}?`, 80)
+      push(c, `Herinner me aan de belangrijkste loop`, 60)
+      break
+    }
+    case 'money': {
+      push(c, `Welke facturen zijn nog niet betaald?`, 90)
+      push(c, `Hoeveel heb ik deze maand uitgegeven?`, 75)
+      const incoming = ctx.payments.filter((p) => p.status === 'open' && p.direction === 'incoming')
+      if (incoming.length) push(c, `Wie moet mij nog betalen?`, 70)
+      break
+    }
+    case 'energy': {
+      push(c, `Hoe was mijn slaap deze week?`, 85)
+      push(c, `Wat kan ik vandaag beter plannen?`, 70)
+      break
+    }
+    case 'vent': {
+      const domain = extra?.domain
+      if (domain) push(c, `Wat staat er nog meer open bij ${DOMAIN_META[domain].label}?`, 85)
+      push(c, `Zie je hier een patroon in?`, 65)
+      break
+    }
+    case 'task-draft': {
+      const domain = extra?.domain
+      if (domain) push(c, `Wat staat er nog meer open bij ${DOMAIN_META[domain].label}?`, 85)
+      push(c, `Nog een taak toevoegen`, 70)
+      push(c, `Wat is mijn eerstvolgende deadline?`, 60)
+      break
+    }
+    case 'task-note': {
+      push(c, `Wat staat er nog meer open?`, 80)
+      push(c, `Zet er ook een deadline op`, 65)
+      break
+    }
+    case 'domain':
+    default: {
+      const domain = extra?.domain
+      if (domain) {
+        const n = domainOpenCount(ctx, domain)
+        if (n > 0) push(c, `Wat staat er nog open bij ${DOMAIN_META[domain].label}?`, 80)
+        push(c, `Hoe gaat het over het algemeen met ${DOMAIN_META[domain].label}?`, 60)
+      }
+      push(c, `Wat staat er nog open bij klanten?`, 40)
+      break
+    }
+  }
+
+  return c
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map((x) => x.text)
+}
