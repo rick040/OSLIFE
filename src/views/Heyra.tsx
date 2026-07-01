@@ -1,16 +1,16 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useStore } from '../store'
-import { DOMAIN_META, TODAY, fmtDate, daysBetween } from '../domains'
-import { DomainChip, SentimentChip, KindChip } from '../components/ui'
-import type { StructuredItem, TaskDraft } from '../types'
-import { detectSkill, parseTaskDraft, SKILLS, type SkillId } from '../heyra/skills'
+import { detectSkill, SKILLS, type AgentId } from '../heyra/skills'
 import { contextualSuggestions, followUpSuggestions, type Topic } from '../heyra/suggestions'
-import { buildSearchCard, buildChartCard, findProject, type SearchCardData, type ChartCardData } from '../heyra/cards'
+import { routeMessage } from '../heyra/router'
+import { emptyMemory, remember, type ConversationMemory } from '../heyra/memory'
+import type { SearchCardData, ChartCardData } from '../heyra/cards'
+import { DomainChip, SentimentChip, KindChip } from '../components/ui'
+import type { StructuredItem, TaskDraft, Project } from '../types'
 import TaskCard from '../components/TaskCard'
 import SearchResultCard from '../components/SearchResultCard'
 import DataVizCard from '../components/DataVizCard'
 import ProjectCard from '../components/ProjectCard'
-import type { Project } from '../types'
 import { Send, Sparkles, Database, Mic, MicOff, Wand2, Lightbulb } from 'lucide-react'
 
 interface Msg {
@@ -18,7 +18,7 @@ interface Msg {
   role: 'rick' | 'heyra'
   text: string
   classified?: StructuredItem
-  skill?: SkillId
+  skill?: AgentId
   trigger?: string | null
   draft?: TaskDraft
   taskAdded?: boolean
@@ -36,6 +36,7 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
   const [input, setInput] = useState('')
   const [listening, setListening] = useState(false)
   const recRef = useRef<SpeechRec | null>(null)
+  const memoryRef = useRef<ConversationMemory>(emptyMemory())
   const [msgs, setMsgs] = useState<Msg[]>([
     {
       id: 'm0',
@@ -92,169 +93,49 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
     rec.start()
   }
 
-  function answer(item: StructuredItem): { text: string; topic: Topic } {
-    const t = item.text.toLowerCase()
-    const open = store.threads.filter((x) => x.status === 'open')
-    const inDomain = open.filter((x) => x.domain === item.domain)
-
-    if (/open|owe|loop|todo|to do|klant|staat/.test(t)) {
-      const sorted = open
-        .slice()
-        .sort((a, b) => (a.due ? daysBetween(TODAY, a.due) : 999) - (b.due ? daysBetween(TODAY, b.due) : 999))
-      const top = sorted
-        .slice(0, 3)
-        .map((x) => `• ${x.title} (${DOMAIN_META[x.domain].label}${x.due ? `, due ${x.due.slice(5)}` : ''})`)
-        .join('\n')
-      return {
-        text: open.length
-          ? `Je hebt ${open.length} open loops over alle domeinen. De meest urgente:\n${top}`
-          : `Geen open loops — alles gesloten. 🎉`,
-        topic: 'open-loops',
-      }
-    }
-    if (/moe|slaap|energie|uitgeput|tired/.test(t)) {
-      const last = store.dayLogs[store.dayLogs.length - 1]
-      return {
-        text: last
-          ? `Je sliep ${last.sleepHours}u en energie ${last.energy}/5. Je versterkte patroon: onder 6u zakt je energie ~50%. Ik hou je 09:30 deep-work blok beschermd en schuif admin naar de middag.`
-          : `Ik heb nog geen slaap-/energiedata om op te reflecteren.`,
-        topic: 'energy',
-      }
-    }
-    if (/factuur|betaald|van dijk|geld|uitgaven|betalen/.test(t)) {
-      const openPayments = store.payments.filter((p) => p.status === 'open').sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'))
-      const outgoing = openPayments.filter((p) => p.direction === 'outgoing')
-      const incoming = openPayments.filter((p) => p.direction === 'incoming')
-      if (!outgoing.length && !incoming.length) {
-        return { text: `Geen openstaande betalingen — alles is afgehandeld.`, topic: 'money' }
-      }
-      const lines: string[] = []
-      if (outgoing.length) {
-        const top = outgoing.slice(0, 3).map((p) => `• ${p.payee} · €${p.amount}${p.due ? ` · ${fmtDate(p.due)}` : ''}`).join('\n')
-        lines.push(`${outgoing.length} te betalen:\n${top}`)
-      }
-      if (incoming.length) {
-        const total = incoming.reduce((a, p) => a + p.amount, 0)
-        lines.push(`${incoming.length} nog te ontvangen, samen €${total}.`)
-      }
-      return { text: lines.join('\n\n'), topic: 'money' }
-    }
-    if (item.kind === 'task') {
-      return {
-        text: `Opgeslagen als taak in ${DOMAIN_META[item.domain].label} en een loop geopend zodat het niet verloren gaat. Ik laat het zien in Today en de Day Builder.`,
-        topic: 'task-note',
-      }
-    }
-    if (item.sentiment === 'stressed' || item.kind === 'vent') {
-      return {
-        text: `Vent gelogd onder ${DOMAIN_META[item.domain].label}. Je hebt ${inDomain.length} open ${DOMAIN_META[item.domain].label} loop(s), dat is waarschijnlijk deel van de last. Ik kijk of dit samenvalt met je uitgaven-patroon.`,
-        topic: 'vent',
-      }
-    }
-    return {
-      text: `Genoteerd, geclassificeerd in ${DOMAIN_META[item.domain].label} als ${item.kind} en aan het geheugen toegevoegd. Je hebt daar ${inDomain.length} andere open loop(s).`,
-      topic: 'domain',
-    }
-  }
-
   function addTaskFromCard(msgId: string, draft: TaskDraft) {
     store.addTask(draft)
     setMsgs((m) => m.map((x) => (x.id === msgId ? { ...x, draft, taskAdded: true } : x)))
   }
 
-  function send(text: string) {
+  async function send(text: string) {
     const clean = text.trim()
     if (!clean) return
     setInput('')
 
-    const detection = detectSkill(clean)
-
-    if (detection.skill === 'task') {
-      // Function switch → Taakmaker. Still log the raw thought to memory, but
-      // don't auto-open a loop — the card's "Toevoegen" button does that.
-      const item = store.capture(clean, 'chat', { openThread: false })
-      const draft = parseTaskDraft(clean)
-      setMsgs((m) => [...m, { id: 'r' + item.id, role: 'rick', text: clean, classified: item }])
-      setTimeout(() => {
-        setMsgs((m) => [
-          ...m,
-          {
-            id: 'h' + item.id,
-            role: 'heyra',
-            text: 'Ik heb dit als taak begrepen. Kijk de kaart na, pas aan waar nodig, en zet ’m in je taken of in Google Agenda.',
-            skill: 'task',
-            trigger: detection.trigger,
-            draft,
-            topic: 'task-draft',
-          },
-        ])
-        setSuggestions(followUpSuggestions('task-draft', store, { domain: draft.domain }))
-      }, 400)
-      return
-    }
-
-    if (detection.skill === 'project') {
-      const project = findProject(clean, store)
-      if (project) {
-        const item = store.capture(clean, 'chat', { openThread: false })
-        setMsgs((m) => [...m, { id: 'r' + item.id, role: 'rick', text: clean, classified: item }])
-        setTimeout(() => {
-          setMsgs((m) => [
-            ...m,
-            { id: 'h' + item.id, role: 'heyra', text: `${project.name} bij ${project.client}:`, skill: 'project', trigger: detection.trigger, project, topic: 'domain' },
-          ])
-          setSuggestions(followUpSuggestions('domain', store, { domain: project.domain }))
-        }, 400)
-        return
-      }
-      // no matching project found → fall through to the default memory answer
-    }
-
-    if (detection.skill === 'chart') {
-      const item = store.capture(clean, 'chat', { openThread: false })
-      const chart = buildChartCard(clean, store)
-      setMsgs((m) => [...m, { id: 'r' + item.id, role: 'rick', text: clean, classified: item }])
-      setTimeout(() => {
-        setMsgs((m) => [
-          ...m,
-          { id: 'h' + item.id, role: 'heyra', text: 'Hier is het overzicht:', skill: 'chart', trigger: detection.trigger, chart, topic: 'domain' },
-        ])
-        setSuggestions(followUpSuggestions('domain', store, { domain: item.domain }))
-      }, 400)
-      return
-    }
-
-    if (detection.skill === 'search') {
-      const item = store.capture(clean, 'chat', { openThread: false })
-      const search = buildSearchCard(clean, store)
-      setMsgs((m) => [...m, { id: 'r' + item.id, role: 'rick', text: clean, classified: item }])
-      setTimeout(() => {
-        setMsgs((m) => [
-          ...m,
-          {
-            id: 'h' + item.id,
-            role: 'heyra',
-            text: search.results.length
-              ? `Ik vond ${search.results.length} match${search.results.length === 1 ? '' : 'es'} in je geheugen.`
-              : 'Ik heb je geheugen doorzocht, maar vond niks bij deze zoekopdracht.',
-            skill: 'search',
-            trigger: detection.trigger,
-            search,
-            topic: 'domain',
-          },
-        ])
-        setSuggestions(followUpSuggestions('domain', store, { domain: item.domain }))
-      }, 400)
-      return
-    }
-
-    // Default → answer from memory.
-    const item = store.capture(clean, 'chat')
+    // task/project/chart/search capture the raw thought without opening a loop —
+    // only the default "chat" bucket (which finance/signal/briefing fall under
+    // too) opens one, exactly as before.
+    const openThread = detectSkill(clean).skill === 'chat'
+    const item = store.capture(clean, 'chat', { openThread })
     setMsgs((m) => [...m, { id: 'r' + item.id, role: 'rick', text: clean, classified: item }])
+    memoryRef.current = remember(memoryRef.current, { role: 'rick', text: clean })
+
+    const { agent, trigger, result } = await routeMessage(clean, { store, memory: memoryRef.current, item })
+
+    memoryRef.current = remember(memoryRef.current, { role: 'heyra', text: result.text }, {
+      topic: result.topic,
+      domain: item.domain,
+      entity: result.entity,
+    })
+
     setTimeout(() => {
-      const { text: replyText, topic } = answer(item)
-      setMsgs((m) => [...m, { id: 'h' + item.id, role: 'heyra', text: replyText, topic }])
-      setSuggestions(followUpSuggestions(topic, store, { domain: item.domain }))
+      setMsgs((m) => [
+        ...m,
+        {
+          id: 'h' + item.id,
+          role: 'heyra',
+          text: result.text,
+          skill: agent === 'chat' ? undefined : agent,
+          trigger,
+          draft: result.draft,
+          search: result.search,
+          chart: result.chart,
+          project: result.project,
+          topic: result.topic,
+        },
+      ])
+      setSuggestions(followUpSuggestions(result.topic, store, { domain: item.domain }))
     }, 400)
   }
 
@@ -270,7 +151,7 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
         {msgs.map((m) => (
           <div key={m.id} className={`flex ${m.role === 'rick' ? 'justify-end' : 'justify-start'}`}>
             <div className={`max-w-[85%] ${m.role === 'rick' ? 'order-2' : ''}`}>
-              {m.skill && m.skill !== 'chat' && (
+              {m.skill && (
                 <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-prjct-deep animate-fade-up">
                   <span className="inline-flex items-center gap-1 rounded-full bg-prjct/12 px-2 py-0.5 font-medium">
                     <Wand2 className="h-3 w-3" /> Functie gewisseld → {SKILLS[m.skill].label}
@@ -355,7 +236,7 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
       <form
         onSubmit={(e) => {
           e.preventDefault()
-          send(input)
+          void send(input)
         }}
         className="mt-3 flex gap-2"
       >

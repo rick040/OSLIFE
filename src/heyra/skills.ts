@@ -11,17 +11,25 @@ import { parseWhen } from './datetime'
 
 export type SkillId = 'task' | 'project' | 'chart' | 'search' | 'chat'
 
+// Agent ids the router (heyra/router.ts) can dispatch to — a superset of the
+// rule-based SkillId pre-filter above, plus the brain-assisted agents that
+// live under heyra/agents/ (financeAgent, signalAgent, briefingAgent).
+export type AgentId = SkillId | 'finance' | 'signal' | 'briefing'
+
 export interface SkillMeta {
-  id: SkillId
+  id: AgentId
   label: string // shown in the "function switched" banner
   blurb: string // one-line description of what the skill does
 }
 
-export const SKILLS: Record<SkillId, SkillMeta> = {
+export const SKILLS: Record<AgentId, SkillMeta> = {
   task: { id: 'task', label: 'Taakmaker', blurb: 'Zet je gedachte om in een taak met deadline' },
   project: { id: 'project', label: 'Projectkaart', blurb: 'Laat de status van een project zien' },
   chart: { id: 'chart', label: 'Visualisatie', blurb: 'Zet cijfers uit je geheugen om in een grafiek' },
   search: { id: 'search', label: 'Zoeken', blurb: 'Doorzoekt je ene geheugen op een steekwoord' },
+  finance: { id: 'finance', label: 'Financiën', blurb: 'Beantwoordt geld-vragen uit je facturen en transacties' },
+  signal: { id: 'signal', label: 'Signalen', blurb: 'Legt patronen en verbanden uit je Reflect-brein uit' },
+  briefing: { id: 'briefing', label: 'Briefing', blurb: 'Vat je dag samen uit nudge, loops en patronen' },
   chat: { id: 'chat', label: 'Geheugen', blurb: 'Antwoordt uit je ene geheugen' },
 }
 

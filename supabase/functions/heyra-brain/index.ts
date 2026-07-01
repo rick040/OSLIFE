@@ -1,0 +1,100 @@
+/**
+ * Supabase Edge Function: heyra-brain
+ * ------------------------------------
+ * Thin proxy to the Anthropic Messages API so the OSLIFE frontend never ships
+ * an LLM API key. Every HEYRA agent (src/heyra/agents/*.ts) builds its own
+ * grounded prompt from real store data client-side and calls this function via
+ * `supabase.functions.invoke('heyra-brain', { body })` (src/heyra/brainClient.ts).
+ * This function does no business logic — it only forwards { system, prompt }
+ * to Claude and returns the reply text, so the "only narrate what you're given"
+ * honesty rule from reflect.ts stays enforced by the caller, not the proxy.
+ *
+ * Request body:
+ *   { "system": "<agent system prompt>", "prompt": "<grounded user prompt>", "maxTokens"?: number }
+ *
+ * Response: { "text": "<reply>" } or { "error": "<message>" }
+ *
+ * Deploy:
+ *   supabase functions deploy heyra-brain --project-ref nhyunnnmdcmojvkxrbpl
+ * Secrets required: ANTHROPIC_API_KEY.
+ */
+
+const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_VERSION = "2023-06-01";
+const MODEL = "claude-sonnet-5-20250929";
+const DEFAULT_MAX_TOKENS = 700;
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
+};
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...CORS },
+  });
+}
+
+interface BrainRequest {
+  system?: string;
+  prompt?: string;
+  maxTokens?: number;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+
+  // verify_jwt is enabled at the gateway — the app forwards the session token
+  // via functions.invoke, so a valid Authorization header is already required.
+  const auth = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!auth) return json({ error: "Unauthorized" }, 401);
+
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  if (!apiKey) return json({ error: "ANTHROPIC_API_KEY secret is not set" }, 503);
+
+  let body: BrainRequest;
+  try {
+    body = await req.json();
+  } catch {
+    return json({ error: "Invalid JSON" }, 400);
+  }
+
+  const { system, prompt, maxTokens } = body;
+  if (!prompt || typeof prompt !== "string") {
+    return json({ error: "prompt is required" }, 400);
+  }
+
+  try {
+    const res = await fetch(ANTHROPIC_API, {
+      method: "POST",
+      headers: {
+        "x-api-key": apiKey,
+        "anthropic-version": ANTHROPIC_VERSION,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: Math.min(Math.max(maxTokens ?? DEFAULT_MAX_TOKENS, 64), 2000),
+        system: typeof system === "string" && system.trim() ? system : undefined,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+
+    if (!res.ok) {
+      const detail = await res.text();
+      return json({ error: `Anthropic ${res.status}: ${detail}` }, 502);
+    }
+
+    const data = await res.json();
+    const text = Array.isArray(data.content)
+      ? data.content.filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("\n").trim()
+      : "";
+
+    if (!text) return json({ error: "Empty response from model" }, 502);
+    return json({ text });
+  } catch (err) {
+    return json({ error: `Anthropic call failed: ${String(err)}` }, 502);
+  }
+});

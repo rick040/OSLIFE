@@ -449,4 +449,6 @@ export interface ReflectDigest {
   anomalies: Anomaly[]
   reinforced: { patternId: string; from: number; to: number }[]
   decayed: { patternId: string; from: number; to: number }[]
+  /** Brain-synthesized prescriptive summary of THIS pass's correlations/anomalies — filled in async after the digest itself, never blocks the UI. Undefined until the brain call resolves (or is unavailable). */
+  narrative?: string
 }
