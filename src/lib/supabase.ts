@@ -477,6 +477,7 @@ export async function fetchEmails(): Promise<EmailItem[]> {
     unread: !(r.read as boolean),
     important: (r.importance as string) === 'high',
     domain: inferEmailDomain((r.labels as string[]) ?? []),
+    labels: (r.labels as string[]) ?? [],
   }))
 }
 

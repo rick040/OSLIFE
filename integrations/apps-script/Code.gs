@@ -112,7 +112,14 @@ function backoffMs_(attempt) {
  * Fails fast on 4xx (bad request won't fix itself).
  * rows: array of objects. conflict: comma-separated cols for on_conflict.
  */
-function supabaseUpsert(table, rows, conflict) {
+/**
+ * @param {boolean} [ignoreDuplicates] When true, rows that already exist (by
+ *   `conflict`) are left untouched instead of overwritten. Use this for tables
+ *   the native CRM lets the user edit (projects, clients) so a Notion re-sync
+ *   never clobbers an in-app edit — it only inserts pages Supabase doesn't
+ *   have yet.
+ */
+function supabaseUpsert(table, rows, conflict, ignoreDuplicates) {
   if (!rows.length) {
     log('supabaseUpsert(' + table + '): 0 rows — skipping');
     return;
@@ -128,6 +135,7 @@ function supabaseUpsert(table, rows, conflict) {
 
   log('supabaseUpsert(' + table + '): sending ' + withUser.length + ' rows');
 
+  var resolution = ignoreDuplicates ? 'ignore-duplicates' : 'merge-duplicates';
   var maxAttempts = 4;
   for (var attempt = 1; attempt <= maxAttempts; attempt++) {
     var res = null;
@@ -138,7 +146,7 @@ function supabaseUpsert(table, rows, conflict) {
         headers: {
           apikey: prop('SUPABASE_SERVICE_KEY'),
           Authorization: 'Bearer ' + prop('SUPABASE_SERVICE_KEY'),
-          Prefer: 'resolution=merge-duplicates,return=minimal'
+          Prefer: 'resolution=' + resolution + ',return=minimal'
         },
         payload: body,
         muteHttpExceptions: true
@@ -417,7 +425,7 @@ function syncNotion() {
       })
       .filter(function(r) { return r !== null; });
 
-    supabaseUpsert('projects', rows, 'user_id,external_id');
+    supabaseUpsert('projects', rows, 'user_id,external_id', true);
     log('syncNotion: done — ' + rows.length + ' rows');
   } finally {
     lock.releaseLock();
@@ -457,7 +465,7 @@ function syncClients() {
       })
       .filter(function(r) { return r !== null; });
 
-    supabaseUpsert('clients', rows, 'user_id,external_id');
+    supabaseUpsert('clients', rows, 'user_id,external_id', true);
     log('syncClients: done — ' + rows.length + ' rows');
   } finally {
     lock.releaseLock();

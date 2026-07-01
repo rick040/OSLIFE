@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { X, Pencil, Trash2, Plus, FolderKanban, MessageCircle, Mail, Globe } from 'lucide-react'
 import type { Client, Project } from '../types'
 import { fmtDate } from '../domains'
@@ -8,13 +8,16 @@ import ClientForm from './ClientForm'
 import ProjectForm from './ProjectForm'
 import ProjectDetail, { ConfirmDelete } from './ProjectDetail'
 import { eur, CLIENT_HEX, CLIENT_STATUS_NL, CRM_STATUS, STATUS_HEX } from '../components/crm'
+import { deriveGmailMessages } from '../lib/crm/gmailInbox'
 
 export default function ClientDetail({ client: initial, onClose }: { client: Client; onClose: () => void }) {
   const client = useStore((s) => s.clients.find((c) => c.id === initial.id)) ?? initial
-  const { projects, messages, deleteClient } = useStore()
+  const { projects, messages, clients, emails, deleteClient } = useStore()
 
   const clientProjects = projects.filter((p) => p.clientId === client.id || p.client === client.name)
-  const clientMessages = messages
+  const gmailDerived = useMemo(() => deriveGmailMessages(emails, clients), [emails, clients])
+  const allMessages = useMemo(() => [...messages, ...gmailDerived], [messages, gmailDerived])
+  const clientMessages = allMessages
     .filter((m) => m.clientId === client.id)
     .sort((a, b) => b.ts.localeCompare(a.ts))
     .slice(0, 6)
@@ -103,7 +106,7 @@ export default function ClientDetail({ client: initial, onClose }: { client: Cli
           <div>
             <div className="flex items-center justify-between mb-2">
               <div className="font-semibold text-sm flex items-center gap-1.5"><MessageCircle className="h-4 w-4 text-buurtkaart-deep" /> Berichten</div>
-              <span className="text-xs text-faint">{messages.filter((m) => m.clientId === client.id).length}</span>
+              <span className="text-xs text-faint">{allMessages.filter((m) => m.clientId === client.id).length}</span>
             </div>
             {clientMessages.length === 0 ? (
               <div className="rounded-2xl bg-surface border border-line px-4 py-4 text-sm text-faint">Nog geen gekoppelde berichten. Koppel ze in de Berichten-inbox.</div>

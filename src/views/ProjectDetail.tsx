@@ -39,10 +39,17 @@ export default function ProjectDetail({ project: initial, onClose }: { project: 
   // Always read the live row from the store so edits/realtime reflect instantly.
   const project = useStore((s) => s.projects.find((p) => p.id === initial.id)) ?? initial
   const { clients, deleteProject } = useStore()
-  const tasks = useStore((s) => s.projectTasks.filter((t) => t.projectId === project.id))
-  const milestones = useStore((s) => s.projectMilestones.filter((m) => m.projectId === project.id))
-  const hours = useStore((s) => s.projectHours.filter((h) => h.projectId === project.id))
-  const invoices = useStore((s) => s.projectInvoices.filter((i) => i.projectId === project.id))
+  // Select the raw (stable-reference) arrays and filter locally — a selector that
+  // allocates a new array every call (e.g. `s.x.filter(...)`) breaks zustand v5's
+  // useSyncExternalStore snapshot check and causes an infinite render loop.
+  const allTasks = useStore((s) => s.projectTasks)
+  const allMilestones = useStore((s) => s.projectMilestones)
+  const allHours = useStore((s) => s.projectHours)
+  const allInvoices = useStore((s) => s.projectInvoices)
+  const tasks = allTasks.filter((t) => t.projectId === project.id)
+  const milestones = allMilestones.filter((m) => m.projectId === project.id)
+  const hours = allHours.filter((h) => h.projectId === project.id)
+  const invoices = allInvoices.filter((i) => i.projectId === project.id)
 
   const [tab, setTab] = useState<Tab>('details')
   const [editing, setEditing] = useState(false)
@@ -345,7 +352,7 @@ function Milestones({ projectId, milestones }: { projectId: string; milestones: 
 
 // ── Hours ───────────────────────────────────────────────────────────────────
 function Hours({ projectId }: { projectId: string }) {
-  const hours = useStore((s) => s.projectHours.filter((h) => h.projectId === projectId))
+  const hours = useStore((s) => s.projectHours).filter((h) => h.projectId === projectId)
   const { addHours, deleteHours } = useStore()
   const [date, setDate] = useState(TODAY)
   const [val, setVal] = useState('')
@@ -470,7 +477,7 @@ function Invoices({ projectId, invoices }: { projectId: string; invoices: Invoic
 
 // ── Activity logger ───────────────────────────────────────────────────────────
 function Activity({ projectId }: { projectId: string }) {
-  const entries = useStore((s) => s.projectActivity.filter((a) => a.projectId === projectId))
+  const entries = useStore((s) => s.projectActivity).filter((a) => a.projectId === projectId)
   const { logActivity, deleteActivity } = useStore()
   const [text, setText] = useState('')
   const [lastResult, setLastResult] = useState<ActivityAnalysis | null>(null)
