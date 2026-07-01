@@ -9,7 +9,7 @@ import type { Domain, Priority, TaskDraft } from '../types'
 import { classify } from '../understand'
 import { parseWhen } from './datetime'
 
-export type SkillId = 'task' | 'project' | 'chart' | 'search' | 'chat'
+export type SkillId = 'task' | 'project' | 'chart' | 'search' | 'clientIntake' | 'chat'
 
 // Agent ids the router (heyra/router.ts) can dispatch to — a superset of the
 // rule-based SkillId pre-filter above, plus the brain-assisted agents that
@@ -27,6 +27,7 @@ export const SKILLS: Record<AgentId, SkillMeta> = {
   project: { id: 'project', label: 'Projectkaart', blurb: 'Laat de status van een project zien' },
   chart: { id: 'chart', label: 'Visualisatie', blurb: 'Zet cijfers uit je geheugen om in een grafiek' },
   search: { id: 'search', label: 'Zoeken', blurb: 'Doorzoekt je ene geheugen op een steekwoord' },
+  clientIntake: { id: 'clientIntake', label: 'Klant-intake', blurb: 'Verwerkt een klantbericht tot een reply + CRM-record' },
   finance: { id: 'finance', label: 'Financiën', blurb: 'Beantwoordt geld-vragen uit je facturen en transacties' },
   signal: { id: 'signal', label: 'Signalen', blurb: 'Legt patronen en verbanden uit je Reflect-brein uit' },
   briefing: { id: 'briefing', label: 'Briefing', blurb: 'Vat je dag samen uit nudge, loops en patronen' },
@@ -62,6 +63,21 @@ const SEARCH_TRIGGERS = [
   'zoek ', 'zoek naar', 'zoeken naar', 'wat weet je over', 'wat heb ik over', 'find ',
   'search ', 'look up', 'opzoeken', 'zoek op', 'wat staat er over', 'heb ik iets over',
 ]
+
+// Explicit phrases that signal "this is a raw client message, process it" —
+// paste a WhatsApp/email/Fiverr message straight into HEYRA and it drafts a
+// reply + a CRM draft instead of treating the paste as a note-to-self.
+const CLIENT_TRIGGERS = [
+  'nieuwe klant', 'nieuwe lead', 'nieuwe aanvraag', 'nieuwe opdracht', 'nieuwe intake',
+  'klant schreef', 'klant vraagt', 'klantbericht', 'verwerk dit bericht', 'verwerk deze mail',
+  'verwerk dit gesprek', 'fiverr order', 'fiverr bericht', 'new client', 'new lead',
+  'new inquiry', 'client message', 'process this message',
+]
+
+// Words that show up in an inbound client message asking about price/timing —
+// used only as a last-resort heuristic below, never to steal intent from the
+// higher-priority triggers above.
+const CLIENT_MESSAGE_HINTS = ['prijs', 'budget', 'offerte', 'kost', 'wanneer', 'deadline', 'price', 'quote', 'when can']
 
 export interface SkillDetection {
   skill: SkillId
@@ -99,6 +115,7 @@ export function detectSkill(text: string): SkillDetection {
     toDetection('search', scoreTriggers(t, SEARCH_TRIGGERS)),
     toDetection('project', scoreTriggers(t, PROJECT_TRIGGERS)),
     toDetection('chart', scoreTriggers(t, CHART_TRIGGERS)),
+    toDetection('clientIntake', scoreTriggers(t, CLIENT_TRIGGERS)),
   ]
 
   const best = candidates.reduce((a, b) => (b.score > a.score ? b : a))
@@ -109,6 +126,14 @@ export function detectSkill(text: string): SkillDetection {
   // reads as a task even without an explicit trigger word.
   if (/^(bel|mail|stuur|maak|regel|plan|koop|boek|vraag|check|betaal|afronden)\b/i.test(text.trim())) {
     return { skill: 'task', score: 1, trigger: 'imperatief' }
+  }
+
+  // Zero-friction fallback: nothing else claimed this text, but it's long and
+  // reads like an inbound client message (a question, or a price/timing
+  // word) rather than a note-to-self — treat it as a client message to
+  // process instead of falling through to plain chat.
+  if (text.trim().length > 120 && (text.includes('?') || CLIENT_MESSAGE_HINTS.some((w) => t.includes(w)))) {
+    return { skill: 'clientIntake', score: 1, trigger: 'klantbericht (auto)' }
   }
 
   return { skill: 'chat', score: 0, trigger: null }

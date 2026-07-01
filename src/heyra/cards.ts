@@ -4,7 +4,7 @@
 // router stays about *routing* and this stays about *building the reply*.
 
 import type { useStore } from '../store'
-import type { Domain } from '../types'
+import type { Domain, Channel } from '../types'
 import { DOMAIN_META, TODAY } from '../domains'
 
 type Store = ReturnType<typeof useStore.getState>
@@ -32,6 +32,22 @@ export interface ChartCardData {
   unit?: string
   kind: 'bar' | 'line'
   points: ChartPoint[]
+}
+
+/** HEYRA Klant-intake draft — a parsed, editable client message before any CRM write happens. */
+export interface ClientIntakeDraft {
+  sourceText: string // the original pasted message, kept for the communication-log entry
+  language: 'nl' | 'en'
+  clientName: string
+  email: string | null
+  matchedClientId: string | null // set when it resolved to an existing store.clients row
+  projectType: string[]
+  budgetGuess: number | null
+  deadlineGuess: string | null // ISO date, best-effort
+  deliverables: string[]
+  reply: string
+  channelGuess: Channel
+  fromBrain: boolean
 }
 
 const NOISE_PHRASES = [

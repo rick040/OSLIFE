@@ -225,6 +225,18 @@ interface State {
   addProject: (project: Omit<Project, 'id'>) => void
   deleteProject: (id: string) => void
 
+  // HEYRA Klant-intake: create/reuse a client, optionally create a project +
+  // its task breakdown, and log the source message — all awaited in sequence
+  // so tasks are only inserted once the project has a real Supabase id
+  // (addProject/addProjectTask are fire-and-forget and would race on a temp id).
+  createClientIntake: (input: {
+    client: Omit<Client, 'id'> | null
+    existingClientId: string | null
+    project: Omit<Project, 'id'> | null
+    tasks: string[]
+    message: Omit<Message, 'id'>
+  }) => Promise<{ clientId: string | null; projectId: string | null }>
+
   // Project template: milestones / tasks / hours / invoices / activity
   addMilestone: (projectId: string, m: Omit<ProjectMilestone, 'id' | 'projectId'>) => void
   updateMilestone: (id: string, patch: Partial<ProjectMilestone>) => void
@@ -767,6 +779,56 @@ export const useStore = create<State>()(
           projectActivity: s.projectActivity.filter((a) => a.projectId !== id),
         }))
         void deleteProjectRow(id)
+      },
+
+      // HEYRA Klant-intake: awaits each write in sequence (unlike addProject/
+      // addProjectTask's fire-and-forget temp-id pattern) so tasks are only
+      // inserted once the project has a real Supabase id to attach to.
+      createClientIntake: async ({ client, existingClientId, project, tasks, message }) => {
+        let clientId = existingClientId ?? null
+
+        if (client) {
+          const row = await createClientRow(client)
+          if (row) {
+            clientId = row.id
+            set((s) => ({
+              clients: [row, ...s.clients],
+              activity: pushSignal(s.activity, { text: `Klant toegevoegd: ${row.name}`, domain: row.domain, loop: 'fast' }),
+            }))
+          }
+        }
+
+        let projectId: string | null = null
+
+        if (project) {
+          const projectRow = await createProjectRow({ ...project, clientId })
+          if (projectRow) {
+            projectId = projectRow.id
+            set((s) => ({
+              projects: [projectRow, ...s.projects],
+              activity: pushSignal(s.activity, { text: `Project aangemaakt: ${projectRow.name}`, domain: projectRow.domain, loop: 'fast' }),
+            }))
+
+            if (tasks.length) {
+              const created = (
+                await Promise.all(
+                  tasks.map(async (name) => {
+                    const realId = await createProjectTaskRow(projectId!, { name, done: false })
+                    return realId ? { id: realId, projectId: projectId!, name, done: false } : null
+                  }),
+                )
+              ).filter((t): t is ProjectTask => t !== null)
+              if (created.length) set((s) => ({ projectTasks: [...s.projectTasks, ...created] }))
+            }
+          }
+        }
+
+        const realMsgId = await createMessageRow({ ...message, clientId, projectId })
+        if (realMsgId) {
+          set((s) => ({ messages: [{ ...message, clientId, projectId, id: realMsgId }, ...s.messages] }))
+        }
+
+        return { clientId, projectId }
       },
 
       // ── Milestones ─────────────────────────────────────────────────────────
