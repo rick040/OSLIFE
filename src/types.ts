@@ -113,6 +113,23 @@ export interface Checkin {
   note?: string | null
 }
 
+// ── Proactive Telegram notifications ─────────────────────────────────────────
+
+export interface NotificationPrefs {
+  telegramChatId: number | null
+  telegramUsername: string | null
+  linkedAt: string | null
+  morningBriefing: boolean
+  eveningCheckin: boolean
+  habitReminders: boolean
+  urgentAlerts: boolean
+  morningTime: string // 'HH:MM'
+  eveningTime: string // 'HH:MM'
+  habitTime: string // 'HH:MM'
+  quietHoursStart: string | null // 'HH:MM'
+  quietHoursEnd: string | null // 'HH:MM'
+}
+
 // ── Behaviour sense: screen time + app usage ─────────────────────────────────
 
 export interface AppUse {

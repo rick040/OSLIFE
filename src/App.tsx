@@ -26,15 +26,17 @@ import InboxView from './views/Inbox'
 import NorthStar from './views/NorthStar'
 import Mindmap from './views/Mindmap'
 import LoopExplainer from './components/LoopExplainer'
+import SettingsModal from './components/SettingsModal'
 import Orb from './components/Orb'
 import AppGrid from './components/AppGrid'
 import { SCREENS, type View } from './nav'
-import { Workflow, Play, RotateCcw, Grid3x3 } from 'lucide-react'
+import { Workflow, Play, RotateCcw, Grid3x3, Settings } from 'lucide-react'
 
 export default function App() {
   const [view, setView] = useState<View>('dashboard')
   const [showLoops, setShowLoops] = useState(false)
   const [showGrid, setShowGrid] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [session, setSession] = useState<Session | null>(null)
   const [authChecked, setAuthChecked] = useState(false)
   const { resetDemo, runNightlyReflect, reflectCount, loadLiveData, dataSource, isLoading, healthDays } = useStore()
@@ -143,6 +145,12 @@ export default function App() {
             <Play className="h-4 w-4" /> Run reflect {reflectCount > 0 && `(${reflectCount})`}
           </button>
           <button
+            onClick={() => setShowSettings(true)}
+            className="w-full flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-muted hover:text-ink hover:bg-sunken"
+          >
+            <Settings className="h-4 w-4" /> Instellingen
+          </button>
+          <button
             onClick={() => {
               if (confirm('Reset the demo to its seeded state? This clears anything you captured.')) resetDemo()
             }}
@@ -168,6 +176,9 @@ export default function App() {
           </button>
           <button onClick={runNightlyReflect} className="text-cross">
             <Play className="h-5 w-5" />
+          </button>
+          <button onClick={() => setShowSettings(true)} className="text-muted" aria-label="Instellingen">
+            <Settings className="h-5 w-5" />
           </button>
           <button
             onClick={() => {
@@ -214,6 +225,7 @@ export default function App() {
 
       {showLoops && <LoopExplainer onClose={() => setShowLoops(false)} />}
       {showGrid && <AppGrid active={view} onNav={(v) => setView(v)} onClose={() => setShowGrid(false)} />}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </div>
   )
 }

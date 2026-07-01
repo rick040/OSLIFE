@@ -24,6 +24,7 @@ import type {
   ScreenDay,
   MeetingDay,
   Checkin,
+  NotificationPrefs,
   Client,
   Message,
   Subscription,
@@ -74,6 +75,8 @@ import {
   fetchClients,
   fetchCheckins,
   upsertCheckin,
+  fetchNotificationPrefs,
+  upsertNotificationPrefs,
   persistBrainState,
   persistPaymentStatus,
   insertFinanceTx,
@@ -144,6 +147,7 @@ interface State {
   activity: ActivitySignal[]
   healthDays: HealthDay[]
   checkins: Checkin[]
+  notificationPrefs: NotificationPrefs | null
   screenDays: ScreenDay[]
   meetingDays: MeetingDay[]
   projects: Project[]
@@ -188,6 +192,9 @@ interface State {
 
   // INTAKE (felt signal) → energy/mood check-in, feeds REFLECT
   logCheckin: (energy: number, mood: number, note?: string) => void
+
+  // Proactive Telegram notifications — settings written from SettingsModal
+  setNotificationPrefs: (p: Partial<NotificationPrefs>) => void
 
   // REFLECT (slow loop)
   runNightlyReflect: () => void
@@ -280,6 +287,7 @@ const seed = () => ({
   activity: [] as ActivitySignal[],
   healthDays: mock.healthDays,
   checkins: [] as Checkin[],
+  notificationPrefs: null as NotificationPrefs | null,
   screenDays: mock.screenDays,
   meetingDays: mock.meetingDays,
   projects: mock.projects,
@@ -536,6 +544,30 @@ export const useStore = create<State>()(
         void upsertCheckin({ date: TODAY, energy, mood, note: note ?? null })
         // Felt signal feeds Reflect immediately: rebuild dayLogs + nudge.
         get().recomputeBrain()
+      },
+
+      setNotificationPrefs: (p) => {
+        set((s) => {
+          // Default toggles mirror the DB column defaults, so adjusting a
+          // toggle before the first /start (no row yet) still reflects
+          // instantly instead of staying null until the next fetch.
+          const base: NotificationPrefs = s.notificationPrefs ?? {
+            telegramChatId: null,
+            telegramUsername: null,
+            linkedAt: null,
+            morningBriefing: true,
+            eveningCheckin: true,
+            habitReminders: true,
+            urgentAlerts: true,
+            morningTime: '07:30',
+            eveningTime: '20:00',
+            habitTime: '21:00',
+            quietHoursStart: null,
+            quietHoursEnd: null,
+          }
+          return { notificationPrefs: { ...base, ...p } }
+        })
+        void upsertNotificationPrefs(p)
       },
 
       runNightlyReflect: () => {
@@ -1082,13 +1114,14 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
             fetchInvoices(),
             fetchActivity(),
             fetchClientMessages(),
+            fetchNotificationPrefs(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -1116,6 +1149,7 @@ export const useStore = create<State>()(
             projectInvoices: invoices,
             projectActivity: projActivity,
             ...(messages.length > 0 && { messages }),
+            notificationPrefs,
             dataSource: 'live',
             isLoading: false,
           })
@@ -1155,6 +1189,8 @@ export const useStore = create<State>()(
             () => fetchGoals().then((d) => d.length > 0 && set({ goals: d })))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_checkin' },
             () => fetchCheckins().then((d) => { set({ checkins: d }); get().recomputeBrain() }))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'notification_prefs' },
+            () => fetchNotificationPrefs().then((p) => set({ notificationPrefs: p })))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'brain_state' },
             () => fetchBrainState().then((b) => set({
               ...(b.threads.length > 0 && { threads: b.threads }),
@@ -1216,6 +1252,7 @@ export const useStore = create<State>()(
         if (!state.patterns?.length) state.patterns = s.patterns
         if (!state.screenDays?.length) state.screenDays = s.screenDays
         if (!state.checkins) state.checkins = []
+        if (state.notificationPrefs === undefined) state.notificationPrefs = null
         if (!state.dataSource) state.dataSource = 'mock'
       },
     },
