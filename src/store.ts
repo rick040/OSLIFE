@@ -174,6 +174,8 @@ interface State {
   // ACT (fast loop, writes outcomes back as signals)
   closeThread: (id: string) => void
   reopenThread: (id: string) => void
+  updateThread: (id: string, patch: Partial<Thread>) => void
+  deleteThread: (id: string) => void
   tickHabit: (id: string) => void
   addHabit: (name: string, emoji: string, color?: string) => void
   deleteHabit: (id: string) => void
@@ -401,6 +403,24 @@ export const useStore = create<State>()(
         set((s) => ({
           threads: s.threads.map((x) => (x.id === id ? { ...x, status: 'open' } : x)),
         }))
+        void persistBrainState(persistableThreads(get().threads), get().patterns)
+      },
+
+      updateThread: (id, patch) => {
+        set((s) => ({
+          threads: s.threads.map((x) => (x.id === id ? { ...x, ...patch } : x)),
+        }))
+        void persistBrainState(persistableThreads(get().threads), get().patterns)
+      },
+
+      deleteThread: (id) => {
+        // project/client loops are re-derived from live data on every recompute,
+        // so hard-deleting one would just have it reappear — close it instead.
+        if (isDerivedThreadId(id)) {
+          get().closeThread(id)
+          return
+        }
+        set((s) => ({ threads: s.threads.filter((x) => x.id !== id) }))
         void persistBrainState(persistableThreads(get().threads), get().patterns)
       },
 

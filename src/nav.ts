@@ -20,6 +20,7 @@ import {
   Eye,
   Home,
   Dog,
+  CheckSquare,
 } from 'lucide-react'
 
 // ── Central screen registry ──────────────────────────────────────────────────
@@ -27,6 +28,7 @@ import {
 export type View =
   | 'dashboard'
   | 'today'
+  | 'tasks'
   | 'daybuilder'
   | 'vitals'
   | 'habits'
@@ -65,6 +67,7 @@ export const SCREENS: Screen[] = [
   // Surface
   { id: 'dashboard', label: 'Dashboard', icon: Gauge, layer: 'Overzicht · één oogopslag', group: 'Surface', primary: true, accent: 'text-forest' },
   { id: 'today', label: 'Vandaag', icon: LayoutDashboard, layer: 'Overzicht', group: 'Surface', accent: 'text-forest' },
+  { id: 'tasks', label: 'Taken', icon: CheckSquare, layer: 'Overzicht · taken', group: 'Surface', primary: true, accent: 'text-forest' },
   { id: 'daybuilder', label: 'Dagplanner', icon: CalendarRange, layer: 'Overzicht', group: 'Surface', accent: 'text-forest' },
 
   // Life
