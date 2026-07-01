@@ -4,13 +4,14 @@ import { detectSkill, SKILLS, type AgentId } from '../heyra/skills'
 import { contextualSuggestions, followUpSuggestions, type Topic } from '../heyra/suggestions'
 import { routeMessage } from '../heyra/router'
 import { emptyMemory, remember, type ConversationMemory } from '../heyra/memory'
-import type { SearchCardData, ChartCardData } from '../heyra/cards'
+import type { SearchCardData, ChartCardData, ClientIntakeDraft } from '../heyra/cards'
 import { DomainChip, SentimentChip, KindChip } from '../components/ui'
-import type { StructuredItem, TaskDraft, Project } from '../types'
+import type { StructuredItem, TaskDraft, Project, Client, Message } from '../types'
 import TaskCard from '../components/TaskCard'
 import SearchResultCard from '../components/SearchResultCard'
 import DataVizCard from '../components/DataVizCard'
 import ProjectCard from '../components/ProjectCard'
+import ClientIntakeCard, { type ClientIntakeCommitOptions, type ClientIntakeResult } from '../components/ClientIntakeCard'
 import { Send, Sparkles, Database, Mic, MicOff, Wand2, Lightbulb } from 'lucide-react'
 
 interface Msg {
@@ -25,6 +26,8 @@ interface Msg {
   search?: SearchCardData
   chart?: ChartCardData
   project?: Project
+  clientIntake?: ClientIntakeDraft
+  clientIntakeResult?: ClientIntakeResult | null
   topic?: Topic
 }
 
@@ -98,6 +101,59 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
     setMsgs((m) => m.map((x) => (x.id === msgId ? { ...x, draft, taskAdded: true } : x)))
   }
 
+  async function commitClientIntake(msgId: string, draft: ClientIntakeDraft, opts: ClientIntakeCommitOptions) {
+    const useExisting = Boolean(draft.matchedClientId) && !opts.forceNewClient && opts.createClient
+    const today = new Date().toISOString().slice(0, 10)
+
+    const clientPayload: Omit<Client, 'id'> | null =
+      !opts.createClient || useExisting
+        ? null
+        : {
+            name: draft.clientName,
+            domain: 'prjct',
+            clientStatus: opts.createProject ? 'Active' : 'Lead',
+            email: draft.email,
+            scope: draft.budgetGuess,
+            firstContact: today,
+          }
+
+    const projectPayload: Omit<Project, 'id'> | null = !opts.createProject
+      ? null
+      : {
+          name: `${draft.clientName} - ${draft.projectType[0] ?? 'Project'}`,
+          client: draft.clientName,
+          domain: 'prjct',
+          status: 'lead',
+          deadline: draft.deadlineGuess,
+          progress: 0,
+          value: draft.budgetGuess ?? 0,
+          type: draft.projectType,
+          deliverables: draft.deliverables,
+        }
+
+    const message: Omit<Message, 'id'> = {
+      contact: draft.clientName,
+      contactKey: draft.email ?? draft.clientName,
+      channel: draft.channelGuess,
+      direction: 'in',
+      subject: null,
+      snippet: draft.sourceText.slice(0, 140),
+      body: draft.sourceText,
+      ts: new Date().toISOString(),
+      unread: false,
+      source: 'manual',
+    }
+
+    const result = await store.createClientIntake({
+      client: clientPayload,
+      existingClientId: useExisting ? draft.matchedClientId : null,
+      project: projectPayload,
+      tasks: opts.createProject ? draft.deliverables : [],
+      message,
+    })
+    setMsgs((m) => m.map((x) => (x.id === msgId ? { ...x, clientIntakeResult: result } : x)))
+  }
+
   async function send(text: string) {
     const clean = text.trim()
     if (!clean) return
@@ -132,6 +188,7 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
           search: result.search,
           chart: result.chart,
           project: result.project,
+          clientIntake: result.clientIntake,
           topic: result.topic,
         },
       ])
@@ -190,6 +247,16 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
               {m.project && (
                 <div className="mt-2">
                   <ProjectCard project={m.project} onNav={onNav} />
+                </div>
+              )}
+              {m.clientIntake && (
+                <div className="mt-2">
+                  <ClientIntakeCard
+                    draft={m.clientIntake}
+                    result={m.clientIntakeResult}
+                    onCommit={(draft, opts) => commitClientIntake(m.id, draft, opts)}
+                    onNav={onNav}
+                  />
                 </div>
               )}
               {m.classified && (

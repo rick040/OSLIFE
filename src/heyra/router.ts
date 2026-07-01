@@ -14,6 +14,7 @@ import { runTaskAgent } from './agents/taskAgent'
 import { runProjectAgent } from './agents/projectAgent'
 import { runChartAgent } from './agents/chartAgent'
 import { runSearchAgent } from './agents/searchAgent'
+import { runClientIntakeAgent } from './agents/clientIntakeAgent'
 import { runFinanceAgent } from './agents/financeAgent'
 import { runSignalAgent } from './agents/signalAgent'
 import { runBriefingAgent } from './agents/briefingAgent'
@@ -31,6 +32,7 @@ const AGENTS: Record<AgentId, Agent> = {
   project: runProjectAgent,
   chart: runChartAgent,
   search: runSearchAgent,
+  clientIntake: runClientIntakeAgent,
   finance: runFinanceAgent,
   signal: runSignalAgent,
   briefing: runBriefingAgent,
