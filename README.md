@@ -86,6 +86,18 @@ progress. The **berichten-inbox** (`client_messages`) unifies e-mail / Fiverr / 
 WhatsApp exports import via `src/lib/crm/whatsapp.ts`. Existing Notion-synced rows keep
 working; in-app rows get a `local-<uuid>` external id.
 
+### Auto-categorisation (vendor cache)
+New transactions tag themselves. When a merchant HEYRA has never seen shows up
+(and the rule-based CSV guesser left it `Uncategorized`), a Haiku call with
+Anthropic **web search** (`categorize-vendor` edge function) figures out what the
+business is and picks a category + life-domain. The verdict is cached in
+`vendor_tags` keyed by a normalised merchant name, so the *second* time "Albert
+Heijn" appears it's tagged instantly from cache — no repeat lookup, no repeat
+cost. It runs automatically on load, on CSV import and when a new row is ingested
+(realtime). Every tag is editable by hand in **Geld → Vendors**, and tapping any
+transaction opens an editor to change its category/domain or add a note; a manual
+category change also teaches the vendor cache for next time.
+
 ### Finance dedup
 The Betalingen sheet and the in-app ABN AMRO CSV import both write `finance_tx` with the same
 `dedup_key = "YYYY-MM-DD|amount"`. The `UNIQUE (user_id, dedup_key)` constraint plus
