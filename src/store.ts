@@ -46,6 +46,7 @@ import { parseWhatsapp } from './lib/crm/whatsapp'
 import { classifyWithBrain, type Classification } from './understand'
 import { runReflect, computeCorrelations, computeAnomalies, buildNarrativePrompt, NARRATIVE_SYSTEM_PROMPT } from './reflect'
 import { askBrain } from './heyra/brainClient'
+import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
 import {
   deriveEssentials,
   deriveThreads,
@@ -70,6 +71,8 @@ import {
   fetchGoals,
   fetchDogEntries,
   fetchBrainState,
+  fetchLearnedFacts,
+  persistLearnedFacts,
   fetchScreenDays,
   fetchProjects,
   fetchClients,
@@ -167,8 +170,14 @@ interface State {
   dogEntries: DogEntry[]
   dogMedical: DogMedical[]
   dogReminders: DogReminder[]
+  learnedFacts: LearnedFact[]
   dataSource: 'mock' | 'live'
   isLoading: boolean
+
+  // HEYRA learns as we speak — distil durable facts from one exchange, merge
+  // them into the persisted set and return only the genuinely NEW facts so the
+  // UI can surface "onthouden: …". Best-effort: brain failure ⇒ [] , no throw.
+  learnFromExchange: (userText: string, heyraText: string) => Promise<LearnedFact[]>
 
   // INTAKE → UNDERSTAND → REMEMBER
   capture: (
@@ -324,6 +333,7 @@ const seed = () => ({
   dogEntries: mock.dogEntries,
   dogMedical: mock.dogMedical,
   dogReminders: mock.dogReminders,
+  learnedFacts: [] as LearnedFact[],
   dataSource: 'mock' as const,
   isLoading: true,
 })
@@ -384,6 +394,17 @@ export const useStore = create<State>()(
         // a new thread (owed loop) changes the persisted brain state
         if (c.kind === 'task' && openThread) void persistBrainState(persistableThreads(get().threads), get().patterns)
         return item
+      },
+
+      learnFromExchange: async (userText, heyraText) => {
+        const existing = get().learnedFacts
+        const fresh = await extractFacts(userText, heyraText, existing)
+        if (!fresh.length) return []
+        const { merged, added } = mergeFacts(existing, fresh)
+        if (!added.length) return []
+        set({ learnedFacts: merged })
+        void persistLearnedFacts(merged)
+        return added
       },
 
       addTask: (draft) => {
@@ -1181,7 +1202,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -1189,6 +1210,7 @@ export const useStore = create<State>()(
             fetchActivity(),
             fetchClientMessages(),
             fetchNotificationPrefs(),
+            fetchLearnedFacts(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -1217,6 +1239,7 @@ export const useStore = create<State>()(
             projectActivity: projActivity,
             ...(messages.length > 0 && { messages }),
             notificationPrefs,
+            ...(learnedFacts.length > 0 && { learnedFacts }),
             dataSource: 'live',
             isLoading: false,
           })
@@ -1277,6 +1300,8 @@ export const useStore = create<State>()(
             () => fetchActivity().then((d) => set({ projectActivity: d })))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'client_messages' },
             () => fetchClientMessages().then((d) => set({ messages: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'heyra_memory' },
+            () => fetchLearnedFacts().then((d) => set({ learnedFacts: d })))
           .subscribe()
       },
 
@@ -1319,6 +1344,7 @@ export const useStore = create<State>()(
         if (!state.patterns?.length) state.patterns = s.patterns
         if (!state.screenDays?.length) state.screenDays = s.screenDays
         if (!state.checkins) state.checkins = []
+        if (!state.learnedFacts) state.learnedFacts = []
         if (state.notificationPrefs === undefined) state.notificationPrefs = null
         if (!state.dataSource) state.dataSource = 'mock'
       },
