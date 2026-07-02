@@ -8,6 +8,7 @@ import Today from './views/Today'
 import Tasks from './views/Tasks'
 import Heyra from './views/Heyra'
 import Capture from './views/Capture'
+import ShareIntake from './views/ShareIntake'
 import Memory from './views/Memory'
 import Reflect from './views/Reflect'
 import DayBuilder from './views/DayBuilder'
@@ -34,6 +35,8 @@ import { Workflow, Play, RotateCcw, Grid3x3, Settings } from 'lucide-react'
 
 export default function App() {
   const [view, setView] = useState<View>('dashboard')
+  // PWA Web Share Target lands on /share (see public/sw.js + manifest).
+  const [isShare, setIsShare] = useState(() => window.location.pathname === '/share')
   const [showLoops, setShowLoops] = useState(false)
   const [showGrid, setShowGrid] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -89,6 +92,8 @@ export default function App() {
   )
 
   if (!session) return <LoginScreen />
+
+  if (isShare) return <ShareIntake onDone={() => { setIsShare(false); setView('capture') }} />
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-canvas">

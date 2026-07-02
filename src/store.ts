@@ -40,6 +40,8 @@ import type {
   Invoice,
   ActivityEntry,
   VendorTag,
+  BraindumpEntry,
+  BraindumpInput,
 } from './types'
 import { vendorKey, isUntagged } from './finance/categories'
 import { categorizeVendor } from './heyra/agents/vendorAgent'
@@ -47,6 +49,7 @@ import { analyzeActivity } from './lib/crm/activityAnalyzer'
 import type { ActivityAnalysis } from './lib/crm/activityAnalyzer'
 import { parseWhatsapp } from './lib/crm/whatsapp'
 import { classifyWithBrain, type Classification } from './understand'
+import { invokeBraindumpIngest } from './lib/braindump'
 import { runReflect, computeCorrelations, computeAnomalies, buildNarrativePrompt, NARRATIVE_SYSTEM_PROMPT } from './reflect'
 import { askBrain } from './heyra/brainClient'
 import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
@@ -95,6 +98,10 @@ import {
   fetchVendorTags,
   upsertVendorTag,
   deleteVendorTag as deleteVendorTagRow,
+  fetchBraindumpEntries,
+  insertBraindumpEntry,
+  deleteBraindumpEntryRow,
+  resetBraindumpEntryRow,
   persistEmailRead,
   persistAllEmailsRead,
   persistProjectPatch,
@@ -184,6 +191,7 @@ interface State {
   dogReminders: DogReminder[]
   learnedFacts: LearnedFact[]
   vendorTags: VendorTag[]
+  braindumpEntries: BraindumpEntry[]
   dataSource: 'mock' | 'live'
   isLoading: boolean
 
@@ -199,6 +207,13 @@ interface State {
     opts?: { openThread?: boolean },
     precomputed?: Classification,
   ) => Promise<StructuredItem>
+
+  // Braindump v2 — universal capture. Inserts a `pending` row (optimistic temp
+  // id → real id), then fires the server-side ingest pipeline that converts the
+  // shared thing into a Markdown note. Best-effort; returns the real row or null.
+  braindumpCapture: (input: BraindumpInput) => Promise<BraindumpEntry | null>
+  deleteBraindumpEntry: (id: string) => void
+  retryBraindumpEntry: (id: string) => void
 
   // HEYRA Taakmaker — commit a parsed task draft as an open loop (thread)
   addTask: (draft: TaskDraft) => string
@@ -372,6 +387,7 @@ const seed = () => ({
   dogReminders: mock.dogReminders,
   learnedFacts: [] as LearnedFact[],
   vendorTags: [] as VendorTag[],
+  braindumpEntries: [] as BraindumpEntry[],
   dataSource: 'mock' as const,
   isLoading: true,
 })
@@ -435,6 +451,76 @@ export const useStore = create<State>()(
         // a new thread (owed loop) changes the persisted brain state
         if (c.kind === 'task' && openThread) void persistBrainState(persistableThreads(get().threads), get().patterns)
         return item
+      },
+
+      braindumpCapture: async (input) => {
+        const rawText = input.text?.trim() || null
+        const now = new Date().toISOString()
+        // Optimistic row so the grid shows the item the instant it's captured.
+        const tempId = uid('bd')
+        const optimistic: BraindumpEntry = {
+          id: tempId,
+          createdAt: now,
+          sourceKind: input.sourceKind,
+          status: 'pending',
+          title: input.title ?? null,
+          sourceUrl: input.sourceUrl ?? null,
+          markdown: null,
+          summary: rawText ? rawText.slice(0, 140) : input.sourceUrl ?? null,
+          domain: input.domain ?? null,
+          kind: null,
+          sentiment: null,
+          tags: [],
+          thumbUrl: null,
+          meta: {},
+          error: null,
+        }
+        set((s) => ({
+          braindumpEntries: [optimistic, ...s.braindumpEntries],
+          activity: pushSignal(s.activity, {
+            text: `Braindump ontvangen → ${input.sourceKind}`,
+            domain: input.domain ?? 'personal',
+            loop: 'fast',
+          }),
+        }))
+
+        // Stash the raw payload the edge function needs to enrich the row: raw
+        // text goes in meta.rawText, an uploaded file's path in meta.storagePath,
+        // and an optional domain hint in meta.domainHint.
+        const meta: Record<string, unknown> = {}
+        if (rawText) meta.rawText = rawText
+        if (input.storagePath) meta.storagePath = input.storagePath
+        if (input.domain) meta.domainHint = input.domain
+
+        const row = await insertBraindumpEntry({
+          sourceKind: input.sourceKind,
+          title: input.title ?? null,
+          sourceUrl: input.sourceUrl ?? null,
+          meta,
+        })
+        if (!row) return null
+        // Swap the temp row for the real one (keep the optimistic summary).
+        set((s) => ({
+          braindumpEntries: s.braindumpEntries.map((e) =>
+            e.id === tempId ? { ...row, summary: row.summary ?? optimistic.summary } : e,
+          ),
+        }))
+        void invokeBraindumpIngest(row.id)
+        return row
+      },
+
+      deleteBraindumpEntry: (id) => {
+        set((s) => ({ braindumpEntries: s.braindumpEntries.filter((e) => e.id !== id) }))
+        void deleteBraindumpEntryRow(id)
+      },
+
+      retryBraindumpEntry: (id) => {
+        set((s) => ({
+          braindumpEntries: s.braindumpEntries.map((e) =>
+            e.id === id ? { ...e, status: 'pending', error: null } : e,
+          ),
+        }))
+        void resetBraindumpEntryRow(id).then(() => invokeBraindumpIngest(id))
       },
 
       learnFromExchange: async (userText, heyraText) => {
@@ -1412,7 +1498,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -1422,6 +1508,7 @@ export const useStore = create<State>()(
             fetchNotificationPrefs(),
             fetchLearnedFacts(),
             fetchVendorTags(),
+            fetchBraindumpEntries(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -1452,6 +1539,9 @@ export const useStore = create<State>()(
             notificationPrefs,
             ...(learnedFacts.length > 0 && { learnedFacts }),
             ...(vendorTags.length > 0 && { vendorTags }),
+            // Braindump is app-owned (no mock fallback) — set directly so an empty
+            // result genuinely means "nothing captured yet".
+            braindumpEntries,
             dataSource: 'live',
             isLoading: false,
           })
@@ -1518,6 +1608,8 @@ export const useStore = create<State>()(
             () => fetchClientMessages().then((d) => set({ messages: d })))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'heyra_memory' },
             () => fetchLearnedFacts().then((d) => set({ learnedFacts: d })))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'braindump_entries' },
+            () => fetchBraindumpEntries().then((d) => set({ braindumpEntries: d })))
           .subscribe()
       },
 
@@ -1562,6 +1654,7 @@ export const useStore = create<State>()(
         if (!state.checkins) state.checkins = []
         if (!state.learnedFacts) state.learnedFacts = []
         if (!state.vendorTags) state.vendorTags = []
+        if (!state.braindumpEntries) state.braindumpEntries = []
         if (state.notificationPrefs === undefined) state.notificationPrefs = null
         if (!state.dataSource) state.dataSource = 'mock'
       },

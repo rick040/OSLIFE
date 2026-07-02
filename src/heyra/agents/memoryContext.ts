@@ -57,6 +57,19 @@ export function buildMemorySnapshot(store: Store, opts: { days?: number } = {}):
     parts.push(`Agenda binnen ${horizon} dagen: ${upcomingMeetings.map((m) => `${fmtDate(m.date)}: ${m.count} meeting(s)`).join('; ')}`)
   }
 
+  // Recent braindumps — things Rick shared/captured (links, posts, PDFs, video
+  // transcripts) distilled to lightweight notes. Lets HEYRA answer "wat had ik
+  // ook alweer opgeslagen over X". Only ready entries; capped for token budget.
+  const braindumps = (store.braindumpEntries ?? []).filter((e) => e.status === 'ready' && (e.summary || e.title))
+  if (braindumps.length) {
+    parts.push(
+      `Recente braindumps (${braindumps.length}): ${braindumps
+        .slice(0, 12)
+        .map((e) => `${e.title || e.summary}${e.tags.length ? ` [${e.tags.slice(0, 3).join(', ')}]` : ''}`)
+        .join('; ')}`,
+    )
+  }
+
   if (store.nudge?.text) parts.push(`Huidige nudge: ${store.nudge.text}`)
 
   if (store.habits.length) {
