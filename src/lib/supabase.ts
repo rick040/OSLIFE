@@ -29,6 +29,7 @@ import type {
   NotificationPrefs,
 } from '../types'
 import { TODAY } from '../domains'
+import type { LearnedFact } from '../heyra/learning'
 
 // New oslife project (nhyunnnmdcmojvkxrbpl, eu-west-1).
 // Set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY in .env.local
@@ -694,6 +695,29 @@ export async function fetchBrainState(): Promise<{ threads: Thread[]; patterns: 
     threads: (data?.threads as Thread[]) ?? [],
     patterns: (data?.patterns as Pattern[]) ?? [],
   }
+}
+
+// ── HEYRA learned memory (durable facts) ──────────────────────────────────────
+// The "learn as we speak" layer — one jsonb row per user, same single-row shape
+// as brain_state. See src/heyra/learning.ts for what gets stored.
+
+export async function fetchLearnedFacts(): Promise<LearnedFact[]> {
+  const { data } = await supabase
+    .from('heyra_memory')
+    .select('facts')
+    .limit(1)
+    .maybeSingle()
+
+  return (data?.facts as LearnedFact[]) ?? []
+}
+
+export async function persistLearnedFacts(facts: LearnedFact[]): Promise<void> {
+  const user_id = await currentUserId()
+  if (!user_id) return
+  const { error } = await supabase
+    .from('heyra_memory')
+    .upsert({ user_id, facts, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
+  warnWrite('heyra_memory', error)
 }
 
 // ── Screen time (if available) ────────────────────────────────────────────────

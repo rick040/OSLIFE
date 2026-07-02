@@ -4,6 +4,7 @@ import { SKILLS, type AgentId } from '../heyra/skills'
 import { contextualSuggestions, followUpSuggestions, type Topic } from '../heyra/suggestions'
 import { routeMessage } from '../heyra/router'
 import { emptyMemory, remember, type ConversationMemory } from '../heyra/memory'
+import type { LearnedFact } from '../heyra/learning'
 import type { SearchCardData, ChartCardData, ClientIntakeDraft } from '../heyra/cards'
 import { DomainChip, SentimentChip, KindChip } from '../components/ui'
 import type { StructuredItem, TaskDraft, Project, Client, Message } from '../types'
@@ -12,7 +13,7 @@ import SearchResultCard from '../components/SearchResultCard'
 import DataVizCard from '../components/DataVizCard'
 import ProjectCard from '../components/ProjectCard'
 import ClientIntakeCard, { type ClientIntakeCommitOptions, type ClientIntakeResult } from '../components/ClientIntakeCard'
-import { Send, Sparkles, Database, Mic, MicOff, Wand2, Lightbulb } from 'lucide-react'
+import { Send, Sparkles, Database, Mic, MicOff, Wand2, Lightbulb, Brain } from 'lucide-react'
 
 interface Msg {
   id: string
@@ -30,6 +31,7 @@ interface Msg {
   clientIntake?: ClientIntakeDraft
   clientIntakeResult?: ClientIntakeResult | null
   topic?: Topic
+  learned?: LearnedFact[]
 }
 
 // Minimal typings for the Web Speech API (not in TS lib by default).
@@ -203,6 +205,19 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
         ),
       )
       setSuggestions(followUpSuggestions(result.topic, store, { domain: item.domain }))
+
+      // Learn as we speak: distil any durable fact from this exchange in the
+      // background and, if HEYRA learned something new, tag the reply so the
+      // "onthouden" chip shows what it picked up. Best-effort — a failure here
+      // never affects the reply that already rendered.
+      void store
+        .learnFromExchange(clean, result.text)
+        .then((learned) => {
+          if (learned.length) {
+            setMsgs((m) => m.map((x) => (x.id === heyraId ? { ...x, learned } : x)))
+          }
+        })
+        .catch(() => {})
     } catch {
       setMsgs((m) =>
         m.map((x) => (x.id === heyraId ? { ...x, pending: false, text: 'Er ging iets mis — probeer het nog eens.' } : x)),
@@ -279,6 +294,20 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
                     onCommit={(draft, opts) => commitClientIntake(m.id, draft, opts)}
                     onNav={onNav}
                   />
+                </div>
+              )}
+              {m.learned && m.learned.length > 0 && (
+                <div className="mt-1.5 animate-fade-up">
+                  <div className="card p-2.5 bg-prjct/8 border-prjct/20">
+                    <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-prjct-deep mb-1.5">
+                      <Brain className="h-3 w-3" /> onthouden — leert terwijl we praten
+                    </div>
+                    <ul className="space-y-1">
+                      {m.learned.map((f) => (
+                        <li key={f.id} className="text-xs text-muted">• {f.text}</li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               )}
               {m.classified && (

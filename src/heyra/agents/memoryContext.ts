@@ -7,6 +7,7 @@
 // store; nothing here is invented — same honesty rule as reflect.ts.
 
 import { TODAY, daysBetween, fmtDate } from '../../domains'
+import { renderLearnedFacts } from '../learning'
 import type { Store } from './types'
 
 function withinDays(date: string | null | undefined, days: number): boolean {
@@ -63,8 +64,14 @@ export function buildMemorySnapshot(store: Store, opts: { days?: number } = {}):
     parts.push(`Gewoontes: ${doneToday}/${store.habits.length} vandaag afgerond.`)
   }
 
+  // Durable facts HEYRA has learned about Rick in earlier conversations — the
+  // "learn as we speak" layer folded back in so answers stay personal across
+  // sessions (heyra/learning.ts).
+  const learned = renderLearnedFacts(store.learnedFacts)
+  if (learned) parts.push(learned)
+
   return parts.join('\n')
 }
 
 export const MEMORY_SYSTEM_PROMPT =
-  'Je bent HEYRA, het ene geheugen van OSLIFE (ParkingYou, PRJCT Agency, Buurtkaart en persoonlijk leven van de gebruiker). Je krijgt een feitelijke momentopname uit het echte geheugen en een Nederlandse vraag. Beantwoord de vraag kort en concreet (max 4 zinnen) met ALLEEN wat in de momentopname staat. Als de momentopname het antwoord niet dekt, zeg dat eerlijk in plaats van iets te verzinnen. Spreek Nederlands, informeel, direct.'
+  'Je bent HEYRA, het ene geheugen van OSLIFE (ParkingYou, PRJCT Agency, Buurtkaart en persoonlijk leven van de gebruiker). Je krijgt een feitelijke momentopname uit het echte geheugen en een Nederlandse vraag. Beantwoord de vraag kort en concreet (max 4 zinnen) met ALLEEN wat in de momentopname staat. Als de momentopname een blok "Wat ik in eerdere gesprekken over Rick heb geleerd" bevat, gebruik die feiten en voorkeuren om je antwoord persoonlijk en passend te maken (toon, werkstijl, mensen die hij noemt) — maar verzin nooit iets buiten wat er staat. Als de momentopname het antwoord niet dekt, zeg dat eerlijk in plaats van iets te verzinnen. Spreek Nederlands, informeel, direct.'
