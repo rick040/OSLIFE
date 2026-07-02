@@ -34,6 +34,60 @@ export interface StructuredItem extends RawItem {
   summary: string
 }
 
+// ── Braindump v2: universal capture → Markdown log ───────────────────────────
+
+/** What kind of thing was shared/captured — drives the ingest branch + grid icon. */
+export type BraindumpSourceKind =
+  | 'text'
+  | 'link'
+  | 'image'
+  | 'pdf'
+  | 'youtube'
+  | 'instagram'
+  | 'pinterest'
+  | 'video'
+  | 'audio'
+  | 'file'
+
+export type BraindumpStatus = 'pending' | 'processing' | 'ready' | 'failed'
+
+/**
+ * One saved braindump item. Inserted `pending` the instant it's shared, then
+ * enriched (markdown/summary/domain/kind/tags/thumb) to `ready` by the
+ * braindump-ingest edge function (and the worker for media). `markdown` is the
+ * lightweight "MD file" that Heyra and OSLife read as context.
+ */
+export interface BraindumpEntry {
+  id: string
+  createdAt: string // ISO
+  sourceKind: BraindumpSourceKind
+  status: BraindumpStatus
+  title: string | null
+  sourceUrl: string | null
+  markdown: string | null
+  summary: string | null
+  domain: Domain | null
+  kind: ItemKind | null
+  sentiment: Sentiment | null
+  tags: string[]
+  thumbUrl: string | null
+  meta: Record<string, unknown>
+  error: string | null
+}
+
+/** Raw payload the share sheet / capture box hands to store.braindumpCapture(). */
+export interface BraindumpInput {
+  sourceKind: BraindumpSourceKind
+  title?: string | null
+  sourceUrl?: string | null
+  /** Plain text (selected text / a pasted note) when there's no file/url. */
+  text?: string | null
+  /** Storage path of an already-uploaded file (image/pdf/media). */
+  storagePath?: string | null
+  /** Optional user hint at capture time. */
+  domain?: Domain | null
+}
+
 // ── Layer 3: REMEMBER (three separate stores) ────────────────────────────────
 
 export interface Essential {

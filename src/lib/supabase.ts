@@ -28,6 +28,7 @@ import type {
   Channel,
   NotificationPrefs,
   VendorTag,
+  BraindumpEntry,
 } from '../types'
 import { TODAY } from '../domains'
 import type { LearnedFact } from '../heyra/learning'
@@ -561,6 +562,103 @@ export async function deleteVendorTag(vendorKey: string): Promise<void> {
   if (!user_id || !vendorKey) return
   const { error } = await supabase.from('vendor_tags').delete().eq('vendor_key', vendorKey)
   warnWrite('vendor_tags.delete', error)
+}
+
+// ── Braindump v2: universal capture log ───────────────────────────────────────
+
+const BRAINDUMP_COLS =
+  'id,created_at,source_kind,status,title,source_url,markdown,summary,domain,kind,sentiment,tags,thumb_url,meta,error'
+
+function mapBraindumpRow(r: Record<string, unknown>): BraindumpEntry {
+  return {
+    id: r.id as string,
+    createdAt: (r.created_at as string) ?? new Date().toISOString(),
+    sourceKind: ((r.source_kind as BraindumpEntry['sourceKind']) ?? 'text'),
+    status: ((r.status as BraindumpEntry['status']) ?? 'pending'),
+    title: (r.title as string) ?? null,
+    sourceUrl: (r.source_url as string) ?? null,
+    markdown: (r.markdown as string) ?? null,
+    summary: (r.summary as string) ?? null,
+    domain: (r.domain as Domain) ?? null,
+    kind: (r.kind as BraindumpEntry['kind']) ?? null,
+    sentiment: (r.sentiment as BraindumpEntry['sentiment']) ?? null,
+    tags: (r.tags as string[]) ?? [],
+    thumbUrl: (r.thumb_url as string) ?? null,
+    meta: (r.meta as Record<string, unknown>) ?? {},
+    error: (r.error as string) ?? null,
+  }
+}
+
+export async function fetchBraindumpEntries(): Promise<BraindumpEntry[]> {
+  const { data } = await supabase
+    .from('braindump_entries')
+    .select(BRAINDUMP_COLS)
+    .order('created_at', { ascending: false })
+    .limit(500)
+  return (data ?? []).map(mapBraindumpRow)
+}
+
+/** Insert a fresh `pending` entry and return the real row (id + created_at). */
+export async function insertBraindumpEntry(input: {
+  sourceKind: BraindumpEntry['sourceKind']
+  title?: string | null
+  sourceUrl?: string | null
+  markdown?: string | null
+  meta?: Record<string, unknown>
+}): Promise<BraindumpEntry | null> {
+  const user_id = await currentUserId()
+  if (!user_id) return null
+  const { data, error } = await supabase
+    .from('braindump_entries')
+    .insert({
+      user_id,
+      source_kind: input.sourceKind,
+      status: 'pending',
+      title: input.title ?? null,
+      source_url: input.sourceUrl ?? null,
+      markdown: input.markdown ?? null,
+      meta: input.meta ?? {},
+    })
+    .select(BRAINDUMP_COLS)
+    .single()
+  warnWrite('braindump_entries.insert', error)
+  return data ? mapBraindumpRow(data) : null
+}
+
+export async function deleteBraindumpEntryRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('braindump_entries').delete().eq('id', id)
+  warnWrite('braindump_entries.delete', error)
+}
+
+/** Reset an entry to `pending` so the ingest pipeline can be re-run (retry). */
+export async function resetBraindumpEntryRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase
+    .from('braindump_entries')
+    .update({ status: 'pending', error: null })
+    .eq('id', id)
+  warnWrite('braindump_entries.reset', error)
+}
+
+/**
+ * Upload a shared file (image/pdf/media) to the private `braindump` bucket under
+ * the user's folder. Returns the storage path the ingest pipeline reads from.
+ */
+export async function uploadBraindumpFile(file: File | Blob, filename: string): Promise<string | null> {
+  const user_id = await currentUserId()
+  if (!user_id) return null
+  const safe = filename.replace(/[^\w.\-]+/g, '_').slice(-80) || 'file'
+  const path = `${user_id}/${Date.now()}_${safe}`
+  const { error } = await supabase.storage.from('braindump').upload(path, file, {
+    contentType: (file as File).type || 'application/octet-stream',
+    upsert: false,
+  })
+  if (error) {
+    warnWrite('braindump.upload', error)
+    return null
+  }
+  return path
 }
 
 export async function fetchPayments(): Promise<Payment[]> {

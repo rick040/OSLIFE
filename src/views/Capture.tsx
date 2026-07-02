@@ -1,181 +1,153 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useStore } from '../store'
-import { fmtDate } from '../domains'
-import { DomainChip, SentimentChip, KindChip, SectionTitle, Empty } from '../components/ui'
-import type { CaptureSource, StructuredItem } from '../types'
-import { Mic, Link2, ListTodo, Type, Check, ArrowDown, Inbox } from 'lucide-react'
+import { SectionTitle, Empty, DomainChip } from '../components/ui'
+import { BraindumpCard, BraindumpDetail, SOURCE_LABEL } from '../components/BraindumpCard'
+import { detectTextShare } from '../lib/braindump'
+import type { BraindumpEntry, BraindumpSourceKind, Domain } from '../types'
+import { Inbox, Search, Share2, Loader2 } from 'lucide-react'
 
-const SOURCES: { id: CaptureSource; label: string; icon: typeof Type }[] = [
-  { id: 'capture', label: 'Notitie', icon: Type },
-  { id: 'voice', label: 'Spraak', icon: Mic },
-  { id: 'link', label: 'Link', icon: Link2 },
-  { id: 'task', label: 'Taak', icon: ListTodo },
-]
+const DOMAINS: Domain[] = ['parkingyou', 'prjct', 'buurtkaart', 'personal', 'cross']
 
 export default function Capture() {
-  const store = useStore()
+  const { braindumpEntries, braindumpCapture, deleteBraindumpEntry, retryBraindumpEntry } = useStore()
   const [text, setText] = useState('')
-  const [source, setSource] = useState<CaptureSource>('capture')
-  const [stage, setStage] = useState<0 | 1 | 2 | 3>(0)
-  const [last, setLast] = useState<StructuredItem | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [open, setOpen] = useState<BraindumpEntry | null>(null)
+
+  // filters
+  const [q, setQ] = useState('')
+  const [kindFilter, setKindFilter] = useState<BraindumpSourceKind | 'all'>('all')
+  const [domainFilter, setDomainFilter] = useState<Domain | 'all'>('all')
 
   async function submit() {
     const clean = text.trim()
-    if (!clean) return
+    if (!clean || saving) return
+    setSaving(true)
     setText('')
-    // Show INTAKE immediately with a provisional item (only .text matters for
-    // that stage) — classify() is now brain-first and can take a second or
-    // two, and the whole point of this screen is to reveal each stage as it
-    // actually happens, not all at once once the promise resolves.
-    setLast({ id: crypto.randomUUID(), text: clean, source, createdAt: new Date().toISOString(), domain: 'personal', kind: 'note', sentiment: 'neutral', summary: clean })
-    setStage(1)
-    const item = await store.capture(clean, source)
-    setLast(item)
-    setTimeout(() => setStage(2), 300)
-    setTimeout(() => setStage(3), 800)
+    const { kind, url } = detectTextShare(clean)
+    await braindumpCapture({ sourceKind: kind, text: kind === 'text' ? clean : null, sourceUrl: url })
+    setSaving(false)
   }
 
-  const recent = store.items.slice(0, 8)
+  // kinds actually present, for the filter chip row
+  const presentKinds = useMemo(() => {
+    const set = new Set<BraindumpSourceKind>()
+    braindumpEntries.forEach((e) => set.add(e.sourceKind))
+    return [...set]
+  }, [braindumpEntries])
+
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    return braindumpEntries.filter((e) => {
+      if (kindFilter !== 'all' && e.sourceKind !== kindFilter) return false
+      if (domainFilter !== 'all' && e.domain !== domainFilter) return false
+      if (!needle) return true
+      const hay = [e.title, e.summary, e.markdown, e.tags.join(' '), e.sourceUrl].filter(Boolean).join(' ').toLowerCase()
+      return hay.includes(needle)
+    })
+  }, [braindumpEntries, q, kindFilter, domainFilter])
+
+  // keep the open modal in sync as realtime enrichment updates the row
+  const openLive = open ? braindumpEntries.find((e) => e.id === open.id) ?? open : null
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6">
       <div>
         <h1 className="text-xl font-semibold flex items-center gap-2">
-          <Inbox className="h-5 w-5 text-buurtkaart" /> Vastleggen
+          <Inbox className="h-5 w-5 text-buurtkaart" /> Braindump
         </h1>
         <p className="text-sm text-muted mt-1">
-          Één ingang. Gooi alles erin, geen map, geen tag, geen archieerbeslissing. Het systeem regelt het.
+          Één ingang. Gooi alles erin — een gedachte, link, afbeelding, PDF of video. Het systeem maakt er
+          een lichte notitie van die HEYRA en OSLife als context gebruiken.
         </p>
       </div>
 
+      {/* quick capture */}
       <div className="card p-4">
-        <div className="flex flex-wrap gap-2 mb-3">
-          {SOURCES.map((s) => {
-            const Icon = s.icon
-            return (
-              <button
-                key={s.id}
-                onClick={() => setSource(s.id)}
-                className={`flex-1 min-w-0 btn !px-3 ${
-                  source === s.id ? 'bg-buurtkaart/15 text-buurtkaart border border-buurtkaart/40' : 'bg-sunken text-muted'
-                }`}
-              >
-                <Icon className="h-4 w-4 shrink-0" /> {s.label}
-              </button>
-            )
-          })}
-        </div>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit()
-          }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit() }}
           rows={3}
-          placeholder={
-            source === 'voice'
-              ? 'Spreek je gedachten uit… (typ hier voor de demo)'
-              : source === 'link'
-              ? 'Plak een link en een notitie…'
-              : source === 'task'
-              ? 'Iets te doen…'
-              : 'Wat er ook in je hoofd zit…'
-          }
+          placeholder="Wat er ook in je hoofd zit… (plak gerust een link)"
           className="w-full rounded-xl bg-surface border border-line px-4 py-3 text-sm outline-none focus:border-buurtkaart/50 resize-none"
         />
         <div className="flex items-center justify-between mt-3">
-          <span className="text-[11px] text-faint">⌘/Ctrl + Enter om op te slaan</span>
-          <button className="btn-primary" onClick={submit} disabled={!text.trim()}>
-            Opslaan
+          <span className="text-[11px] text-faint flex items-center gap-1.5">
+            <Share2 className="h-3.5 w-3.5" /> Of deel iets vanaf je telefoon naar “Braindump”.
+          </span>
+          <button className="btn-primary" onClick={submit} disabled={!text.trim() || saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Opslaan
           </button>
         </div>
       </div>
 
-      {/* pipeline visualization */}
-      {last && (
-        <div className="card p-4 animate-fade-up">
-          <SectionTitle hint="Zie hoe het door de lagen beweegt -- jij koos hier niks van.">
-            Intake {'->'} Begrijpen {'->'} Onthouden
-          </SectionTitle>
-          <div className="space-y-2">
-            <PipeStep active={stage >= 1} label="INTAKE" note="onbewerkt item ontvangen">
-              <p className="text-sm text-ink-soft">"{last.text}"</p>
-            </PipeStep>
-            <div className="flex justify-center">
-              <ArrowDown className={`h-4 w-4 ${stage >= 2 ? 'text-buurtkaart' : 'text-faint'}`} />
-            </div>
-            <PipeStep active={stage >= 2} label="BEGRIJPEN" note="geclassificeerd & samengevat">
-              <div className="flex flex-wrap gap-1.5">
-                <DomainChip domain={last.domain} small />
-                <KindChip kind={last.kind} />
-                <SentimentChip sentiment={last.sentiment} />
-              </div>
-              <p className="text-xs text-muted mt-1.5">"{last.summary}"</p>
-            </PipeStep>
-            <div className="flex justify-center">
-              <ArrowDown className={`h-4 w-4 ${stage >= 3 ? 'text-buurtkaart' : 'text-faint'}`} />
-            </div>
-            <PipeStep active={stage >= 3} label="ONTHOUDEN" note="opgeslagen, altijd vindbaar">
-              <p className="text-sm text-ink-soft">
-                Opgeslagen in je geheugen{last.kind === 'task' ? ' en geopend als een thread (loop).' : '.'}
-              </p>
-            </PipeStep>
-          </div>
+      {/* filters */}
+      <div className="space-y-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-faint" />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Zoek in je braindumps…"
+            className="w-full rounded-xl bg-surface border border-line pl-9 pr-3 py-2.5 text-sm outline-none focus:border-buurtkaart/50"
+          />
         </div>
-      )}
 
+        {(presentKinds.length > 1 || domainFilter !== 'all') && (
+          <div className="flex flex-wrap gap-1.5">
+            <FilterChip active={kindFilter === 'all'} onClick={() => setKindFilter('all')}>Alles</FilterChip>
+            {presentKinds.map((k) => (
+              <FilterChip key={k} active={kindFilter === k} onClick={() => setKindFilter(k)}>
+                {SOURCE_LABEL[k]}
+              </FilterChip>
+            ))}
+            <span className="w-px bg-line mx-1 self-stretch" />
+            {DOMAINS.filter((d) => braindumpEntries.some((e) => e.domain === d)).map((d) => (
+              <button key={d} onClick={() => setDomainFilter(domainFilter === d ? 'all' : d)}
+                className={`rounded-full transition-opacity ${domainFilter === d ? 'ring-2 ring-buurtkaart/50' : 'opacity-70 hover:opacity-100'}`}>
+                <DomainChip domain={d} small />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* grid */}
       <div>
-        <SectionTitle>Onlangs vastgelegd</SectionTitle>
-        {recent.length ? (
-          <div className="space-y-2">
-            {recent.map((i) => (
-              <div key={i.id} className="card p-3">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <DomainChip domain={i.domain} small />
-                  <KindChip kind={i.kind} />
-                  <span className="text-[11px] text-faint ml-auto">{fmtDate(i.createdAt)}</span>
-                </div>
-                <p className="text-sm text-ink-soft">{i.summary}</p>
-              </div>
+        <SectionTitle>{filtered.length} vastgelegd</SectionTitle>
+        {filtered.length ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            {filtered.map((e) => (
+              <BraindumpCard key={e.id} entry={e} onOpen={() => setOpen(e)} />
             ))}
           </div>
         ) : (
-          <Empty>Nog niks vastgelegd.</Empty>
+          <Empty>
+            {braindumpEntries.length ? 'Niks gevonden met deze filters.' : 'Nog niks vastgelegd — gooi je eerste gedachte of link erin.'}
+          </Empty>
         )}
       </div>
+
+      {openLive && (
+        <BraindumpDetail
+          entry={openLive}
+          onClose={() => setOpen(null)}
+          onDelete={deleteBraindumpEntry}
+          onRetry={retryBraindumpEntry}
+        />
+      )}
     </div>
   )
 }
 
-function PipeStep({
-  active,
-  label,
-  note,
-  children,
-}: {
-  active: boolean
-  label: string
-  note: string
-  children: React.ReactNode
-}) {
+function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <div
-      className={`rounded-xl border p-3 transition-all duration-500 ${
-        active ? 'border-buurtkaart/40 bg-buurtkaart/5 opacity-100' : 'border-line opacity-40'
-      }`}
+    <button
+      onClick={onClick}
+      className={`chip text-xs ${active ? 'bg-buurtkaart/15 text-buurtkaart-deep border border-buurtkaart/40' : 'bg-sunken text-muted'}`}
     >
-      <div className="flex items-center gap-2 mb-1.5">
-        <span
-          className={`h-4 w-4 rounded-full flex items-center justify-center ${
-            active ? 'bg-buurtkaart text-white' : 'bg-line'
-          }`}
-        >
-          {active && <Check className="h-3 w-3" />}
-        </span>
-        <span className="text-[10px] uppercase tracking-wider font-semibold text-muted">{label}</span>
-        <span className="text-[10px] text-faint">· {note}</span>
-      </div>
-      <div className="pl-6">{children}</div>
-    </div>
+      {children}
+    </button>
   )
 }
