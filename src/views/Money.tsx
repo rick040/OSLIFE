@@ -142,6 +142,8 @@ export default function Money() {
     addTransactions,
     importTransactions,
     markPaymentPaid,
+    deletePayment,
+    deleteTransaction,
     updateTransaction,
     autoTagTransactions,
     setVendorTag,
@@ -437,6 +439,15 @@ export default function Money() {
                     <button className="btn-ghost shrink-0 !py-1.5" onClick={() => markPaymentPaid(p.id)}>
                       <CheckCircle2 className="h-4 w-4" /> {p.direction === 'incoming' ? 'Ontvangen' : 'Betaald'}
                     </button>
+                    <button
+                      className="text-faint hover:text-cross shrink-0 p-1"
+                      onClick={() => {
+                        if (confirm(`Betaling "${p.payee}" verwijderen?`)) deletePayment(p.id)
+                      }}
+                      aria-label="Verwijder betaling"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 )
               })}
@@ -476,6 +487,12 @@ export default function Money() {
             updateTransaction(editing.id, patch, { learnVendor })
             setEditing(null)
           }}
+          onDelete={() => {
+            if (confirm(`Transactie "${editing.merchant}" verwijderen?`)) {
+              deleteTransaction(editing.id)
+              setEditing(null)
+            }
+          }}
         />
       )}
     </div>
@@ -490,10 +507,12 @@ function TransactionEditor({
   tx,
   onClose,
   onSave,
+  onDelete,
 }: {
   tx: Transaction
   onClose: () => void
   onSave: (patch: Partial<Pick<Transaction, 'category' | 'domain' | 'note'>>, learnVendor: boolean) => void
+  onDelete: () => void
 }) {
   const [category, setCategory] = useState(TX_CATEGORIES.includes(tx.category as never) ? tx.category : 'Other')
   const [domain, setDomain] = useState<Domain>(tx.domain)
@@ -559,14 +578,22 @@ function TransactionEditor({
           <Tag className="h-3.5 w-3.5" /> Onthoud dit voor <span className="font-medium text-ink">{tx.merchant}</span>
         </label>
 
-        <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onClose} className="btn-ghost">Annuleer</button>
+        <div className="flex items-center justify-between gap-2 pt-1">
           <button
-            onClick={() => onSave({ category, domain, note }, remember)}
-            className="btn-primary"
+            onClick={onDelete}
+            className="btn-ghost text-cross hover:text-cross-deep"
           >
-            <CheckCircle2 className="h-4 w-4" /> Opslaan
+            <Trash2 className="h-4 w-4" /> Verwijder
           </button>
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="btn-ghost">Annuleer</button>
+            <button
+              onClick={() => onSave({ category, domain, note }, remember)}
+              className="btn-primary"
+            >
+              <CheckCircle2 className="h-4 w-4" /> Opslaan
+            </button>
+          </div>
         </div>
       </div>
     </div>

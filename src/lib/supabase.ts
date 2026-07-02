@@ -90,6 +90,12 @@ export async function persistPaymentStatus(id: string, status: Payment['status']
   warnWrite('payments.status', error)
 }
 
+export async function deletePaymentRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('payments').delete().eq('id', id)
+  warnWrite('payments.delete', error)
+}
+
 // ── Day blocks (dagplan) ─────────────────────────────────────────────────────
 // The "Nu doen" card completes/skips today's blocks; without writing the status
 // back to day_blocks it reverts to 'planned' on the next fetchBlocks().
@@ -501,6 +507,12 @@ export async function updateFinanceTxRow(
   if (Object.keys(row).length === 0) return
   const { error } = await supabase.from('finance_tx').update(row).eq('id', id)
   warnWrite('finance_tx.update', error)
+}
+
+export async function deleteFinanceTxRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('finance_tx').delete().eq('id', id)
+  warnWrite('finance_tx.delete', error)
 }
 
 /** Bulk-apply a category/domain to every transaction from one vendor (auto-tag / re-tag). */
