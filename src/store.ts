@@ -82,6 +82,7 @@ import {
   upsertNotificationPrefs,
   persistBrainState,
   persistPaymentStatus,
+  persistBlockStatus,
   insertFinanceTx,
   persistEmailRead,
   persistAllEmailsRead,
@@ -519,7 +520,7 @@ export const useStore = create<State>()(
         void softDeleteHabitRow(id)
       },
 
-      completeBlock: (id) =>
+      completeBlock: (id) => {
         set((s) => {
           const b = s.blocks.find((x) => x.id === id)
           return {
@@ -528,9 +529,11 @@ export const useStore = create<State>()(
               ? pushSignal(s.activity, { text: `Blok voltooid: ${b.title}`, domain: b.domain, loop: 'fast' })
               : s.activity,
           }
-        }),
+        })
+        void persistBlockStatus(id, 'done')
+      },
 
-      skipBlock: (id) =>
+      skipBlock: (id) => {
         set((s) => {
           const b = s.blocks.find((x) => x.id === id)
           return {
@@ -543,10 +546,14 @@ export const useStore = create<State>()(
                 })
               : s.activity,
           }
-        }),
+        })
+        void persistBlockStatus(id, 'skipped')
+      },
 
-      resetBlock: (id) =>
-        set((s) => ({ blocks: s.blocks.map((x) => (x.id === id ? { ...x, status: 'planned' } : x)) })),
+      resetBlock: (id) => {
+        set((s) => ({ blocks: s.blocks.map((x) => (x.id === id ? { ...x, status: 'planned' } : x)) }))
+        void persistBlockStatus(id, 'planned')
+      },
 
       moveBlock: (id, dir) =>
         set((s) => {

@@ -89,6 +89,15 @@ export async function persistPaymentStatus(id: string, status: Payment['status']
   warnWrite('payments.status', error)
 }
 
+// ── Day blocks (dagplan) ─────────────────────────────────────────────────────
+// The "Nu doen" card completes/skips today's blocks; without writing the status
+// back to day_blocks it reverts to 'planned' on the next fetchBlocks().
+export async function persistBlockStatus(id: string, status: Block['status']): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('day_blocks').update({ status }).eq('id', id)
+  warnWrite('day_blocks.status', error)
+}
+
 // ── Finance: ABN AMRO CSV import ──────────────────────────────────────────────
 // Persists imported bank transactions to finance_tx. The dedup_key matches the
 // one payments-sheet-ingest uses (`date|amount`), so a purchase already logged
