@@ -85,10 +85,12 @@ import {
   upsertNotificationPrefs,
   persistBrainState,
   persistPaymentStatus,
+  deletePaymentRow,
   persistBlockStatus,
   isDbId,
   insertFinanceTx,
   updateFinanceTxRow,
+  deleteFinanceTxRow,
   applyCategoryToTxIds,
   fetchVendorTags,
   upsertVendorTag,
@@ -289,6 +291,11 @@ interface State {
   addTransactions: (txns: Transaction[]) => void
   importTransactions: (txns: Transaction[]) => Promise<{ inserted: number; duplicates: number }>
   markPaymentPaid: (id: string) => void
+  // Remove an outstanding (or any) payment entirely — from the store and the DB.
+  deletePayment: (id: string) => void
+  // Remove a single transaction — from the store and the DB. Handy to clear
+  // demo/seed rows that shouldn't count toward the balance.
+  deleteTransaction: (id: string) => void
   // Manual per-transaction edit (category/domain/note/merchant). By default a
   // category/domain change also teaches the vendor cache so future transactions
   // from the same merchant tag themselves.
@@ -745,6 +752,22 @@ export const useStore = create<State>()(
         void persistPaymentStatus(id, 'paid')
       },
 
+      deletePayment: (id) => {
+        set((s) => {
+          const p = s.payments.find((x) => x.id === id)
+          if (!p) return {}
+          return {
+            payments: s.payments.filter((x) => x.id !== id),
+            activity: pushSignal(s.activity, {
+              text: `Betaling verwijderd: ${p.payee} (€${p.amount})`,
+              domain: p.domain,
+              loop: 'fast',
+            }),
+          }
+        })
+        void deletePaymentRow(id)
+      },
+
       markAllEmailsRead: () => {
         set((s) => ({ emails: s.emails.map((x) => ({ ...x, unread: false })) }))
         void persistAllEmailsRead()
@@ -1122,6 +1145,22 @@ export const useStore = create<State>()(
             { reapply: false },
           )
         }
+      },
+
+      deleteTransaction: (id) => {
+        set((s) => {
+          const t = s.transactions.find((x) => x.id === id)
+          if (!t) return {}
+          return {
+            transactions: s.transactions.filter((x) => x.id !== id),
+            activity: pushSignal(s.activity, {
+              text: `Transactie verwijderd: ${t.merchant} (${t.amount > 0 ? '+' : ''}€${t.amount})`,
+              domain: t.domain,
+              loop: 'fast',
+            }),
+          }
+        })
+        void deleteFinanceTxRow(id)
       },
 
       setVendorTag: (key, patch, opts) => {
