@@ -27,6 +27,7 @@ import type {
   Message,
   Channel,
   NotificationPrefs,
+  VendorTag,
 } from '../types'
 import { TODAY } from '../domains'
 import type { LearnedFact } from '../heyra/learning'
@@ -470,7 +471,7 @@ export async function upsertNotificationPrefs(p: Partial<NotificationPrefs>): Pr
 export async function fetchTransactions(): Promise<Transaction[]> {
   const { data } = await supabase
     .from('finance_tx')
-    .select('id,occurred_on,amount,counterparty,description,category,domain')
+    .select('id,occurred_on,amount,counterparty,description,category,domain,note')
     .order('occurred_on', { ascending: false })
     .limit(300)
 
@@ -482,7 +483,84 @@ export async function fetchTransactions(): Promise<Transaction[]> {
     category: (r.category as string) || 'other',
     // prefer stored domain (set by wallet-ingest), fall back to client-side inference
     domain: ((r.domain as Domain) || inferTxDomain((r.counterparty as string) ?? '', (r.description as string) ?? '')),
+    note: (r.note as string) ?? '',
   }))
+}
+
+/** Update a single transaction's category/domain/note/merchant (manual edit or auto-tag). */
+export async function updateFinanceTxRow(
+  id: string,
+  patch: Partial<Pick<Transaction, 'category' | 'domain' | 'note' | 'merchant'>>,
+): Promise<void> {
+  if (!isDbId(id)) return
+  const row: Record<string, unknown> = {}
+  if (patch.category !== undefined) row.category = patch.category
+  if (patch.domain !== undefined) row.domain = patch.domain
+  if (patch.note !== undefined) row.note = patch.note
+  if (patch.merchant !== undefined) row.counterparty = patch.merchant
+  if (Object.keys(row).length === 0) return
+  const { error } = await supabase.from('finance_tx').update(row).eq('id', id)
+  warnWrite('finance_tx.update', error)
+}
+
+/** Bulk-apply a category/domain to every transaction from one vendor (auto-tag / re-tag). */
+export async function applyCategoryToTxIds(
+  ids: string[],
+  category: string,
+  domain: Domain,
+): Promise<void> {
+  const dbIds = ids.filter(isDbId)
+  if (!dbIds.length) return
+  const { error } = await supabase.from('finance_tx').update({ category, domain }).in('id', dbIds)
+  warnWrite('finance_tx.retag', error)
+}
+
+// ── Vendor tags (auto-categorisation cache) ───────────────────────────────────
+
+export async function fetchVendorTags(): Promise<VendorTag[]> {
+  const { data } = await supabase
+    .from('vendor_tags')
+    .select('vendor_key,vendor_name,category,domain,info,source,confidence,updated_at')
+    .order('updated_at', { ascending: false })
+    .limit(2000)
+
+  return (data ?? []).map((r) => ({
+    vendorKey: r.vendor_key as string,
+    vendorName: (r.vendor_name as string) ?? '',
+    category: (r.category as string) ?? 'Other',
+    domain: ((r.domain as Domain) ?? 'personal'),
+    info: (r.info as string) ?? '',
+    source: ((r.source as VendorTag['source']) ?? 'ai'),
+    confidence: (r.confidence as number) ?? 0.5,
+    updatedAt: (r.updated_at as string) ?? new Date().toISOString(),
+  }))
+}
+
+export async function upsertVendorTag(tag: VendorTag): Promise<void> {
+  const user_id = await currentUserId()
+  if (!user_id || !tag.vendorKey) return
+  const { error } = await supabase.from('vendor_tags').upsert(
+    {
+      user_id,
+      vendor_key: tag.vendorKey,
+      vendor_name: tag.vendorName,
+      category: tag.category,
+      domain: tag.domain,
+      info: tag.info,
+      source: tag.source,
+      confidence: tag.confidence,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,vendor_key' },
+  )
+  warnWrite('vendor_tags.upsert', error)
+}
+
+export async function deleteVendorTag(vendorKey: string): Promise<void> {
+  const user_id = await currentUserId()
+  if (!user_id || !vendorKey) return
+  const { error } = await supabase.from('vendor_tags').delete().eq('vendor_key', vendorKey)
+  warnWrite('vendor_tags.delete', error)
 }
 
 export async function fetchPayments(): Promise<Payment[]> {

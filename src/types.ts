@@ -79,6 +79,25 @@ export interface Transaction {
   merchant: string
   category: string
   domain: Domain
+  note?: string // per-transaction free-text ("add more info")
+  autoTagged?: boolean // true once HEYRA/Haiku has categorised this row
+}
+
+/**
+ * Vendor cache entry — HEYRA's "learn once, reuse forever" categorisation memory.
+ * Keyed by a normalised merchant name (vendorKey). The first time a merchant
+ * appears it's looked up (Haiku + web search) and stored here; every later
+ * transaction from the same vendor is tagged instantly from this cache.
+ */
+export interface VendorTag {
+  vendorKey: string // normalised lookup key
+  vendorName: string // last-seen human-readable merchant
+  category: string
+  domain: Domain
+  info: string // what the vendor is (from web search) + any notes
+  source: 'ai' | 'manual' | 'rule'
+  confidence: number // 0..1
+  updatedAt: string // ISO
 }
 
 export interface Habit {

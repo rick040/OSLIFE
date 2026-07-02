@@ -39,7 +39,10 @@ import type {
   HourEntry,
   Invoice,
   ActivityEntry,
+  VendorTag,
 } from './types'
+import { vendorKey, isUntagged } from './finance/categories'
+import { categorizeVendor } from './heyra/agents/vendorAgent'
 import { analyzeActivity } from './lib/crm/activityAnalyzer'
 import type { ActivityAnalysis } from './lib/crm/activityAnalyzer'
 import { parseWhatsapp } from './lib/crm/whatsapp'
@@ -83,7 +86,13 @@ import {
   persistBrainState,
   persistPaymentStatus,
   persistBlockStatus,
+  isDbId,
   insertFinanceTx,
+  updateFinanceTxRow,
+  applyCategoryToTxIds,
+  fetchVendorTags,
+  upsertVendorTag,
+  deleteVendorTag as deleteVendorTagRow,
   persistEmailRead,
   persistAllEmailsRead,
   persistProjectPatch,
@@ -172,6 +181,7 @@ interface State {
   dogMedical: DogMedical[]
   dogReminders: DogReminder[]
   learnedFacts: LearnedFact[]
+  vendorTags: VendorTag[]
   dataSource: 'mock' | 'live'
   isLoading: boolean
 
@@ -279,6 +289,25 @@ interface State {
   addTransactions: (txns: Transaction[]) => void
   importTransactions: (txns: Transaction[]) => Promise<{ inserted: number; duplicates: number }>
   markPaymentPaid: (id: string) => void
+  // Manual per-transaction edit (category/domain/note/merchant). By default a
+  // category/domain change also teaches the vendor cache so future transactions
+  // from the same merchant tag themselves.
+  updateTransaction: (
+    id: string,
+    patch: Partial<Pick<Transaction, 'category' | 'domain' | 'note' | 'merchant'>>,
+    opts?: { learnVendor?: boolean },
+  ) => void
+  // HEYRA/Haiku auto-tagger: cache-first, only web-searches merchants it has
+  // never seen, then remembers the verdict in vendor_tags. Best-effort & idempotent.
+  autoTagTransactions: () => Promise<void>
+  // Create/replace a vendor-cache entry by hand. `reapply` rewrites every past
+  // transaction from that vendor (used from the Vendors manager).
+  setVendorTag: (
+    key: string,
+    patch: Partial<Omit<VendorTag, 'vendorKey' | 'updatedAt'>>,
+    opts?: { reapply?: boolean },
+  ) => void
+  deleteVendorTag: (key: string) => void
 
   // Kyra
   logDog: (entry: Omit<DogEntry, 'id' | 'at'> & { at?: string }) => void
@@ -335,9 +364,13 @@ const seed = () => ({
   dogMedical: mock.dogMedical,
   dogReminders: mock.dogReminders,
   learnedFacts: [] as LearnedFact[],
+  vendorTags: [] as VendorTag[],
   dataSource: 'mock' as const,
   isLoading: true,
 })
+
+/** Guard so overlapping auto-tag runs (load + realtime) don't double-work. */
+let autoTagRunning = false
 
 const uid = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1000)}`
 
@@ -1070,7 +1103,138 @@ export const useStore = create<State>()(
         const inserted = await insertFinanceTx(txns)
         const fresh = await fetchTransactions()
         if (fresh.length) set({ transactions: fresh })
+        // Categorise anything the rule-based guesser left as Uncategorized.
+        void get().autoTagTransactions()
         return { inserted, duplicates: txns.length - inserted }
+      },
+
+      updateTransaction: (id, patch, opts) => {
+        set((s) => ({ transactions: s.transactions.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
+        void updateFinanceTxRow(id, patch)
+        // Teach the vendor cache from a manual category/domain change so the next
+        // transaction from this merchant tags itself — but don't rewrite history.
+        const t = get().transactions.find((x) => x.id === id)
+        const learns = opts?.learnVendor !== false && (patch.category !== undefined || patch.domain !== undefined)
+        if (t && learns) {
+          get().setVendorTag(
+            vendorKey(t.merchant),
+            { vendorName: t.merchant, category: t.category, domain: t.domain, source: 'manual', confidence: 1 },
+            { reapply: false },
+          )
+        }
+      },
+
+      setVendorTag: (key, patch, opts) => {
+        if (!key) return
+        const existing = get().vendorTags.find((v) => v.vendorKey === key)
+        const tag: VendorTag = {
+          vendorKey: key,
+          vendorName: patch.vendorName ?? existing?.vendorName ?? key,
+          category: patch.category ?? existing?.category ?? 'Other',
+          domain: patch.domain ?? existing?.domain ?? 'personal',
+          info: patch.info ?? existing?.info ?? '',
+          source: patch.source ?? existing?.source ?? 'manual',
+          confidence: patch.confidence ?? (patch.source === 'manual' ? 1 : existing?.confidence ?? 0.5),
+          updatedAt: new Date().toISOString(),
+        }
+        set((s) => ({ vendorTags: [tag, ...s.vendorTags.filter((v) => v.vendorKey !== key)] }))
+        void upsertVendorTag(tag)
+
+        if (opts?.reapply) {
+          const ids = get().transactions.filter((t) => vendorKey(t.merchant) === key).map((t) => t.id)
+          if (ids.length) {
+            set((s) => ({
+              transactions: s.transactions.map((t) =>
+                vendorKey(t.merchant) === key ? { ...t, category: tag.category, domain: tag.domain, autoTagged: true } : t,
+              ),
+            }))
+            void applyCategoryToTxIds(ids, tag.category, tag.domain)
+          }
+        }
+      },
+
+      deleteVendorTag: (key) => {
+        set((s) => ({ vendorTags: s.vendorTags.filter((v) => v.vendorKey !== key) }))
+        void deleteVendorTagRow(key)
+      },
+
+      // Cache-first auto-tagger. Pass 1 applies known vendors to still-untagged
+      // rows (free). Pass 2 asks Haiku (web search) about merchants never seen
+      // before, stores the verdict and applies it. Only touches rows the rules
+      // left Uncategorized, so a manual/rule category is never clobbered.
+      autoTagTransactions: async () => {
+        if (autoTagRunning) return
+        autoTagRunning = true
+        try {
+          // ── Pass 1: apply the cache (no network) ──
+          {
+            const cache = new Map(get().vendorTags.map((v) => [v.vendorKey, v]))
+            const byTag = new Map<string, { category: string; domain: Domain; ids: string[] }>()
+            for (const t of get().transactions) {
+              if (t.autoTagged || !isUntagged(t.category)) continue
+              const tag = cache.get(vendorKey(t.merchant))
+              if (!tag) continue
+              const g = byTag.get(tag.vendorKey) ?? { category: tag.category, domain: tag.domain, ids: [] }
+              g.ids.push(t.id)
+              byTag.set(tag.vendorKey, g)
+            }
+            if (byTag.size) {
+              const patched = new Map<string, { category: string; domain: Domain }>()
+              for (const g of byTag.values()) g.ids.forEach((id) => patched.set(id, { category: g.category, domain: g.domain }))
+              set((s) => ({
+                transactions: s.transactions.map((t) =>
+                  patched.has(t.id) ? { ...t, ...patched.get(t.id)!, autoTagged: true } : t,
+                ),
+              }))
+              for (const g of byTag.values()) void applyCategoryToTxIds(g.ids, g.category, g.domain)
+            }
+          }
+
+          // ── Pass 2: discover unknown vendors via Haiku + web search ──
+          const cache = new Map(get().vendorTags.map((v) => [v.vendorKey, v]))
+          const unknown = new Map<string, { name: string; amount: number; ids: string[] }>()
+          for (const t of get().transactions) {
+            // Only spend an AI lookup on persisted rows (skip mock/seed data).
+            if (!isDbId(t.id) || t.autoTagged || !isUntagged(t.category)) continue
+            const key = vendorKey(t.merchant)
+            if (!key || cache.has(key)) continue
+            const g = unknown.get(key) ?? { name: t.merchant, amount: t.amount, ids: [] }
+            g.ids.push(t.id)
+            unknown.set(key, g)
+          }
+
+          // Cap lookups per run to keep cost bounded; the rest get picked up next time.
+          for (const key of [...unknown.keys()].slice(0, 15)) {
+            const g = unknown.get(key)!
+            const verdict = await categorizeVendor(g.name, { amount: g.amount })
+            if (!verdict) continue
+            const tag: VendorTag = {
+              vendorKey: key,
+              vendorName: g.name,
+              category: verdict.category,
+              domain: verdict.domain,
+              info: verdict.info,
+              source: 'ai',
+              confidence: verdict.confidence,
+              updatedAt: new Date().toISOString(),
+            }
+            set((s) => ({
+              vendorTags: [tag, ...s.vendorTags.filter((v) => v.vendorKey !== key)],
+              transactions: s.transactions.map((t) =>
+                g.ids.includes(t.id) ? { ...t, category: tag.category, domain: tag.domain, autoTagged: true } : t,
+              ),
+              activity: pushSignal(s.activity, {
+                text: `Getagd door HEYRA: ${g.name} → ${tag.category}`,
+                domain: tag.domain,
+                loop: 'fast',
+              }),
+            }))
+            void upsertVendorTag(tag)
+            void applyCategoryToTxIds(g.ids, tag.category, tag.domain)
+          }
+        } finally {
+          autoTagRunning = false
+        }
       },
 
       logDog: (entry) => {
@@ -1209,7 +1373,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -1218,6 +1382,7 @@ export const useStore = create<State>()(
             fetchClientMessages(),
             fetchNotificationPrefs(),
             fetchLearnedFacts(),
+            fetchVendorTags(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -1247,12 +1412,15 @@ export const useStore = create<State>()(
             ...(messages.length > 0 && { messages }),
             notificationPrefs,
             ...(learnedFacts.length > 0 && { learnedFacts }),
+            ...(vendorTags.length > 0 && { vendorTags }),
             dataSource: 'live',
             isLoading: false,
           })
           // REMEMBER + SURFACE run off live data: rebuild essentials, threads,
           // dayLogs, baseline patterns and today's nudge now that it has loaded.
           get().recomputeBrain()
+          // Categorise any transactions still Uncategorized (cache-first, then AI).
+          void get().autoTagTransactions()
         } catch (err) {
           console.warn('[OSLIFE] Supabase fetch failed', err)
           set({ isLoading: false })
@@ -1267,7 +1435,9 @@ export const useStore = create<State>()(
           .on('postgres_changes', { event: '*', schema: 'public', table: 'health_daily_stats' },
             () => fetchHealthDays().then((d) => { if (d.length > 0) { set({ healthDays: d }); get().recomputeBrain() } }))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_tx' },
-            () => fetchTransactions().then((d) => { if (d.length > 0) { set({ transactions: d }); get().recomputeBrain() } }))
+            () => fetchTransactions().then((d) => { if (d.length > 0) { set({ transactions: d }); get().recomputeBrain(); void get().autoTagTransactions() } }))
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'vendor_tags' },
+            () => fetchVendorTags().then((d) => { set({ vendorTags: d }); void get().autoTagTransactions() }))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'gmail_messages' },
             () => fetchEmails().then((d) => d.length > 0 && set({ emails: d })))
           .on('postgres_changes', { event: '*', schema: 'public', table: 'day_blocks' },
@@ -1352,6 +1522,7 @@ export const useStore = create<State>()(
         if (!state.screenDays?.length) state.screenDays = s.screenDays
         if (!state.checkins) state.checkins = []
         if (!state.learnedFacts) state.learnedFacts = []
+        if (!state.vendorTags) state.vendorTags = []
         if (state.notificationPrefs === undefined) state.notificationPrefs = null
         if (!state.dataSource) state.dataSource = 'mock'
       },

@@ -13,7 +13,8 @@ import { useStore } from '../store'
 import { TODAY, DOMAIN_META, DOMAIN_HEX, fmtDate, daysBetween } from '../domains'
 import { OPENING_BALANCE } from '../mockData'
 import { DomainChip, SectionTitle, Empty } from '../components/ui'
-import type { Domain, Transaction, Cadence, Subscription } from '../types'
+import type { Domain, Transaction, Cadence, Subscription, VendorTag } from '../types'
+import { TX_CATEGORIES, CATEGORY_DOMAIN, domainForCategory } from '../finance/categories'
 import {
   Wallet,
   Upload,
@@ -29,6 +30,11 @@ import {
   X,
   Pause,
   Play,
+  Sparkles,
+  Pencil,
+  Tag,
+  Trash2,
+  Globe,
 } from 'lucide-react'
 
 const eur = (n: number) =>
@@ -36,17 +42,8 @@ const eur = (n: number) =>
 const eur0 = (n: number) =>
   `${n < 0 ? '-' : ''}€${Math.abs(n).toLocaleString('nl-NL', { maximumFractionDigits: 0 })}`
 
-const CAT_DOMAIN: Record<string, Domain> = {
-  Groceries: 'personal',
-  Takeout: 'personal',
-  Convenience: 'personal',
-  Dog: 'personal',
-  Subscriptions: 'personal',
-  Software: 'prjct',
-  Gear: 'prjct',
-  'Client income': 'prjct',
-  'Stock media': 'parkingyou',
-}
+// Category → domain colour map for the chart (shared taxonomy).
+const CAT_DOMAIN = CATEGORY_DOMAIN
 
 // ── ABN AMRO + generieke CSV parser ───────────────────────────────────────────
 // ABN AMRO CSV (komma, gequote) kolommen:
@@ -111,7 +108,7 @@ function parseCsv(text: string): Transaction[] {
       amount,
       merchant,
       category,
-      domain: CAT_DOMAIN[category] ?? (amount > 0 ? 'prjct' : 'personal'),
+      domain: domainForCategory(category, amount),
     })
   })
   return out
@@ -133,7 +130,7 @@ function monthly(amount: number, cadence: Cadence): number {
   }
 }
 
-type Tab = 'overzicht' | 'tebetalen' | 'abonnementen'
+type Tab = 'overzicht' | 'tebetalen' | 'abonnementen' | 'vendors'
 
 export default function Money() {
   const {
@@ -141,9 +138,14 @@ export default function Money() {
     goals,
     payments,
     subscriptions,
+    vendorTags,
     addTransactions,
     importTransactions,
     markPaymentPaid,
+    updateTransaction,
+    autoTagTransactions,
+    setVendorTag,
+    deleteVendorTag,
     addSubscription,
     toggleSubscription,
     deleteSubscription,
@@ -151,6 +153,22 @@ export default function Money() {
   const fileRef = useRef<HTMLInputElement>(null)
   const [tab, setTab] = useState<Tab>('overzicht')
   const [filter, setFilter] = useState<Domain | 'all'>('all')
+  const [editing, setEditing] = useState<Transaction | null>(null)
+  const [tagging, setTagging] = useState(false)
+
+  const untagged = useMemo(
+    () => transactions.filter((t) => /^(other|uncategorized|uncategorised|onbekend|)$/i.test(t.category.trim())).length,
+    [transactions],
+  )
+
+  const runAutoTag = async () => {
+    setTagging(true)
+    try {
+      await autoTagTransactions()
+    } finally {
+      setTagging(false)
+    }
+  }
 
   const openPayments = payments
     .filter((p) => p.status === 'open')
@@ -218,6 +236,7 @@ export default function Money() {
     { id: 'overzicht', label: 'Overzicht' },
     { id: 'tebetalen', label: 'Te betalen' },
     { id: 'abonnementen', label: 'Abonnementen' },
+    { id: 'vendors', label: 'Vendors' },
   ]
 
   return (
@@ -230,6 +249,15 @@ export default function Money() {
           <p className="text-sm text-muted mt-1">ABN AMRO · transacties, betalingen en abonnementen.</p>
         </div>
         <div className="flex gap-2">
+          <button
+            className="btn-ghost"
+            onClick={runAutoTag}
+            disabled={tagging}
+            title="Laat HEYRA (Haiku) onbekende winkeliers opzoeken en categoriseren"
+          >
+            <Sparkles className={`h-4 w-4 ${tagging ? 'animate-pulse' : ''}`} />
+            {tagging ? 'Bezig…' : `Auto-tag${untagged ? ` (${untagged})` : ''}`}
+          </button>
           <button className="btn-ghost" onClick={demoImport}>
             <Plus className="h-4 w-4" /> Demo-import
           </button>
@@ -253,6 +281,9 @@ export default function Money() {
             {t.label}
             {t.id === 'tebetalen' && openPayments.length > 0 && (
               <span className="ml-1.5 text-[11px] text-faint">{openPayments.length}</span>
+            )}
+            {t.id === 'vendors' && vendorTags.length > 0 && (
+              <span className="ml-1.5 text-[11px] text-faint">{vendorTags.length}</span>
             )}
           </button>
         ))}
@@ -337,17 +368,26 @@ export default function Money() {
                     <div className="text-xs text-faint mb-1.5">{fmtDate(date)}</div>
                     <div className="card divide-y divide-line/50">
                       {txns.map((t) => (
-                        <div key={t.id} className="flex items-center gap-3 p-3">
+                        <button
+                          key={t.id}
+                          onClick={() => setEditing(t)}
+                          className="w-full flex items-center gap-3 p-3 text-left hover:bg-sunken/60 transition-colors group"
+                        >
                           <span className={`h-2 w-2 rounded-full shrink-0 ${DOMAIN_META[t.domain].dot}`} />
                           <div className="min-w-0 flex-1">
                             <div className="text-sm text-ink truncate">{t.merchant}</div>
-                            <div className="text-[11px] text-faint">{t.category}</div>
+                            <div className="text-[11px] text-faint flex items-center gap-1">
+                              <span>{t.category}</span>
+                              {t.autoTagged && <Sparkles className="h-3 w-3 text-prjct" aria-label="Auto-getagd" />}
+                              {t.note && <span className="truncate">· {t.note}</span>}
+                            </div>
                           </div>
+                          <Pencil className="h-3.5 w-3.5 text-faint opacity-0 group-hover:opacity-100 shrink-0" />
                           <span className={`text-sm font-medium tabular-nums shrink-0 ${t.amount > 0 ? 'text-buurtkaart' : 'text-ink'}`}>
                             {t.amount > 0 ? '+' : ''}
                             {eur(t.amount)}
                           </span>
-                        </div>
+                        </button>
                       ))}
                     </div>
                   </div>
@@ -416,6 +456,274 @@ export default function Money() {
           onDelete={deleteSubscription}
         />
       )}
+
+      {tab === 'vendors' && (
+        <Vendors
+          vendorTags={vendorTags}
+          untagged={untagged}
+          tagging={tagging}
+          onAutoTag={runAutoTag}
+          onSave={(key, patch) => setVendorTag(key, patch, { reapply: true })}
+          onDelete={deleteVendorTag}
+        />
+      )}
+
+      {editing && (
+        <TransactionEditor
+          tx={editing}
+          onClose={() => setEditing(null)}
+          onSave={(patch, learnVendor) => {
+            updateTransaction(editing.id, patch, { learnVendor })
+            setEditing(null)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Transaction editor ─────────────────────────────────────────────────────────
+// Change a single transaction's category / domain / note. By default the change
+// also teaches the vendor cache so the next transaction from this merchant tags
+// itself — untick "onthouden" to change just this one row.
+function TransactionEditor({
+  tx,
+  onClose,
+  onSave,
+}: {
+  tx: Transaction
+  onClose: () => void
+  onSave: (patch: Partial<Pick<Transaction, 'category' | 'domain' | 'note'>>, learnVendor: boolean) => void
+}) {
+  const [category, setCategory] = useState(TX_CATEGORIES.includes(tx.category as never) ? tx.category : 'Other')
+  const [domain, setDomain] = useState<Domain>(tx.domain)
+  const [note, setNote] = useState(tx.note ?? '')
+  const [remember, setRemember] = useState(true)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="card w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-ink truncate">{tx.merchant}</div>
+            <div className="text-[11px] text-faint">{fmtDate(tx.date)} · {eur(tx.amount)}</div>
+          </div>
+          <button onClick={onClose} className="text-faint hover:text-ink p-1 shrink-0" aria-label="Sluiten">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <label className="block">
+          <span className="text-xs uppercase tracking-wider text-muted">Categorie</span>
+          <select
+            value={category}
+            onChange={(e) => {
+              const c = e.target.value
+              setCategory(c)
+              setDomain(domainForCategory(c, tx.amount))
+            }}
+            className="mt-1 w-full rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none focus:border-prjct/60"
+          >
+            {TX_CATEGORIES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="text-xs uppercase tracking-wider text-muted">Domein</span>
+          <select
+            value={domain}
+            onChange={(e) => setDomain(e.target.value as Domain)}
+            className="mt-1 w-full rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none focus:border-prjct/60"
+          >
+            {(['personal', 'prjct', 'parkingyou', 'buurtkaart'] as const).map((d) => (
+              <option key={d} value={d}>{DOMAIN_META[d].label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="text-xs uppercase tracking-wider text-muted">Notitie</span>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            placeholder="Meer info bij deze transactie…"
+            className="mt-1 w-full rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none focus:border-prjct/60 resize-none"
+          />
+        </label>
+
+        <label className="flex items-center gap-2 text-sm text-muted cursor-pointer">
+          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="accent-forest" />
+          <Tag className="h-3.5 w-3.5" /> Onthoud dit voor <span className="font-medium text-ink">{tx.merchant}</span>
+        </label>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button onClick={onClose} className="btn-ghost">Annuleer</button>
+          <button
+            onClick={() => onSave({ category, domain, note }, remember)}
+            className="btn-primary"
+          >
+            <CheckCircle2 className="h-4 w-4" /> Opslaan
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Vendors manager ──────────────────────────────────────────────────────────
+// The learned vendor cache: every merchant HEYRA (or Rick) has categorised once.
+// Editing a vendor here re-tags every past transaction from that merchant.
+function Vendors({
+  vendorTags,
+  untagged,
+  tagging,
+  onAutoTag,
+  onSave,
+  onDelete,
+}: {
+  vendorTags: VendorTag[]
+  untagged: number
+  tagging: boolean
+  onAutoTag: () => void
+  onSave: (key: string, patch: Partial<Omit<VendorTag, 'vendorKey' | 'updatedAt'>>) => void
+  onDelete: (key: string) => void
+}) {
+  const [q, setQ] = useState('')
+  const [editKey, setEditKey] = useState<string | null>(null)
+
+  const shown = useMemo(() => {
+    const needle = q.trim().toLowerCase()
+    return vendorTags
+      .filter((v) => !needle || v.vendorName.toLowerCase().includes(needle) || v.category.toLowerCase().includes(needle))
+      .sort((a, b) => a.vendorName.localeCompare(b.vendorName))
+  }, [vendorTags, q])
+
+  return (
+    <div className="space-y-4">
+      <div className="card p-4 flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <SectionTitle hint="Elke winkelier die HEYRA één keer heeft opgezocht — daarna gratis herbruikt.">
+            <span className="flex items-center gap-2"><Tag className="h-4 w-4 text-prjct" /> Vendor-geheugen</span>
+          </SectionTitle>
+          <p className="text-[11px] text-faint mt-1">
+            {vendorTags.length} onthouden{untagged ? ` · ${untagged} transactie(s) nog niet gecategoriseerd` : ' · alles getagd'}
+          </p>
+        </div>
+        <button className="btn-primary !py-1.5" onClick={onAutoTag} disabled={tagging}>
+          <Sparkles className={`h-4 w-4 ${tagging ? 'animate-pulse' : ''}`} /> {tagging ? 'Bezig…' : 'Auto-tag nu'}
+        </button>
+      </div>
+
+      {vendorTags.length > 8 && (
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Zoek winkelier of categorie…"
+          className="w-full rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none focus:border-prjct/60"
+        />
+      )}
+
+      {shown.length === 0 ? (
+        <Empty>
+          {vendorTags.length === 0
+            ? 'Nog geen vendors onthouden. Importeer transacties en druk op Auto-tag.'
+            : 'Geen resultaten.'}
+        </Empty>
+      ) : (
+        <div className="card divide-y divide-line">
+          {shown.map((v) =>
+            editKey === v.vendorKey ? (
+              <VendorEditRow
+                key={v.vendorKey}
+                tag={v}
+                onCancel={() => setEditKey(null)}
+                onSave={(patch) => {
+                  onSave(v.vendorKey, patch)
+                  setEditKey(null)
+                }}
+              />
+            ) : (
+              <div key={v.vendorKey} className="flex items-center gap-3 p-3">
+                <span className={`h-9 w-9 rounded-2xl flex items-center justify-center shrink-0 ${DOMAIN_META[v.domain].soft}`}>
+                  {v.source === 'ai' ? <Globe className="h-4 w-4" /> : <Tag className="h-4 w-4" />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-ink truncate">{v.vendorName}</div>
+                  <div className="text-[11px] text-faint truncate">
+                    {v.category} · {DOMAIN_META[v.domain].label}
+                    {v.info ? ` · ${v.info}` : ''}
+                    {v.source === 'ai' ? ` · AI ${Math.round(v.confidence * 100)}%` : ' · handmatig'}
+                  </div>
+                </div>
+                <button onClick={() => setEditKey(v.vendorKey)} className="text-faint hover:text-ink shrink-0 p-1" aria-label="Bewerk">
+                  <Pencil className="h-4 w-4" />
+                </button>
+                <button onClick={() => onDelete(v.vendorKey)} className="text-faint hover:text-cross shrink-0 p-1" aria-label="Verwijder">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ),
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function VendorEditRow({
+  tag,
+  onCancel,
+  onSave,
+}: {
+  tag: VendorTag
+  onCancel: () => void
+  onSave: (patch: Partial<Omit<VendorTag, 'vendorKey' | 'updatedAt'>>) => void
+}) {
+  const [category, setCategory] = useState(tag.category)
+  const [domain, setDomain] = useState<Domain>(tag.domain)
+  const [info, setInfo] = useState(tag.info)
+
+  return (
+    <div className="p-3 space-y-2 bg-sunken/40">
+      <div className="text-sm font-medium text-ink">{tag.vendorName}</div>
+      <div className="flex flex-wrap gap-2">
+        <select
+          value={category}
+          onChange={(e) => {
+            setCategory(e.target.value)
+            setDomain(domainForCategory(e.target.value, -1))
+          }}
+          className="flex-[1_1_140px] rounded-xl bg-surface border border-line px-3 py-2 text-sm outline-none"
+        >
+          {TX_CATEGORIES.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+        <select
+          value={domain}
+          onChange={(e) => setDomain(e.target.value as Domain)}
+          className="flex-[1_1_120px] rounded-xl bg-surface border border-line px-3 py-2 text-sm outline-none"
+        >
+          {(['personal', 'prjct', 'parkingyou', 'buurtkaart'] as const).map((d) => (
+            <option key={d} value={d}>{DOMAIN_META[d].label}</option>
+          ))}
+        </select>
+      </div>
+      <input
+        value={info}
+        onChange={(e) => setInfo(e.target.value)}
+        placeholder="Info / notitie over deze winkelier…"
+        className="w-full rounded-xl bg-surface border border-line px-3 py-2 text-sm outline-none"
+      />
+      <div className="flex justify-end gap-2">
+        <button onClick={onCancel} className="btn-ghost !py-1.5">Annuleer</button>
+        <button onClick={() => onSave({ category, domain, info, source: 'manual', confidence: 1 })} className="btn-primary !py-1.5">
+          <CheckCircle2 className="h-4 w-4" /> Opslaan
+        </button>
+      </div>
     </div>
   )
 }
