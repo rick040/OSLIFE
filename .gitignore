@@ -7,3 +7,6 @@ dist-ssr
 *.tsbuildinfo
 .env
 integrations/python/.env
+# compiled output of vite.config.ts (tsc emits these next to the source)
+vite.config.js
+vite.config.d.ts

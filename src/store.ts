@@ -15,8 +15,6 @@ import type {
   Domain,
   HealthDay,
   Project,
-  ProjectStatus,
-  Task,
   Goal,
   Milestone,
   EmailItem,
@@ -29,7 +27,6 @@ import type {
   Message,
   Subscription,
   DogEntry,
-  DogKind,
   DogMedical,
   DogReminder,
   DogProfile,
@@ -104,7 +101,6 @@ import {
   resetBraindumpEntryRow,
   persistEmailRead,
   persistAllEmailsRead,
-  persistProjectPatch,
   createHabitRow,
   softDeleteHabitRow,
   persistHabitTick,
@@ -145,7 +141,7 @@ import {
   deleteMessageRow,
 } from './lib/supabase'
 
-export interface ActivitySignal {
+interface ActivitySignal {
   id: string
   ts: string
   text: string
@@ -258,7 +254,6 @@ interface State {
   deleteClient: (id: string) => void
 
   // CRM — messages (unified inbox)
-  markMessageRead: (id: string) => void
   markConversationRead: (contactKey: string) => void
   addMessage: (msg: Omit<Message, 'id'>) => void
   deleteMessage: (id: string) => void
@@ -269,7 +264,6 @@ interface State {
   ) => Promise<{ imported: number; total: number }>
 
   // Projects (native CRUD)
-  setProjectStatus: (id: string, status: ProjectStatus) => void
   updateProject: (id: string, patch: Partial<Project>) => void
   addProject: (project: Omit<Project, 'id'>) => void
   deleteProject: (id: string) => void
@@ -292,7 +286,6 @@ interface State {
   deleteMilestone: (id: string) => void
   addProjectTask: (projectId: string, task: Omit<ProjectTask, 'id' | 'projectId'>) => void
   toggleProjectTask: (taskId: string, done: boolean) => void
-  updateProjectTask: (id: string, patch: Partial<ProjectTask>) => void
   deleteProjectTask: (id: string) => void
   addHours: (projectId: string, h: Omit<HourEntry, 'id' | 'projectId'>) => void
   deleteHours: (id: string) => void
@@ -337,12 +330,10 @@ interface State {
   updateDogEntry: (id: string, patch: Partial<Omit<DogEntry, 'id'>>) => void
   addDogMedical: (m: Omit<DogMedical, 'id'>) => void
   deleteDogMedical: (id: string) => void
-  addDogReminder: (r: Omit<DogReminder, 'id' | 'done'>) => void
   toggleDogReminder: (id: string) => void
 
   // Subscriptions
   addSubscription: (sub: Omit<Subscription, 'id'>) => void
-  updateSubscription: (id: string, patch: Partial<Subscription>) => void
   toggleSubscription: (id: string) => void
   deleteSubscription: (id: string) => void
 
@@ -886,12 +877,6 @@ export const useStore = create<State>()(
       },
 
       // ── CRM: messages ─────────────────────────────────────────────────────
-      markMessageRead: (id) => {
-        set((s) => ({ messages: s.messages.map((m) => (m.id === id ? { ...m, unread: false } : m)) }))
-        const m = get().messages.find((x) => x.id === id)
-        if (m) void markMessagesReadRow(m.contactKey)
-      },
-
       markConversationRead: (contactKey) => {
         set((s) => ({
           messages: s.messages.map((m) => (m.contactKey === contactKey ? { ...m, unread: false } : m)),
@@ -922,24 +907,6 @@ export const useStore = create<State>()(
           activity: pushSignal(s.activity, { text: `WhatsApp geïmporteerd: ${imported} bericht(en)`, domain: 'prjct', loop: 'fast' }),
         }))
         return { imported, total: messages.length }
-      },
-
-      setProjectStatus: (id, status) => {
-        set((s) => {
-          const p = s.projects.find((x) => x.id === id)
-          if (!p) return {}
-          const progress = status === 'done' ? 1 : status === 'review' ? Math.max(p.progress, 0.85) : p.progress
-          return {
-            projects: s.projects.map((x) => (x.id === id ? { ...x, status, progress } : x)),
-            activity: pushSignal(s.activity, {
-              text: `Project "${p.name}" → ${status}`,
-              domain: p.domain,
-              loop: 'fast',
-            }),
-          }
-        })
-        const updated = get().projects.find((x) => x.id === id)
-        if (updated) void updateProjectRow(id, { status, progress: updated.progress })
       },
 
       updateProject: (id, patch) => {
@@ -1088,11 +1055,6 @@ export const useStore = create<State>()(
         }
         set((s) => ({ projectTasks: s.projectTasks.map((x) => (x.id === taskId ? { ...x, done } : x)) }))
         void updateProjectTaskRow(taskId, { done, lastDoneOn: done ? TODAY : null })
-      },
-
-      updateProjectTask: (id, patch) => {
-        set((s) => ({ projectTasks: s.projectTasks.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
-        void updateProjectTaskRow(id, patch)
       },
 
       deleteProjectTask: (id) => {
@@ -1392,9 +1354,6 @@ export const useStore = create<State>()(
 
       deleteDogMedical: (id) => set((s) => ({ dogMedical: s.dogMedical.filter((x) => x.id !== id) })),
 
-      addDogReminder: (r) =>
-        set((s) => ({ dogReminders: [...s.dogReminders, { ...r, id: uid('drem'), done: false }] })),
-
       toggleDogReminder: (id) =>
         set((s) => ({ dogReminders: s.dogReminders.map((x) => (x.id === id ? { ...x, done: !x.done } : x)) })),
 
@@ -1404,11 +1363,6 @@ export const useStore = create<State>()(
         void createSubscriptionRow(sub).then((realId) => {
           if (realId) set((s) => ({ subscriptions: s.subscriptions.map((x) => (x.id === tempId ? { ...x, id: realId } : x)) }))
         })
-      },
-
-      updateSubscription: (id, patch) => {
-        set((s) => ({ subscriptions: s.subscriptions.map((x) => (x.id === id ? { ...x, ...patch } : x)) }))
-        void updateSubscriptionRow(id, patch)
       },
 
       toggleSubscription: (id) => {
@@ -1661,5 +1615,3 @@ export const useStore = create<State>()(
     },
   ),
 )
-
-export { TODAY }

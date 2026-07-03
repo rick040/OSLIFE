@@ -235,14 +235,6 @@ export type ProjectStatus = 'lead' | 'active' | 'review' | 'blocked' | 'done'
 
 export type Priority = 'High' | 'Medium' | 'Low'
 
-export interface Task {
-  id: string
-  name: string
-  done: boolean
-  dueDate?: string | null
-  priority?: Priority | null
-}
-
 /** HEYRA Taakmaker draft — a parsed, editable task before it is committed. */
 export interface TaskDraft {
   title: string
