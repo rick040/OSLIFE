@@ -400,6 +400,35 @@ function persistableThreads(threads: Thread[]): Thread[] {
   return threads.filter((t) => t.status === 'closed' || !isDerivedThreadId(t.id))
 }
 
+// ── Optimistic-write micro-helpers ─────────────────────────────────────────────
+// The actions below repeat three shapes: optimistic create (temp id swapped for
+// the real Supabase id once the insert lands), patch-one-row, and filter-delete.
+// These are factories taking the creator's `set`/`get`, so sites with extra
+// logic (activity signals, multi-slice deletes, …) can keep their custom sets.
+
+type IdRow = { id: string }
+/** State slices holding arrays of id-addressable rows (the optimistic-write slices). */
+type IdSliceKey = { [K in keyof State]: State[K] extends IdRow[] ? K : never }[keyof State]
+type StoreSet = (partial: Partial<State> | ((s: State) => Partial<State>)) => void
+
+/** Optimistic create, step 2: swap the temp id for the real Supabase id once the insert lands. */
+const swapTempId = (set: StoreSet, slice: IdSliceKey, tempId: string) => (realId: string | null) => {
+  if (!realId) return
+  set((s) => ({ [slice]: (s[slice] as IdRow[]).map((x) => (x.id === tempId ? { ...x, id: realId } : x)) } as unknown as Partial<State>))
+}
+
+/** Optimistic patch: apply a partial onto one row of a slice. */
+const patchSlice = (set: StoreSet, slice: IdSliceKey, id: string, patch: object) =>
+  set((s) => ({ [slice]: (s[slice] as IdRow[]).map((x) => (x.id === id ? { ...x, ...patch } : x)) } as unknown as Partial<State>))
+
+/** Optimistic delete: drop one row from a slice. */
+const removeFromSlice = (set: StoreSet, slice: IdSliceKey, id: string) =>
+  set((s) => ({ [slice]: (s[slice] as IdRow[]).filter((x) => x.id !== id) } as unknown as Partial<State>))
+
+/** Push the persistable brain state (threads + patterns) to Supabase. */
+const persistBrain = (get: () => State) =>
+  void persistBrainState(persistableThreads(get().threads), get().patterns)
+
 export const useStore = create<State>()(
   persist(
     (set, get) => ({
@@ -440,7 +469,7 @@ export const useStore = create<State>()(
           }
         })
         // a new thread (owed loop) changes the persisted brain state
-        if (c.kind === 'task' && openThread) void persistBrainState(persistableThreads(get().threads), get().patterns)
+        if (c.kind === 'task' && openThread) persistBrain(get)
         return item
       },
 
@@ -501,7 +530,7 @@ export const useStore = create<State>()(
       },
 
       deleteBraindumpEntry: (id) => {
-        set((s) => ({ braindumpEntries: s.braindumpEntries.filter((e) => e.id !== id) }))
+        removeFromSlice(set, 'braindumpEntries', id)
         void deleteBraindumpEntryRow(id)
       },
 
@@ -547,7 +576,7 @@ export const useStore = create<State>()(
             loop: 'fast',
           }),
         }))
-        void persistBrainState(persistableThreads(get().threads), get().patterns)
+        persistBrain(get)
         return id
       },
 
@@ -561,21 +590,17 @@ export const useStore = create<State>()(
               : s.activity,
           }
         })
-        void persistBrainState(persistableThreads(get().threads), get().patterns)
+        persistBrain(get)
       },
 
       reopenThread: (id) => {
-        set((s) => ({
-          threads: s.threads.map((x) => (x.id === id ? { ...x, status: 'open' } : x)),
-        }))
-        void persistBrainState(persistableThreads(get().threads), get().patterns)
+        patchSlice(set, 'threads', id, { status: 'open' })
+        persistBrain(get)
       },
 
       updateThread: (id, patch) => {
-        set((s) => ({
-          threads: s.threads.map((x) => (x.id === id ? { ...x, ...patch } : x)),
-        }))
-        void persistBrainState(persistableThreads(get().threads), get().patterns)
+        patchSlice(set, 'threads', id, patch)
+        persistBrain(get)
       },
 
       deleteThread: (id) => {
@@ -585,8 +610,8 @@ export const useStore = create<State>()(
           get().closeThread(id)
           return
         }
-        set((s) => ({ threads: s.threads.filter((x) => x.id !== id) }))
-        void persistBrainState(persistableThreads(get().threads), get().patterns)
+        removeFromSlice(set, 'threads', id)
+        persistBrain(get)
       },
 
       tickHabit: (id) => {
@@ -627,13 +652,11 @@ export const useStore = create<State>()(
             { id: tempId, name, emoji: emoji || '✅', color, streak: 0, doneToday: false, history: [] },
           ],
         }))
-        void createHabitRow(name, emoji || '✅', color).then((realId) => {
-          if (realId) set((s) => ({ habits: s.habits.map((x) => (x.id === tempId ? { ...x, id: realId } : x)) }))
-        })
+        void createHabitRow(name, emoji || '✅', color).then(swapTempId(set, 'habits', tempId))
       },
 
       deleteHabit: (id) => {
-        set((s) => ({ habits: s.habits.filter((x) => x.id !== id) }))
+        removeFromSlice(set, 'habits', id)
         void softDeleteHabitRow(id)
       },
 
@@ -774,7 +797,7 @@ export const useStore = create<State>()(
             }),
           }
         })
-        void persistBrainState(persistableThreads(get().threads), get().patterns)
+        persistBrain(get)
 
         // Brain-assisted narrative: non-blocking, only ever narrates THIS
         // pass's already-evidenced correlations/anomalies (never invents new
@@ -807,9 +830,7 @@ export const useStore = create<State>()(
         }),
 
       markEmailRead: (id) => {
-        set((s) => ({
-          emails: s.emails.map((x) => (x.id === id ? { ...x, unread: false } : x)),
-        }))
+        patchSlice(set, 'emails', id, { unread: false })
         void persistEmailRead(id, true)
       },
 
@@ -857,13 +878,11 @@ export const useStore = create<State>()(
           clients: [{ ...client, id: tempId }, ...s.clients],
           activity: pushSignal(s.activity, { text: `Klant toegevoegd: ${client.name}`, domain: client.domain, loop: 'fast' }),
         }))
-        void createClientRow(client).then((row) => {
-          if (row) set((s) => ({ clients: s.clients.map((c) => (c.id === tempId ? { ...c, id: row.id } : c)) }))
-        })
+        void createClientRow(client).then((row) => swapTempId(set, 'clients', tempId)(row?.id ?? null))
       },
 
       updateClient: (id, patch) => {
-        set((s) => ({ clients: s.clients.map((c) => (c.id === id ? { ...c, ...patch } : c)) }))
+        patchSlice(set, 'clients', id, patch)
         void updateClientRow(id, patch)
       },
 
@@ -887,13 +906,11 @@ export const useStore = create<State>()(
       addMessage: (msg) => {
         const tempId = uid('msg')
         set((s) => ({ messages: [{ ...msg, id: tempId }, ...s.messages] }))
-        void createMessageRow(msg).then((realId) => {
-          if (realId) set((s) => ({ messages: s.messages.map((m) => (m.id === tempId ? { ...m, id: realId } : m)) }))
-        })
+        void createMessageRow(msg).then(swapTempId(set, 'messages', tempId))
       },
 
       deleteMessage: (id) => {
-        set((s) => ({ messages: s.messages.filter((m) => m.id !== id) }))
+        removeFromSlice(set, 'messages', id)
         void deleteMessageRow(id)
       },
 
@@ -938,9 +955,7 @@ export const useStore = create<State>()(
           projects: [{ ...project, id: tempId }, ...s.projects],
           activity: pushSignal(s.activity, { text: `Project aangemaakt: ${project.name}`, domain: project.domain, loop: 'fast' }),
         }))
-        void createProjectRow(project).then((row) => {
-          if (row) set((s) => ({ projects: s.projects.map((p) => (p.id === tempId ? { ...p, id: row.id } : p)) }))
-        })
+        void createProjectRow(project).then((row) => swapTempId(set, 'projects', tempId)(row?.id ?? null))
       },
 
       deleteProject: (id) => {
@@ -1009,9 +1024,7 @@ export const useStore = create<State>()(
       addMilestone: (projectId, m) => {
         const tempId = uid('ms')
         set((s) => ({ projectMilestones: [...s.projectMilestones, { ...m, id: tempId, projectId }] }))
-        void createMilestoneRow(projectId, m).then((realId) => {
-          if (realId) set((s) => ({ projectMilestones: s.projectMilestones.map((x) => (x.id === tempId ? { ...x, id: realId } : x)) }))
-        })
+        void createMilestoneRow(projectId, m).then(swapTempId(set, 'projectMilestones', tempId))
       },
 
       updateMilestone: (id, patch) => {
@@ -1019,12 +1032,12 @@ export const useStore = create<State>()(
         const next = { ...patch }
         if (patch.progress != null) next.done = patch.progress >= 1
         if (patch.done != null) next.progress = patch.done ? 1 : Math.min(0.99, get().projectMilestones.find((m) => m.id === id)?.progress ?? 0)
-        set((s) => ({ projectMilestones: s.projectMilestones.map((m) => (m.id === id ? { ...m, ...next } : m)) }))
+        patchSlice(set, 'projectMilestones', id, next)
         void updateMilestoneRow(id, next)
       },
 
       deleteMilestone: (id) => {
-        set((s) => ({ projectMilestones: s.projectMilestones.filter((m) => m.id !== id) }))
+        removeFromSlice(set, 'projectMilestones', id)
         void deleteMilestoneRow(id)
       },
 
@@ -1032,9 +1045,7 @@ export const useStore = create<State>()(
       addProjectTask: (projectId, task) => {
         const tempId = uid('ptask')
         set((s) => ({ projectTasks: [...s.projectTasks, { ...task, id: tempId, projectId }] }))
-        void createProjectTaskRow(projectId, task).then((realId) => {
-          if (realId) set((s) => ({ projectTasks: s.projectTasks.map((t) => (t.id === tempId ? { ...t, id: realId } : t)) }))
-        })
+        void createProjectTaskRow(projectId, task).then(swapTempId(set, 'projectTasks', tempId))
       },
 
       toggleProjectTask: (taskId, done) => {
@@ -1049,16 +1060,16 @@ export const useStore = create<State>()(
           else base.setMonth(base.getMonth() + every)
           const nextDue = base.toISOString().slice(0, 10)
           const patch = { done: false, lastDoneOn: TODAY, dueDate: nextDue }
-          set((s) => ({ projectTasks: s.projectTasks.map((x) => (x.id === taskId ? { ...x, ...patch } : x)) }))
+          patchSlice(set, 'projectTasks', taskId, patch)
           void updateProjectTaskRow(taskId, patch)
           return
         }
-        set((s) => ({ projectTasks: s.projectTasks.map((x) => (x.id === taskId ? { ...x, done } : x)) }))
+        patchSlice(set, 'projectTasks', taskId, { done })
         void updateProjectTaskRow(taskId, { done, lastDoneOn: done ? TODAY : null })
       },
 
       deleteProjectTask: (id) => {
-        set((s) => ({ projectTasks: s.projectTasks.filter((t) => t.id !== id) }))
+        removeFromSlice(set, 'projectTasks', id)
         void deleteProjectTaskRow(id)
       },
 
@@ -1066,13 +1077,11 @@ export const useStore = create<State>()(
       addHours: (projectId, h) => {
         const tempId = uid('hr')
         set((s) => ({ projectHours: [{ ...h, id: tempId, projectId }, ...s.projectHours] }))
-        void createHourRow(projectId, h).then((realId) => {
-          if (realId) set((s) => ({ projectHours: s.projectHours.map((x) => (x.id === tempId ? { ...x, id: realId } : x)) }))
-        })
+        void createHourRow(projectId, h).then(swapTempId(set, 'projectHours', tempId))
       },
 
       deleteHours: (id) => {
-        set((s) => ({ projectHours: s.projectHours.filter((h) => h.id !== id) }))
+        removeFromSlice(set, 'projectHours', id)
         void deleteHourRow(id)
       },
 
@@ -1080,18 +1089,16 @@ export const useStore = create<State>()(
       addInvoice: (projectId, inv) => {
         const tempId = uid('inv')
         set((s) => ({ projectInvoices: [{ ...inv, id: tempId, projectId }, ...s.projectInvoices] }))
-        void createInvoiceRow(projectId, inv).then((realId) => {
-          if (realId) set((s) => ({ projectInvoices: s.projectInvoices.map((x) => (x.id === tempId ? { ...x, id: realId } : x)) }))
-        })
+        void createInvoiceRow(projectId, inv).then(swapTempId(set, 'projectInvoices', tempId))
       },
 
       updateInvoice: (id, patch) => {
-        set((s) => ({ projectInvoices: s.projectInvoices.map((i) => (i.id === id ? { ...i, ...patch } : i)) }))
+        patchSlice(set, 'projectInvoices', id, patch)
         void updateInvoiceRow(id, patch)
       },
 
       deleteInvoice: (id) => {
-        set((s) => ({ projectInvoices: s.projectInvoices.filter((i) => i.id !== id) }))
+        removeFromSlice(set, 'projectInvoices', id)
         void deleteInvoiceRow(id)
       },
 
@@ -1128,14 +1135,12 @@ export const useStore = create<State>()(
         }))
         void createActivityRow(projectId, {
           body: entry.body, linkType: entry.linkType, linkId: entry.linkId, action: entry.action,
-        }).then((realId) => {
-          if (realId) set((s) => ({ projectActivity: s.projectActivity.map((a) => (a.id === tempId ? { ...a, id: realId } : a)) }))
-        })
+        }).then(swapTempId(set, 'projectActivity', tempId))
         return analysis
       },
 
       deleteActivity: (id) => {
-        set((s) => ({ projectActivity: s.projectActivity.filter((a) => a.id !== id) }))
+        removeFromSlice(set, 'projectActivity', id)
         void deleteActivityRow(id)
       },
 
@@ -1180,7 +1185,7 @@ export const useStore = create<State>()(
       },
 
       updateTransaction: (id, patch, opts) => {
-        set((s) => ({ transactions: s.transactions.map((t) => (t.id === id ? { ...t, ...patch } : t)) }))
+        patchSlice(set, 'transactions', id, patch)
         void updateFinanceTxRow(id, patch)
         // Teach the vendor cache from a manual category/domain change so the next
         // transaction from this merchant tags itself — but don't rewrite history.
@@ -1334,25 +1339,23 @@ export const useStore = create<State>()(
         }))
         void createDogEntryRow({
           kind: e.kind, at: e.at, durationMin: e.durationMin, distanceKm: e.distanceKm, note: e.note,
-        }).then((realId) => {
-          if (realId) set((s) => ({ dogEntries: s.dogEntries.map((x) => (x.id === tempId ? { ...x, id: realId } : x)) }))
-        })
+        }).then(swapTempId(set, 'dogEntries', tempId))
       },
 
       deleteDogEntry: (id) => {
-        set((s) => ({ dogEntries: s.dogEntries.filter((x) => x.id !== id) }))
+        removeFromSlice(set, 'dogEntries', id)
         void deleteDogEntryRow(id)
       },
 
       updateDogEntry: (id, patch) => {
-        set((s) => ({ dogEntries: s.dogEntries.map((x) => (x.id === id ? { ...x, ...patch } : x)) }))
+        patchSlice(set, 'dogEntries', id, patch)
         void updateDogEntryRow(id, patch)
       },
 
       addDogMedical: (m) =>
         set((s) => ({ dogMedical: [{ ...m, id: uid('dmed') }, ...s.dogMedical] })),
 
-      deleteDogMedical: (id) => set((s) => ({ dogMedical: s.dogMedical.filter((x) => x.id !== id) })),
+      deleteDogMedical: (id) => removeFromSlice(set, 'dogMedical', id),
 
       toggleDogReminder: (id) =>
         set((s) => ({ dogReminders: s.dogReminders.map((x) => (x.id === id ? { ...x, done: !x.done } : x)) })),
@@ -1360,9 +1363,7 @@ export const useStore = create<State>()(
       addSubscription: (sub) => {
         const tempId = uid('sub')
         set((s) => ({ subscriptions: [{ ...sub, id: tempId }, ...s.subscriptions] }))
-        void createSubscriptionRow(sub).then((realId) => {
-          if (realId) set((s) => ({ subscriptions: s.subscriptions.map((x) => (x.id === tempId ? { ...x, id: realId } : x)) }))
-        })
+        void createSubscriptionRow(sub).then(swapTempId(set, 'subscriptions', tempId))
       },
 
       toggleSubscription: (id) => {
@@ -1372,7 +1373,7 @@ export const useStore = create<State>()(
       },
 
       deleteSubscription: (id) => {
-        set((s) => ({ subscriptions: s.subscriptions.filter((x) => x.id !== id) }))
+        removeFromSlice(set, 'subscriptions', id)
         void deleteSubscriptionRow(id)
       },
 
