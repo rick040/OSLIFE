@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
     amount: t.amount,
     counterparty: (t.merchant ?? "").slice(0, 200),
     description: (t.description ?? "").slice(0, 200),
-    category: t.category ?? "other",
+    category: t.category ?? "Other",
     domain: t.domain ?? "personal",
     source: "card_log",
     payment_method: "card",
