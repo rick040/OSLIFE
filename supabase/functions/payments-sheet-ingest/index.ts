@@ -24,11 +24,9 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SUPABASE_SERVICE_KEY, SUPABASE_URL, USER_ID, jsonResponder } from "../_shared/http.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const INGEST_SECRET = Deno.env.get("INGEST_SECRET") ?? "";
-const USER_ID = Deno.env.get("OSLIFE_USER_ID") ?? Deno.env.get("RICK_USER_ID")!;
 
 interface InTx {
   date: string;
@@ -39,12 +37,7 @@ interface InTx {
   description?: string;
 }
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
+const json = jsonResponder();
 
 /** Same key the in-app ABN CSV import uses → cross-source dedup. */
 export function dedupKey(date: string, amount: number): string {

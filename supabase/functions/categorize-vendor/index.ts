@@ -22,9 +22,8 @@
  * Secrets required: ANTHROPIC_API_KEY (same one heyra-brain uses).
  */
 
-const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_VERSION = "2023-06-01";
-const MODEL = "claude-haiku-4-5-20251001";
+import { ANTHROPIC_API, MODEL, anthropicHeaders, extractText, parseJsonBlock } from "../_shared/anthropic.ts";
+import { CORS, bearerToken, corsPreflight, jsonResponder } from "../_shared/http.ts";
 
 // The fixed taxonomy the model MUST choose from — kept in sync with
 // src/finance/categories.ts on the frontend.
@@ -35,17 +34,7 @@ const CATEGORIES = [
 ];
 const DOMAINS = ["personal", "prjct", "parkingyou", "buurtkaart"];
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
-};
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json", ...CORS },
-  });
-}
+const json = jsonResponder(CORS);
 
 const SYSTEM = `Je bent de transactie-categoriseerder van OSLIFE. Je krijgt de naam van een winkelier/bedrijf van een Nederlandse bankafschrift. Zoek zo nodig op internet op wat voor bedrijf het is, en bepaal dan de juiste categorie en levensdomein.
 
@@ -70,41 +59,10 @@ interface Req {
   amount?: number;
 }
 
-interface Block {
-  type: string;
-  text?: string;
-}
-
-function extractText(content: unknown): string {
-  if (!Array.isArray(content)) return "";
-  return content
-    .filter((b): b is Block => !!b && (b as Block).type === "text")
-    .map((b) => b.text ?? "")
-    .join("\n")
-    .trim();
-}
-
-function parseVerdict(text: string): Record<string, unknown> | null {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced ? fenced[1] : text;
-  // Fall back to the first {...} block if there's no fence.
-  const braced = candidate.match(/\{[\s\S]*\}/);
-  try {
-    const parsed = JSON.parse((braced ? braced[0] : candidate).trim());
-    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : null;
-  } catch {
-    return null;
-  }
-}
-
 async function callAnthropic(apiKey: string, prompt: string, withSearch: boolean): Promise<Response> {
   return await fetch(ANTHROPIC_API, {
     method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": ANTHROPIC_VERSION,
-      "content-type": "application/json",
-    },
+    headers: anthropicHeaders(apiKey),
     body: JSON.stringify({
       model: MODEL,
       max_tokens: 1024,
@@ -118,11 +76,11 @@ async function callAnthropic(apiKey: string, prompt: string, withSearch: boolean
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+  if (req.method === "OPTIONS") return corsPreflight(CORS);
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   // verify_jwt is enabled at the gateway — a valid session token is required.
-  const auth = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const auth = bearerToken(req);
   if (!auth) return json({ error: "Unauthorized" }, 401);
 
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
@@ -154,7 +112,7 @@ Deno.serve(async (req) => {
     }
 
     const data = await res.json();
-    const verdict = parseVerdict(extractText(data.content));
+    const verdict = parseJsonBlock(extractText(data.content));
     if (!verdict) return json({ error: "Could not parse a verdict" }, 502);
 
     const rawCat = String(verdict.category ?? "Other");

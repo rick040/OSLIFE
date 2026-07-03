@@ -39,35 +39,17 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendMessage, type InlineKeyboard } from "../_shared/telegram.ts";
+import { amsterdamToday, daysBetween, fmtDateNL, type Thread } from "../_shared/dates.ts";
+import { SUPABASE_SERVICE_KEY, SUPABASE_URL, USER_ID, bearerToken, jsonResponder } from "../_shared/http.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const USER_ID = Deno.env.get("OSLIFE_USER_ID") ?? Deno.env.get("RICK_USER_ID")!;
 const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
 const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
 
 const WINDOW_MIN = 15;
 
-interface Thread {
-  id: string;
-  title: string;
-  owedTo: string;
-  due: string | null;
-  status: "open" | "closed";
-}
+const json = jsonResponder();
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-// ── Europe/Amsterdam time helpers (mirror src/domains.ts conventions) ───────
-
-function amsterdamDate(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Amsterdam" });
-}
+// ── Europe/Amsterdam time helpers (shared ones live in ../_shared/dates.ts) ─
 
 function amsterdamMinutes(): number {
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -98,22 +80,6 @@ function inQuietHours(start: string | null, end: string | null, nowMinutes: numb
   if (s === e) return false;
   if (s < e) return nowMinutes >= s && nowMinutes < e;
   return nowMinutes >= s || nowMinutes < e; // wraps past midnight
-}
-
-/** Days between two ISO dates (b - a). Same convention as src/domains.ts. */
-function daysBetween(a: string, b: string): number {
-  const da = new Date(a.slice(0, 10) + "T00:00:00").getTime();
-  const db = new Date(b.slice(0, 10) + "T00:00:00").getTime();
-  return Math.round((db - da) / 86400000);
-}
-
-function fmtDateNL(iso: string | null): string {
-  if (!iso) return "geen datum";
-  return new Date(iso.slice(0, 10) + "T00:00:00").toLocaleDateString("nl-NL", {
-    month: "short",
-    day: "numeric",
-    timeZone: "Europe/Amsterdam",
-  });
 }
 
 // ── Idempotency: an insert into notification_log IS the atomic claim ────────
@@ -302,7 +268,7 @@ async function urgentAlerts(sb: any, today: string): Promise<UrgentAlert[]> {
 // ── Handler ───────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
-  const auth = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const auth = bearerToken(req);
   if (CRON_SECRET && auth !== CRON_SECRET) return json({ error: "Unauthorized" }, 401);
   if (!BOT_TOKEN) return json({ error: "TELEGRAM_BOT_TOKEN secret is not set" }, 503);
 
@@ -311,7 +277,7 @@ Deno.serve(async (req) => {
   if (!prefs?.telegram_chat_id) return json({ ok: true, skipped: "not linked" });
 
   const chatId = prefs.telegram_chat_id as number;
-  const today = amsterdamDate();
+  const today = amsterdamToday();
   const nowMinutes = amsterdamMinutes();
   const sent: string[] = [];
 

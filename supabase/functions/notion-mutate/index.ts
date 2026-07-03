@@ -23,41 +23,8 @@
  * Secrets required: NOTION_TOKEN (same integration as notion-sync).
  */
 
-// Self-contained Notion REST helpers (kept inline so the function deploys as a
-// single file). Mirrors supabase/functions/_shared/notion.ts.
-const NOTION_API = "https://api.notion.com/v1";
-const NOTION_VERSION = "2022-06-28";
-
-interface NotionPage {
-  id: string;
-  url: string;
-  properties: Record<string, { type: string; [k: string]: unknown }>;
-}
-
-function notionHeaders(): HeadersInit {
-  const token = Deno.env.get("NOTION_TOKEN");
-  if (!token) throw new Error("NOTION_TOKEN secret is not set");
-  return {
-    Authorization: `Bearer ${token}`,
-    "Notion-Version": NOTION_VERSION,
-    "Content-Type": "application/json",
-  };
-}
-
-async function getPage(pageId: string): Promise<NotionPage> {
-  const res = await fetch(`${NOTION_API}/pages/${pageId}`, { headers: notionHeaders() });
-  if (!res.ok) throw new Error(`Notion getPage ${res.status}: ${await res.text()}`);
-  return res.json() as Promise<NotionPage>;
-}
-
-async function updatePage(pageId: string, properties: Record<string, unknown>): Promise<void> {
-  const res = await fetch(`${NOTION_API}/pages/${pageId}`, {
-    method: "PATCH",
-    headers: notionHeaders(),
-    body: JSON.stringify({ properties }),
-  });
-  if (!res.ok) throw new Error(`Notion updatePage ${res.status}: ${await res.text()}`);
-}
+import { getPage, updatePage, type NotionPage } from "../_shared/notion.ts";
+import { CORS, bearerToken, corsPreflight, jsonResponder } from "../_shared/http.ts";
 
 const SYNC_SECRET = Deno.env.get("SYNC_SECRET") ?? "";
 
@@ -70,17 +37,7 @@ const PROJECT_STATUS_TO_NOTION: Record<string, string> = {
   review:  "In uitvoering",
 };
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
-};
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json", ...CORS },
-  });
-}
+const json = jsonResponder(CORS);
 
 /** Build a single Notion property value object given the live property type. */
 function buildProp(type: string | undefined, value: unknown): Record<string, unknown> | null {
@@ -128,13 +85,13 @@ const FIELD_MAP: Record<string, Record<string, string>> = {
 };
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+  if (req.method === "OPTIONS") return corsPreflight(CORS);
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   // verify_jwt is enabled at the gateway, so the caller already holds a valid
   // project JWT (the app forwards the session token via functions.invoke). We
   // additionally accept SYNC_SECRET for trusted server-side callers.
-  const auth = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  const auth = bearerToken(req);
   if (!auth) return json({ error: "Unauthorized" }, 401);
   void SYNC_SECRET;
 

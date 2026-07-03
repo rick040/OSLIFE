@@ -27,26 +27,16 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
+import { ANTHROPIC_API, MODEL, anthropicHeaders, extractText, parseJsonBlock } from "../_shared/anthropic.ts";
+import { CORS, SUPABASE_URL, corsPreflight, jsonResponder } from "../_shared/http.ts";
 
-const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_VERSION = "2023-06-01";
-const MODEL = "claude-haiku-4-5-20251001";
-
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 const VALID_DOMAINS = ["parkingyou", "prjct", "buurtkaart", "personal", "cross"];
 const VALID_KINDS = ["task", "note", "vent", "link", "voice", "transaction", "event", "health", "email", "idea"];
 const VALID_SENTIMENTS = ["positive", "neutral", "negative", "stressed"];
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
-};
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...CORS } });
-}
+const json = jsonResponder(CORS);
 
 // ── Anthropic ─────────────────────────────────────────────────────────────────
 
@@ -81,34 +71,13 @@ interface Converted {
   markdown: string;
 }
 
-function extractText(content: unknown): string {
-  if (!Array.isArray(content)) return "";
-  return content
-    .filter((b): b is { type: string; text?: string } => !!b && (b as { type: string }).type === "text")
-    .map((b) => b.text ?? "")
-    .join("\n")
-    .trim();
-}
-
-function parseJsonBlock(text: string): Record<string, unknown> | null {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = fenced ? fenced[1] : text;
-  const braced = candidate.match(/\{[\s\S]*\}/);
-  try {
-    const parsed = JSON.parse((braced ? braced[0] : candidate).trim());
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
-
 /** Ask Claude to convert content blocks into the uniform note shape. Null on failure. */
 async function convert(apiKey: string, blocks: ContentBlock[]): Promise<Converted | null> {
   let res: Response;
   try {
     res = await fetch(ANTHROPIC_API, {
       method: "POST",
-      headers: { "x-api-key": apiKey, "anthropic-version": ANTHROPIC_VERSION, "content-type": "application/json" },
+      headers: anthropicHeaders(apiKey),
       body: JSON.stringify({
         model: MODEL,
         max_tokens: 1500,
@@ -315,7 +284,7 @@ async function processYoutubeFallback(apiKey: string, url: string): Promise<Proc
 const MEDIA_KINDS = new Set(["youtube", "video", "audio"]);
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+  if (req.method === "OPTIONS") return corsPreflight(CORS);
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   const authHeader = req.headers.get("Authorization") ?? "";

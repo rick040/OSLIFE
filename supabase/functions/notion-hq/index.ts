@@ -12,6 +12,9 @@
  */
 
 import { getBlocks, type NotionBlock } from "../_shared/notion.ts";
+import { CORS_BASIC, CORS_ORIGIN, corsPreflight, jsonResponder } from "../_shared/http.ts";
+
+const json = jsonResponder(CORS_ORIGIN);
 
 const HQ_PAGES = [
   {
@@ -71,30 +74,12 @@ async function fetchOne(page: typeof HQ_PAGES[number]) {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "authorization, content-type",
-      },
-    });
-  }
+  if (req.method === "OPTIONS") return corsPreflight(CORS_BASIC);
 
   try {
     const projects = await Promise.all(HQ_PAGES.map(fetchOne));
-    return new Response(JSON.stringify({ projects }), {
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
+    return json({ projects });
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500,
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
+    return json({ error: String(err) }, 500);
   }
 });

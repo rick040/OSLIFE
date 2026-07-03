@@ -16,23 +16,15 @@
  *   (GBK_BASE_URL is optional; it defaults to the production site.)
  */
 
+import { CORS, corsPreflight, jsonResponder } from "../_shared/http.ts";
+
 const GBK_API_KEY = Deno.env.get("GBK_API_KEY") ?? "";
 const GBK_BASE_URL = (Deno.env.get("GBK_BASE_URL") ?? "https://www.geldropbuurtkaart.nl").replace(/\/$/, "");
 
-const CORS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
-};
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json", ...CORS },
-  });
-}
+const json = jsonResponder(CORS);
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+  if (req.method === "OPTIONS") return corsPreflight(CORS);
 
   if (!GBK_API_KEY) {
     return json({ ok: false, error: "GBK_API_KEY secret is not set" }, 500);

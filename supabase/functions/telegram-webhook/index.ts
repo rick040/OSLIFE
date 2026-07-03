@@ -38,34 +38,11 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { editMessageText, answerCallbackQuery, sendMessage, type InlineKeyboard } from "../_shared/telegram.ts";
+import { amsterdamToday, daysBetween, fmtDateNL, type Thread } from "../_shared/dates.ts";
+import { SUPABASE_SERVICE_KEY, SUPABASE_URL, USER_ID } from "../_shared/http.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const USER_ID = Deno.env.get("OSLIFE_USER_ID") ?? Deno.env.get("RICK_USER_ID")!;
 const BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
 const WEBHOOK_SECRET = Deno.env.get("TELEGRAM_WEBHOOK_SECRET") ?? "";
-
-// ── Europe/Amsterdam date helpers (mirror notify-tick / src/domains.ts) ──────
-
-function amsterdamToday(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Amsterdam" });
-}
-
-/** Days between two ISO dates (b - a). Same convention as src/domains.ts. */
-function daysBetween(a: string, b: string): number {
-  const da = new Date(a.slice(0, 10) + "T00:00:00").getTime();
-  const db = new Date(b.slice(0, 10) + "T00:00:00").getTime();
-  return Math.round((db - da) / 86400000);
-}
-
-function fmtDateNL(iso: string | null): string {
-  if (!iso) return "geen datum";
-  return new Date(iso.slice(0, 10) + "T00:00:00").toLocaleDateString("nl-NL", {
-    month: "short",
-    day: "numeric",
-    timeZone: "Europe/Amsterdam",
-  });
-}
 
 function fmtEUR(n: number): string {
   return "€" + (Math.round(n * 100) / 100).toLocaleString("nl-NL", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -75,17 +52,7 @@ function moodKeyboard(energy: number): InlineKeyboard {
   return [[1, 2, 3, 4, 5].map((n) => ({ text: String(n), callback_data: `ci_m:${energy}:${n}` }))];
 }
 
-// ── Captured loops live in brain_state.threads (same shape as src/types.ts) ──
-
-interface Thread {
-  id: string;
-  domain: string;
-  title: string;
-  owedTo: string;
-  due: string | null;
-  status: "open" | "closed";
-  createdAt: string;
-}
+// ── Captured loops live in brain_state.threads (Thread from ../_shared/dates.ts) ──
 
 // deno-lint-ignore no-explicit-any
 async function getBrain(sb: any): Promise<{ threads: Thread[]; patterns: unknown[] }> {

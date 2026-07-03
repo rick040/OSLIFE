@@ -31,11 +31,21 @@ import {
   getUrl,
   getRelation,
 } from "../_shared/notion.ts";
+import {
+  CORS_BASIC,
+  CORS_ORIGIN,
+  SUPABASE_SERVICE_KEY,
+  SUPABASE_URL,
+  USER_ID,
+  bearerToken,
+  corsPreflight,
+  jsonResponder,
+} from "../_shared/http.ts";
 
-const SUPABASE_URL         = Deno.env.get("SUPABASE_URL")!;
-const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const USER_ID              = Deno.env.get("OSLIFE_USER_ID") ?? Deno.env.get("RICK_USER_ID")!;
-const SYNC_SECRET          = Deno.env.get("SYNC_SECRET") ?? "";
+const SYNC_SECRET = Deno.env.get("SYNC_SECRET") ?? "";
+
+const json     = jsonResponder(CORS_ORIGIN); // actual responses: origin-only CORS
+const jsonBare = jsonResponder();            // 401 historically carried no CORS
 
 const DB_PROJECTS = "239ddc8e-9208-8186-b452-cc35f89677ff";
 const DB_CLIENTS  = "239ddc8e-9208-8102-86b9-eda32f63e815";
@@ -58,23 +68,12 @@ function domainFor(text: string): string {
 
 Deno.serve(async (req) => {
   // Allow OPTIONS for CORS preflight
-  if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "authorization, content-type",
-      },
-    });
-  }
+  if (req.method === "OPTIONS") return corsPreflight(CORS_BASIC);
 
   // Auth: accept either a Bearer token matching SYNC_SECRET or the Supabase service key
-  const auth = req.headers.get("Authorization") ?? "";
-  const token = auth.replace(/^Bearer\s+/i, "");
+  const token = bearerToken(req);
   if (SYNC_SECRET && token !== SYNC_SECRET && token !== SUPABASE_SERVICE_KEY) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+    return jsonBare({ error: "Unauthorized" }, 401);
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
@@ -169,10 +168,5 @@ Deno.serve(async (req) => {
     results.clients = { error: String(err) };
   }
 
-  return new Response(JSON.stringify({ ok: true, ...results }), {
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-    },
-  });
+  return json({ ok: true, ...results });
 });
