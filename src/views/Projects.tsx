@@ -1,27 +1,18 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { TODAY, daysBetween } from '../domains'
-import { Empty } from '../components/ui'
-import ProjectDetail from './ProjectDetail'
-import ClientDetail from './ClientDetail'
-import ProjectForm from './ProjectForm'
-import ClientForm from './ClientForm'
-import type { Project, Client } from '../types'
+import type { Project } from '../types'
 import {
-  eur, CRM_STATUS, Kpi, ProjectCard, ProjectRow,
+  eur, CRM_STATUS, Kpi,
 } from '../components/crm'
 import {
+  FilterViewBar, ProjectGridList, useProjectBrowserModals,
+} from '../components/ProjectBrowser'
+import type { ProjectViewMode } from '../components/ProjectBrowser'
+import {
   FolderKanban, Wallet, AlertTriangle, CheckCircle2, Search,
-  LayoutGrid, List, Plus, UserPlus, ArrowUpDown,
+  Plus, UserPlus, ArrowUpDown,
 } from 'lucide-react'
-
-const STATUS_FILTERS = [
-  { value: 'Alle', label: 'Alle' },
-  { value: 'In uitvoering', label: 'Actief' },
-  { value: 'Gepland', label: 'Gepland' },
-  { value: 'Gepauzeerd', label: 'Pauze' },
-  { value: 'Opgeleverd', label: 'Opgeleverd' },
-]
 
 type SortKey = 'deadline' | 'value' | 'name' | 'progress'
 const SORT_OPTIONS: { value: SortKey; label: string }[] = [
@@ -52,11 +43,11 @@ export default function Projects() {
   const [statusFilter, setStatusFilter] = useState('Alle')
   const [clientFilter, setClientFilter] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('deadline')
-  const [view, setView] = useState<'grid' | 'lijst'>('grid')
-  const [openProject, setOpenProject] = useState<Project | null>(null)
-  const [openClient, setOpenClient] = useState<Client | null>(null)
-  const [creatingProject, setCreatingProject] = useState(false)
-  const [creatingClient, setCreatingClient] = useState(false)
+  const [view, setView] = useState<ProjectViewMode>('grid')
+  const {
+    setOpenProject, setCreatingProject, setCreatingClient,
+    openClientById, modals,
+  } = useProjectBrowserModals(clients)
 
   const activeProjects = projects.filter((p) => p.status === 'active' || p.status === 'review')
   const pipeline = projects
@@ -86,11 +77,6 @@ export default function Projects() {
     }
     return sortProjects(list, sortKey)
   }, [projects, statusFilter, clientFilter, q, sortKey])
-
-  function openClientById(clientId: string) {
-    const c = clients.find((x) => x.id === clientId)
-    if (c) setOpenClient(c)
-  }
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -153,46 +139,18 @@ export default function Projects() {
       </div>
 
       {/* Status filter + view toggle */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex flex-wrap gap-1.5">
-          {STATUS_FILTERS.map((f) => (
-            <button
-              key={f.value}
-              onClick={() => setStatusFilter(f.value)}
-              className={`chip ${statusFilter === f.value ? 'bg-forest text-white' : 'bg-surface border border-line text-muted hover:text-ink'}`}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex rounded-xl bg-sunken p-0.5 shrink-0">
-          <button onClick={() => setView('grid')} className={`px-2.5 py-1 rounded-lg ${view === 'grid' ? 'bg-surface shadow-sm text-ink' : 'text-faint'}`}>
-            <LayoutGrid className="h-4 w-4" />
-          </button>
-          <button onClick={() => setView('lijst')} className={`px-2.5 py-1 rounded-lg ${view === 'lijst' ? 'bg-surface shadow-sm text-ink' : 'text-faint'}`}>
-            <List className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
+      <FilterViewBar filter={statusFilter} onFilterChange={setStatusFilter} view={view} onViewChange={setView} />
 
-      {filtered.length === 0 ? (
-        <Empty>
-          {projects.length === 0 ? 'Nog geen projecten — maak je eerste project aan.' : 'Geen projecten voor dit filter.'}
-        </Empty>
-      ) : view === 'grid' ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {filtered.map((p) => <ProjectCard key={p.id} p={p} onClick={() => setOpenProject(p)} onClientClick={openClientById} />)}
-        </div>
-      ) : (
-        <div className="space-y-2.5">
-          {filtered.map((p) => <ProjectRow key={p.id} p={p} onClick={() => setOpenProject(p)} onClientClick={openClientById} />)}
-        </div>
-      )}
+      <ProjectGridList
+        projects={filtered}
+        view={view}
+        gridClassName="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
+        emptyMessage={projects.length === 0 ? 'Nog geen projecten — maak je eerste project aan.' : 'Geen projecten voor dit filter.'}
+        onOpenProject={setOpenProject}
+        onClientClick={openClientById}
+      />
 
-      {openProject && <ProjectDetail project={openProject} onClose={() => setOpenProject(null)} />}
-      {openClient && <ClientDetail client={openClient} onClose={() => setOpenClient(null)} />}
-      {creatingProject && <ProjectForm project={null} onClose={() => setCreatingProject(false)} />}
-      {creatingClient && <ClientForm client={null} onClose={() => setCreatingClient(false)} />}
+      {modals}
     </div>
   )
 }

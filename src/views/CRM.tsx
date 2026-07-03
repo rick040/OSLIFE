@@ -1,16 +1,16 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
-import { SectionTitle, Empty } from '../components/ui'
+import { SectionTitle } from '../components/ui'
 import Messages from './Messages'
-import ProjectDetail from './ProjectDetail'
-import ClientDetail from './ClientDetail'
-import ProjectForm from './ProjectForm'
-import ClientForm from './ClientForm'
-import type { Project, ClientStatus, Client } from '../types'
+import type { ClientStatus } from '../types'
 import {
   eur, CRM_STATUS, STATUS_HEX, CLIENT_HEX, CLIENT_STATUS_NL,
-  Kpi, ProjectCard, ProjectRow, ClientCard,
+  Kpi, ClientCard,
 } from '../components/crm'
+import {
+  FilterViewBar, ProjectGridList, useProjectBrowserModals,
+} from '../components/ProjectBrowser'
+import type { ProjectViewMode } from '../components/ProjectBrowser'
 import {
   Users,
   FolderKanban,
@@ -18,31 +18,21 @@ import {
   CheckCircle2,
   MessageCircle,
   ChevronRight,
-  LayoutGrid,
-  List,
   Plus,
   UserPlus,
 } from 'lucide-react'
 
 const STATUS_ORDER = ['In uitvoering', 'Gepland', 'Gepauzeerd', 'Opgeleverd'] as const
 
-const STATUS_FILTERS = [
-  { value: 'Alle', label: 'Alle' },
-  { value: 'In uitvoering', label: 'Actief' },
-  { value: 'Gepland', label: 'Gepland' },
-  { value: 'Gepauzeerd', label: 'Pauze' },
-  { value: 'Opgeleverd', label: 'Opgeleverd' },
-]
-
 export default function CRM() {
   const { projects, clients, messages, markConversationRead } = useStore()
   const [filter, setFilter] = useState('In uitvoering')
-  const [view, setView] = useState<'grid' | 'lijst'>('grid')
+  const [view, setView] = useState<ProjectViewMode>('grid')
   const [showMessages, setShowMessages] = useState(false)
-  const [openProject, setOpenProject] = useState<Project | null>(null)
-  const [openClient, setOpenClient] = useState<Client | null>(null)
-  const [creatingProject, setCreatingProject] = useState(false)
-  const [creatingClient, setCreatingClient] = useState(false)
+  const {
+    setOpenProject, setOpenClient, setCreatingProject, setCreatingClient,
+    openClientById, modals,
+  } = useProjectBrowserModals(clients)
 
   const unread = messages.filter((m) => m.unread).length
 
@@ -72,11 +62,6 @@ export default function CRM() {
   const activeClients = clients.filter((c) => c.clientStatus === 'Active').length
 
   const shown = filter === 'Alle' ? projects : projects.filter((p) => CRM_STATUS[p.status] === filter)
-
-  function openClientById(clientId: string) {
-    const c = clients.find((x) => x.id === clientId)
-    if (c) setOpenClient(c)
-  }
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -162,39 +147,15 @@ export default function CRM() {
 
       {/* Filters + view toggle */}
       <div>
-        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-          <div className="flex flex-wrap gap-1.5">
-            {STATUS_FILTERS.map((f) => (
-              <button
-                key={f.value}
-                onClick={() => setFilter(f.value)}
-                className={`chip ${filter === f.value ? 'bg-forest text-white' : 'bg-surface border border-line text-muted hover:text-ink'}`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-          <div className="flex rounded-xl bg-sunken p-0.5 shrink-0">
-            <button onClick={() => setView('grid')} className={`px-2.5 py-1 rounded-lg ${view === 'grid' ? 'bg-surface shadow-sm text-ink' : 'text-faint'}`}>
-              <LayoutGrid className="h-4 w-4" />
-            </button>
-            <button onClick={() => setView('lijst')} className={`px-2.5 py-1 rounded-lg ${view === 'lijst' ? 'bg-surface shadow-sm text-ink' : 'text-faint'}`}>
-              <List className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
+        <FilterViewBar filter={filter} onFilterChange={setFilter} view={view} onViewChange={setView} className="mb-3" />
 
-        {shown.length === 0 ? (
-          <Empty>Geen projecten in deze status.</Empty>
-        ) : view === 'grid' ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {shown.map((p) => <ProjectCard key={p.id} p={p} onClick={() => setOpenProject(p)} onClientClick={openClientById} />)}
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {shown.map((p) => <ProjectRow key={p.id} p={p} onClick={() => setOpenProject(p)} onClientClick={openClientById} />)}
-          </div>
-        )}
+        <ProjectGridList
+          projects={shown}
+          view={view}
+          emptyMessage="Geen projecten in deze status."
+          onOpenProject={setOpenProject}
+          onClientClick={openClientById}
+        />
       </div>
 
       {/* Clients overview */}
@@ -217,18 +178,7 @@ export default function CRM() {
           onReadConversation={markConversationRead}
         />
       )}
-      {openProject && (
-        <ProjectDetail project={openProject} onClose={() => setOpenProject(null)} />
-      )}
-      {openClient && (
-        <ClientDetail client={openClient} onClose={() => setOpenClient(null)} />
-      )}
-      {creatingProject && (
-        <ProjectForm project={null} onClose={() => setCreatingProject(false)} />
-      )}
-      {creatingClient && (
-        <ClientForm client={null} onClose={() => setCreatingClient(false)} />
-      )}
+      {modals}
     </div>
   )
 }
