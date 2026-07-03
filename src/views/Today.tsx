@@ -1,5 +1,6 @@
 import { useStore } from '../store'
 import { TODAY, DOMAIN_META, fmtDate, daysBetween } from '../domains'
+import { dueLabel } from '../lib/dates'
 import { DomainChip, SectionTitle, Empty } from '../components/ui'
 import CheckinCard from '../components/CheckinCard'
 import { Sun, Bell, CheckCircle2, SkipForward, Flame, Clock, ArrowRight } from 'lucide-react'
@@ -91,8 +92,7 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
             {openThreads.length ? (
               <div className="space-y-2">
                 {openThreads.slice(0, 4).map((t) => {
-                  const dd = t.due ? daysBetween(TODAY, t.due) : null
-                  const overdue = dd !== null && dd < 0
+                  const due = dueLabel(t.due, { prefix: 'deadline ' })
                   return (
                     <div key={t.id} className="card p-3 flex items-center justify-between gap-3">
                       <div className="min-w-0">
@@ -100,10 +100,10 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
                           <DomainChip domain={t.domain} small />
                           <span
                             className={`text-[11px] ${
-                              overdue ? 'text-cross font-medium' : 'text-faint'
+                              due.overdue ? 'text-cross font-medium' : 'text-faint'
                             }`}
                           >
-                            {t.due ? (overdue ? `${-dd!}d te laat` : `deadline ${fmtDate(t.due)}`) : 'geen datum'}
+                            {due.label}
                           </span>
                         </div>
                         <p className="text-sm text-ink truncate mt-0.5">{t.title}</p>

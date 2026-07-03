@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../store'
-import { TODAY, fmtDate, daysBetween } from '../domains'
+import { fmtDate } from '../domains'
+import { dueLabel } from '../lib/dates'
 import { DomainChip, ConfidenceBar, Empty } from '../components/ui'
 import { Lock, GitBranch, Repeat, CheckCircle2, RotateCcw, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 
@@ -67,8 +68,7 @@ export default function Memory() {
         <div className="space-y-2 animate-fade-up">
           {threads.length ? (
             threads.map((t) => {
-              const dd = t.due ? daysBetween(TODAY, t.due) : null
-              const overdue = t.status === 'open' && dd !== null && dd < 0
+              const due = dueLabel(t.due, { prefix: 'deadline ', none: 'geen deadline', active: t.status === 'open' })
               return (
                 <div
                   key={t.id}
@@ -82,8 +82,8 @@ export default function Memory() {
                       {t.status === 'closed' ? (
                         <span className="chip bg-buurtkaart/15 text-buurtkaart">gesloten</span>
                       ) : (
-                        <span className={`text-[11px] ${overdue ? 'text-cross font-medium' : 'text-faint'}`}>
-                          {t.due ? (overdue ? `${-dd!}d te laat` : `deadline ${fmtDate(t.due)}`) : 'geen deadline'}
+                        <span className={`text-[11px] ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>
+                          {due.label}
                         </span>
                       )}
                     </div>

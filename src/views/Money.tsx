@@ -12,6 +12,7 @@ import {
 import { CHART_TIP, AXIS_TICK_10 } from '../components/chart'
 import { useStore } from '../store'
 import { TODAY, DOMAIN_META, DOMAIN_HEX, fmtDate, daysBetween } from '../domains'
+import { dueLabel } from '../lib/dates'
 import { OPENING_BALANCE } from '../mockData'
 import { DomainChip, SectionTitle, Empty, Overlay, ConfirmDialog } from '../components/ui'
 import type { Domain, Transaction, Cadence, Subscription, VendorTag, Payment } from '../types'
@@ -348,8 +349,7 @@ export default function Money() {
           {openPayments.length ? (
             <div className="divide-y divide-line">
               {openPayments.map((p) => {
-                const dd = p.due ? daysBetween(TODAY, p.due) : null
-                const overdue = dd !== null && dd < 0
+                const due = dueLabel(p.due, { prefix: 'vervalt ' })
                 return (
                   <div key={p.id} className="flex items-center gap-3 py-2.5">
                     <span className={`shrink-0 ${p.direction === 'incoming' ? 'text-buurtkaart' : 'text-cross'}`}>
@@ -359,8 +359,8 @@ export default function Money() {
                       <div className="text-sm text-ink truncate">{p.payee}</div>
                       <div className="flex items-center gap-1.5">
                         <DomainChip domain={p.domain} small />
-                        <span className={`text-[11px] ${overdue ? 'text-cross font-medium' : 'text-faint'}`}>
-                          {p.due ? (overdue ? `${-dd!}d te laat` : `vervalt ${fmtDate(p.due)}`) : 'geen datum'}
+                        <span className={`text-[11px] ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>
+                          {due.label}
                         </span>
                       </div>
                     </div>

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
-import { TODAY, DOMAIN_META, fmtDate, daysBetween } from '../domains'
+import { TODAY, DOMAIN_META, daysBetween } from '../domains'
+import { dueLabel } from '../lib/dates'
 import { DomainChip, SectionTitle, Empty } from '../components/ui'
 import { parseTaskDraft } from '../heyra/skills'
 import type { Domain, Thread } from '../types'
@@ -30,8 +31,7 @@ function TaskRow({ task }: { task: Thread }) {
   const [title, setTitle] = useState(task.title)
   const [due, setDue] = useState(task.due ?? '')
   const [domain, setDomain] = useState<Domain>(task.domain)
-  const dd = task.due ? daysBetween(TODAY, task.due) : null
-  const overdue = dd !== null && dd < 0 && task.status === 'open'
+  const dueInfo = dueLabel(task.due, { prefix: 'deadline ', active: task.status === 'open' })
 
   function save() {
     store.updateThread(task.id, { title: title.trim() || task.title, due: due || null, domain })
@@ -63,8 +63,8 @@ function TaskRow({ task }: { task: Thread }) {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <DomainChip domain={task.domain} small />
-              <span className={`text-[11px] ${overdue ? 'text-cross font-medium' : 'text-faint'}`}>
-                {task.due ? (overdue ? `${-dd!}d te laat` : `deadline ${fmtDate(task.due)}`) : 'geen datum'}
+              <span className={`text-[11px] ${dueInfo.overdue ? 'text-cross font-medium' : 'text-faint'}`}>
+                {dueInfo.label}
               </span>
             </div>
             <p className={`text-sm mt-0.5 truncate ${task.status === 'closed' ? 'text-faint line-through' : 'text-ink'}`}>{task.title}</p>

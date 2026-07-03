@@ -2,7 +2,7 @@
 import { useEffect } from 'react'
 import { X, FolderKanban, Clock } from 'lucide-react'
 import type { ProjectStatus, ClientStatus, Priority, Domain, Project, Client } from '../types'
-import { TODAY, daysBetween, fmtDate } from '../domains'
+import { deadlineInfo } from '../lib/dates'
 import { DomainChip, Pill } from './ui'
 
 // ── formatting ────────────────────────────────────────────────────────────────
@@ -150,14 +150,8 @@ export function PrimaryBtn({ children, ...rest }: React.ButtonHTMLAttributes<HTM
 
 // ── shared project/client presentation (used by CRM + Projecten) ───────────────
 
-export function deadlineInfo(iso: string | null): { label: string; color: string; urgent: boolean } | null {
-  if (!iso) return null
-  const d = daysBetween(TODAY, iso)
-  if (d < 0) return { label: `${-d}d te laat`, color: '#C58392', urgent: true }
-  if (d === 0) return { label: 'Vandaag', color: '#C6A05B', urgent: true }
-  if (d <= 7) return { label: `over ${d}d`, color: '#C6A05B', urgent: true }
-  return { label: fmtDate(iso), color: '#8C9080', urgent: false }
-}
+// Canonical definition lives in src/lib/dates.ts; re-exported for existing importers.
+export { deadlineInfo }
 
 export function Kpi({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub: string }) {
   return (

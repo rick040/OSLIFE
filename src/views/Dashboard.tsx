@@ -1,5 +1,6 @@
 import { useStore } from '../store'
 import { TODAY, DOMAIN_META, fmtDate, daysBetween } from '../domains'
+import { dueLabel } from '../lib/dates'
 import { OPENING_BALANCE } from '../mockData'
 import { DomainChip, Empty, Ring, SetupHint } from '../components/ui'
 import {
@@ -365,8 +366,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           {openPayments.length ? (
             <div className="space-y-1.5">
               {openPayments.slice(0, 3).map((p) => {
-                const dd = p.due ? daysBetween(TODAY, p.due) : null
-                const overdue = dd !== null && dd < 0
+                const due = dueLabel(p.due, { none: '–' })
                 return (
                   <div key={p.id} className="flex items-center gap-2">
                     <span
@@ -377,8 +377,8 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
                     </span>
                     <span className="text-sm text-ink truncate flex-1">{p.payee}</span>
                     <span className="text-sm tabular-nums shrink-0">{eur(p.amount)}</span>
-                    <span className={`text-[11px] shrink-0 w-16 text-right ${overdue ? 'text-cross font-medium' : 'text-faint'}`}>
-                      {p.due ? (overdue ? `${-dd!}d te laat` : fmtDate(p.due)) : '–'}
+                    <span className={`text-[11px] shrink-0 w-16 text-right ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>
+                      {due.label}
                     </span>
                     <button
                       className="text-faint hover:text-buurtkaart shrink-0"
@@ -409,8 +409,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           {activeProjects.length ? (
             <div className="space-y-2">
               {activeProjects.slice(0, 4).map((p) => {
-                const dd = p.deadline ? daysBetween(TODAY, p.deadline) : null
-                const overdue = dd !== null && dd < 0
+                const due = dueLabel(p.deadline, { none: '–' })
                 return (
                   <div key={p.id} className="flex items-center gap-2">
                     <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${DOMAIN_META[p.domain].dot}`} />
@@ -418,8 +417,8 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
                       {p.name} <span className="text-faint">· {p.client}</span>
                     </span>
                     {p.status === 'blocked' && <span className="chip bg-cross/15 text-cross !py-0">geblokkeerd</span>}
-                    <span className={`text-[11px] shrink-0 ${overdue ? 'text-cross' : 'text-faint'}`}>
-                      {p.deadline ? (overdue ? `${-dd!}d te laat` : fmtDate(p.deadline)) : '–'}
+                    <span className={`text-[11px] shrink-0 ${due.overdue ? 'text-cross' : 'text-faint'}`}>
+                      {due.label}
                     </span>
                   </div>
                 )
@@ -496,14 +495,13 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           {openThreads.length ? (
             <div className="space-y-2">
               {openThreads.slice(0, 4).map((t) => {
-                const dd = t.due ? daysBetween(TODAY, t.due) : null
-                const overdue = dd !== null && dd < 0
+                const due = dueLabel(t.due, { none: '–' })
                 return (
                   <div key={t.id} className="flex items-center gap-2">
                     <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${DOMAIN_META[t.domain].dot}`} />
                     <span className="text-sm text-ink truncate flex-1">{t.title}</span>
-                    <span className={`text-[11px] shrink-0 ${overdue ? 'text-cross' : 'text-faint'}`}>
-                      {t.due ? (overdue ? `${-dd!}d te laat` : fmtDate(t.due)) : '–'}
+                    <span className={`text-[11px] shrink-0 ${due.overdue ? 'text-cross' : 'text-faint'}`}>
+                      {due.label}
                     </span>
                   </div>
                 )

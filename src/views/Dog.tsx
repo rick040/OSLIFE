@@ -3,6 +3,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { CHART_TIP_BARE, AXIS_TICK_10, AXIS_TICK_11 } from '../components/chart'
 import { useStore } from '../store'
 import { TODAY, fmtDate, daysBetween } from '../domains'
+import { daysUntil, overdueLabel } from '../lib/dates'
 import { SectionTitle, Empty, Overlay } from '../components/ui'
 import { useLongPress } from '../lib/useLongPress'
 import { isoToDatetimeLocal, nowDatetimeLocal } from '../lib/datetimeLocal'
@@ -626,7 +627,7 @@ export default function Dog() {
         </SectionTitle>
         <div className="card divide-y divide-line">
           {[...dogReminders].sort((a, b) => a.due.localeCompare(b.due)).map((r) => {
-            const dd = daysBetween(TODAY, r.due)
+            const dd = daysUntil(r.due)
             const overdue = dd < 0 && !r.done
             return (
               <div key={r.id} className={`flex items-center gap-3 p-3 ${r.done ? 'opacity-50' : ''}`}>
@@ -636,7 +637,7 @@ export default function Dog() {
                 <div className="flex-1 min-w-0">
                   <div className={`text-sm truncate ${r.done ? 'line-through text-faint' : 'text-ink'}`}>{r.title}</div>
                   <div className={`text-[11px] ${overdue ? 'text-cross font-medium' : 'text-faint'}`}>
-                    {overdue ? `${-dd}d te laat` : dd === 0 ? 'vandaag' : `over ${dd}d · ${fmtDate(r.due)}`}
+                    {overdue ? overdueLabel(dd) : dd === 0 ? 'vandaag' : `over ${dd}d · ${fmtDate(r.due)}`}
                   </div>
                 </div>
               </div>

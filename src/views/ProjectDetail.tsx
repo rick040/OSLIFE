@@ -4,7 +4,8 @@ import {
   Flag, Timer, FileText, Sparkles, ListChecks, Info,
 } from 'lucide-react'
 import type { Project, ProjectTask, ProjectMilestone, Invoice, Recurrence, Priority } from '../types'
-import { fmtDate, TODAY, daysBetween } from '../domains'
+import { fmtDate, TODAY } from '../domains'
+import { deadlineInfo } from '../lib/dates'
 import { Pill, ConfirmDialog } from '../components/ui'
 import { useStore } from '../store'
 import ProjectForm from './ProjectForm'
@@ -24,15 +25,6 @@ const INVOICE_STATUS: Record<Invoice['status'], { label: string; hex: string }> 
   overdue: { label: 'Te laat', hex: '#C58392' },
 }
 const RECUR_NL: Record<Recurrence, string> = { daily: 'dagelijks', weekly: 'wekelijks', monthly: 'maandelijks' }
-
-function dl(iso: string | null): { label: string; urgent: boolean } | null {
-  if (!iso) return null
-  const d = daysBetween(TODAY, iso)
-  if (d < 0) return { label: `${-d}d te laat`, urgent: true }
-  if (d === 0) return { label: 'vandaag', urgent: true }
-  if (d <= 7) return { label: `over ${d}d`, urgent: true }
-  return { label: fmtDate(iso), urgent: false }
-}
 
 type Tab = 'details' | 'taken' | 'mijlpalen' | 'uren' | 'facturen' | 'activiteit'
 
@@ -230,7 +222,7 @@ function Tasks({ projectId, tasks }: { projectId: string; tasks: ProjectTask[] }
 }
 
 function TaskRow({ t, onToggle, onDelete }: { t: ProjectTask; onToggle: () => void; onDelete: () => void }) {
-  const d = t.dueDate ? dl(t.dueDate) : null
+  const d = deadlineInfo(t.dueDate ?? null)
   return (
     <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-line last:border-0 group">
       <button onClick={onToggle} className="shrink-0 h-5 w-5 rounded-md border flex items-center justify-center" style={{ background: t.done ? '#6FA07C' : 'transparent', borderColor: t.done ? '#6FA07C' : '#C8C8CC' }}>
@@ -323,7 +315,7 @@ function Milestones({ projectId, milestones }: { projectId: string; milestones: 
 
       {sorted.length === 0 && <div className="rounded-2xl bg-surface border border-line px-4 py-4 text-sm text-faint">Nog geen mijlpalen.</div>}
       {sorted.map((m) => {
-        const d = m.dueDate ? dl(m.dueDate) : null
+        const d = deadlineInfo(m.dueDate ?? null)
         const pct = Math.round(m.progress * 100)
         return (
           <div key={m.id} className="rounded-2xl bg-surface border border-line p-3.5 group">
