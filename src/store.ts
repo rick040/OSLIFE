@@ -383,6 +383,42 @@ const seed = () => ({
   isLoading: true,
 })
 
+// ── Persisted-state rehydration ──────────────────────────────────────────────
+// Fields that fall back to seeded demo data when the persisted value is an
+// empty (or absent) array — stops a stale/empty localStorage payload from
+// painting a blank screen.
+const SEED_WHEN_EMPTY = [
+  'healthDays', 'emails', 'transactions', 'meetingDays', 'projects', 'clients',
+  'messages', 'goals', 'milestones', 'payments', 'subscriptions', 'dogEntries',
+  'dogMedical', 'dogReminders', 'blocks', 'habits', 'essentials', 'patterns',
+  'screenDays',
+] as const
+// Non-array (or length-agnostic) fields seeded when the persisted value is falsy.
+const SEED_WHEN_FALSY = ['threads', 'nudge', 'dogProfile'] as const
+// App-owned slices with no demo fallback — default to an empty array when absent
+// (an empty result genuinely means "none yet").
+const EMPTY_WHEN_FALSY = [
+  'projectMilestones', 'projectTasks', 'projectHours', 'projectInvoices',
+  'projectActivity', 'checkins', 'learnedFacts', 'vendorTags', 'braindumpEntries',
+] as const
+
+/**
+ * Repair a rehydrated persisted state in place: seed the demo-backed slices that
+ * came back empty, default the app-owned slices, and normalise the two scalar
+ * fields. Extracted so the fallback rules live in one list instead of ~30
+ * hand-written guards.
+ */
+export function applyPersistDefaults(
+  state: Record<string, any>,
+  seeded: Record<string, any>,
+): void {
+  for (const k of SEED_WHEN_EMPTY) if (!state[k]?.length) state[k] = seeded[k]
+  for (const k of SEED_WHEN_FALSY) if (!state[k]) state[k] = seeded[k]
+  for (const k of EMPTY_WHEN_FALSY) if (!state[k]) state[k] = []
+  if (state.notificationPrefs === undefined) state.notificationPrefs = null
+  if (!state.dataSource) state.dataSource = 'mock'
+}
+
 /** Guard so overlapping auto-tag runs (load + realtime) don't double-work. */
 let autoTagRunning = false
 
@@ -1512,59 +1548,45 @@ export const useStore = create<State>()(
           get().recomputeBrain()
         }
 
-        // One Realtime channel for all passively-ingested tables.
-        // The UI refetches only the affected slice when a row changes.
-        supabase
-          .channel('oslife-live')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'health_daily_stats' },
-            () => fetchHealthDays().then((d) => { if (d.length > 0) { set({ healthDays: d }); get().recomputeBrain() } }))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'finance_tx' },
-            () => fetchTransactions().then((d) => { if (d.length > 0) { set({ transactions: d }); get().recomputeBrain(); void get().autoTagTransactions() } }))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'vendor_tags' },
-            () => fetchVendorTags().then((d) => { set({ vendorTags: d }); void get().autoTagTransactions() }))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'gmail_messages' },
-            () => fetchEmails().then((d) => d.length > 0 && set({ emails: d })))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'day_blocks' },
-            () => Promise.all([fetchBlocks(), fetchMeetingDays()]).then(([b, m]) => {
-              set({ ...(b.length > 0 && { blocks: b }), ...(m.length > 0 && { meetingDays: m }) })
-            }))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' },
-            () => fetchProjects().then((d) => { if (d.length > 0) { set({ projects: d }); get().recomputeBrain() } }))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' },
-            () => fetchPayments().then((d) => d.length > 0 && set({ payments: d })))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'habits' },
-            () => fetchHabits().then((d) => d.length > 0 && set({ habits: d })))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'habit_log' },
-            () => fetchHabits().then((d) => d.length > 0 && set({ habits: d })))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'goals' },
-            () => fetchGoals().then((d) => d.length > 0 && set({ goals: d })))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_checkin' },
-            () => fetchCheckins().then((d) => { set({ checkins: d }); get().recomputeBrain() }))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'notification_prefs' },
-            () => fetchNotificationPrefs().then((p) => set({ notificationPrefs: p })))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'brain_state' },
-            () => fetchBrainState().then((b) => set({
-              ...(b.threads.length > 0 && { threads: b.threads }),
-              ...(b.patterns.length > 0 && { patterns: b.patterns }),
-            })))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'clients' },
-            () => fetchClients().then((d) => { if (d.length > 0) { set({ clients: d }); get().recomputeBrain() } }))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'project_milestones' },
-            () => fetchMilestones().then((d) => set({ projectMilestones: d })))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'project_tasks' },
-            () => fetchProjectTaskRows().then((d) => set({ projectTasks: d })))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'project_hours' },
-            () => fetchHours().then((d) => set({ projectHours: d })))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'project_invoices' },
-            () => fetchInvoices().then((d) => set({ projectInvoices: d })))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'project_activity' },
-            () => fetchActivity().then((d) => set({ projectActivity: d })))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'client_messages' },
-            () => fetchClientMessages().then((d) => set({ messages: d })))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'heyra_memory' },
-            () => fetchLearnedFacts().then((d) => set({ learnedFacts: d })))
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'braindump_entries' },
-            () => fetchBraindumpEntries().then((d) => set({ braindumpEntries: d })))
+        // One Realtime channel for all passively-ingested tables. Each entry
+        // refetches only its own slice when a row changes; the handler body
+        // carries the per-table rules (overwrite-only-if-non-empty, whether to
+        // recomputeBrain, whether to re-run the auto-tagger).
+        const syncSlices: { table: string; onChange: () => void }[] = [
+          { table: 'health_daily_stats', onChange: () => fetchHealthDays().then((d) => { if (d.length > 0) { set({ healthDays: d }); get().recomputeBrain() } }) },
+          { table: 'finance_tx', onChange: () => fetchTransactions().then((d) => { if (d.length > 0) { set({ transactions: d }); get().recomputeBrain(); void get().autoTagTransactions() } }) },
+          { table: 'vendor_tags', onChange: () => fetchVendorTags().then((d) => { set({ vendorTags: d }); void get().autoTagTransactions() }) },
+          { table: 'gmail_messages', onChange: () => fetchEmails().then((d) => d.length > 0 && set({ emails: d })) },
+          { table: 'day_blocks', onChange: () => Promise.all([fetchBlocks(), fetchMeetingDays()]).then(([b, m]) => {
+            set({ ...(b.length > 0 && { blocks: b }), ...(m.length > 0 && { meetingDays: m }) })
+          }) },
+          { table: 'projects', onChange: () => fetchProjects().then((d) => { if (d.length > 0) { set({ projects: d }); get().recomputeBrain() } }) },
+          { table: 'payments', onChange: () => fetchPayments().then((d) => d.length > 0 && set({ payments: d })) },
+          { table: 'habits', onChange: () => fetchHabits().then((d) => d.length > 0 && set({ habits: d })) },
+          { table: 'habit_log', onChange: () => fetchHabits().then((d) => d.length > 0 && set({ habits: d })) },
+          { table: 'goals', onChange: () => fetchGoals().then((d) => d.length > 0 && set({ goals: d })) },
+          { table: 'daily_checkin', onChange: () => fetchCheckins().then((d) => { set({ checkins: d }); get().recomputeBrain() }) },
+          { table: 'notification_prefs', onChange: () => fetchNotificationPrefs().then((p) => set({ notificationPrefs: p })) },
+          { table: 'brain_state', onChange: () => fetchBrainState().then((b) => set({
+            ...(b.threads.length > 0 && { threads: b.threads }),
+            ...(b.patterns.length > 0 && { patterns: b.patterns }),
+          })) },
+          { table: 'clients', onChange: () => fetchClients().then((d) => { if (d.length > 0) { set({ clients: d }); get().recomputeBrain() } }) },
+          { table: 'project_milestones', onChange: () => fetchMilestones().then((d) => set({ projectMilestones: d })) },
+          { table: 'project_tasks', onChange: () => fetchProjectTaskRows().then((d) => set({ projectTasks: d })) },
+          { table: 'project_hours', onChange: () => fetchHours().then((d) => set({ projectHours: d })) },
+          { table: 'project_invoices', onChange: () => fetchInvoices().then((d) => set({ projectInvoices: d })) },
+          { table: 'project_activity', onChange: () => fetchActivity().then((d) => set({ projectActivity: d })) },
+          { table: 'client_messages', onChange: () => fetchClientMessages().then((d) => set({ messages: d })) },
+          { table: 'heyra_memory', onChange: () => fetchLearnedFacts().then((d) => set({ learnedFacts: d })) },
+          { table: 'braindump_entries', onChange: () => fetchBraindumpEntries().then((d) => set({ braindumpEntries: d })) },
+        ]
+        syncSlices
+          .reduce(
+            (channel, slice) =>
+              channel.on('postgres_changes', { event: '*', schema: 'public', table: slice.table }, slice.onChange),
+            supabase.channel('oslife-live'),
+          )
           .subscribe()
       },
 
@@ -1577,41 +1599,8 @@ export const useStore = create<State>()(
       onRehydrateStorage: () => (state) => {
         if (!state) return
         state.isLoading = true
-        const s = seed()
-        // Guard every array/required field — prevents blank page from stale persisted state
-        if (!state.healthDays?.length) state.healthDays = s.healthDays
-        if (!state.emails?.length) state.emails = s.emails
-        if (!state.transactions?.length) state.transactions = s.transactions
-        if (!state.meetingDays?.length) state.meetingDays = s.meetingDays
-        if (!state.projects?.length) state.projects = s.projects
-        if (!state.clients?.length) state.clients = s.clients
-        if (!state.messages?.length) state.messages = s.messages
-        if (!state.projectMilestones) state.projectMilestones = []
-        if (!state.projectTasks) state.projectTasks = []
-        if (!state.projectHours) state.projectHours = []
-        if (!state.projectInvoices) state.projectInvoices = []
-        if (!state.projectActivity) state.projectActivity = []
-        if (!state.goals?.length) state.goals = s.goals
-        if (!state.milestones?.length) state.milestones = s.milestones
-        if (!state.payments?.length) state.payments = s.payments
-        if (!state.subscriptions?.length) state.subscriptions = s.subscriptions
-        if (!state.dogProfile) state.dogProfile = s.dogProfile
-        if (!state.dogEntries?.length) state.dogEntries = s.dogEntries
-        if (!state.dogMedical?.length) state.dogMedical = s.dogMedical
-        if (!state.dogReminders?.length) state.dogReminders = s.dogReminders
-        if (!state.blocks?.length) state.blocks = s.blocks
-        if (!state.threads) state.threads = s.threads
-        if (!state.habits?.length) state.habits = s.habits
-        if (!state.nudge) state.nudge = s.nudge
-        if (!state.essentials?.length) state.essentials = s.essentials
-        if (!state.patterns?.length) state.patterns = s.patterns
-        if (!state.screenDays?.length) state.screenDays = s.screenDays
-        if (!state.checkins) state.checkins = []
-        if (!state.learnedFacts) state.learnedFacts = []
-        if (!state.vendorTags) state.vendorTags = []
-        if (!state.braindumpEntries) state.braindumpEntries = []
-        if (state.notificationPrefs === undefined) state.notificationPrefs = null
-        if (!state.dataSource) state.dataSource = 'mock'
+        // Seed empty demo-backed slices, default app-owned slices, normalise scalars.
+        applyPersistDefaults(state, seed())
       },
     },
   ),
