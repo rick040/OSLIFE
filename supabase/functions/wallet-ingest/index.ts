@@ -14,36 +14,39 @@
  *
  * Deploy:
  *   supabase functions deploy wallet-ingest --project-ref nhyunnnmdcmojvkxrbpl
- *   supabase secrets set WALLET_WEBHOOK_SECRET=<random string> RICK_USER_ID=<uuid> --project-ref nhyunnnmdcmojvkxrbpl
+ *   supabase secrets set WALLET_WEBHOOK_SECRET=<random string> OSLIFE_USER_ID=<uuid> --project-ref nhyunnnmdcmojvkxrbpl
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { SUPABASE_SERVICE_KEY, SUPABASE_URL, USER_ID, jsonResponder } from '../_shared/http.ts'
 
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const WEBHOOK_SECRET = Deno.env.get('WALLET_WEBHOOK_SECRET') ?? ''
-const USER_ID = Deno.env.get('OSLIFE_USER_ID') ?? Deno.env.get('RICK_USER_ID')!
 
-// Known merchant → category mappings
+const json = jsonResponder()
+
+// Known merchant → category mappings. Values match the canonical TX_CATEGORIES
+// casing (src/finance/categories.ts) and mirror the CSV guesser's decisions for
+// the same merchants (src/finance/csvImport.ts guessCategory) so wallet rows land
+// on the exact taxonomy the frontend maps by (CATEGORY_DOMAIN).
 const CATEGORY_MAP: Record<string, string> = {
-  'albert heijn': 'groceries',
-  'jumbo': 'groceries',
-  'lidl': 'groceries',
-  'ah': 'groceries',
-  'dirk': 'groceries',
-  'thuisbezorgd': 'takeout',
-  'uber eats': 'takeout',
-  'mcdonalds': 'takeout',
-  'dominos': 'takeout',
-  'shell': 'fuel',
-  'esso': 'fuel',
-  'bp': 'fuel',
-  'q8': 'fuel',
-  'spotify': 'software',
-  'netflix': 'software',
-  'google': 'software',
-  'apple': 'software',
-  'adobe': 'software',
+  'albert heijn': 'Groceries',
+  'jumbo': 'Groceries',
+  'lidl': 'Groceries',
+  'ah': 'Groceries',
+  'dirk': 'Groceries',
+  'thuisbezorgd': 'Takeout',
+  'uber eats': 'Takeout',
+  'mcdonalds': 'Takeout',
+  'dominos': 'Takeout',
+  'shell': 'Convenience',
+  'esso': 'Convenience',
+  'bp': 'Convenience',
+  'q8': 'Convenience',
+  'spotify': 'Subscriptions',
+  'netflix': 'Subscriptions',
+  'google': 'Software',
+  'apple': 'Software',
+  'adobe': 'Software',
 }
 
 function inferCategory(merchant: string): string {
@@ -51,7 +54,7 @@ function inferCategory(merchant: string): string {
   for (const [key, cat] of Object.entries(CATEGORY_MAP)) {
     if (m.includes(key)) return cat
   }
-  return 'other'
+  return 'Other'
 }
 
 function inferDomain(merchant: string): string {
@@ -108,9 +111,7 @@ Deno.serve(async (req) => {
 
   if (!parsed) {
     // Not a payment notification (e.g. loyalty card scan) — ignore silently
-    return new Response(JSON.stringify({ ok: true, skipped: true }), {
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return json({ ok: true, skipped: true })
   }
 
   const { amount, merchant } = parsed
@@ -137,13 +138,8 @@ Deno.serve(async (req) => {
 
   if (error) {
     console.error('Upsert error:', error)
-    return new Response(JSON.stringify({ ok: false, error: error.message }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return json({ ok: false, error: error.message }, 500)
   }
 
-  return new Response(JSON.stringify({ ok: true, merchant, amount }), {
-    headers: { 'Content-Type': 'application/json' },
-  })
+  return json({ ok: true, merchant, amount })
 })

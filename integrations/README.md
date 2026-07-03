@@ -34,7 +34,7 @@ maken niet uit. De verwachte tabs/kolommen + sheet-id properties staan boven in 
   `X-GBK-Key` header; de key blijft server-side (secret `GBK_API_KEY`).
 - `health-sheets-ingest`, `payments-sheet-ingest`, `screentime-sheet-ingest` — ontvangen de
   Sheet-payloads en upserten idempotent.
-- `wallet-ingest` (`edge-functions/wallet-ingest.ts`) — Google Wallet notificaties (MacroDroid) →
+- `wallet-ingest` (`supabase/functions/wallet-ingest/`) — Google Wallet notificaties (MacroDroid) →
   `finance_tx`.
 
 ## Finance dedup
