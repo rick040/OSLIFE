@@ -79,27 +79,104 @@ function parseAmount(raw: string): number {
   return parseFloat(raw.replace(/\s/g, '').replace(/\.(?=\d{3}(?:\D|$))/g, '').replace(',', '.'))
 }
 
+// Splitst één CSV-regel op het gegeven scheidingsteken, rekening houdend met
+// velden tussen dubbele quotes (die zelf het scheidingsteken mogen bevatten).
+function splitCsvLine(line: string, delim: string): string[] {
+  const out: string[] = []
+  let cur = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++ } else inQuotes = false
+      } else cur += ch
+    } else if (ch === '"') {
+      inQuotes = true
+    } else if (ch === delim) {
+      out.push(cur.trim()); cur = ''
+    } else cur += ch
+  }
+  out.push(cur.trim())
+  return out
+}
+
+// Kiest het scheidingsteken dat de meeste kolommen oplevert op de eerste regel.
+function detectDelimiter(line: string): string {
+  let best = ','
+  let bestCount = -1
+  for (const d of [',', ';', '\t']) {
+    const count = splitCsvLine(line, d).length
+    if (count > bestCount) { bestCount = count; best = d }
+  }
+  return best
+}
+
+function toIsoDate(raw: string): string | null {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+  const ymd = raw.match(/^(\d{4})(\d{2})(\d{2})$/)
+  if (ymd) return `${ymd[1]}-${ymd[2]}-${ymd[3]}`
+  const dmy = raw.match(/^(\d{2})[-/](\d{2})[-/](\d{4})$/)
+  if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`
+  return null
+}
+
 function parseCsv(text: string): Transaction[] {
   const lines = text.split(/\r?\n/).filter((l) => l.trim())
+  if (!lines.length) return []
+  const delim = detectDelimiter(lines[0])
   const out: Transaction[] = []
-  lines.forEach((line, i) => {
-    const cells = line.split(/[;\t]|","/).map((c) => c.trim().replace(/^"|"$/g, ''))
-    if (cells.length < 2) return
-    if (i === 0 && /date|datum|bedrag|amount|omschrijving|description/i.test(line) && !/\d{8}/.test(line)) return
 
-    const dateCell = cells.find((c) => /^\d{4}-\d{2}-\d{2}$/.test(c) || /^\d{8}$/.test(c))
-    let date = TODAY
-    if (dateCell) {
-      const iso = dateCell.match(/^\d{4}-\d{2}-\d{2}$/)?.[0]
-      const ymd = dateCell.match(/^(\d{4})(\d{2})(\d{2})$/)
-      date = iso ?? (ymd ? `${ymd[1]}-${ymd[2]}-${ymd[3]}` : TODAY)
+  // Header-detectie + kolom-mapping (ABN AMRO en varianten). Zonder header
+  // valt de parser terug op een vergevingsgezinde heuristiek per regel.
+  let dateIdx = -1
+  let amtIdx = -1
+  let descIdx = -1
+  let startRow = 0
+  if (/date|datum|bedrag|amount|omschrijving|description/i.test(lines[0]) && !/\d{8}/.test(lines[0])) {
+    const header = splitCsvLine(lines[0], delim)
+    const pick = (patterns: RegExp[]) => {
+      for (const p of patterns) {
+        const idx = header.findIndex((h) => p.test(h))
+        if (idx >= 0) return idx
+      }
+      return -1
     }
-    const amtCell = cells.find((c) => c !== dateCell && /^[+-]?\s*\d{1,3}([.,]\d{3})*([.,]\d{1,2})$/.test(c.replace(/\s/g, '')))
-    if (!amtCell) return
+    dateIdx = pick([/transactiedatum|boekingsdatum/i, /date/i, /datum/i])
+    amtIdx = pick([/transactiebedrag/i, /bedrag|amount/i])
+    descIdx = pick([/omschrijving|description|mededeling/i, /naam|tegenrekening/i])
+    startRow = 1
+  }
+
+  for (let i = startRow; i < lines.length; i++) {
+    const cells = splitCsvLine(lines[i], delim)
+    if (cells.length < 2) continue
+
+    let date = TODAY
+    let amtCell: string | undefined
+    let desc: string | undefined
+
+    if (amtIdx >= 0) {
+      amtCell = cells[amtIdx]
+      if (dateIdx >= 0) date = toIsoDate(cells[dateIdx]) ?? TODAY
+      if (descIdx >= 0) desc = cells[descIdx]
+    } else {
+      const dateCell = cells.find((c) => toIsoDate(c) !== null)
+      if (dateCell) date = toIsoDate(dateCell) ?? TODAY
+      amtCell = cells.find(
+        (c) => c !== dateCell && /^[+-]?\s*\d{1,3}([.,]\d{3})*([.,]\d{1,2})$/.test(c.replace(/\s/g, '')),
+      )
+    }
+
+    if (!amtCell) continue
     const amount = parseAmount(amtCell)
-    if (isNaN(amount)) return
-    const desc =
-      cells.filter((c) => c !== dateCell && c !== amtCell).sort((a, b) => b.length - a.length)[0] || 'Onbekend'
+    if (isNaN(amount)) continue
+
+    if (!desc) {
+      const dateCell = dateIdx >= 0 ? cells[dateIdx] : cells.find((c) => toIsoDate(c) !== null)
+      desc = cells.filter((c) => c !== dateCell && c !== amtCell).sort((a, b) => b.length - a.length)[0] || 'Onbekend'
+    }
+
     const merchant = cleanMerchant(desc)
     const category = guessCategory(desc, amount)
     out.push({
@@ -110,7 +187,7 @@ function parseCsv(text: string): Transaction[] {
       category,
       domain: domainForCategory(category, amount),
     })
-  })
+  }
   return out
 }
 
