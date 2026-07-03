@@ -103,6 +103,79 @@ export function Ring({
   )
 }
 
+// ── lightweight modal overlay ──────────────────────────────────────────────────
+// Shared scrim + panel wrapper for the app's lighter (non-Sheet) modals. `tone`
+// picks the exact scrim style each caller already used; `className` overrides the
+// container's alignment/padding and `panelClassName` styles the panel itself, so
+// every existing modal keeps its current look verbatim.
+const OVERLAY_TONE = {
+  /** plain dark scrim (Money editor, Braindump detail) */
+  black: 'bg-black/40',
+  /** dark scrim + light blur (Dog entry modal) */
+  'black-blur': 'bg-black/40 backdrop-blur-sm',
+  /** soft themed scrim + light blur (Settings, LoopExplainer) */
+  'scrim-blur': 'bg-scrim/40 backdrop-blur-sm',
+} as const
+
+export function Overlay({
+  onClose,
+  tone = 'black',
+  className = 'flex items-end sm:items-center justify-center p-4',
+  panelClassName = '',
+  children,
+}: {
+  onClose: () => void
+  tone?: keyof typeof OVERLAY_TONE
+  /** container layout (alignment/padding/animation) — replaces the default */
+  className?: string
+  /** panel styling (background, radius, sizing, scrolling) */
+  panelClassName?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className={`fixed inset-0 z-50 ${OVERLAY_TONE[tone]} ${className}`} onClick={onClose}>
+      <div className={`relative ${panelClassName}`} onClick={(e) => e.stopPropagation()}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+// ── in-app confirm dialog ──────────────────────────────────────────────────────
+// Styled replacement for window.confirm(): title + optional message + cancel/
+// confirm buttons. `danger` renders the confirm button red (destructive actions).
+export function ConfirmDialog({
+  title,
+  message,
+  confirmLabel = 'Verwijderen',
+  cancelLabel = 'Annuleer',
+  danger = true,
+  onCancel,
+  onConfirm,
+}: {
+  title: string
+  message?: string
+  confirmLabel?: string
+  cancelLabel?: string
+  danger?: boolean
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
+      <div className="absolute inset-0 bg-scrim/60" onClick={onCancel} />
+      <div className="relative w-full max-w-sm bg-canvas rounded-3xl border border-line shadow-pop p-5">
+        <div className="font-semibold text-base">{title}</div>
+        {message && <p className="text-sm text-muted mt-1.5">{message}</p>}
+        <div className="flex gap-2 mt-4">
+          <button onClick={onCancel} className="flex-1 py-2 rounded-xl bg-sunken text-muted text-sm font-semibold border border-line">{cancelLabel}</button>
+          <button onClick={onConfirm} className={`flex-1 py-2 rounded-xl text-white text-sm font-semibold ${danger ? 'bg-red-500' : 'bg-forest'}`}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Empty({ children }: { children: React.ReactNode }) {
   return (
     <div className="text-sm text-faint italic py-6 text-center border border-dashed border-line rounded-xl">

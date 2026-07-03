@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { BraindumpEntry, BraindumpSourceKind } from '../types'
-import { DomainChip } from './ui'
+import { DomainChip, Overlay } from './ui'
 import { fmtDate } from '../domains'
 import { braindumpThumbUrl } from '../lib/braindump'
 import {
@@ -108,11 +108,12 @@ export function BraindumpDetail({
   const thumb = useThumb(entry.thumbUrl)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/40 p-0 md:p-4" onClick={onClose}>
-      <div
-        className="bg-canvas w-full md:max-w-2xl md:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-y-auto shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Overlay
+      tone="black"
+      onClose={onClose}
+      className="flex items-end md:items-center justify-center p-0 md:p-4"
+      panelClassName="bg-canvas w-full md:max-w-2xl md:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-y-auto shadow-xl"
+    >
         <div className="sticky top-0 bg-canvas/90 backdrop-blur border-b border-line px-4 py-3 flex items-center gap-2">
           <Icon className="h-4 w-4 text-muted shrink-0" />
           <span className="text-xs text-muted">{SOURCE_LABEL[entry.sourceKind]} · {fmtDate(entry.createdAt)}</span>
@@ -173,8 +174,7 @@ export function BraindumpDetail({
             <Trash2 className="h-3.5 w-3.5" /> Verwijderen
           </button>
         </div>
-      </div>
-    </div>
+    </Overlay>
   )
 }
 

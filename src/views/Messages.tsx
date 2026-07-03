@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Message, Channel } from '../types'
 import { X, ChevronLeft, Mail, Zap, MessageSquare, Search, Plus, Upload, Trash2 } from 'lucide-react'
 import { useStore } from '../store'
-import { Sheet, Field, TextInput, TextArea, SelectInput, PrimaryBtn } from '../components/crm'
+import { Sheet, SheetShell, Field, TextInput, TextArea, SelectInput, PrimaryBtn } from '../components/crm'
 import { Pill } from '../components/ui'
 import { deriveGmailMessages } from '../lib/crm/gmailInbox'
 
@@ -49,13 +49,6 @@ export default function Messages({
   const [query, setQuery] = useState('')
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [overlay, setOverlay] = useState<'none' | 'compose' | 'import'>('none')
-
-  useEffect(() => {
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = ''
-    }
-  }, [])
 
   // Client/Fiverr correspondence mirrored from Gmail, merged in read-only
   // alongside manually-added and WhatsApp-imported messages.
@@ -106,10 +99,8 @@ export default function Messages({
   const openConv = openKey ? conversations.find((c) => c.key === openKey) ?? null : null
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col">
-      <div className="absolute inset-0 bg-scrim/55 backdrop-blur-md" onClick={onClose} />
-
-      <div className="relative mt-auto md:mt-0 md:m-auto w-full md:max-w-2xl h-[92dvh] md:h-[85dvh] flex flex-col bg-canvas md:rounded-4xl rounded-t-4xl border border-line shadow-pop overflow-hidden animate-fade-up">
+    <>
+      <SheetShell onClose={onClose} className="" panelClassName="md:m-auto md:max-w-2xl h-[92dvh] md:h-[85dvh] animate-fade-up">
         {openConv ? (
           <Thread conv={openConv} onBack={() => setOpenKey(null)} />
         ) : (
@@ -211,11 +202,11 @@ export default function Messages({
             </div>
           </>
         )}
-      </div>
+      </SheetShell>
 
       {overlay === 'compose' && <ComposeMessage onClose={() => setOverlay('none')} />}
       {overlay === 'import' && <ImportWhatsapp onClose={() => setOverlay('none')} />}
-    </div>
+    </>
   )
 }
 

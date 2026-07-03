@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Map, RefreshCw, ChevronDown, Plus } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { ConfirmDialog } from '../components/ui'
 
 // Buurtkaart — Geldrop Buurtkaart beheer. Live data komt uit de WordPress-plugin
 // API (geldropbuurtkaart.nl) via de gbk-overview edge function; lokale state
@@ -138,7 +139,8 @@ export default function Buurtkaart() {
   const spotsFree = active ? active.spotsTotal - active.submissions : 0
 
   const activate = (id: number) => setEditions((es) => es.map((e) => ({ ...e, active: e.id === id, status: e.id === id ? 'active' : e.status })))
-  const del = (id: number) => { if (confirm('Editie verwijderen?')) setEditions((es) => es.filter((e) => e.id !== id)) }
+  const [confirmDelId, setConfirmDelId] = useState<number | null>(null)
+  const del = (id: number) => setConfirmDelId(id)
   const addEd = () => {
     if (!edName.trim()) return
     setEditions((es) => [...es, { id: Math.max(0, ...es.map((e) => e.id)) + 1, name: edName.trim(), deadline: '', delivery: '', spotsTotal: 12, submissions: 0, status: 'upcoming', active: false }])
@@ -296,6 +298,17 @@ export default function Buurtkaart() {
         {status === 'empty' && 'verbonden met geldropbuurtkaart.nl · nog geen data'}
         {status === 'error' && 'kon geldropbuurtkaart.nl niet bereiken — controleer GBK_API_KEY'}
       </div>
+
+      {confirmDelId !== null && (
+        <ConfirmDialog
+          title="Editie verwijderen?"
+          onCancel={() => setConfirmDelId(null)}
+          onConfirm={() => {
+            setEditions((es) => es.filter((e) => e.id !== confirmDelId))
+            setConfirmDelId(null)
+          }}
+        />
+      )}
     </div>
   )
 }

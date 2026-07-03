@@ -3,7 +3,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { CHART_TIP_BARE, AXIS_TICK_10, AXIS_TICK_11 } from '../components/chart'
 import { useStore } from '../store'
 import { TODAY, fmtDate, daysBetween } from '../domains'
-import { SectionTitle, Empty } from '../components/ui'
+import { SectionTitle, Empty, Overlay } from '../components/ui'
 import { useLongPress } from '../lib/useLongPress'
 import { isoToDatetimeLocal, nowDatetimeLocal } from '../lib/datetimeLocal'
 import type { DogKind, DogEntry, DogMedicalType } from '../types'
@@ -269,7 +269,7 @@ function EntryModal(props: EntryModalProps) {
   )
 
   return (
-    <Overlay onClose={onClose}>
+    <Overlay tone="black-blur" onClose={onClose} panelClassName="bg-surface rounded-3xl p-5 w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto">
       {/* Header */}
       {props.mode === 'edit' ? (
         <div className="flex items-center justify-between mb-4">
@@ -353,21 +353,6 @@ function EntryModal(props: EntryModalProps) {
         </button>
       </div>
     </Overlay>
-  )
-}
-
-// ── Modal overlay wrapper ─────────────────────────────────────────────────────
-function Overlay({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div
-        className="relative bg-surface rounded-3xl p-5 w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}
-      >
-        {children}
-      </div>
-    </div>
   )
 }
 

@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import { Overlay } from './ui'
 
 const LAYERS = [
   { id: 'intake', label: 'Intake', x: 90, sub: 'capture + sense' },
@@ -10,11 +11,12 @@ const LAYERS = [
 
 export default function LoopExplainer({ onClose }: { onClose: () => void }) {
   return (
-    <div
-      className="fixed inset-0 z-50 bg-scrim/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-up"
-      onClick={onClose}
+    <Overlay
+      tone="scrim-blur"
+      onClose={onClose}
+      className="flex items-center justify-center p-4 animate-fade-up"
+      panelClassName="card shadow-card-lg max-w-3xl w-full p-6"
     >
-      <div className="card shadow-card-lg max-w-3xl w-full p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-lg font-semibold tracking-tight">Two loops, one memory</h2>
@@ -92,7 +94,6 @@ export default function LoopExplainer({ onClose }: { onClose: () => void }) {
             </p>
           </div>
         </div>
-      </div>
-    </div>
+    </Overlay>
   )
 }

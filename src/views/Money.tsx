@@ -13,8 +13,8 @@ import { CHART_TIP, AXIS_TICK_10 } from '../components/chart'
 import { useStore } from '../store'
 import { TODAY, DOMAIN_META, DOMAIN_HEX, fmtDate, daysBetween } from '../domains'
 import { OPENING_BALANCE } from '../mockData'
-import { DomainChip, SectionTitle, Empty } from '../components/ui'
-import type { Domain, Transaction, Cadence, Subscription, VendorTag } from '../types'
+import { DomainChip, SectionTitle, Empty, Overlay, ConfirmDialog } from '../components/ui'
+import type { Domain, Transaction, Cadence, Subscription, VendorTag, Payment } from '../types'
 import { TX_CATEGORIES, CATEGORY_DOMAIN, domainForCategory } from '../finance/categories'
 import { parseCsv } from '../finance/csvImport'
 import {
@@ -87,6 +87,8 @@ export default function Money() {
   const [filter, setFilter] = useState<Domain | 'all'>('all')
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [tagging, setTagging] = useState(false)
+  const [confirmPayment, setConfirmPayment] = useState<Payment | null>(null)
+  const [confirmDeleteTx, setConfirmDeleteTx] = useState(false)
 
   const untagged = useMemo(
     () => transactions.filter((t) => /^(other|uncategorized|uncategorised|onbekend|)$/i.test(t.category.trim())).length,
@@ -371,9 +373,7 @@ export default function Money() {
                     </button>
                     <button
                       className="text-faint hover:text-cross shrink-0 p-1"
-                      onClick={() => {
-                        if (confirm(`Betaling "${p.payee}" verwijderen?`)) deletePayment(p.id)
-                      }}
+                      onClick={() => setConfirmPayment(p)}
                       aria-label="Verwijder betaling"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -412,17 +412,32 @@ export default function Money() {
       {editing && (
         <TransactionEditor
           tx={editing}
-          onClose={() => setEditing(null)}
+          onClose={() => { setEditing(null); setConfirmDeleteTx(false) }}
           onSave={(patch, learnVendor) => {
             updateTransaction(editing.id, patch, { learnVendor })
             setEditing(null)
           }}
-          onDelete={() => {
-            if (confirm(`Transactie "${editing.merchant}" verwijderen?`)) {
-              deleteTransaction(editing.id)
-              setEditing(null)
-            }
+          onDelete={() => setConfirmDeleteTx(true)}
+        />
+      )}
+
+      {editing && confirmDeleteTx && (
+        <ConfirmDialog
+          title={`Transactie "${editing.merchant}" verwijderen?`}
+          onCancel={() => setConfirmDeleteTx(false)}
+          onConfirm={() => {
+            deleteTransaction(editing.id)
+            setConfirmDeleteTx(false)
+            setEditing(null)
           }}
+        />
+      )}
+
+      {confirmPayment && (
+        <ConfirmDialog
+          title={`Betaling "${confirmPayment.payee}" verwijderen?`}
+          onCancel={() => setConfirmPayment(null)}
+          onConfirm={() => { deletePayment(confirmPayment.id); setConfirmPayment(null) }}
         />
       )}
     </div>
@@ -450,8 +465,7 @@ function TransactionEditor({
   const [remember, setRemember] = useState(true)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="card w-full max-w-md p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+    <Overlay tone="black" onClose={onClose} panelClassName="card w-full max-w-md p-5 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-sm font-semibold text-ink truncate">{tx.merchant}</div>
@@ -525,8 +539,7 @@ function TransactionEditor({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Overlay>
   )
 }
 

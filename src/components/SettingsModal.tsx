@@ -1,6 +1,6 @@
 import { X, Send } from 'lucide-react'
 import { useStore } from '../store'
-import { SectionTitle } from './ui'
+import { SectionTitle, Overlay } from './ui'
 import type { NotificationPrefs } from '../types'
 
 const BOT_USERNAME = import.meta.env.VITE_TELEGRAM_BOT_USERNAME as string | undefined
@@ -34,11 +34,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const quietOn = !!(p.quietHoursStart && p.quietHoursEnd)
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-scrim/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-up"
-      onClick={onClose}
+    <Overlay
+      tone="scrim-blur"
+      onClose={onClose}
+      className="flex items-center justify-center p-4 animate-fade-up"
+      panelClassName="card shadow-card-lg max-w-lg w-full p-6 max-h-[85vh] overflow-y-auto"
     >
-      <div className="card shadow-card-lg max-w-lg w-full p-6 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-lg font-semibold tracking-tight">Instellingen</h2>
@@ -141,7 +142,6 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             />
           </div>
         </div>
-      </div>
-    </div>
+    </Overlay>
   )
 }

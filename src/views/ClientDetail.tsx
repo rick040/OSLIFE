@@ -2,12 +2,12 @@ import { useMemo, useState } from 'react'
 import { X, Pencil, Trash2, Plus, FolderKanban, MessageCircle, Mail, Globe } from 'lucide-react'
 import type { Client, Project } from '../types'
 import { fmtDate } from '../domains'
-import { DomainChip, Pill } from '../components/ui'
+import { DomainChip, Pill, ConfirmDialog } from '../components/ui'
 import { useStore } from '../store'
 import ClientForm from './ClientForm'
 import ProjectForm from './ProjectForm'
-import ProjectDetail, { ConfirmDelete } from './ProjectDetail'
-import { eur, CLIENT_HEX, CLIENT_STATUS_NL, CRM_STATUS, STATUS_HEX } from '../components/crm'
+import ProjectDetail from './ProjectDetail'
+import { eur, CLIENT_HEX, CLIENT_STATUS_NL, CRM_STATUS, STATUS_HEX, SheetShell } from '../components/crm'
 import { deriveGmailMessages } from '../lib/crm/gmailInbox'
 
 export default function ClientDetail({ client: initial, onClose }: { client: Client; onClose: () => void }) {
@@ -31,9 +31,8 @@ export default function ClientDetail({ client: initial, onClose }: { client: Cli
   const totalValue = clientProjects.reduce((a, p) => a + (p.value ?? 0), 0)
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col md:items-center md:justify-center">
-      <div className="absolute inset-0 bg-scrim/55 backdrop-blur-md" onClick={onClose} />
-      <div className="relative mt-auto md:mt-0 w-full md:max-w-lg md:max-h-[92dvh] max-h-[94dvh] flex flex-col bg-canvas md:rounded-4xl rounded-t-4xl border border-line shadow-pop overflow-hidden">
+    <>
+      <SheetShell onClose={onClose} panelClassName="md:max-w-lg md:max-h-[92dvh] max-h-[94dvh]">
 
         {/* Header */}
         <div className="flex items-start gap-3 p-5 pb-4 border-b border-line shrink-0">
@@ -125,20 +124,20 @@ export default function ClientDetail({ client: initial, onClose }: { client: Cli
             )}
           </div>
         </div>
-      </div>
+      </SheetShell>
 
       {editing && <ClientForm client={client} onClose={() => setEditing(false)} />}
       {addingProject && <ProjectForm project={null} presetClientId={client.id} onClose={() => setAddingProject(false)} />}
       {openProject && <ProjectDetail project={openProject} onClose={() => setOpenProject(null)} />}
       {confirmDel && (
-        <ConfirmDelete
-          label={`Klant “${client.name}” verwijderen?`}
-          detail="Gekoppelde projecten blijven bestaan maar worden losgekoppeld."
+        <ConfirmDialog
+          title={`Klant “${client.name}” verwijderen?`}
+          message="Gekoppelde projecten blijven bestaan maar worden losgekoppeld."
           onCancel={() => setConfirmDel(false)}
           onConfirm={() => { deleteClient(client.id); onClose() }}
         />
       )}
-    </div>
+    </>
   )
 }
 

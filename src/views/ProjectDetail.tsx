@@ -5,12 +5,12 @@ import {
 } from 'lucide-react'
 import type { Project, ProjectTask, ProjectMilestone, Invoice, Recurrence, Priority } from '../types'
 import { fmtDate, TODAY, daysBetween } from '../domains'
-import { Pill } from '../components/ui'
+import { Pill, ConfirmDialog } from '../components/ui'
 import { useStore } from '../store'
 import ProjectForm from './ProjectForm'
 import {
   eur, CRM_STATUS, STATUS_HEX, PRIO_HEX, PRIO_NL,
-  Field, TextInput, SelectInput,
+  SheetShell, Field, TextInput, SelectInput,
 } from '../components/crm'
 import type { ActivityAnalysis } from '../lib/crm/activityAnalyzer'
 
@@ -81,9 +81,8 @@ export default function ProjectDetail({ project: initial, onClose }: { project: 
   ]
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col md:items-center md:justify-center">
-      <div className="absolute inset-0 bg-scrim/55 backdrop-blur-md" onClick={onClose} />
-      <div className="relative mt-auto md:mt-0 w-full md:max-w-xl md:max-h-[92dvh] max-h-[94dvh] flex flex-col bg-canvas md:rounded-4xl rounded-t-4xl border border-line shadow-pop overflow-hidden">
+    <>
+      <SheetShell onClose={onClose} panelClassName="md:max-w-xl md:max-h-[92dvh] max-h-[94dvh]">
 
         {/* Header */}
         <div className="flex items-start gap-3 p-5 pb-3 border-b border-line shrink-0">
@@ -131,18 +130,18 @@ export default function ProjectDetail({ project: initial, onClose }: { project: 
           {tab === 'facturen' && <Invoices projectId={project.id} invoices={invoices} />}
           {tab === 'activiteit' && <Activity projectId={project.id} />}
         </div>
-      </div>
+      </SheetShell>
 
       {editing && <ProjectForm project={project} onClose={() => setEditing(false)} />}
       {confirmDel && (
-        <ConfirmDelete
-          label={`Project “${project.name}” verwijderen?`}
-          detail="Alle taken, mijlpalen, uren en facturen van dit project worden ook verwijderd."
+        <ConfirmDialog
+          title={`Project “${project.name}” verwijderen?`}
+          message="Alle taken, mijlpalen, uren en facturen van dit project worden ook verwijderd."
           onCancel={() => setConfirmDel(false)}
           onConfirm={() => { deleteProject(project.id); onClose() }}
         />
       )}
-    </div>
+    </>
   )
 }
 
@@ -525,23 +524,6 @@ function Activity({ projectId }: { projectId: string }) {
             </div>
           </div>
         ))}
-      </div>
-    </div>
-  )
-}
-
-// ── shared confirm dialog ──────────────────────────────────────────────────────
-export function ConfirmDelete({ label, detail, onCancel, onConfirm }: { label: string; detail?: string; onCancel: () => void; onConfirm: () => void }) {
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
-      <div className="absolute inset-0 bg-scrim/60" onClick={onCancel} />
-      <div className="relative w-full max-w-sm bg-canvas rounded-3xl border border-line shadow-pop p-5">
-        <div className="font-semibold text-base">{label}</div>
-        {detail && <p className="text-sm text-muted mt-1.5">{detail}</p>}
-        <div className="flex gap-2 mt-4">
-          <button onClick={onCancel} className="flex-1 py-2 rounded-xl bg-sunken text-muted text-sm font-semibold border border-line">Annuleer</button>
-          <button onClick={onConfirm} className="flex-1 py-2 rounded-xl bg-red-500 text-white text-sm font-semibold">Verwijderen</button>
-        </div>
       </div>
     </div>
   )

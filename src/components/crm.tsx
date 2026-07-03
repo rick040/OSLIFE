@@ -61,6 +61,35 @@ export const PROJECT_TYPE_OPTIONS = [
 ]
 
 // ── modal shell (bottom-sheet on mobile, centered card on desktop) ─────────────
+/**
+ * Bare shell of the blessed modal: heavy scrim + blur, bottom-sheet-on-mobile
+ * panel, and the body-scroll lock. `Sheet` adds the standard title/body/footer
+ * layout on top; detail views with custom headers use SheetShell directly.
+ * `panelClassName` sets the panel's sizing (max-width/height, margins) and
+ * `className` overrides the container's alignment.
+ */
+export function SheetShell({
+  onClose, children, className = 'md:items-center md:justify-center', panelClassName = 'md:max-w-lg md:max-h-[90dvh] max-h-[92dvh]',
+}: {
+  onClose: () => void
+  children: React.ReactNode
+  className?: string
+  panelClassName?: string
+}) {
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [])
+  return (
+    <div className={`fixed inset-0 z-50 flex flex-col ${className}`}>
+      <div className="absolute inset-0 bg-scrim/55 backdrop-blur-md" onClick={onClose} />
+      <div className={`relative mt-auto md:mt-0 w-full ${panelClassName} flex flex-col bg-canvas md:rounded-4xl rounded-t-4xl border border-line shadow-pop overflow-hidden`}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 export function Sheet({
   title, onClose, children, footer, wide,
 }: {
@@ -70,24 +99,17 @@ export function Sheet({
   footer?: React.ReactNode
   wide?: boolean
 }) {
-  useEffect(() => {
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = '' }
-  }, [])
   return (
-    <div className="fixed inset-0 z-50 flex flex-col md:items-center md:justify-center">
-      <div className="absolute inset-0 bg-scrim/55 backdrop-blur-md" onClick={onClose} />
-      <div className={`relative mt-auto md:mt-0 w-full ${wide ? 'md:max-w-2xl' : 'md:max-w-lg'} md:max-h-[90dvh] max-h-[92dvh] flex flex-col bg-canvas md:rounded-4xl rounded-t-4xl border border-line shadow-pop overflow-hidden`}>
-        <div className="flex items-center gap-3 p-5 pb-3 border-b border-line shrink-0">
-          <div className="flex-1 min-w-0 font-semibold text-lg leading-tight">{title}</div>
-          <button onClick={onClose} className="h-8 w-8 rounded-full bg-sunken flex items-center justify-center text-muted hover:text-ink shrink-0">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">{children}</div>
-        {footer && <div className="p-4 border-t border-line shrink-0">{footer}</div>}
+    <SheetShell onClose={onClose} panelClassName={`${wide ? 'md:max-w-2xl' : 'md:max-w-lg'} md:max-h-[90dvh] max-h-[92dvh]`}>
+      <div className="flex items-center gap-3 p-5 pb-3 border-b border-line shrink-0">
+        <div className="flex-1 min-w-0 font-semibold text-lg leading-tight">{title}</div>
+        <button onClick={onClose} className="h-8 w-8 rounded-full bg-sunken flex items-center justify-center text-muted hover:text-ink shrink-0">
+          <X className="h-4 w-4" />
+        </button>
       </div>
-    </div>
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">{children}</div>
+      {footer && <div className="p-4 border-t border-line shrink-0">{footer}</div>}
+    </SheetShell>
   )
 }
 

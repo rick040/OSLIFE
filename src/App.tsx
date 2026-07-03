@@ -30,6 +30,7 @@ import LoopExplainer from './components/LoopExplainer'
 import SettingsModal from './components/SettingsModal'
 import Orb from './components/Orb'
 import AppGrid from './components/AppGrid'
+import { ConfirmDialog } from './components/ui'
 import { SCREENS, type View } from './nav'
 import { Workflow, Play, RotateCcw, Grid3x3, Settings } from 'lucide-react'
 
@@ -40,6 +41,8 @@ export default function App() {
   const [showLoops, setShowLoops] = useState(false)
   const [showGrid, setShowGrid] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  // Which reset-demo confirm to show: the sidebar's full text or the top bar's short one.
+  const [confirmReset, setConfirmReset] = useState<'full' | 'short' | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [authChecked, setAuthChecked] = useState(false)
   const { resetDemo, runNightlyReflect, reflectCount, loadLiveData, dataSource, isLoading, healthDays } = useStore()
@@ -156,9 +159,7 @@ export default function App() {
             <Settings className="h-4 w-4" /> Instellingen
           </button>
           <button
-            onClick={() => {
-              if (confirm('Reset the demo to its seeded state? This clears anything you captured.')) resetDemo()
-            }}
+            onClick={() => setConfirmReset('full')}
             className="w-full flex items-center gap-2 rounded-xl px-3 py-2 text-xs text-faint hover:text-ink hover:bg-sunken"
           >
             <RotateCcw className="h-3.5 w-3.5" /> Reset demo
@@ -186,9 +187,7 @@ export default function App() {
             <Settings className="h-5 w-5" />
           </button>
           <button
-            onClick={() => {
-              if (confirm('Reset the demo?')) resetDemo()
-            }}
+            onClick={() => setConfirmReset('short')}
             className="text-faint"
           >
             <RotateCcw className="h-5 w-5" />
@@ -231,6 +230,15 @@ export default function App() {
       {showLoops && <LoopExplainer onClose={() => setShowLoops(false)} />}
       {showGrid && <AppGrid active={view} onNav={(v) => setView(v)} onClose={() => setShowGrid(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {confirmReset && (
+        <ConfirmDialog
+          title={confirmReset === 'full' ? 'Reset the demo to its seeded state?' : 'Reset the demo?'}
+          message={confirmReset === 'full' ? 'This clears anything you captured.' : undefined}
+          confirmLabel="Reset"
+          onCancel={() => setConfirmReset(null)}
+          onConfirm={() => { setConfirmReset(null); resetDemo() }}
+        />
+      )}
     </div>
   )
 }
