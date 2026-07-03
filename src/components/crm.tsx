@@ -6,12 +6,10 @@ import { TODAY, daysBetween, fmtDate } from '../domains'
 import { DomainChip, Pill } from './ui'
 
 // ── formatting ────────────────────────────────────────────────────────────────
-export const eur = (n: number | null | undefined) => {
-  if (n == null) return '–'
-  if (Math.abs(n) >= 1000) return `€${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`
-  return `€${n.toLocaleString('nl-NL')}`
-}
-export const eur0 = (n: number) => `€${n.toLocaleString('nl-NL', { maximumFractionDigits: 0 })}`
+// Canonical definitions live in src/lib/format.ts; the CRM keeps its historical
+// names (`eur` = abbreviated €k style) so existing importers render identically.
+import { eurK as eur, eur0 } from '../lib/format'
+export { eur, eur0 }
 
 // ── status maps (single source of truth, mirrors the old Dutch CRM labels) ─────
 export const CRM_STATUS: Record<ProjectStatus, string> = {

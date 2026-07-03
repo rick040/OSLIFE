@@ -35,7 +35,7 @@ const ED_STATUS: Record<string, { label: string; hex: string }> = {
   completed: { label: 'Afgerond', hex: '#8C9080' },
 }
 
-const eur = (n: number) => '€' + n.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+import { eur } from '../lib/format'
 const fmt = (iso: string) => (iso ? new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Europe/Amsterdam' }) : 'geen datum')
 
 const ED0: Edition[] = []

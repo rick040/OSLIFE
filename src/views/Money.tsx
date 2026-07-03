@@ -39,10 +39,7 @@ import {
   Globe,
 } from 'lucide-react'
 
-const eur = (n: number) =>
-  `${n < 0 ? '-' : ''}€${Math.abs(n).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-const eur0 = (n: number) =>
-  `${n < 0 ? '-' : ''}€${Math.abs(n).toLocaleString('nl-NL', { maximumFractionDigits: 0 })}`
+import { eur, eur0 } from '../lib/format'
 
 // Category → domain colour map for the chart (shared taxonomy).
 const CAT_DOMAIN = CATEGORY_DOMAIN

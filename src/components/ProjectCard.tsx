@@ -2,6 +2,7 @@ import type { Project } from '../types'
 import { DomainChip } from './ui'
 import { fmtDate } from '../domains'
 import { FolderKanban, Calendar, Euro, ArrowRight } from 'lucide-react'
+import { eur0 } from '../lib/format'
 
 const STATUS_LABEL: Record<Project['status'], string> = {
   lead: 'Lead',
@@ -19,7 +20,6 @@ const STATUS_STYLE: Record<Project['status'], string> = {
   done: 'bg-buurtkaart/15 text-buurtkaart-deep',
 }
 
-const eur0 = (n: number) => `€${n.toLocaleString('nl-NL', { maximumFractionDigits: 0 })}`
 
 /** The Projectkaart reply: a live snapshot of one project, pulled from the CRM/projects store. */
 export default function ProjectCard({ project, onNav }: { project: Project; onNav?: (v: string) => void }) {

@@ -2,9 +2,10 @@ import { useStore } from '../store'
 import { TODAY, fmtDate, daysBetween } from '../domains'
 import { DomainChip } from '../components/ui'
 import { Target, CheckCircle2, Circle, Flag } from 'lucide-react'
+import { eur0 } from '../lib/format'
 
 function fmtValue(n: number, metric: string) {
-  if (metric === 'EUR') return `€${n.toLocaleString('nl-NL', { maximumFractionDigits: 0 })}`
+  if (metric === 'EUR') return eur0(n)
   if (metric === 'steps') return `${n.toLocaleString('nl-NL')}`
   return `${n}`
 }

@@ -46,7 +46,7 @@ function phaseTone(p: string) {
   return { bg: '#F4F5EE', fg: '#5C6150' }
 }
 
-const eur = (n: number) => `€${n.toLocaleString('nl-NL')}`
+import { eur0 as eur } from '../lib/format'
 
 export default function StrategieHQ({ onNav }: { onNav?: (v: View) => void }) {
   const [projects, setProjects] = useState<HqProject[]>(FALLBACK_PROJECTS)

@@ -90,6 +90,8 @@ const STOP = new Set([
 const tokensOf = (name: string): string[] =>
   name.toLowerCase().replace(/\(.*?\)/g, ' ').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length >= 4 && !STOP.has(w))
 
+// Intentionally not src/lib/format: graph labels drop the sign (absolute value),
+// which no canonical formatter does — direction is carried by the label text.
 const eur = (n: number) => `€${Math.round(Math.abs(n)).toLocaleString('nl-NL')}`
 const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)
 

@@ -24,8 +24,7 @@ import {
   Inbox as InboxIcon,
 } from 'lucide-react'
 
-const eur = (n: number) =>
-  `${n < 0 ? '-' : ''}€${Math.abs(n).toLocaleString('nl-NL', { maximumFractionDigits: 0 })}`
+import { eur0 as eur } from '../lib/format'
 
 /** Real local hour in Rick's timezone, so the greeting tracks the actual time of day. */
 function amsterdamHour(): number {
