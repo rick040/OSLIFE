@@ -3,6 +3,10 @@ import { useStore } from '../store'
 import { Empty } from '../components/ui'
 import { buildBrain, type CatId, type BNode, type GSuggestion } from '../graph'
 import {
+  computeHomeLayout, seedSimNode, physicsStep, fitCamera, stepCameraToward,
+  zoomCameraAround, hitTestNode, type SimNode,
+} from '../graph/simulation'
+import {
   Network, Zap, Lightbulb, Eye, X, Plus, Minus, Maximize2, Minimize2, Layers, Tag, GitFork,
 } from 'lucide-react'
 
@@ -55,29 +59,7 @@ export default function Mindmap() {
     return m
   }, [brain])
 
-  const home = useMemo(() => {
-    const p: Record<string, { x: number; y: number }> = {}
-    const cats = brain.nodes.filter((n) => n.kind === 'category')
-    cats.forEach((c, i) => {
-      const a = -Math.PI / 2 + (i * 2 * Math.PI) / cats.length
-      p[c.id] = { x: 260 * Math.cos(a), y: 260 * Math.sin(a) }
-    })
-    const place = (hubId: string, depth: number) => {
-      const hub = p[hubId]; if (!hub) return
-      const kids   = childrenOf[hubId] || []
-      if (!kids.length) return
-      const base   = Math.atan2(hub.y, hub.x)
-      const rad    = depth === 1 ? 115 : 65
-      const spread = depth === 1 ? Math.PI * 0.88 : Math.PI * 1.3
-      kids.forEach((k, i) => {
-        const a = kids.length === 1 ? base : base - spread / 2 + (spread * i) / (kids.length - 1)
-        p[k.id] = { x: hub.x + rad * Math.cos(a), y: hub.y + rad * Math.sin(a) }
-        place(k.id, depth + 1)
-      })
-    }
-    cats.forEach((c) => place(c.id, 1))
-    return p
-  }, [brain, childrenOf])
+  const home = useMemo(() => computeHomeLayout(brain.nodes, childrenOf), [brain, childrenOf])
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [expanded,   setExpanded]   = useState<Set<string>>(new Set())
@@ -93,7 +75,7 @@ export default function Mindmap() {
   // ── sim refs ──────────────────────────────────────────────────────────────
   const wrapRef  = useRef<HTMLDivElement>(null)
   const svgRef   = useRef<SVGSVGElement>(null)
-  const sim      = useRef(new Map<string, { x: number; y: number; vx: number; vy: number }>())
+  const sim      = useRef(new Map<string, SimNode>())
   const cam      = useRef({ x: 400, y: 280, k: 0.85 })
   const camTgt   = useRef<{ x: number; y: number; k: number } | null>(null)
   const alpha    = useRef(1)
@@ -149,92 +131,34 @@ export default function Mindmap() {
   const sizeRef  = useRef(size);     sizeRef.current = size
   const focusRef = useRef<string[] | null>(null)
 
-  // ── sim helpers ───────────────────────────────────────────────────────────
-  const seed = (id: string) => {
-    let v = sim.current.get(id)
-    if (!v) {
-      const h = homeRef.current[id] || { x: (Math.random() - 0.5) * 200, y: (Math.random() - 0.5) * 200 }
-      v = { x: h.x, y: h.y, vx: 0, vy: 0 }
-      sim.current.set(id, v)
-    }
-    return v
-  }
+  // ── sim helpers (thin wrappers over graph/simulation, bound to refs) ──────
+  const seed = (id: string) => seedSimNode(sim.current, id, homeRef.current)
 
   const bboxCam = (ids: string[]) => {
     const pts = ids.map(seed)
-    if (!pts.length) return null
     const { w, h } = sizeRef.current
-    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y)
-    const pad  = 90
-    const minx = Math.min(...xs) - pad, maxx = Math.max(...xs) + pad
-    const miny = Math.min(...ys) - pad, maxy = Math.max(...ys) + pad
-    const k  = Math.min(2.5, Math.max(0.28, Math.min(w / (maxx - minx), h / (maxy - miny))))
-    const cx = (minx + maxx) / 2, cy = (miny + maxy) / 2
-    return { k, x: w / 2 - cx * k, y: h / 2 - cy * k }
+    return fitCamera(pts, w, h)
   }
 
   // ── physics step ──────────────────────────────────────────────────────────
   const step = () => {
-    const nodes = visRef.current
-    const edges = edgeRef.current
-    const home2 = homeRef.current
-    const byId2 = byIdRef.current
-    nodes.forEach((n) => seed(n.id))
-
-    const a = alpha.current
-    if (a > 0.015) {
-      nodes.forEach((n) => {
-        if (n.kind !== 'category') return
-        const S = sim.current.get(n.id)!; const h = home2[n.id]
-        S.x = h.x; S.y = h.y; S.vx = 0; S.vy = 0
-      })
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const A = sim.current.get(nodes[i].id)!, B = sim.current.get(nodes[j].id)!
-          let dx = A.x - B.x, dy = A.y - B.y
-          let d2 = dx * dx + dy * dy
-          if (d2 < 1) { d2 = 1; dx = 0.5; dy = 0.5 }
-          const d = Math.sqrt(d2), f = (2600 / d2) * a
-          const fx = (dx / d) * f, fy = (dy / d) * f
-          if (nodes[i].kind !== 'category') { A.vx += fx; A.vy += fy }
-          if (nodes[j].kind !== 'category') { B.vx -= fx; B.vy -= fy }
-        }
-      }
-      edges.forEach((e) => {
-        const A = sim.current.get(e.a), B = sim.current.get(e.b)
-        if (!A || !B) return
-        const dx = B.x - A.x, dy = B.y - A.y, d = Math.hypot(dx, dy) || 1
-        const L  = e.kind === 'cross' ? 220
-          : (byId2[e.a]?.kind === 'category' || byId2[e.b]?.kind === 'category') ? 118 : 72
-        const ks = (e.kind === 'cross' ? 0.01 : 0.055) * a
-        const f  = (d - L) * ks, fx = (dx / d) * f, fy = (dy / d) * f
-        if (byId2[e.a]?.kind !== 'category') { A.vx += fx; A.vy += fy }
-        if (byId2[e.b]?.kind !== 'category') { B.vx -= fx; B.vy -= fy }
-      })
-      nodes.forEach((n) => {
-        if (n.kind === 'category' || n.id === gesture.current.nodeId) return
-        const S = sim.current.get(n.id)!
-        S.vx *= 0.80; S.vy *= 0.80; S.x += S.vx; S.y += S.vy
-      })
-      alpha.current *= 0.97
-    } else {
-      const t = Date.now() * 0.00045
-      nodes.forEach((n, i) => {
-        if (n.kind === 'category' || n.id === gesture.current.nodeId) return
-        const S = sim.current.get(n.id)!, ph = i * 0.83
-        S.x += Math.sin(t + ph) * 0.07; S.y += Math.cos(t + ph * 1.31) * 0.07
-      })
-    }
+    alpha.current = physicsStep({
+      sim: sim.current,
+      nodes: visRef.current,
+      edges: edgeRef.current,
+      home: homeRef.current,
+      byId: byIdRef.current,
+      alpha: alpha.current,
+      draggedId: gesture.current.nodeId,
+    })
 
     if (focusRef.current && performance.now() < followUntil.current) {
       const t = bboxCam(focusRef.current)
       if (t) camTgt.current = t
     }
     if (camTgt.current) {
-      const c = cam.current, t = camTgt.current
-      c.x += (t.x - c.x) * 0.11; c.y += (t.y - c.y) * 0.11; c.k += (t.k - c.k) * 0.11
-      if (Math.abs(t.x - c.x) < 0.4 && Math.abs(t.y - c.y) < 0.4 && Math.abs(t.k - c.k) < 0.003) {
-        cam.current = { ...t }; camTgt.current = null
+      if (stepCameraToward(cam.current, camTgt.current)) {
+        cam.current = { ...camTgt.current }; camTgt.current = null
       }
     }
     setFrame((f) => (f + 1) % 1_000_000)
@@ -330,21 +254,10 @@ export default function Mindmap() {
     const r = svgRef.current!.getBoundingClientRect()
     return { x: e.clientX - r.left, y: e.clientY - r.top }
   }
-  const hitTest = (sx: number, sy: number): BNode | null => {
-    const k = cam.current.k
-    let best: BNode | null = null, bestD = 20 / k
-    visRef.current.forEach((n) => {
-      const S = sim.current.get(n.id); if (!S) return
-      const wx = (sx - cam.current.x) / k, wy = (sy - cam.current.y) / k
-      const d = Math.hypot(S.x - wx, S.y - wy)
-      if (d < bestD) { bestD = d; best = n }
-    })
-    return best
-  }
+  const hitTest = (sx: number, sy: number): BNode | null =>
+    hitTestNode(sim.current, visRef.current, cam.current, sx, sy)
   const zoomAround = (cx: number, cy: number, f: number) => {
-    const c = cam.current, k = Math.min(5, Math.max(0.2, c.k * f))
-    const wx = (cx - c.x) / c.k, wy = (cy - c.y) / c.k
-    c.x = cx - wx * k; c.y = cy - wy * k; c.k = k; camTgt.current = null
+    zoomCameraAround(cam.current, cx, cy, f); camTgt.current = null
   }
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     ;(e.currentTarget).setPointerCapture(e.pointerId)
