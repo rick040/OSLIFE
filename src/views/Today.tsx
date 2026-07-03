@@ -1,12 +1,14 @@
+import { useMemo } from 'react'
 import { useStore } from '../store'
 import { TODAY, DOMAIN_META, fmtDate, daysBetween } from '../domains'
 import { dueLabel } from '../lib/dates'
 import { DomainChip, SectionTitle, Empty } from '../components/ui'
 import CheckinCard from '../components/CheckinCard'
-import { Sun, Bell, CheckCircle2, SkipForward, Flame, Clock, ArrowRight } from 'lucide-react'
+import DopamineBar from '../components/DopamineBar'
+import { Sun, Bell, CheckCircle2, SkipForward, Flame, Clock, ArrowRight, Check } from 'lucide-react'
 
 export default function Today({ onNav }: { onNav: (v: string) => void }) {
-  const { threads, blocks, habits, nudge, completeBlock, skipBlock, tickHabit, activity } = useStore()
+  const { threads, blocks, habits, nudge, completeBlock, skipBlock, tickHabit, activity, projects, projectTasks, toggleProjectTask } = useStore()
 
   const openThreads = threads
     .filter((t) => t.status === 'open')
@@ -17,6 +19,16 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
     })
   const pending = blocks.filter((b) => b.status === 'planned')
   const nextBlock = pending[0]
+
+  // ── Focus mode: project tasks due today (cap 5) + the Dopamine bar ──────────
+  // Waiting-on-client projects (status 'blocked' / "Gepauzeerd") are excluded so
+  // the list only holds things actually in your control today.
+  const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
+  const notBlocked = (projectId: string) => projectById.get(projectId)?.status !== 'blocked'
+  const dueToday = projectTasks.filter((t) => !t.done && t.dueDate && t.dueDate <= TODAY && notBlocked(t.projectId))
+  const doneToday = projectTasks.filter((t) => t.lastDoneOn === TODAY && notBlocked(t.projectId))
+  const assignedToday = dueToday.length + doneToday.length
+  const focusTasks = [...dueToday].sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? '')).slice(0, 5)
 
   return (
     <div className="space-y-6">
@@ -53,6 +65,40 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* left: next + plan */}
         <div className="lg:col-span-2 space-y-6">
+          {assignedToday > 0 && (
+            <div className="animate-fade-up" style={{ animationDelay: '60ms' }}>
+              <SectionTitle hint="Projecttaken die vandaag afmoeten — max 5, klein en behapbaar.">Vandaag afmaken</SectionTitle>
+              <div className="space-y-2">
+                <DopamineBar done={doneToday.length} total={assignedToday} />
+                {focusTasks.length === 0 ? (
+                  <Empty>Alle taken van vandaag zijn af. 🎉</Empty>
+                ) : (
+                  focusTasks.map((t) => {
+                    const p = projectById.get(t.projectId)
+                    const due = dueLabel(t.dueDate ?? null, { prefix: 'deadline ' })
+                    return (
+                      <div key={t.id} className="card p-3 flex items-center gap-3">
+                        <button
+                          onClick={() => toggleProjectTask(t.id, true)}
+                          title="Afvinken"
+                          className="shrink-0 h-5 w-5 rounded-md border border-line flex items-center justify-center text-transparent hover:border-forest hover:text-forest transition-colors"
+                        >
+                          <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+                        </button>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-ink truncate">{t.name}</p>
+                          <p className="text-[11px] text-faint truncate">
+                            {p?.name ?? 'Project'} · <span className={due.overdue ? 'text-cross font-medium' : ''}>{due.label}</span>
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="animate-fade-up" style={{ animationDelay: '80ms' }}>
             <SectionTitle hint="Overzicht stelt dit samen vanuit het geheugen. Acties schrijven direct terug (snelle loop).">
               Wat telt nu

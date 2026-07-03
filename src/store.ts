@@ -39,11 +39,13 @@ import type {
   VendorTag,
   BraindumpEntry,
   BraindumpInput,
+  AppSettings,
 } from './types'
 import { vendorKey, isUntagged } from './finance/categories'
 import { categorizeVendor } from './heyra/agents/vendorAgent'
 import { analyzeActivity } from './lib/crm/activityAnalyzer'
 import type { ActivityAnalysis } from './lib/crm/activityAnalyzer'
+import { unbilledBillableHours, sumHours, invoiceAmountFromHours } from './lib/crm/invoicing'
 import { parseWhatsapp } from './lib/crm/whatsapp'
 import { classifyWithBrain, type Classification } from './understand'
 import { invokeBraindumpIngest } from './lib/braindump'
@@ -127,6 +129,7 @@ import {
   fetchHours,
   createHourRow,
   deleteHourRow,
+  markHoursBilled,
   fetchInvoices,
   createInvoiceRow,
   updateInvoiceRow,
@@ -139,6 +142,8 @@ import {
   insertMessages,
   markMessagesReadRow,
   deleteMessageRow,
+  fetchAppSettings,
+  upsertAppSettings,
 } from './lib/supabase'
 
 interface ActivitySignal {
@@ -188,6 +193,7 @@ interface State {
   learnedFacts: LearnedFact[]
   vendorTags: VendorTag[]
   braindumpEntries: BraindumpEntry[]
+  settings: AppSettings
   dataSource: 'mock' | 'live'
   isLoading: boolean
 
@@ -268,6 +274,11 @@ interface State {
   addProject: (project: Omit<Project, 'id'>) => void
   deleteProject: (id: string) => void
 
+  // Create a project and immediately seed its template tasks. Like
+  // createClientIntake this awaits the project insert first so the child task
+  // inserts attach to a real Supabase id (addProject's temp id would race).
+  createProjectWithTemplate: (project: Omit<Project, 'id'>, taskNames: string[]) => Promise<string | null>
+
   // HEYRA Klant-intake: create/reuse a client, optionally create a project +
   // its task breakdown, and log the source message — all awaited in sequence
   // so tasks are only inserted once the project has a real Supabase id
@@ -292,6 +303,12 @@ interface State {
   addInvoice: (projectId: string, inv: Omit<Invoice, 'id' | 'projectId'>) => void
   updateInvoice: (id: string, patch: Partial<Invoice>) => void
   deleteInvoice: (id: string) => void
+  // One-click invoice: draft an invoice from a project's unbilled billable hours
+  // at the global rate, then flag those hours billed.
+  generateInvoiceFromHours: (projectId: string) => void
+
+  // App settings — the global hourly rate used by generateInvoiceFromHours.
+  setHourlyRate: (rate: number) => void
   logActivity: (projectId: string, body: string) => ActivityAnalysis
   deleteActivity: (id: string) => void
 
@@ -379,6 +396,7 @@ const seed = () => ({
   learnedFacts: [] as LearnedFact[],
   vendorTags: [] as VendorTag[],
   braindumpEntries: [] as BraindumpEntry[],
+  settings: { hourlyRate: 0 } as AppSettings,
   dataSource: 'mock' as const,
   isLoading: true,
 })
@@ -416,6 +434,7 @@ export function applyPersistDefaults(
   for (const k of SEED_WHEN_FALSY) if (!state[k]) state[k] = seeded[k]
   for (const k of EMPTY_WHEN_FALSY) if (!state[k]) state[k] = []
   if (state.notificationPrefs === undefined) state.notificationPrefs = null
+  if (!state.settings) state.settings = seeded.settings
   if (!state.dataSource) state.dataSource = 'mock'
 }
 
@@ -464,6 +483,27 @@ const removeFromSlice = (set: StoreSet, slice: IdSliceKey, id: string) =>
 /** Push the persistable brain state (threads + patterns) to Supabase. */
 const persistBrain = (get: () => State) =>
   void persistBrainState(persistableThreads(get().threads), get().patterns)
+
+/**
+ * Object-permanence follow-up: mark a client contacted "now" (optimistic +
+ * persisted) whenever a message links to them, so the CRM health dot resets.
+ * No-op when there's no client or the id isn't in the store.
+ */
+function touchClientContact(set: StoreSet, get: () => State, clientId: string | null | undefined): void {
+  if (!clientId || !get().clients.some((c) => c.id === clientId)) return
+  const now = new Date().toISOString()
+  patchSlice(set, 'clients', clientId, { lastContactedAt: now })
+  void updateClientRow(clientId, { lastContactedAt: now })
+}
+
+/**
+ * Flip `sent` invoices whose due date has passed to `overdue` for display. The
+ * notify-tick cron writes this back server-side; reconciling in-memory keeps the
+ * status badges correct without waiting for the next tick.
+ */
+function reconcileInvoices(list: Invoice[]): Invoice[] {
+  return list.map((i) => (i.status === 'sent' && i.dueOn && i.dueOn < TODAY ? { ...i, status: 'overdue' as const } : i))
+}
 
 export const useStore = create<State>()(
   persist(
@@ -943,6 +983,7 @@ export const useStore = create<State>()(
         const tempId = uid('msg')
         set((s) => ({ messages: [{ ...msg, id: tempId }, ...s.messages] }))
         void createMessageRow(msg).then(swapTempId(set, 'messages', tempId))
+        touchClientContact(set, get, msg.clientId)
       },
 
       deleteMessage: (id) => {
@@ -959,6 +1000,7 @@ export const useStore = create<State>()(
         set((s) => ({
           activity: pushSignal(s.activity, { text: `WhatsApp geïmporteerd: ${imported} bericht(en)`, domain: 'prjct', loop: 'fast' }),
         }))
+        touchClientContact(set, get, opts?.clientId)
         return { imported, total: messages.length }
       },
 
@@ -1052,8 +1094,32 @@ export const useStore = create<State>()(
         if (realMsgId) {
           set((s) => ({ messages: [{ ...message, clientId, projectId, id: realMsgId }, ...s.messages] }))
         }
+        touchClientContact(set, get, clientId)
 
         return { clientId, projectId }
+      },
+
+      createProjectWithTemplate: async (project, taskNames) => {
+        const projectRow = await createProjectRow(project)
+        if (!projectRow) return null
+        set((s) => ({
+          projects: [projectRow, ...s.projects],
+          activity: pushSignal(s.activity, { text: `Project aangemaakt: ${projectRow.name}`, domain: projectRow.domain, loop: 'fast' }),
+        }))
+
+        if (taskNames.length) {
+          const created = (
+            await Promise.all(
+              taskNames.map(async (name) => {
+                const realId = await createProjectTaskRow(projectRow.id, { name, done: false })
+                return realId ? { id: realId, projectId: projectRow.id, name, done: false } : null
+              }),
+            )
+          ).filter((t): t is ProjectTask => t !== null)
+          if (created.length) set((s) => ({ projectTasks: [...s.projectTasks, ...created] }))
+        }
+
+        return projectRow.id
       },
 
       // ── Milestones ─────────────────────────────────────────────────────────
@@ -1136,6 +1202,34 @@ export const useStore = create<State>()(
       deleteInvoice: (id) => {
         removeFromSlice(set, 'projectInvoices', id)
         void deleteInvoiceRow(id)
+      },
+
+      // One-click invoice from a project's unbilled billable hours × global rate.
+      generateInvoiceFromHours: (projectId) => {
+        const rate = get().settings.hourlyRate
+        const entries = unbilledBillableHours(get().projectHours.filter((h) => h.projectId === projectId))
+        const totalHours = sumHours(entries)
+        if (rate <= 0 || totalHours <= 0) return
+        const amount = invoiceAmountFromHours(entries, rate)
+        const ids = entries.map((h) => h.id)
+        // Draft invoice (fire-and-forget temp-id create via addInvoice).
+        get().addInvoice(projectId, {
+          number: '',
+          amount,
+          status: 'draft',
+          issuedOn: TODAY,
+          dueOn: null,
+          paidOn: null,
+          note: `${totalHours}u × €${rate}/u`,
+        })
+        // Flag the hours billed so they aren't invoiced twice.
+        set((s) => ({ projectHours: s.projectHours.map((h) => (ids.includes(h.id) ? { ...h, billed: true } : h)) }))
+        void markHoursBilled(ids)
+      },
+
+      setHourlyRate: (rate) => {
+        set((s) => ({ settings: { ...s.settings, hourlyRate: rate } }))
+        void upsertAppSettings({ hourlyRate: rate })
       },
 
       // ── Activity logger (analyse → take action) ────────────────────────────
@@ -1489,7 +1583,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -1500,6 +1594,7 @@ export const useStore = create<State>()(
             fetchLearnedFacts(),
             fetchVendorTags(),
             fetchBraindumpEntries(),
+            fetchAppSettings(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -1524,10 +1619,11 @@ export const useStore = create<State>()(
             projectMilestones: milestones,
             projectTasks,
             projectHours: hours,
-            projectInvoices: invoices,
+            projectInvoices: reconcileInvoices(invoices),
             projectActivity: projActivity,
             ...(messages.length > 0 && { messages }),
             notificationPrefs,
+            ...(appSettings && { settings: appSettings }),
             ...(learnedFacts.length > 0 && { learnedFacts }),
             ...(vendorTags.length > 0 && { vendorTags }),
             // Braindump is app-owned (no mock fallback) — set directly so an empty
@@ -1575,11 +1671,12 @@ export const useStore = create<State>()(
           { table: 'project_milestones', onChange: () => fetchMilestones().then((d) => set({ projectMilestones: d })) },
           { table: 'project_tasks', onChange: () => fetchProjectTaskRows().then((d) => set({ projectTasks: d })) },
           { table: 'project_hours', onChange: () => fetchHours().then((d) => set({ projectHours: d })) },
-          { table: 'project_invoices', onChange: () => fetchInvoices().then((d) => set({ projectInvoices: d })) },
+          { table: 'project_invoices', onChange: () => fetchInvoices().then((d) => set({ projectInvoices: reconcileInvoices(d) })) },
           { table: 'project_activity', onChange: () => fetchActivity().then((d) => set({ projectActivity: d })) },
           { table: 'client_messages', onChange: () => fetchClientMessages().then((d) => set({ messages: d })) },
           { table: 'heyra_memory', onChange: () => fetchLearnedFacts().then((d) => set({ learnedFacts: d })) },
           { table: 'braindump_entries', onChange: () => fetchBraindumpEntries().then((d) => set({ braindumpEntries: d })) },
+          { table: 'app_settings', onChange: () => fetchAppSettings().then((p) => { if (p) set({ settings: p }) }) },
         ]
         syncSlices
           .reduce(

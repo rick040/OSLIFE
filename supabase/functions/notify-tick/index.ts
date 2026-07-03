@@ -262,6 +262,47 @@ async function urgentAlerts(sb: any, today: string): Promise<UrgentAlert[]> {
     });
   }
 
+  // Overdue invoices — a sent invoice whose due date has passed. Flip it to
+  // 'overdue' server-side (mirrors the client-side reconcile) and nudge once.
+  const { data: invoiceRows } = await sb
+    .from("project_invoices")
+    .select("id,number,amount,due_on")
+    .eq("user_id", USER_ID)
+    .eq("status", "sent")
+    .not("due_on", "is", null)
+    .lt("due_on", today);
+  for (const inv of invoiceRows ?? []) {
+    await sb.from("project_invoices").update({ status: "overdue" }).eq("id", inv.id);
+    const label = (inv.number as string) ? `Factuur ${inv.number}` : "Een factuur";
+    alerts.push({
+      kind: "urgent_invoice_overdue",
+      dedupKey: inv.id as string,
+      text: `⚠️ ${label} (€${inv.amount}) is te laat — verviel ${fmtDateNL(inv.due_on as string)}.`,
+    });
+  }
+
+  // Follow-up due — a client past its follow-up cycle (last contact + cycle).
+  // Keyed by the due date so it nudges once per missed cycle, not every tick.
+  const { data: clientRows } = await sb
+    .from("clients")
+    .select("id,name,last_contacted_at,follow_up_cycle_days")
+    .eq("user_id", USER_ID)
+    .not("last_contacted_at", "is", null);
+  for (const c of clientRows ?? []) {
+    const cycle = (c.follow_up_cycle_days as number) ?? 30;
+    const due = new Date((c.last_contacted_at as string).slice(0, 10) + "T00:00:00");
+    due.setDate(due.getDate() + cycle);
+    const dueStr = due.toISOString().slice(0, 10);
+    if (dueStr < today) {
+      const daysSince = daysBetween((c.last_contacted_at as string).slice(0, 10), today);
+      alerts.push({
+        kind: "urgent_followup",
+        dedupKey: `${c.id}:${dueStr}`,
+        text: `📇 Tijd om ${c.name} op te volgen — al ${daysSince} dag(en) geen contact.`,
+      });
+    }
+  }
+
   return alerts;
 }
 

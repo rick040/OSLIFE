@@ -298,6 +298,12 @@ export interface HourEntry {
   hours: number
   note?: string | null
   billable: boolean
+  billed: boolean // true once an invoice has drawn from this entry
+}
+
+/** Owner-scoped app settings — a single row per user (global hourly rate, …). */
+export interface AppSettings {
+  hourlyRate: number // EUR per hour, used to invoice unbilled hours
 }
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue'
@@ -339,6 +345,8 @@ export interface Client {
   firstContact?: string | null // ISO date
   email?: string | null
   website?: string | null
+  lastContactedAt?: string | null // ISO — bumped when a message links to the client
+  followUpCycleDays?: number // cadence the follow-up health dot measures against
 }
 
 // ── CRM: unified client messages (email / fiverr / whatsapp) ─────────────────
