@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import type { Message, Channel } from '../types'
 import { X, ChevronLeft, Mail, Zap, MessageSquare, Search, Plus, Upload, Trash2 } from 'lucide-react'
 import { useStore } from '../store'
-import { TODAY } from '../domains'
 import { Sheet, Field, TextInput, TextArea, SelectInput, PrimaryBtn } from '../components/crm'
 import { deriveGmailMessages } from '../lib/crm/gmailInbox'
 

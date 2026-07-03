@@ -148,47 +148,6 @@ export async function persistAllEmailsRead(): Promise<void> {
   warnWrite('gmail_messages.read(all)', error)
 }
 
-// ── Projects ────────────────────────────────────────────────────────────────────
-
-export async function persistProjectPatch(
-  id: string,
-  patch: Partial<Pick<Project, 'status' | 'priority' | 'deadline' | 'value' | 'progress'>>,
-  notionId?: string,
-): Promise<void> {
-  if (!isDbId(id)) return
-  const row: Record<string, unknown> = {}
-  if (patch.status !== undefined) row.status = patch.status
-  if (patch.priority !== undefined) row.prioriteit = patch.priority
-  if (patch.deadline !== undefined) row.deadline = patch.deadline
-  if (patch.value !== undefined) row.value = patch.value
-  if (patch.progress !== undefined) row.progress = patch.progress
-  if (Object.keys(row).length === 0) return
-  const { error } = await supabase.from('projects').update(row).eq('id', id)
-  warnWrite('projects', error)
-  // Write the same change back to Notion (source of truth) — progress is an
-  // app-derived field, so we don't push it back.
-  if (notionId) {
-    const { progress: _drop, ...notionPatch } = patch
-    if (Object.keys(notionPatch).length > 0) void mutateNotion('project', notionId, notionPatch)
-  }
-}
-
-/** Push a single project/client change back to Notion via the notion-mutate edge function. */
-export async function mutateNotion(
-  kind: 'project' | 'client',
-  externalId: string,
-  patch: Record<string, unknown>,
-): Promise<void> {
-  try {
-    const { error } = await supabase.functions.invoke('notion-mutate', {
-      body: { kind, external_id: externalId, patch },
-    })
-    warnWrite('notion-mutate', error)
-  } catch (err) {
-    warnWrite('notion-mutate', err)
-  }
-}
-
 // ── Habits ────────────────────────────────────────────────────────────────────
 
 /** Returns the new DB id, or null if the write was skipped/failed. */
