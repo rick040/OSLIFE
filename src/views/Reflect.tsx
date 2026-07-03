@@ -12,6 +12,7 @@ import {
   CartesianGrid,
   Cell,
 } from 'recharts'
+import { CHART_TIP, AXIS_TICK_10 } from '../components/chart'
 import { useStore } from '../store'
 import { computeCorrelations, computeAnomalies } from '../reflect'
 import { deriveDeadlines, hasSleepSignal, hasEnergySignal } from '../derive'
@@ -184,11 +185,11 @@ export default function Reflect() {
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={sleepEnergy} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
-              <XAxis dataKey="date" tick={{ fill: '#8C9080', fontSize: 10 }} />
-              <YAxis yAxisId="l" domain={[0, 9]} tick={{ fill: '#8C9080', fontSize: 10 }} />
+              <XAxis dataKey="date" tick={AXIS_TICK_10} />
+              <YAxis yAxisId="l" domain={[0, 9]} tick={AXIS_TICK_10} />
               <YAxis yAxisId="r" orientation="right" domain={[0, 5]} hide />
               <Tooltip
-                contentStyle={{ background: '#FFFFFF', border: '1px solid #E7E9DE', color: '#1B1D17', borderRadius: 12, fontSize: 12 }}
+                contentStyle={CHART_TIP}
               />
               <ReferenceLine yAxisId="l" y={6} stroke="#C58392" strokeDasharray="4 4" />
               <Line yAxisId="l" type="monotone" dataKey="sleep" stroke="#C6A05B" strokeWidth={2} dot={false} name="sleep (h)" />
@@ -207,10 +208,10 @@ export default function Reflect() {
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={spendByDay} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
-              <XAxis dataKey="date" tick={{ fill: '#8C9080', fontSize: 10 }} />
-              <YAxis tick={{ fill: '#8C9080', fontSize: 10 }} />
+              <XAxis dataKey="date" tick={AXIS_TICK_10} />
+              <YAxis tick={AXIS_TICK_10} />
               <Tooltip
-                contentStyle={{ background: '#FFFFFF', border: '1px solid #E7E9DE', color: '#1B1D17', borderRadius: 12, fontSize: 12 }}
+                contentStyle={CHART_TIP}
                 formatter={(v: number) => [`€${v}`, 'spend']}
               />
               <Bar dataKey="spend" radius={[4, 4, 0, 0]}>

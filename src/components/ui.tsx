@@ -21,6 +21,15 @@ export function KindChip({ kind }: { kind: string }) {
   return <span className="chip bg-line text-ink-soft">{kind}</span>
 }
 
+/** Hex-getinte badge: tekst in `hex`, achtergrond dezelfde hex op ~13% dekking (`hex + '22'`). */
+export function Pill({ hex, className, children }: { hex: string; className?: string; children: React.ReactNode }) {
+  return (
+    <span className={className} style={{ color: hex, background: `${hex}22` }}>
+      {children}
+    </span>
+  )
+}
+
 export function ConfidenceBar({ value }: { value: number }) {
   const pct = Math.round(value * 100)
   const color = value >= 0.7 ? 'bg-buurtkaart' : value >= 0.45 ? 'bg-personal' : 'bg-cross'

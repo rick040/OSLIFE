@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { X, FolderKanban, Clock } from 'lucide-react'
 import type { ProjectStatus, ClientStatus, Priority, Domain, Project, Client } from '../types'
 import { TODAY, daysBetween, fmtDate } from '../domains'
-import { DomainChip } from './ui'
+import { DomainChip, Pill } from './ui'
 
 // ── formatting ────────────────────────────────────────────────────────────────
 export const eur = (n: number | null | undefined) => {
@@ -156,9 +156,9 @@ export function StatusBadge({ status }: { status: ProjectStatus }) {
   const label = CRM_STATUS[status]
   const c = STATUS_HEX[label]
   return (
-    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md whitespace-nowrap" style={{ color: c, background: `${c}22` }}>
+    <Pill hex={c} className="text-[10px] font-semibold px-2 py-0.5 rounded-md whitespace-nowrap">
       {label}
-    </span>
+    </Pill>
   )
 }
 
@@ -198,14 +198,14 @@ export function ProjectCard({ p, onClick, onClientClick }: { p: Project; onClick
       <div className="flex-1" />
       <div className="flex flex-wrap gap-1 mt-2 mb-2">
         {p.priority && (
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ color: PRIO_HEX[p.priority], background: `${PRIO_HEX[p.priority]}22` }}>
+          <Pill hex={PRIO_HEX[p.priority]} className="text-[10px] font-semibold px-1.5 py-0.5 rounded">
             {PRIO_NL[p.priority] ?? p.priority}
-          </span>
+          </Pill>
         )}
         {dl && (
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded inline-flex items-center gap-1" style={{ color: dl.color, background: `${dl.color}22` }}>
+          <Pill hex={dl.color} className="text-[10px] font-semibold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
             <Clock className="h-2.5 w-2.5" /> {dl.label}
-          </span>
+          </Pill>
         )}
       </div>
       <div className="flex items-center justify-between border-t border-line pt-2">
@@ -234,12 +234,12 @@ export function ProjectRow({ p, onClick, onClientClick }: { p: Project; onClick:
         <div className="flex flex-wrap gap-1.5 mt-2">
           <StatusBadge status={p.status} />
           {p.priority && (
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md" style={{ color: PRIO_HEX[p.priority], background: `${PRIO_HEX[p.priority]}22` }}>{PRIO_NL[p.priority] ?? p.priority}</span>
+            <Pill hex={PRIO_HEX[p.priority]} className="text-[10px] font-semibold px-2 py-0.5 rounded-md">{PRIO_NL[p.priority] ?? p.priority}</Pill>
           )}
           {dl && (
-            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md inline-flex items-center gap-1" style={{ color: dl.color, background: `${dl.color}22` }}>
+            <Pill hex={dl.color} className="text-[10px] font-semibold px-2 py-0.5 rounded-md inline-flex items-center gap-1">
               <Clock className="h-2.5 w-2.5" /> {dl.label}
-            </span>
+            </Pill>
           )}
           {p.type?.slice(0, 2).map((t) => (
             <span key={t} className="text-[10px] px-2 py-0.5 rounded-md bg-sunken text-faint">{t}</span>
@@ -259,7 +259,7 @@ export function ClientCard({ c, onClick }: { c: Client; onClick: () => void }) {
           {c.name.slice(0, 1).toUpperCase()}
         </span>
         {c.clientStatus && (
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ color, background: `${color}22` }}>{CLIENT_STATUS_NL[c.clientStatus] ?? c.clientStatus}</span>
+          <Pill hex={color} className="text-[10px] font-semibold px-1.5 py-0.5 rounded">{CLIENT_STATUS_NL[c.clientStatus] ?? c.clientStatus}</Pill>
         )}
       </div>
       <div className="text-sm font-semibold truncate">{c.name}</div>

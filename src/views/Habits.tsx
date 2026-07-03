@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts'
+import { CHART_TIP_BARE, AXIS_TICK_10, AXIS_TICK_11 } from '../components/chart'
 import { useStore } from '../store'
 import { TODAY } from '../domains'
 import { SectionTitle, Empty } from '../components/ui'
@@ -120,11 +121,11 @@ export default function Habits() {
             <ResponsiveContainer width="100%" height={150}>
               <BarChart data={weekData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" vertical={false} />
-                <XAxis dataKey="day" tick={{ fill: '#8C9080', fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis allowDecimals={false} domain={[0, habits.length]} tick={{ fill: '#8C9080', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="day" tick={AXIS_TICK_11} axisLine={false} tickLine={false} />
+                <YAxis allowDecimals={false} domain={[0, habits.length]} tick={AXIS_TICK_10} axisLine={false} tickLine={false} />
                 <Tooltip
                   cursor={{ fill: '#F4F5EE' }}
-                  contentStyle={{ background: '#FFFFFF', border: '1px solid #E7E9DE', borderRadius: 12, fontSize: 12 }}
+                  contentStyle={CHART_TIP_BARE}
                   formatter={(v: number) => [`${v}/${habits.length}`, 'afgevinkt']}
                 />
                 <Bar dataKey="count" radius={[4, 4, 0, 0]}>

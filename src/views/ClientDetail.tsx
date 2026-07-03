@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { X, Pencil, Trash2, Plus, FolderKanban, MessageCircle, Mail, Globe } from 'lucide-react'
 import type { Client, Project } from '../types'
 import { fmtDate } from '../domains'
-import { DomainChip } from '../components/ui'
+import { DomainChip, Pill } from '../components/ui'
 import { useStore } from '../store'
 import ClientForm from './ClientForm'
 import ProjectForm from './ProjectForm'
@@ -44,7 +44,7 @@ export default function ClientDetail({ client: initial, onClose }: { client: Cli
             <div className="font-semibold text-lg leading-tight">{client.name}</div>
             <div className="flex items-center gap-1.5 mt-1 flex-wrap">
               {client.clientStatus && (
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ color, background: `${color}22` }}>{CLIENT_STATUS_NL[client.clientStatus] ?? client.clientStatus}</span>
+                <Pill hex={color} className="text-[10px] font-semibold px-1.5 py-0.5 rounded">{CLIENT_STATUS_NL[client.clientStatus] ?? client.clientStatus}</Pill>
               )}
               <DomainChip domain={client.domain} small />
             </div>
@@ -89,7 +89,7 @@ export default function ClientDetail({ client: initial, onClose }: { client: Cli
                     <button key={p.id} onClick={() => setOpenProject(p)} className="w-full text-left rounded-2xl bg-surface border border-line px-4 py-3 hover:bg-sunken transition-colors">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-semibold text-sm truncate flex items-center gap-2"><FolderKanban className="h-3.5 w-3.5 text-prjct shrink-0" />{p.name}</span>
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md shrink-0" style={{ color: sc, background: `${sc}22` }}>{crm}</span>
+                        <Pill hex={sc} className="text-[10px] font-semibold px-2 py-0.5 rounded-md shrink-0">{crm}</Pill>
                       </div>
                       <div className="flex items-center justify-between mt-1">
                         {p.type && p.type.length > 0 && <span className="text-xs text-faint truncate">{p.type.join(' · ')}</span>}

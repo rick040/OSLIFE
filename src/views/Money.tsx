@@ -9,6 +9,7 @@ import {
   CartesianGrid,
   Cell,
 } from 'recharts'
+import { CHART_TIP, AXIS_TICK_10 } from '../components/chart'
 import { useStore } from '../store'
 import { TODAY, DOMAIN_META, DOMAIN_HEX, fmtDate, daysBetween } from '../domains'
 import { OPENING_BALANCE } from '../mockData'
@@ -263,11 +264,11 @@ export default function Money() {
               <ResponsiveContainer width="100%" height={Math.max(140, byCategory.length * 30)}>
                 <BarChart data={byCategory} layout="vertical" margin={{ top: 0, right: 16, left: 24, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" horizontal={false} />
-                  <XAxis type="number" tick={{ fill: '#8C9080', fontSize: 10 }} />
+                  <XAxis type="number" tick={AXIS_TICK_10} />
                   <YAxis type="category" dataKey="cat" width={90} tick={{ fill: '#5C6150', fontSize: 11 }} />
                   <Tooltip
                     cursor={{ fill: '#F4F5EE' }}
-                    contentStyle={{ background: '#FFFFFF', border: '1px solid #E7E9DE', color: '#1B1D17', borderRadius: 12, fontSize: 12 }}
+                    contentStyle={CHART_TIP}
                     formatter={(v: number) => [`€${v}`, 'uitgegeven']}
                   />
                   <Bar dataKey="v" radius={[0, 4, 4, 0]}>

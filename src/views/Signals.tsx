@@ -10,6 +10,7 @@ import {
   Cell,
 } from 'recharts'
 import { useMemo } from 'react'
+import { CHART_TIP, AXIS_TICK_10 } from '../components/chart'
 import { useStore } from '../store'
 import { TODAY, DOMAIN_HEX } from '../domains'
 import { deriveDeadlines } from '../derive'
@@ -17,7 +18,6 @@ import { SectionTitle } from '../components/ui'
 import { Radar, Smartphone, Hand, Brain } from 'lucide-react'
 
 const d = (iso: string) => iso.slice(8)
-const tip = { background: '#FFFFFF', border: '1px solid #E7E9DE', color: '#1B1D17', borderRadius: 12, fontSize: 12 }
 const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}u ${m % 60}m` : `${m}m`)
 
 export default function Signals() {
@@ -64,9 +64,9 @@ export default function Signals() {
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={screenData} margin={{ top: 4, right: 4, left: -8, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
-                <XAxis dataKey="date" tick={{ fill: '#8C9080', fontSize: 10 }} />
-                <YAxis tick={{ fill: '#8C9080', fontSize: 10 }} />
-                <Tooltip contentStyle={tip} formatter={(v: number, n) => [fmtMin(v), n === 'focus' ? 'focus' : 'afleiding']} />
+                <XAxis dataKey="date" tick={AXIS_TICK_10} />
+                <YAxis tick={AXIS_TICK_10} />
+                <Tooltip contentStyle={CHART_TIP} formatter={(v: number, n) => [fmtMin(v), n === 'focus' ? 'focus' : 'afleiding']} />
                 <Bar dataKey="focus" stackId="s" fill={DOMAIN_HEX.buurtkaart} radius={[0, 0, 0, 0]} />
                 <Bar dataKey="distract" stackId="s" fill={DOMAIN_HEX.cross} radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -100,9 +100,9 @@ export default function Signals() {
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={meetingData} margin={{ top: 4, right: 4, left: -8, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
-            <XAxis dataKey="date" tick={{ fill: '#8C9080', fontSize: 10 }} />
-            <YAxis allowDecimals={false} tick={{ fill: '#8C9080', fontSize: 10 }} />
-            <Tooltip contentStyle={tip} formatter={(v: number) => [`${v} meeting(s)`, 'aantal']} />
+            <XAxis dataKey="date" tick={AXIS_TICK_10} />
+            <YAxis allowDecimals={false} tick={AXIS_TICK_10} />
+            <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v} meeting(s)`, 'aantal']} />
             <ReferenceLine y={3} stroke="#C58392" strokeDasharray="4 4" />
             <Bar dataKey="count" radius={[4, 4, 0, 0]}>
               {meetingData.map((m) => (

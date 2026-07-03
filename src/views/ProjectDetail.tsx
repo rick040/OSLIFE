@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import type { Project, ProjectTask, ProjectMilestone, Invoice, Recurrence, Priority } from '../types'
 import { fmtDate, TODAY, daysBetween } from '../domains'
+import { Pill } from '../components/ui'
 import { useStore } from '../store'
 import ProjectForm from './ProjectForm'
 import {
@@ -92,7 +93,7 @@ export default function ProjectDetail({ project: initial, onClose }: { project: 
           <div className="flex-1 min-w-0 pt-0.5">
             <div className="font-semibold text-lg leading-tight truncate">{project.name}</div>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full" style={{ color: statusColor, background: `${statusColor}22` }}>{crmStatus}</span>
+              <Pill hex={statusColor} className="text-[11px] font-semibold px-2 py-0.5 rounded-full">{crmStatus}</Pill>
               {(client?.name || project.client) && <span className="text-xs text-faint truncate">{client?.name ?? project.client}</span>}
             </div>
           </div>
@@ -516,9 +517,9 @@ function Activity({ projectId }: { projectId: string }) {
             <div className="flex items-center gap-2 mt-1.5">
               <span className="text-[11px] text-faint">{fmtDate(a.createdAt.slice(0, 10))}</span>
               {a.action && (
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ color: '#6FA07C', background: '#6FA07C22' }}>
+                <Pill hex="#6FA07C" className="text-[10px] font-semibold px-1.5 py-0.5 rounded">
                   {a.action === 'completed' ? 'taak afgevinkt' : a.action === 'progress' ? 'voortgang bijgewerkt' : 'gekoppeld'}
-                </span>
+                </Pill>
               )}
               <button onClick={() => deleteActivity(a.id)} className="ml-auto text-faint hover:text-red-400 opacity-0 group-hover:opacity-100"><Trash2 className="h-3.5 w-3.5" /></button>
             </div>

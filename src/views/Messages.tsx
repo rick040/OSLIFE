@@ -3,6 +3,7 @@ import type { Message, Channel } from '../types'
 import { X, ChevronLeft, Mail, Zap, MessageSquare, Search, Plus, Upload, Trash2 } from 'lucide-react'
 import { useStore } from '../store'
 import { Sheet, Field, TextInput, TextArea, SelectInput, PrimaryBtn } from '../components/crm'
+import { Pill } from '../components/ui'
 import { deriveGmailMessages } from '../lib/crm/gmailInbox'
 
 const CH: Record<Channel, { label: string; hex: string; icon: typeof Mail }> = {
@@ -273,7 +274,7 @@ function MailCard({ m, onDelete }: { m: Message; onDelete: () => void }) {
   return (
     <div className="card p-3 group">
       <div className="flex items-center gap-1.5 mb-1">
-        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ color: meta.hex, background: `${meta.hex}22` }}>{meta.label}</span>
+        <Pill hex={meta.hex} className="text-[10px] font-semibold px-1.5 py-0.5 rounded">{meta.label}</Pill>
         {m.direction === 'out' && <span className="text-[10px] text-faint">verzonden</span>}
         {mirrored ? (
           <span className="ml-auto text-[10px] text-faint">via Gmail</span>

@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { CHART_TIP_BARE, AXIS_TICK_10, AXIS_TICK_11 } from '../components/chart'
 import { useStore } from '../store'
 import { TODAY, fmtDate, daysBetween } from '../domains'
 import { SectionTitle, Empty } from '../components/ui'
@@ -609,9 +610,9 @@ export default function Dog() {
           <ResponsiveContainer width="100%" height={150}>
             <LineChart data={weights} margin={{ top: 6, right: 10, left: -16, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" vertical={false} />
-              <XAxis dataKey="date" tick={{ fill: '#8C9080', fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis domain={[8, 10]} tick={{ fill: '#8C9080', fontSize: 10 }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: '#fff', border: '1px solid #E7E9DE', borderRadius: 12, fontSize: 12 }} formatter={(v: number) => [`${v} kg`, 'gewicht']} />
+              <XAxis dataKey="date" tick={AXIS_TICK_11} axisLine={false} tickLine={false} />
+              <YAxis domain={[8, 10]} tick={AXIS_TICK_10} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={CHART_TIP_BARE} formatter={(v: number) => [`${v} kg`, 'gewicht']} />
               <Line type="monotone" dataKey="kg" stroke="#9385B0" strokeWidth={2.5} dot={{ r: 3, fill: '#9385B0' }} />
             </LineChart>
           </ResponsiveContainer>

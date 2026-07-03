@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { TaskDraft, Domain, Priority } from '../types'
 import { DOMAIN_META, DOMAIN_HEX } from '../domains'
+import { Pill } from './ui'
 import { relativeDue } from '../heyra/datetime'
 import { googleCalendarUrl } from '../lib/gcal'
 import {
@@ -49,10 +50,10 @@ export default function TaskCard({
         <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: accent }}>
           Taakkaart
         </span>
-        <span className="chip ml-auto" style={{ background: `${accent}22`, color: accent }}>
+        <Pill hex={accent} className="chip ml-auto">
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: accent }} />
           {meta.label}
-        </span>
+        </Pill>
         <button
           onClick={() => setEditing((v) => !v)}
           className="text-faint hover:text-ink p-1 rounded-lg hover:bg-surface/60"

@@ -11,6 +11,7 @@ import {
   ReferenceLine,
   Cell,
 } from 'recharts'
+import { CHART_TIP, AXIS_TICK_10 } from '../components/chart'
 import { useStore } from '../store'
 import { TODAY } from '../domains'
 import { Ring, SectionTitle } from '../components/ui'
@@ -119,9 +120,9 @@ export default function Vitals() {
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={data} margin={{ top: 4, right: 4, left: -8, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
-            <XAxis dataKey="date" tick={{ fill: '#8C9080', fontSize: 10 }} />
-            <YAxis tick={{ fill: '#8C9080', fontSize: 10 }} />
-            <Tooltip contentStyle={{ background: '#FFFFFF', border: '1px solid #E7E9DE', color: '#1B1D17', borderRadius: 12, fontSize: 12 }} formatter={(v: number) => [v.toLocaleString('nl-NL'), 'stappen']} />
+            <XAxis dataKey="date" tick={AXIS_TICK_10} />
+            <YAxis tick={AXIS_TICK_10} />
+            <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [v.toLocaleString('nl-NL'), 'stappen']} />
             <ReferenceLine y={today.stepGoal} stroke="#6FA07C" strokeDasharray="4 4" />
             <Bar dataKey="steps" radius={[4, 4, 0, 0]}>
               {data.map((x) => (
@@ -142,9 +143,9 @@ export default function Vitals() {
           <ResponsiveContainer width="100%" height={170}>
             <LineChart data={data} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
-              <XAxis dataKey="date" tick={{ fill: '#8C9080', fontSize: 10 }} />
-              <YAxis domain={[0, 9]} tick={{ fill: '#8C9080', fontSize: 10 }} />
-              <Tooltip contentStyle={{ background: '#FFFFFF', border: '1px solid #E7E9DE', color: '#1B1D17', borderRadius: 12, fontSize: 12 }} formatter={(v: number) => [`${v}u`, 'slaap']} />
+              <XAxis dataKey="date" tick={AXIS_TICK_10} />
+              <YAxis domain={[0, 9]} tick={AXIS_TICK_10} />
+              <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v}u`, 'slaap']} />
               <ReferenceLine y={6} stroke="#C58392" strokeDasharray="4 4" />
               <Line type="monotone" dataKey="sleep" stroke="#6E8CA8" strokeWidth={2} dot={false} />
             </LineChart>
@@ -160,9 +161,9 @@ export default function Vitals() {
           <ResponsiveContainer width="100%" height={170}>
             <LineChart data={data} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
-              <XAxis dataKey="date" tick={{ fill: '#8C9080', fontSize: 10 }} />
-              <YAxis domain={[50, 70]} tick={{ fill: '#8C9080', fontSize: 10 }} />
-              <Tooltip contentStyle={{ background: '#FFFFFF', border: '1px solid #E7E9DE', color: '#1B1D17', borderRadius: 12, fontSize: 12 }} formatter={(v: number) => [`${v} bpm`, 'rust-HR']} />
+              <XAxis dataKey="date" tick={AXIS_TICK_10} />
+              <YAxis domain={[50, 70]} tick={AXIS_TICK_10} />
+              <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v} bpm`, 'rust-HR']} />
               <Line type="monotone" dataKey="hr" stroke="#C58392" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
