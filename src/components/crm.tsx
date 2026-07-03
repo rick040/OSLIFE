@@ -3,7 +3,17 @@ import { useEffect } from 'react'
 import { X, FolderKanban, Clock } from 'lucide-react'
 import type { ProjectStatus, ClientStatus, Priority, Domain, Project, Client } from '../types'
 import { deadlineInfo } from '../lib/dates'
+import { TODAY } from '../domains'
+import { clientHealth, FOLLOWUP_META } from '../lib/crm/followUp'
 import { DomainChip, Pill } from './ui'
+
+/** Small follow-up-health dot (green/yellow/red); hidden for never-contacted clients. */
+export function FollowUpDot({ client, className = '' }: { client: Client; className?: string }) {
+  const health = clientHealth(client, TODAY)
+  if (health === 'none') return null
+  const m = FOLLOWUP_META[health]
+  return <span className={`h-2 w-2 rounded-full shrink-0 ${className}`} style={{ background: m.hex }} title={m.label} />
+}
 
 // ── formatting ────────────────────────────────────────────────────────────────
 // Canonical definitions live in src/lib/format.ts; the CRM keeps its historical
@@ -275,6 +285,7 @@ export function ClientCard({ c, onClick }: { c: Client; onClick: () => void }) {
         {c.clientStatus && (
           <Pill hex={color} className="text-[10px] font-semibold px-1.5 py-0.5 rounded">{CLIENT_STATUS_NL[c.clientStatus] ?? c.clientStatus}</Pill>
         )}
+        <FollowUpDot client={c} className="ml-auto" />
       </div>
       <div className="text-sm font-semibold truncate">{c.name}</div>
       <div className="mt-1.5 space-y-0.5 text-[11px] text-faint">

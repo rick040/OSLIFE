@@ -29,6 +29,7 @@ import type {
   NotificationPrefs,
   VendorTag,
   BraindumpEntry,
+  AppSettings,
 } from '../types'
 import { TODAY } from '../domains'
 import type { LearnedFact } from '../heyra/learning'
@@ -936,16 +937,18 @@ export async function fetchProjects(): Promise<Project[]> {
 }
 
 export async function fetchClients(): Promise<Client[]> {
-  return fetchRows('clients', 'id,name,domain,client_status,potentie,scope,first_contact,email,website_url,notion_url', { column: 'name', ascending: true }, (r) => ({
-    id:           r.id as string,
-    name:         r.name as string,
-    domain:       ((r.domain as Domain) ?? 'personal'),
-    clientStatus: (r.client_status as ClientStatus) ?? null,
-    potentie:     (r.potentie as Client['potentie']) ?? null,
-    scope:        (r.scope as number) ?? null,
-    firstContact: (r.first_contact as string) ?? null,
-    email:        (r.email as string) ?? null,
-    website:      (r.website_url as string) ?? null,
+  return fetchRows('clients', 'id,name,domain,client_status,potentie,scope,first_contact,email,website_url,notion_url,last_contacted_at,follow_up_cycle_days', { column: 'name', ascending: true }, (r) => ({
+    id:               r.id as string,
+    name:             r.name as string,
+    domain:           ((r.domain as Domain) ?? 'personal'),
+    clientStatus:     (r.client_status as ClientStatus) ?? null,
+    potentie:         (r.potentie as Client['potentie']) ?? null,
+    scope:            (r.scope as number) ?? null,
+    firstContact:     (r.first_contact as string) ?? null,
+    email:            (r.email as string) ?? null,
+    website:          (r.website_url as string) ?? null,
+    lastContactedAt:  (r.last_contacted_at as string) ?? null,
+    followUpCycleDays: (r.follow_up_cycle_days as number) ?? 30,
   }))
 }
 
@@ -969,6 +972,8 @@ const CLIENT_COLS: Record<string, string> = {
   email: 'email',
   website: 'website_url',
   domain: 'domain',
+  lastContactedAt: 'last_contacted_at',
+  followUpCycleDays: 'follow_up_cycle_days',
 }
 
 export async function createClientRow(c: Omit<Client, 'id'>): Promise<Client | null> {
@@ -982,6 +987,8 @@ export async function createClientRow(c: Omit<Client, 'id'>): Promise<Client | n
     email: c.email ?? null,
     website_url: c.website ?? null,
     domain: c.domain,
+    last_contacted_at: c.lastContactedAt ?? null,
+    follow_up_cycle_days: c.followUpCycleDays ?? 30,
   })
   return id ? { ...c, id } : null
 }
@@ -1138,14 +1145,23 @@ export async function deleteProjectTaskRow(id: string): Promise<void> {
 // ── Hours (time tracker) ──────────────────────────────────────────────────────
 
 export async function fetchHours(): Promise<HourEntry[]> {
-  return fetchRows('project_hours', 'id,project_id,on_date,hours,note,billable', { column: 'on_date', ascending: false }, (r) => ({
+  return fetchRows('project_hours', 'id,project_id,on_date,hours,note,billable,billed', { column: 'on_date', ascending: false }, (r) => ({
     id: r.id as string,
     projectId: r.project_id as string,
     date: r.on_date as string,
     hours: (r.hours as number) ?? 0,
     note: (r.note as string) ?? null,
     billable: (r.billable as boolean) ?? true,
+    billed: (r.billed as boolean) ?? false,
   }))
+}
+
+/** Flag hours as billed once an invoice has drawn from them (no-op for non-DB ids). */
+export async function markHoursBilled(ids: string[]): Promise<void> {
+  const dbIds = ids.filter(isDbId)
+  if (!dbIds.length) return
+  const { error } = await supabase.from('project_hours').update({ billed: true }).in('id', dbIds)
+  warnWrite('project_hours.billed', error)
 }
 
 export async function createHourRow(
@@ -1307,4 +1323,27 @@ export async function markMessagesReadRow(contactKey: string): Promise<void> {
 
 export async function deleteMessageRow(id: string): Promise<void> {
   return deleteRow('client_messages', id)
+}
+
+// ── App settings (one owner-scoped row) ───────────────────────────────────────
+
+export async function fetchAppSettings(): Promise<AppSettings | null> {
+  const { data } = await supabase.from('app_settings').select('hourly_rate').maybeSingle()
+  if (!data) return null
+  return { hourlyRate: (data.hourly_rate as number) ?? 0 }
+}
+
+export async function upsertAppSettings(patch: Partial<AppSettings>): Promise<boolean> {
+  const user_id = await currentUserId()
+  if (!user_id) return false
+  const { error } = await supabase.from('app_settings').upsert(
+    {
+      user_id,
+      ...(patch.hourlyRate !== undefined && { hourly_rate: patch.hourlyRate }),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id' },
+  )
+  warnWrite('app_settings', error)
+  return !error
 }

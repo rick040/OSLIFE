@@ -19,6 +19,7 @@ export default function ClientForm({ client, onClose }: { client: Client | null;
   const [email, setEmail] = useState(client?.email ?? '')
   const [website, setWebsite] = useState(client?.website ?? '')
   const [firstContact, setFirstContact] = useState(client?.firstContact?.slice(0, 10) ?? '')
+  const [followUpCycle, setFollowUpCycle] = useState(client?.followUpCycleDays != null ? String(client.followUpCycleDays) : '30')
 
   function submit() {
     if (!name.trim()) return
@@ -31,6 +32,7 @@ export default function ClientForm({ client, onClose }: { client: Client | null;
       email: email.trim() || null,
       website: website.trim() || null,
       firstContact: firstContact || null,
+      followUpCycleDays: followUpCycle ? Math.max(1, parseInt(followUpCycle, 10) || 30) : 30,
     }
     if (editing && client) updateClient(client.id, patch)
     else addClient(patch)
@@ -77,9 +79,14 @@ export default function ClientForm({ client, onClose }: { client: Client | null;
       <Field label="Website">
         <TextInput value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://…" />
       </Field>
-      <Field label="Eerste contact">
-        <TextInput type="date" value={firstContact} onChange={(e) => setFirstContact(e.target.value)} />
-      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Eerste contact">
+          <TextInput type="date" value={firstContact} onChange={(e) => setFirstContact(e.target.value)} />
+        </Field>
+        <Field label="Opvolgcyclus (dagen)" hint="hoe vaak contact opnemen">
+          <TextInput type="number" min={1} value={followUpCycle} onChange={(e) => setFollowUpCycle(e.target.value)} placeholder="30" />
+        </Field>
+      </div>
     </Sheet>
   )
 }

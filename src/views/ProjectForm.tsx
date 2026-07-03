@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Project, ProjectStatus, Priority, Domain } from '../types'
 import { useStore } from '../store'
+import { templateTasksFor } from '../lib/crm/projectTemplates'
 import {
   Sheet, Field, TextInput, TextArea, SelectInput, PrimaryBtn,
   PROJECT_STATUS_OPTIONS, PRIORITY_OPTIONS, PRIO_NL, DOMAIN_OPTIONS, PROJECT_TYPE_OPTIONS,
@@ -17,7 +18,7 @@ export default function ProjectForm({
   presetClientId?: string | null
   onClose: () => void
 }) {
-  const { clients, addProject, updateProject } = useStore()
+  const { clients, addProject, updateProject, createProjectWithTemplate } = useStore()
   const editing = !!project
 
   const initialClientId = project?.clientId ?? presetClientId ?? ''
@@ -33,6 +34,9 @@ export default function ProjectForm({
   const [scope, setScope] = useState(project?.scope ?? '')
   const [deliverables, setDeliverables] = useState((project?.deliverables ?? []).join('\n'))
   const [notes, setNotes] = useState(project?.notes ?? '')
+  const [addTemplate, setAddTemplate] = useState(true)
+
+  const templateTasks = useMemo(() => templateTasksFor(types), [types])
 
   function toggleType(t: string) {
     setTypes((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]))
@@ -57,6 +61,7 @@ export default function ProjectForm({
       notes: notes.trim() || null,
     }
     if (editing && project) updateProject(project.id, patch)
+    else if (addTemplate && templateTasks.length) void createProjectWithTemplate({ ...patch, progress: 0 }, templateTasks)
     else addProject({ ...patch, progress: 0 })
     onClose()
   }
@@ -117,6 +122,22 @@ export default function ProjectForm({
           })}
         </div>
       </Field>
+
+      {!editing && templateTasks.length > 0 && (
+        <div className="rounded-2xl bg-surface border border-line p-3">
+          <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+            <input type="checkbox" checked={addTemplate} onChange={(e) => setAddTemplate(e.target.checked)} className="accent-forest h-4 w-4" />
+            Voeg standaardtaken toe ({templateTasks.length})
+          </label>
+          {addTemplate && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {templateTasks.map((t) => (
+                <span key={t} className="text-[11px] px-2 py-0.5 rounded-md bg-sunken text-faint">{t}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Startdatum">

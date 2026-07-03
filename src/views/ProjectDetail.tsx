@@ -14,6 +14,7 @@ import {
   SheetShell, Field, TextInput, SelectInput,
 } from '../components/crm'
 import type { ActivityAnalysis } from '../lib/crm/activityAnalyzer'
+import { unbilledBillableHours, sumHours, invoiceAmountFromHours } from '../lib/crm/invoicing'
 
 const DOMAIN_COLOR: Record<string, string> = {
   parkingyou: '#6E8CA8', prjct: '#9385B0', buurtkaart: '#6FA07C', personal: '#C6A05B', cross: '#C58392',
@@ -345,7 +346,7 @@ function Milestones({ projectId, milestones }: { projectId: string; milestones: 
 // ── Hours ───────────────────────────────────────────────────────────────────
 function Hours({ projectId }: { projectId: string }) {
   const hours = useStore((s) => s.projectHours).filter((h) => h.projectId === projectId)
-  const { addHours, deleteHours } = useStore()
+  const { addHours, deleteHours, generateInvoiceFromHours, settings } = useStore()
   const [date, setDate] = useState(TODAY)
   const [val, setVal] = useState('')
   const [note, setNote] = useState('')
@@ -353,11 +354,15 @@ function Hours({ projectId }: { projectId: string }) {
 
   const total = hours.reduce((a, h) => a + h.hours, 0)
   const billableTotal = hours.filter((h) => h.billable).reduce((a, h) => a + h.hours, 0)
+  const unbilled = unbilledBillableHours(hours)
+  const unbilledHours = sumHours(unbilled)
+  const rate = settings.hourlyRate
+  const invoicePreview = invoiceAmountFromHours(unbilled, rate)
 
   function add() {
     const h = parseFloat(val)
     if (!h || h <= 0) return
-    addHours(projectId, { date, hours: h, note: note.trim() || null, billable })
+    addHours(projectId, { date, hours: h, note: note.trim() || null, billable, billed: false })
     setVal(''); setNote('')
   }
 
@@ -367,6 +372,19 @@ function Hours({ projectId }: { projectId: string }) {
         <Stat label="Totaal" value={`${total}u`} />
         <Stat label="Declarabel" value={`${billableTotal}u`} />
       </div>
+
+      {unbilledHours > 0 && (
+        <button
+          onClick={() => generateInvoiceFromHours(projectId)}
+          disabled={rate <= 0}
+          className="w-full py-2.5 rounded-xl bg-forest text-white text-sm font-semibold disabled:opacity-40 flex items-center justify-center gap-1.5"
+        >
+          <FileText className="h-4 w-4" />
+          {rate > 0
+            ? `Genereer factuur · ${unbilledHours}u → ${eur(invoicePreview)}`
+            : 'Stel eerst een uurtarief in (Instellingen)'}
+        </button>
+      )}
 
       <div className="rounded-2xl bg-surface border border-line p-3 space-y-2">
         <div className="grid grid-cols-2 gap-2">
@@ -389,7 +407,7 @@ function Hours({ projectId }: { projectId: string }) {
             <span className="text-sm font-semibold tabular-nums w-12 shrink-0">{h.hours}u</span>
             <div className="flex-1 min-w-0">
               <div className="text-sm truncate">{h.note || <span className="text-faint">—</span>}</div>
-              <div className="text-[11px] text-faint">{fmtDate(h.date)}{!h.billable && ' · niet-declarabel'}</div>
+              <div className="text-[11px] text-faint">{fmtDate(h.date)}{!h.billable && ' · niet-declarabel'}{h.billed && ' · gefactureerd'}</div>
             </div>
             <button onClick={() => deleteHours(h.id)} className="text-faint hover:text-red-400 opacity-0 group-hover:opacity-100 shrink-0"><Trash2 className="h-3.5 w-3.5" /></button>
           </div>

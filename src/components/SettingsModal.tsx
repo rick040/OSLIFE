@@ -28,7 +28,7 @@ const CATEGORIES: Array<{ key: keyof NotificationPrefs; timeKey?: keyof Notifica
 ]
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
-  const { notificationPrefs, setNotificationPrefs } = useStore()
+  const { notificationPrefs, setNotificationPrefs, settings, setHourlyRate } = useStore()
   const p = notificationPrefs ?? DEFAULT_PREFS
   const linked = !!p.telegramChatId
   const quietOn = !!(p.quietHoursStart && p.quietHoursEnd)
@@ -141,6 +141,24 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setNotificationPrefs({ quietHoursEnd: e.target.value })}
             />
           </div>
+        </div>
+
+        <div className="mt-5">
+          <SectionTitle hint="Gebruikt om facturen te genereren uit ongefactureerde, declarabele uren.">
+            Facturatie
+          </SectionTitle>
+          <label className="flex items-center justify-between gap-3 py-1.5">
+            <span className="text-sm text-ink">Uurtarief (€)</span>
+            <input
+              type="number"
+              min={0}
+              step="1"
+              className="input !py-1 !px-2 text-sm w-28 text-right"
+              value={settings.hourlyRate || ''}
+              onChange={(e) => setHourlyRate(parseFloat(e.target.value) || 0)}
+              placeholder="0"
+            />
+          </label>
         </div>
     </Overlay>
   )

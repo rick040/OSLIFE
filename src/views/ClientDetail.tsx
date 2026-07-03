@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
-import { X, Pencil, Trash2, Plus, FolderKanban, MessageCircle, Mail, Globe } from 'lucide-react'
+import { X, Pencil, Trash2, Plus, FolderKanban, MessageCircle, Mail, Globe, CheckCircle2 } from 'lucide-react'
 import type { Client, Project } from '../types'
-import { fmtDate } from '../domains'
+import { fmtDate, TODAY } from '../domains'
+import { clientHealth, FOLLOWUP_META, nextFollowUp } from '../lib/crm/followUp'
 import { DomainChip, Pill, ConfirmDialog } from '../components/ui'
 import { useStore } from '../store'
 import ClientForm from './ClientForm'
@@ -12,7 +13,11 @@ import { deriveGmailMessages } from '../lib/crm/gmailInbox'
 
 export default function ClientDetail({ client: initial, onClose }: { client: Client; onClose: () => void }) {
   const client = useStore((s) => s.clients.find((c) => c.id === initial.id)) ?? initial
-  const { projects, messages, clients, emails, deleteClient } = useStore()
+  const { projects, messages, clients, emails, deleteClient, updateClient } = useStore()
+
+  const health = clientHealth(client, TODAY)
+  const hm = FOLLOWUP_META[health]
+  const nextFu = nextFollowUp(client)
 
   const clientProjects = projects.filter((p) => p.clientId === client.id || p.client === client.name)
   const gmailDerived = useMemo(() => deriveGmailMessages(emails, clients), [emails, clients])
@@ -46,6 +51,11 @@ export default function ClientDetail({ client: initial, onClose }: { client: Cli
                 <Pill hex={color} className="text-[10px] font-semibold px-1.5 py-0.5 rounded">{CLIENT_STATUS_NL[client.clientStatus] ?? client.clientStatus}</Pill>
               )}
               <DomainChip domain={client.domain} small />
+              {health !== 'none' && (
+                <Pill hex={hm.hex} className="text-[10px] font-semibold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: hm.hex }} /> {hm.label}
+                </Pill>
+              )}
             </div>
           </div>
           <button onClick={() => setEditing(true)} title="Bewerken" className="h-8 w-8 rounded-full bg-sunken flex items-center justify-center text-muted hover:text-ink shrink-0"><Pencil className="h-4 w-4" /></button>
@@ -69,8 +79,21 @@ export default function ClientDetail({ client: initial, onClose }: { client: Cli
             <InfoRow label="Potentie">{client.potentie ?? '–'}</InfoRow>
             <InfoRow label="Scope">{client.scope != null ? eur(client.scope) : '–'}</InfoRow>
             {client.firstContact && <InfoRow label="Eerste contact">{fmtDate(client.firstContact)}</InfoRow>}
+            <InfoRow label="Laatste contact">{client.lastContactedAt ? fmtDate(client.lastContactedAt.slice(0, 10)) : '–'}</InfoRow>
+            <InfoRow label="Volgende opvolging">
+              {client.lastContactedAt && nextFu ? (
+                <span style={{ color: hm.hex }}>{fmtDate(nextFu)} · {hm.label}</span>
+              ) : 'nog geen contact'}
+            </InfoRow>
             <InfoRow label="Projectwaarde">{eur(totalValue)} · {clientProjects.length} project(en)</InfoRow>
           </div>
+
+          <button
+            onClick={() => updateClient(client.id, { lastContactedAt: new Date().toISOString() })}
+            className="w-full py-2.5 rounded-xl bg-forest/10 text-forest text-sm font-semibold flex items-center justify-center gap-1.5 hover:bg-forest/15 transition-colors"
+          >
+            <CheckCircle2 className="h-4 w-4" /> Contact gelogd
+          </button>
 
           {/* Projects */}
           <div>

@@ -3,6 +3,8 @@ import { useStore } from '../store'
 import { SectionTitle } from '../components/ui'
 import Messages from './Messages'
 import type { ClientStatus } from '../types'
+import { TODAY } from '../domains'
+import { clientHealth, FOLLOWUP_META } from '../lib/crm/followUp'
 import {
   eur, CRM_STATUS, STATUS_HEX, CLIENT_HEX, CLIENT_STATUS_NL,
   Kpi, ClientCard,
@@ -61,6 +63,16 @@ export default function CRM() {
   }, [clients])
   const activeClients = clients.filter((c) => c.clientStatus === 'Active').length
 
+  // Object-permanence follow-up: clients whose cycle is due (red) or nearly due
+  // (yellow), red first — so they resurface instead of quietly slipping away.
+  const followUps = useMemo(() => {
+    const rank = { red: 0, yellow: 1 } as Record<string, number>
+    return clients
+      .map((c) => ({ c, health: clientHealth(c, TODAY) }))
+      .filter((x) => x.health === 'red' || x.health === 'yellow')
+      .sort((a, b) => rank[a.health] - rank[b.health])
+  }, [clients])
+
   const shown = filter === 'Alle' ? projects : projects.filter((p) => CRM_STATUS[p.status] === filter)
 
   return (
@@ -93,6 +105,25 @@ export default function CRM() {
         {unread > 0 && <span className="chip bg-cross/15 text-cross-deep">{unread} ongelezen</span>}
         <ChevronRight className="h-4 w-4 text-faint shrink-0" />
       </button>
+
+      {/* Opvolgen — clients due (or nearly due) for follow-up */}
+      {followUps.length > 0 && (
+        <div className="card p-4">
+          <SectionTitle hint="Klanten die je volgens hun opvolgcyclus weer moet spreken.">Opvolgen</SectionTitle>
+          <div className="space-y-1.5">
+            {followUps.map(({ c, health }) => {
+              const m = FOLLOWUP_META[health]
+              return (
+                <button key={c.id} onClick={() => setOpenClient(c)} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-surface border border-line hover:bg-sunken transition-colors text-left">
+                  <span className="h-2 w-2 rounded-full shrink-0" style={{ background: m.hex }} />
+                  <span className="text-sm font-medium truncate flex-1">{c.name}</span>
+                  <span className="text-[11px] font-semibold shrink-0" style={{ color: m.hex }}>{m.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* KPI grid */}
       <div className="grid grid-cols-2 gap-3">
