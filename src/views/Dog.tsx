@@ -1,8 +1,10 @@
-import { useMemo, useRef, useState, useCallback } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { useStore } from '../store'
 import { TODAY, fmtDate, daysBetween } from '../domains'
 import { SectionTitle, Empty } from '../components/ui'
+import { useLongPress } from '../lib/useLongPress'
+import { isoToDatetimeLocal, nowDatetimeLocal } from '../lib/datetimeLocal'
 import type { DogKind, DogEntry, DogMedicalType } from '../types'
 import {
   Dog as DogIcon,
@@ -75,118 +77,76 @@ function timeHM(iso: string) {
   return new Date(iso).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' })
 }
 
-function isoToDatetimeLocal(iso: string) {
-  const d = new Date(iso)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+// ── Shared entry form state ──────────────────────────────────────────────────
+type EntryDraft = {
+  at: string
+  durationMin: string
+  distanceKm: string
+  location: string
+  weightKg: string
+  note: string
+  poopConsistency: 1 | 2 | 3 | 4 | 5 | null
+  trainingType: string
 }
 
-function nowDatetimeLocal() {
-  return isoToDatetimeLocal(new Date().toISOString())
-}
-
-// ── Long press hook ──────────────────────────────────────────────────────────
-function useLongPress(onShort: () => void, onLong: () => void, delay = 500) {
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const fired = useRef(false)
-
-  const start = useCallback(() => {
-    fired.current = false
-    timer.current = setTimeout(() => {
-      fired.current = true
-      onLong()
-    }, delay)
-  }, [onLong, delay])
-
-  const cancel = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current)
-  }, [])
-
-  const end = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current)
-    if (!fired.current) onShort()
-  }, [onShort])
-
+function emptyDraft(): EntryDraft {
   return {
-    onMouseDown: start,
-    onMouseUp: end,
-    onMouseLeave: cancel,
-    onTouchStart: (e: React.TouchEvent) => { e.preventDefault(); start() },
-    onTouchEnd: (e: React.TouchEvent) => { e.preventDefault(); end() },
+    at: nowDatetimeLocal(),
+    durationMin: '',
+    distanceKm: '',
+    location: '',
+    weightKg: '',
+    note: '',
+    poopConsistency: null,
+    trainingType: '',
   }
 }
 
-// ── Detail log modal (long press) ────────────────────────────────────────────
-function DetailLogModal({
+function draftFromEntry(entry: DogEntry): EntryDraft {
+  return {
+    at: isoToDatetimeLocal(entry.at),
+    durationMin: entry.durationMin != null ? String(entry.durationMin) : '',
+    distanceKm: entry.distanceKm != null ? String(entry.distanceKm) : '',
+    location: entry.location ?? '',
+    weightKg: entry.weightKg != null ? String(entry.weightKg) : '',
+    note: entry.note ?? '',
+    poopConsistency: entry.poopConsistency ?? null,
+    trainingType: entry.trainingType ?? '',
+  }
+}
+
+// ── Shared per-kind field blocks (walk/poop/training/play/weight) ────────────
+function EntryFields({
   kind,
-  onSave,
-  onClose,
+  draft,
+  onChange,
+  locationLabel,
 }: {
   kind: DogKind
-  onSave: (entry: Omit<DogEntry, 'id'>) => void
-  onClose: () => void
+  draft: EntryDraft
+  onChange: (patch: Partial<EntryDraft>) => void
+  locationLabel: string
 }) {
   const meta = KIND[kind]
-  const Icon = meta.icon
-
-  const [at, setAt] = useState(nowDatetimeLocal())
-  const [durationMin, setDurationMin] = useState('')
-  const [distanceKm, setDistanceKm] = useState('')
-  const [location, setLocation] = useState('')
-  const [weightKg, setWeightKg] = useState('')
-  const [note, setNote] = useState('')
-  const [poopConsistency, setPoopConsistency] = useState<1|2|3|4|5|null>(null)
-  const [trainingType, setTrainingType] = useState('')
-
-  const save = () => {
-    onSave({
-      kind,
-      at: new Date(at).toISOString(),
-      durationMin: durationMin ? Number(durationMin) : null,
-      distanceKm: distanceKm ? Number(distanceKm) : null,
-      weightKg: weightKg ? Number(weightKg) : null,
-      location: location || null,
-      note: note || null,
-      poopConsistency: poopConsistency,
-      trainingType: trainingType || null,
-    })
-    onClose()
-  }
 
   return (
-    <Overlay onClose={onClose}>
-      <div className="flex items-center gap-3 mb-4">
-        <span className="h-10 w-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `${meta.hex}22` }}>
-          <Icon className="h-5 w-5" style={{ color: meta.hex }} />
-        </span>
-        <div>
-          <div className="font-semibold text-ink">{meta.label} loggen</div>
-          <div className="text-xs text-faint">Lang ingedrukt voor details</div>
-        </div>
-      </div>
-
-      {/* Tijd */}
-      <label className="block mb-3">
-        <div className="text-xs text-faint mb-1 flex items-center gap-1"><Clock className="h-3 w-3" /> Tijd</div>
-        <input type="datetime-local" value={at} onChange={e => setAt(e.target.value)} className="input w-full" />
-      </label>
-
+    <>
       {/* Walk-specifiek */}
       {kind === 'walk' && (
         <>
           <div className="grid grid-cols-2 gap-2 mb-3">
             <label className="block">
               <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
-              <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="30" className="input w-full" />
+              <input type="number" min="0" value={draft.durationMin} onChange={e => onChange({ durationMin: e.target.value })} placeholder="30" className="input w-full" />
             </label>
             <label className="block">
               <div className="text-xs text-faint mb-1 flex items-center gap-1"><Footprints className="h-3 w-3" /> Afstand (km)</div>
-              <input type="number" min="0" step="0.1" value={distanceKm} onChange={e => setDistanceKm(e.target.value)} placeholder="2.5" className="input w-full" />
+              <input type="number" min="0" step="0.1" value={draft.distanceKm} onChange={e => onChange({ distanceKm: e.target.value })} placeholder="2.5" className="input w-full" />
             </label>
           </div>
           <label className="block mb-3">
-            <div className="text-xs text-faint mb-1 flex items-center gap-1"><MapPin className="h-3 w-3" /> Waar (locatie)</div>
-            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="bijv. Beatrixpark" className="input w-full" />
+            <div className="text-xs text-faint mb-1 flex items-center gap-1"><MapPin className="h-3 w-3" /> {locationLabel}</div>
+            <input value={draft.location} onChange={e => onChange({ location: e.target.value })} placeholder="bijv. Beatrixpark" className="input w-full" />
           </label>
         </>
       )}
@@ -196,17 +156,17 @@ function DetailLogModal({
         <div className="mb-3">
           <div className="text-xs text-faint mb-1.5">Consistentie</div>
           <div className="flex gap-1.5 flex-wrap">
-            {([1,2,3,4,5] as const).map(n => (
+            {([1, 2, 3, 4, 5] as const).map(n => (
               <button
                 key={n}
                 type="button"
-                onClick={() => setPoopConsistency(poopConsistency === n ? null : n)}
+                onClick={() => onChange({ poopConsistency: draft.poopConsistency === n ? null : n })}
                 className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${
-                  poopConsistency === n
+                  draft.poopConsistency === n
                     ? 'border-transparent text-white'
                     : 'border-line text-muted bg-sunken'
                 }`}
-                style={poopConsistency === n ? { background: meta.hex } : {}}
+                style={draft.poopConsistency === n ? { background: meta.hex } : {}}
               >
                 {n} · {POOP_LABELS[n]}
               </button>
@@ -220,7 +180,7 @@ function DetailLogModal({
         <>
           <label className="block mb-3">
             <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
-            <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="15" className="input w-full" />
+            <input type="number" min="0" value={draft.durationMin} onChange={e => onChange({ durationMin: e.target.value })} placeholder="15" className="input w-full" />
           </label>
           <div className="mb-3">
             <div className="text-xs text-faint mb-1.5">Type training</div>
@@ -229,13 +189,13 @@ function DetailLogModal({
                 <button
                   key={t}
                   type="button"
-                  onClick={() => setTrainingType(trainingType === t ? '' : t)}
+                  onClick={() => onChange({ trainingType: draft.trainingType === t ? '' : t })}
                   className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${
-                    trainingType === t
+                    draft.trainingType === t
                       ? 'border-transparent text-white'
                       : 'border-line text-muted bg-sunken'
                   }`}
-                  style={trainingType === t ? { background: meta.hex } : {}}
+                  style={draft.trainingType === t ? { background: meta.hex } : {}}
                 >
                   {t}
                 </button>
@@ -249,7 +209,7 @@ function DetailLogModal({
       {kind === 'play' && (
         <label className="block mb-3">
           <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
-          <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="20" className="input w-full" />
+          <input type="number" min="0" value={draft.durationMin} onChange={e => onChange({ durationMin: e.target.value })} placeholder="20" className="input w-full" />
         </label>
       )}
 
@@ -257,349 +217,138 @@ function DetailLogModal({
       {kind === 'weight' && (
         <label className="block mb-3">
           <div className="text-xs text-faint mb-1">Gewicht (kg)</div>
-          <input type="number" min="0" step="0.1" value={weightKg} onChange={e => setWeightKg(e.target.value)} placeholder="9.2" className="input w-full" />
+          <input type="number" min="0" step="0.1" value={draft.weightKg} onChange={e => onChange({ weightKg: e.target.value })} placeholder="9.2" className="input w-full" />
         </label>
       )}
-
-      {/* Notitie altijd */}
-      <label className="block mb-4">
-        <div className="text-xs text-faint mb-1">Notitie (optioneel)</div>
-        <input value={note} onChange={e => setNote(e.target.value)} placeholder="Extra info..." className="input w-full" />
-      </label>
-
-      <div className="flex gap-2">
-        <button onClick={onClose} className="btn-ghost flex-1">Annuleren</button>
-        <button onClick={save} className="btn-primary flex-1">
-          <Plus className="h-4 w-4" /> Opslaan
-        </button>
-      </div>
-    </Overlay>
+    </>
   )
 }
 
-// ── Edit entry modal ─────────────────────────────────────────────────────────
-function EditEntryModal({
-  entry,
-  onSave,
-  onDelete,
-  onClose,
-}: {
-  entry: DogEntry
-  onSave: (patch: Partial<Omit<DogEntry, 'id'>>) => void
-  onDelete: () => void
-  onClose: () => void
-}) {
-  const meta = KIND[entry.kind]
-  const Icon = meta.icon
+// ── Entry modal: detail log (long press), manual add, and edit ───────────────
+type EntryModalProps =
+  | { mode: 'detail'; kind: DogKind; onSave: (entry: Omit<DogEntry, 'id'>) => void; onClose: () => void }
+  | { mode: 'add'; onSave: (entry: Omit<DogEntry, 'id'>) => void; onClose: () => void }
+  | { mode: 'edit'; entry: DogEntry; onSave: (patch: Partial<Omit<DogEntry, 'id'>>) => void; onDelete: () => void; onClose: () => void }
 
-  const [at, setAt] = useState(isoToDatetimeLocal(entry.at))
-  const [durationMin, setDurationMin] = useState(entry.durationMin != null ? String(entry.durationMin) : '')
-  const [distanceKm, setDistanceKm] = useState(entry.distanceKm != null ? String(entry.distanceKm) : '')
-  const [location, setLocation] = useState(entry.location ?? '')
-  const [weightKg, setWeightKg] = useState(entry.weightKg != null ? String(entry.weightKg) : '')
-  const [note, setNote] = useState(entry.note ?? '')
-  const [poopConsistency, setPoopConsistency] = useState<1|2|3|4|5|null>(entry.poopConsistency ?? null)
-  const [trainingType, setTrainingType] = useState(entry.trainingType ?? '')
+function EntryModal(props: EntryModalProps) {
+  const { onClose } = props
+  const [kind, setKind] = useState<DogKind>(
+    props.mode === 'detail' ? props.kind : props.mode === 'edit' ? props.entry.kind : 'walk',
+  )
+  const [draft, setDraft] = useState<EntryDraft>(() =>
+    props.mode === 'edit' ? draftFromEntry(props.entry) : emptyDraft(),
+  )
   const [confirmDel, setConfirmDel] = useState(false)
-
-  const save = () => {
-    onSave({
-      at: new Date(at).toISOString(),
-      durationMin: durationMin ? Number(durationMin) : null,
-      distanceKm: distanceKm ? Number(distanceKm) : null,
-      weightKg: weightKg ? Number(weightKg) : null,
-      location: location || null,
-      note: note || null,
-      poopConsistency,
-      trainingType: trainingType || null,
-    })
-    onClose()
-  }
-
-  return (
-    <Overlay onClose={onClose}>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <span className="h-10 w-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `${meta.hex}22` }}>
-            <Icon className="h-5 w-5" style={{ color: meta.hex }} />
-          </span>
-          <div className="font-semibold text-ink">{meta.label} bewerken</div>
-        </div>
-        {!confirmDel ? (
-          <button onClick={() => setConfirmDel(true)} className="text-xs text-cross hover:underline">Verwijderen</button>
-        ) : (
-          <div className="flex gap-1.5">
-            <button onClick={() => setConfirmDel(false)} className="text-xs text-faint">Nee</button>
-            <button onClick={() => { onDelete(); onClose() }} className="text-xs text-cross font-medium">Ja, verwijder</button>
-          </div>
-        )}
-      </div>
-
-      {/* Tijd */}
-      <label className="block mb-3">
-        <div className="text-xs text-faint mb-1 flex items-center gap-1"><Clock className="h-3 w-3" /> Tijd</div>
-        <input type="datetime-local" value={at} onChange={e => setAt(e.target.value)} className="input w-full" />
-      </label>
-
-      {/* Walk-specifiek */}
-      {entry.kind === 'walk' && (
-        <>
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            <label className="block">
-              <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
-              <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="30" className="input w-full" />
-            </label>
-            <label className="block">
-              <div className="text-xs text-faint mb-1 flex items-center gap-1"><Footprints className="h-3 w-3" /> Afstand (km)</div>
-              <input type="number" min="0" step="0.1" value={distanceKm} onChange={e => setDistanceKm(e.target.value)} placeholder="2.5" className="input w-full" />
-            </label>
-          </div>
-          <label className="block mb-3">
-            <div className="text-xs text-faint mb-1 flex items-center gap-1"><MapPin className="h-3 w-3" /> Locatie</div>
-            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="bijv. Beatrixpark" className="input w-full" />
-          </label>
-        </>
-      )}
-
-      {/* Poop-specifiek */}
-      {entry.kind === 'poop' && (
-        <div className="mb-3">
-          <div className="text-xs text-faint mb-1.5">Consistentie</div>
-          <div className="flex gap-1.5 flex-wrap">
-            {([1,2,3,4,5] as const).map(n => (
-              <button
-                key={n}
-                type="button"
-                onClick={() => setPoopConsistency(poopConsistency === n ? null : n)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${
-                  poopConsistency === n ? 'border-transparent text-white' : 'border-line text-muted bg-sunken'
-                }`}
-                style={poopConsistency === n ? { background: meta.hex } : {}}
-              >
-                {n} · {POOP_LABELS[n]}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Training-specifiek */}
-      {entry.kind === 'training' && (
-        <>
-          <label className="block mb-3">
-            <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
-            <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="15" className="input w-full" />
-          </label>
-          <div className="mb-3">
-            <div className="text-xs text-faint mb-1.5">Type training</div>
-            <div className="flex gap-1.5 flex-wrap">
-              {TRAINING_TYPES.map(t => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTrainingType(trainingType === t ? '' : t)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${
-                    trainingType === t ? 'border-transparent text-white' : 'border-line text-muted bg-sunken'
-                  }`}
-                  style={trainingType === t ? { background: meta.hex } : {}}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Play/Spelen duur */}
-      {entry.kind === 'play' && (
-        <label className="block mb-3">
-          <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
-          <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="20" className="input w-full" />
-        </label>
-      )}
-
-      {/* Gewicht */}
-      {entry.kind === 'weight' && (
-        <label className="block mb-3">
-          <div className="text-xs text-faint mb-1">Gewicht (kg)</div>
-          <input type="number" min="0" step="0.1" value={weightKg} onChange={e => setWeightKg(e.target.value)} placeholder="9.2" className="input w-full" />
-        </label>
-      )}
-
-      {/* Notitie */}
-      <label className="block mb-4">
-        <div className="text-xs text-faint mb-1">Notitie</div>
-        <input value={note} onChange={e => setNote(e.target.value)} placeholder="Extra info..." className="input w-full" />
-      </label>
-
-      <div className="flex gap-2">
-        <button onClick={onClose} className="btn-ghost flex-1">Annuleren</button>
-        <button onClick={save} className="btn-primary flex-1">
-          <Check className="h-4 w-4" /> Opslaan
-        </button>
-      </div>
-    </Overlay>
-  )
-}
-
-// ── Add entry modal (manual) ──────────────────────────────────────────────────
-function AddEntryModal({
-  onSave,
-  onClose,
-}: {
-  onSave: (entry: Omit<DogEntry, 'id'>) => void
-  onClose: () => void
-}) {
-  const [kind, setKind] = useState<DogKind>('walk')
-  const [at, setAt] = useState(nowDatetimeLocal())
-  const [durationMin, setDurationMin] = useState('')
-  const [distanceKm, setDistanceKm] = useState('')
-  const [location, setLocation] = useState('')
-  const [weightKg, setWeightKg] = useState('')
-  const [note, setNote] = useState('')
-  const [poopConsistency, setPoopConsistency] = useState<1|2|3|4|5|null>(null)
-  const [trainingType, setTrainingType] = useState('')
 
   const meta = KIND[kind]
   const Icon = meta.icon
 
+  const patch = (p: Partial<EntryDraft>) => setDraft(d => ({ ...d, ...p }))
+
   const save = () => {
-    onSave({
-      kind,
-      at: new Date(at).toISOString(),
-      durationMin: durationMin ? Number(durationMin) : null,
-      distanceKm: distanceKm ? Number(distanceKm) : null,
-      weightKg: weightKg ? Number(weightKg) : null,
-      location: location || null,
-      note: note || null,
-      poopConsistency,
-      trainingType: trainingType || null,
-    })
+    const data = {
+      at: new Date(draft.at).toISOString(),
+      durationMin: draft.durationMin ? Number(draft.durationMin) : null,
+      distanceKm: draft.distanceKm ? Number(draft.distanceKm) : null,
+      weightKg: draft.weightKg ? Number(draft.weightKg) : null,
+      location: draft.location || null,
+      note: draft.note || null,
+      poopConsistency: draft.poopConsistency,
+      trainingType: draft.trainingType || null,
+    }
+    if (props.mode === 'edit') props.onSave(data)
+    else props.onSave({ kind, ...data })
     onClose()
   }
 
+  const iconBadge = (
+    <span className="h-10 w-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `${meta.hex}22` }}>
+      <Icon className="h-5 w-5" style={{ color: meta.hex }} />
+    </span>
+  )
+
   return (
     <Overlay onClose={onClose}>
-      <div className="flex items-center gap-3 mb-4">
-        <span className="h-10 w-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: `${meta.hex}22` }}>
-          <Icon className="h-5 w-5" style={{ color: meta.hex }} />
-        </span>
-        <div className="font-semibold text-ink">Activiteit toevoegen</div>
-      </div>
-
-      {/* Type kiezen */}
-      <div className="mb-3">
-        <div className="text-xs text-faint mb-1.5">Type</div>
-        <div className="grid grid-cols-3 gap-1.5">
-          {QUICK.map(k => {
-            const m = KIND[k]
-            const I = m.icon
-            return (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setKind(k)}
-                className={`flex items-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-medium border transition-colors ${
-                  kind === k ? 'border-transparent text-white' : 'border-line text-muted bg-sunken'
-                }`}
-                style={kind === k ? { background: m.hex } : {}}
-              >
-                <I className="h-3.5 w-3.5 shrink-0" /> {m.label}
-              </button>
-            )
-          })}
+      {/* Header */}
+      {props.mode === 'edit' ? (
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            {iconBadge}
+            <div className="font-semibold text-ink">{meta.label} bewerken</div>
+          </div>
+          {!confirmDel ? (
+            <button onClick={() => setConfirmDel(true)} className="text-xs text-cross hover:underline">Verwijderen</button>
+          ) : (
+            <div className="flex gap-1.5">
+              <button onClick={() => setConfirmDel(false)} className="text-xs text-faint">Nee</button>
+              <button onClick={() => { props.onDelete(); onClose() }} className="text-xs text-cross font-medium">Ja, verwijder</button>
+            </div>
+          )}
         </div>
-      </div>
+      ) : (
+        <div className="flex items-center gap-3 mb-4">
+          {iconBadge}
+          {props.mode === 'detail' ? (
+            <div>
+              <div className="font-semibold text-ink">{meta.label} loggen</div>
+              <div className="text-xs text-faint">Lang ingedrukt voor details</div>
+            </div>
+          ) : (
+            <div className="font-semibold text-ink">Activiteit toevoegen</div>
+          )}
+        </div>
+      )}
+
+      {/* Type kiezen (alleen bij handmatig toevoegen) */}
+      {props.mode === 'add' && (
+        <div className="mb-3">
+          <div className="text-xs text-faint mb-1.5">Type</div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {QUICK.map(k => {
+              const m = KIND[k]
+              const I = m.icon
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setKind(k)}
+                  className={`flex items-center gap-1.5 px-2 py-1.5 rounded-xl text-xs font-medium border transition-colors ${
+                    kind === k ? 'border-transparent text-white' : 'border-line text-muted bg-sunken'
+                  }`}
+                  style={kind === k ? { background: m.hex } : {}}
+                >
+                  <I className="h-3.5 w-3.5 shrink-0" /> {m.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Tijd */}
       <label className="block mb-3">
         <div className="text-xs text-faint mb-1 flex items-center gap-1"><Clock className="h-3 w-3" /> Tijd</div>
-        <input type="datetime-local" value={at} onChange={e => setAt(e.target.value)} className="input w-full" />
+        <input type="datetime-local" value={draft.at} onChange={e => patch({ at: e.target.value })} className="input w-full" />
       </label>
 
-      {kind === 'walk' && (
-        <>
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            <label className="block">
-              <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
-              <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="30" className="input w-full" />
-            </label>
-            <label className="block">
-              <div className="text-xs text-faint mb-1 flex items-center gap-1"><Footprints className="h-3 w-3" /> Afstand (km)</div>
-              <input type="number" min="0" step="0.1" value={distanceKm} onChange={e => setDistanceKm(e.target.value)} placeholder="2.5" className="input w-full" />
-            </label>
-          </div>
-          <label className="block mb-3">
-            <div className="text-xs text-faint mb-1 flex items-center gap-1"><MapPin className="h-3 w-3" /> Locatie</div>
-            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="bijv. Beatrixpark" className="input w-full" />
-          </label>
-        </>
-      )}
+      {/* Per-kind velden */}
+      <EntryFields
+        kind={kind}
+        draft={draft}
+        onChange={patch}
+        locationLabel={props.mode === 'detail' ? 'Waar (locatie)' : 'Locatie'}
+      />
 
-      {kind === 'poop' && (
-        <div className="mb-3">
-          <div className="text-xs text-faint mb-1.5">Consistentie</div>
-          <div className="flex gap-1.5 flex-wrap">
-            {([1,2,3,4,5] as const).map(n => (
-              <button key={n} type="button"
-                onClick={() => setPoopConsistency(poopConsistency === n ? null : n)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${poopConsistency === n ? 'border-transparent text-white' : 'border-line text-muted bg-sunken'}`}
-                style={poopConsistency === n ? { background: meta.hex } : {}}
-              >
-                {n} · {POOP_LABELS[n]}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {kind === 'training' && (
-        <>
-          <label className="block mb-3">
-            <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
-            <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="15" className="input w-full" />
-          </label>
-          <div className="mb-3">
-            <div className="text-xs text-faint mb-1.5">Type training</div>
-            <div className="flex gap-1.5 flex-wrap">
-              {TRAINING_TYPES.map(t => (
-                <button key={t} type="button"
-                  onClick={() => setTrainingType(trainingType === t ? '' : t)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-colors ${trainingType === t ? 'border-transparent text-white' : 'border-line text-muted bg-sunken'}`}
-                  style={trainingType === t ? { background: meta.hex } : {}}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-
-      {kind === 'play' && (
-        <label className="block mb-3">
-          <div className="text-xs text-faint mb-1 flex items-center gap-1"><Timer className="h-3 w-3" /> Duur (min)</div>
-          <input type="number" min="0" value={durationMin} onChange={e => setDurationMin(e.target.value)} placeholder="20" className="input w-full" />
-        </label>
-      )}
-
-      {kind === 'weight' && (
-        <label className="block mb-3">
-          <div className="text-xs text-faint mb-1">Gewicht (kg)</div>
-          <input type="number" min="0" step="0.1" value={weightKg} onChange={e => setWeightKg(e.target.value)} placeholder="9.2" className="input w-full" />
-        </label>
-      )}
-
+      {/* Notitie */}
       <label className="block mb-4">
-        <div className="text-xs text-faint mb-1">Notitie (optioneel)</div>
-        <input value={note} onChange={e => setNote(e.target.value)} placeholder="Extra info..." className="input w-full" />
+        <div className="text-xs text-faint mb-1">{props.mode === 'edit' ? 'Notitie' : 'Notitie (optioneel)'}</div>
+        <input value={draft.note} onChange={e => patch({ note: e.target.value })} placeholder="Extra info..." className="input w-full" />
       </label>
 
       <div className="flex gap-2">
         <button onClick={onClose} className="btn-ghost flex-1">Annuleren</button>
         <button onClick={save} className="btn-primary flex-1">
-          <Plus className="h-4 w-4" /> Opslaan
+          {props.mode === 'edit' ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />} Opslaan
         </button>
       </div>
     </Overlay>
@@ -751,14 +500,16 @@ export default function Dog() {
     <div className="space-y-6 max-w-3xl mx-auto">
       {/* Modals */}
       {detailKind && (
-        <DetailLogModal
+        <EntryModal
+          mode="detail"
           kind={detailKind}
           onSave={(entry) => logDog(entry)}
           onClose={() => setDetailKind(null)}
         />
       )}
       {editEntry && (
-        <EditEntryModal
+        <EntryModal
+          mode="edit"
           entry={editEntry}
           onSave={(patch) => updateDogEntry(editEntry.id, patch)}
           onDelete={() => deleteDogEntry(editEntry.id)}
@@ -766,7 +517,8 @@ export default function Dog() {
         />
       )}
       {addModal && (
-        <AddEntryModal
+        <EntryModal
+          mode="add"
           onSave={(entry) => logDog(entry)}
           onClose={() => setAddModal(false)}
         />
