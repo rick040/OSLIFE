@@ -5,6 +5,7 @@ import { SectionTitle, Empty } from '../components/ui'
 import { Mail, MailOpen, CheckCheck, ExternalLink } from 'lucide-react'
 import type { EmailItem } from '../types'
 import { classifyImportance, emailTags, ALL_EMAIL_TAGS } from '../lib/crm/emailClassify'
+import { usePersistedState } from '../lib/usePersistedState'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -58,9 +59,9 @@ interface ThreadGroup {
 
 export default function Inbox() {
   const { emails, markEmailRead, markAllEmailsRead, dataSource } = useStore()
-  const [filter, setFilter] = useState<Filter>('high')
+  const [filter, setFilter] = usePersistedState<Filter>('oslife.inbox.importance', 'high')
   // null = all domains; otherwise a tag key ('prjct' | 'parkingyou' | …)
-  const [domain, setDomain] = useState<string | null>(null)
+  const [domain, setDomain] = usePersistedState<string | null>('oslife.inbox.domain', null)
   // Optimistic local read-hide: IDs marked read disappear immediately
   const [readIds, setReadIds] = useState<Set<string>>(new Set())
 

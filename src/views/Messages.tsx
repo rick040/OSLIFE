@@ -1,10 +1,24 @@
 import { useMemo, useState } from 'react'
-import type { Message, Channel } from '../types'
+import type { Message, Channel, Domain } from '../types'
 import { X, ChevronLeft, Mail, Zap, MessageSquare, Search, Plus, Upload, Trash2 } from 'lucide-react'
 import { useStore } from '../store'
 import { Sheet, SheetShell, Field, TextInput, TextArea, SelectInput, PrimaryBtn } from '../components/crm'
 import { Pill } from '../components/ui'
 import { deriveGmailMessages } from '../lib/crm/gmailInbox'
+import { ALL_EMAIL_TAGS, type EmailTag } from '../lib/crm/emailClassify'
+import { usePersistedState } from '../lib/usePersistedState'
+
+const TAG_BY_KEY: Record<string, EmailTag> = Object.fromEntries(ALL_EMAIL_TAGS.map((t) => [t.key, t]))
+
+/** Map a client's domain (or a Fiverr channel) to the same area tags the Inbox uses. */
+function domainTagKey(clientDomain: Domain | undefined, channels: Set<Channel>): string {
+  if (channels.has('fiverr')) return 'fiverr'
+  if (clientDomain === 'parkingyou') return 'parkingyou'
+  if (clientDomain === 'personal' || clientDomain === 'cross') return 'personal'
+  if (clientDomain === 'prjct' || clientDomain === 'buurtkaart') return 'prjct'
+  if (channels.has('whatsapp')) return 'personal'
+  return 'prjct' // unmatched email is PRJCT-mailbox correspondence
+}
 
 const CH: Record<Channel, { label: string; hex: string; icon: typeof Mail }> = {
   email: { label: 'E-mail', hex: '#6E8CA8', icon: Mail },
@@ -28,6 +42,8 @@ interface Conversation {
   key: string
   contact: string
   projectName: string | null
+  clientId: string | null
+  domainKey: string
   latest: Message
   channels: Set<Channel>
   count: number
@@ -45,10 +61,13 @@ export default function Messages({
   onReadConversation: (contactKey: string) => void
 }) {
   const { emails, clients, projects, markEmailRead } = useStore()
-  const [filter, setFilter] = useState<'all' | Channel>('all')
+  const [filter, setFilter] = usePersistedState<'all' | Channel>('oslife.berichten.channel', 'all')
+  const [domain, setDomain] = usePersistedState<string | null>('oslife.berichten.domain', null)
   const [query, setQuery] = useState('')
   const [openKey, setOpenKey] = useState<string | null>(null)
   const [overlay, setOverlay] = useState<'none' | 'compose' | 'import'>('none')
+
+  const clientById = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients])
 
   // Client/Fiverr correspondence mirrored from Gmail, merged in read-only
   // alongside manually-added and WhatsApp-imported messages.
@@ -60,21 +79,24 @@ export default function Messages({
     for (const m of allMessages) {
       let c = map.get(m.contactKey)
       if (!c) {
-        c = { key: m.contactKey, contact: m.contact, projectName: m.projectName ?? null, latest: m, channels: new Set(), count: 0, unread: 0, messages: [] }
+        c = { key: m.contactKey, contact: m.contact, projectName: m.projectName ?? null, clientId: m.clientId ?? null, domainKey: 'prjct', latest: m, channels: new Set(), count: 0, unread: 0, messages: [] }
         map.set(m.contactKey, c)
       }
       c.count++
       if (m.unread) c.unread++
       c.channels.add(m.channel)
       c.messages.push(m)
+      if (m.clientId && !c.clientId) c.clientId = m.clientId
       if (m.ts > c.latest.ts) {
         c.latest = m
         c.contact = m.contact
         if (m.projectName) c.projectName = m.projectName
       }
     }
-    return [...map.values()].sort((a, b) => b.latest.ts.localeCompare(a.latest.ts))
-  }, [allMessages])
+    const list = [...map.values()]
+    for (const c of list) c.domainKey = domainTagKey(c.clientId ? clientById.get(c.clientId)?.domain : undefined, c.channels)
+    return list.sort((a, b) => b.latest.ts.localeCompare(a.latest.ts))
+  }, [allMessages, clientById])
 
   const counts = {
     all: conversations.length,
@@ -82,11 +104,17 @@ export default function Messages({
     fiverr: conversations.filter((c) => c.channels.has('fiverr')).length,
     whatsapp: conversations.filter((c) => c.channels.has('whatsapp')).length,
   }
+  const domainCounts = useMemo(() => {
+    const c: Record<string, number> = {}
+    for (const conv of conversations) c[conv.domainKey] = (c[conv.domainKey] ?? 0) + 1
+    return c
+  }, [conversations])
   const totalUnread = conversations.reduce((s, c) => s + c.unread, 0)
 
   const q = query.trim().toLowerCase()
   const shown = conversations.filter((c) => {
     if (filter !== 'all' && !c.channels.has(filter)) return false
+    if (domain && c.domainKey !== domain) return false
     if (!q) return true
     return (
       c.contact.toLowerCase().includes(q) ||
@@ -141,6 +169,25 @@ export default function Messages({
                   </button>
                 ))}
               </div>
+              {ALL_EMAIL_TAGS.some((t) => (domainCounts[t.key] ?? 0) > 0) && (
+                <div className="flex gap-1.5 mt-2 overflow-x-auto pb-1">
+                  {ALL_EMAIL_TAGS.filter((t) => (domainCounts[t.key] ?? 0) > 0).map((t) => {
+                    const active = domain === t.key
+                    return (
+                      <button
+                        key={t.key}
+                        onClick={() => setDomain(active ? null : t.key)}
+                        className="chip whitespace-nowrap font-semibold border"
+                        style={active
+                          ? { background: t.hex, color: '#fff', borderColor: t.hex }
+                          : { color: t.hex, background: `${t.hex}18`, borderColor: `${t.hex}44` }}
+                      >
+                        {t.label} · {domainCounts[t.key]}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
               {totalUnread > 0 && <div className="text-[11px] text-faint mt-2">{totalUnread} ongelezen</div>}
             </div>
 
@@ -175,6 +222,14 @@ export default function Messages({
                           <span className="text-[11px] text-faint shrink-0">{timeAgo(c.latest.ts)}</span>
                         </div>
                         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          {TAG_BY_KEY[c.domainKey] && (
+                            <span
+                              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                              style={{ color: TAG_BY_KEY[c.domainKey].hex, background: `${TAG_BY_KEY[c.domainKey].hex}22` }}
+                            >
+                              {TAG_BY_KEY[c.domainKey].label}
+                            </span>
+                          )}
                           {c.projectName && (
                             <span className="text-[10px] font-semibold text-prjct-deep bg-prjct/12 px-1.5 py-0.5 rounded max-w-[130px] truncate shrink-0">{c.projectName}</span>
                           )}
