@@ -56,7 +56,7 @@ interface ThreadGroup {
 // ── component ─────────────────────────────────────────────────────────────────
 
 export default function Inbox() {
-  const { emails, markEmailRead, markAllEmailsRead } = useStore()
+  const { emails, markEmailRead, markAllEmailsRead, dataSource } = useStore()
   const [filter, setFilter] = useState<Filter>('high')
   // Optimistic local read-hide: IDs marked read disappear immediately
   const [readIds, setReadIds] = useState<Set<string>>(new Set())
@@ -210,8 +210,14 @@ export default function Inbox() {
         </div>
       )}
 
-      <SectionTitle hint="In een echte build sync deze view met de Gmail API en kan Capture er threads van maken.">
-        Mock-inbox
+      <SectionTitle
+        hint={
+          dataSource === 'live'
+            ? 'Automatisch gesynct vanuit Gmail (elke ~15 min). Als gelezen markeren werkt terug naar Gmail.'
+            : 'Voorbeeldweergave met demo-data — nog niet verbonden met Gmail.'
+        }
+      >
+        {dataSource === 'live' ? 'Live uit Gmail' : 'Voorbeeld-inbox'}
       </SectionTitle>
     </div>
   )

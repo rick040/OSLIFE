@@ -88,23 +88,33 @@ async function insertRow(table: string, row: Record<string, unknown>): Promise<s
   return (data?.id as string) ?? null
 }
 
-/** Update a row: copy every defined camelCase patch field onto its snake_case column. */
+/**
+ * Update a row: copy every defined camelCase patch field onto its snake_case
+ * column. Returns whether the write actually landed — `.select('id')` makes
+ * PostgREST echo the affected rows, so a silently-rejected write (RLS mismatch,
+ * stale/non-matching id) surfaces as `count === 0` instead of a false success.
+ */
 async function updateRow(
   table: string,
   id: string,
   patch: object,
   colMap: Record<string, string>,
   extra?: Record<string, unknown>,
-): Promise<void> {
-  if (!isDbId(id)) return
+): Promise<{ ok: boolean; count: number }> {
+  if (!isDbId(id)) return { ok: false, count: 0 }
   const row: Record<string, unknown> = { ...extra }
   const p = patch as Record<string, unknown>
   for (const [key, col] of Object.entries(colMap)) {
     if (p[key] !== undefined) row[col] = p[key]
   }
-  if (Object.keys(row).length === 0) return
-  const { error } = await supabase.from(table).update(row).eq('id', id)
+  if (Object.keys(row).length === 0) return { ok: true, count: 0 }
+  const { data, error } = await supabase.from(table).update(row).eq('id', id).select('id')
   warnWrite(`${table}.update`, error)
+  const count = data?.length ?? 0
+  if (!error && count === 0) {
+    console.warn(`[OSLIFE] ${table}.update matched 0 rows for id=${id} — RLS mismatch or stale id?`)
+  }
+  return { ok: !error && count > 0, count }
 }
 
 /** Delete a row by id; no-op for local/seeded (non-DB) ids. */
@@ -252,7 +262,7 @@ export async function createSubscriptionRow(sub: Omit<Subscription, 'id'>): Prom
 }
 
 export async function updateSubscriptionRow(id: string, patch: Partial<Subscription>): Promise<void> {
-  return updateRow('subscriptions', id, patch, SUBSCRIPTION_COLS)
+  await updateRow('subscriptions', id, patch, SUBSCRIPTION_COLS)
 }
 
 export async function deleteSubscriptionRow(id: string): Promise<void> {
@@ -293,7 +303,7 @@ export async function updateDogEntryRow(
   id: string,
   patch: { kind?: string; at?: string; durationMin?: number | null; distanceKm?: number | null; note?: string | null },
 ): Promise<void> {
-  return updateRow('dog_log', id, patch, DOG_ENTRY_COLS)
+  await updateRow('dog_log', id, patch, DOG_ENTRY_COLS)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -470,7 +480,7 @@ export async function updateFinanceTxRow(
   id: string,
   patch: Partial<Pick<Transaction, 'category' | 'domain' | 'note' | 'merchant'>>,
 ): Promise<void> {
-  return updateRow('finance_tx', id, patch, FINANCE_TX_COLS)
+  await updateRow('finance_tx', id, patch, FINANCE_TX_COLS)
 }
 
 const FINANCE_TX_COLS: Record<string, string> = {
@@ -994,7 +1004,7 @@ export async function createClientRow(c: Omit<Client, 'id'>): Promise<Client | n
 }
 
 export async function updateClientRow(id: string, patch: Partial<Client>): Promise<void> {
-  return updateRow('clients', id, patch, CLIENT_COLS)
+  await updateRow('clients', id, patch, CLIENT_COLS)
 }
 
 export async function deleteClientRow(id: string): Promise<void> {
@@ -1046,8 +1056,14 @@ export async function createProjectRow(p: Omit<Project, 'id'>): Promise<Project 
   return id ? { ...p, id } : null
 }
 
-/** Full update of any editable project field (always stamps updated_at). */
-export async function updateProjectRow(id: string, patch: Partial<Project>): Promise<void> {
+/**
+ * Full update of any editable project field (always stamps updated_at).
+ * Returns whether the write landed; retries once if the first attempt does not
+ * affect a row (transient auth/session races on a just-loaded page).
+ */
+export async function updateProjectRow(id: string, patch: Partial<Project>): Promise<{ ok: boolean; count: number }> {
+  const res = await updateRow('projects', id, patch, PROJECT_COLS, { updated_at: new Date().toISOString() })
+  if (res.ok || !isDbId(id)) return res
   return updateRow('projects', id, patch, PROJECT_COLS, { updated_at: new Date().toISOString() })
 }
 
@@ -1088,7 +1104,7 @@ const MILESTONE_COLS: Record<string, string> = {
 }
 
 export async function updateMilestoneRow(id: string, patch: Partial<ProjectMilestone>): Promise<void> {
-  return updateRow('project_milestones', id, patch, MILESTONE_COLS)
+  await updateRow('project_milestones', id, patch, MILESTONE_COLS)
 }
 
 export async function deleteMilestoneRow(id: string): Promise<void> {
@@ -1135,7 +1151,7 @@ const PROJECT_TASK_COLS: Record<string, string> = {
 }
 
 export async function updateProjectTaskRow(id: string, patch: Partial<ProjectTask>): Promise<void> {
-  return updateRow('project_tasks', id, patch, PROJECT_TASK_COLS)
+  await updateRow('project_tasks', id, patch, PROJECT_TASK_COLS)
 }
 
 export async function deleteProjectTaskRow(id: string): Promise<void> {
@@ -1219,7 +1235,7 @@ const INVOICE_COLS: Record<string, string> = {
 }
 
 export async function updateInvoiceRow(id: string, patch: Partial<Invoice>): Promise<void> {
-  return updateRow('project_invoices', id, patch, INVOICE_COLS)
+  await updateRow('project_invoices', id, patch, INVOICE_COLS)
 }
 
 export async function deleteInvoiceRow(id: string): Promise<void> {

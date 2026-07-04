@@ -1024,7 +1024,23 @@ export const useStore = create<State>()(
           }
         })
         const updated = get().projects.find((x) => x.id === id)
-        if (updated) void updateProjectRow(id, { ...patch, progress: updated.progress })
+        if (updated) {
+          void updateProjectRow(id, { ...patch, progress: updated.progress }).then((res) => {
+            // The optimistic edit above only lives in local/persisted state. If the
+            // DB write didn't land (RLS, stale id, offline) it would silently revert
+            // on the next refresh/hydrate — so surface it instead of failing quietly.
+            if (!res.ok) {
+              console.warn(`[OSLIFE] project ${id} status/details did not persist to Supabase`, res)
+              set((s) => ({
+                activity: pushSignal(s.activity, {
+                  text: `Let op: wijziging van "${updated.name}" is niet opgeslagen — probeer opnieuw`,
+                  domain: updated.domain,
+                  loop: 'fast',
+                }),
+              }))
+            }
+          })
+        }
       },
 
       addProject: (project) => {
