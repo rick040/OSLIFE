@@ -4,7 +4,7 @@ import { TODAY, fmtDate } from '../domains'
 import { SectionTitle, Empty } from '../components/ui'
 import { Mail, MailOpen, CheckCheck, ExternalLink } from 'lucide-react'
 import type { EmailItem } from '../types'
-import { classifyImportance, emailTags } from '../lib/crm/emailClassify'
+import { classifyImportance, emailTags, ALL_EMAIL_TAGS } from '../lib/crm/emailClassify'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -59,6 +59,8 @@ interface ThreadGroup {
 export default function Inbox() {
   const { emails, markEmailRead, markAllEmailsRead, dataSource } = useStore()
   const [filter, setFilter] = useState<Filter>('high')
+  // null = all domains; otherwise a tag key ('prjct' | 'parkingyou' | …)
+  const [domain, setDomain] = useState<string | null>(null)
   // Optimistic local read-hide: IDs marked read disappear immediately
   const [readIds, setReadIds] = useState<Set<string>>(new Set())
 
@@ -67,12 +69,19 @@ export default function Inbox() {
     [emails, readIds],
   )
 
+  // Domain-scoped set drives both the importance counts and the list, so the
+  // "Belangrijk 12" counts reflect the domain you've drilled into.
+  const scoped = useMemo(
+    () => (domain ? visible.filter((e) => emailTags(e).some((t) => t.key === domain)) : visible),
+    [visible, domain],
+  )
+
   const filtered = useMemo(
     () =>
       filter === 'all'
-        ? visible
-        : visible.filter((e) => resolveImportance(e) === filter),
-    [visible, filter],
+        ? scoped
+        : scoped.filter((e) => resolveImportance(e) === filter),
+    [scoped, filter],
   )
 
   // Group by threadId (newest row wins, count how many share the thread)
@@ -89,11 +98,19 @@ export default function Inbox() {
   }, [filtered])
 
   const counts = useMemo(() => {
-    const c: Record<Filter, number> = { all: visible.length, high: 0, med: 0, low: 0 }
-    for (const e of visible) {
+    const c: Record<Filter, number> = { all: scoped.length, high: 0, med: 0, low: 0 }
+    for (const e of scoped) {
       const imp = resolveImportance(e)
       if (imp === 'high' || imp === 'med' || imp === 'low') c[imp]++
     }
+    return c
+  }, [scoped])
+
+  // Per-domain counts (across everything visible, ignoring the active domain
+  // pick) so the domain chips always show the full picture.
+  const domainCounts = useMemo(() => {
+    const c: Record<string, number> = {}
+    for (const e of visible) for (const t of emailTags(e)) c[t.key] = (c[t.key] ?? 0) + 1
     return c
   }, [visible])
 
@@ -138,6 +155,33 @@ export default function Inbox() {
         ))}
       </div>
 
+      {/* Domain filter — tap an area to scope the list (tap again to clear) */}
+      <div className="flex gap-1.5 flex-wrap">
+        <button
+          onClick={() => setDomain(null)}
+          className={`chip ${domain === null ? 'bg-ink text-surface' : 'bg-surface border border-line text-muted hover:text-ink'}`}
+        >
+          Alle domeinen
+        </button>
+        {ALL_EMAIL_TAGS.filter((t) => (domainCounts[t.key] ?? 0) > 0).map((t) => {
+          const active = domain === t.key
+          return (
+            <button
+              key={t.key}
+              onClick={() => setDomain(active ? null : t.key)}
+              className="chip font-semibold border"
+              style={
+                active
+                  ? { background: t.hex, color: '#fff', borderColor: t.hex }
+                  : { color: t.hex, background: `${t.hex}18`, borderColor: `${t.hex}44` }
+              }
+            >
+              {t.label} {domainCounts[t.key]}
+            </button>
+          )
+        })}
+      </div>
+
       {grouped.length === 0 ? (
         <Empty>Geen mails in dit filter.</Empty>
       ) : (
@@ -170,8 +214,13 @@ export default function Inbox() {
                     {tags.map((t) => (
                       <span
                         key={t.key}
-                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                        role="button"
+                        tabIndex={0}
+                        onClick={(ev) => { ev.stopPropagation(); setDomain((d) => (d === t.key ? null : t.key)) }}
+                        onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.stopPropagation(); setDomain((d) => (d === t.key ? null : t.key)) } }}
+                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 cursor-pointer hover:opacity-80"
                         style={{ color: t.hex, background: `${t.hex}22` }}
+                        title={`Filter op ${t.label}`}
                       >
                         {t.label}
                       </span>

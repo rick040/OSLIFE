@@ -25,6 +25,9 @@ const TAGS = {
   personal: { key: 'personal', label: 'Persoonlijk', hex: '#C6A05B' },
 } as const
 
+/** All domain tags in display order — used to render the inbox domain filter. */
+export const ALL_EMAIL_TAGS: EmailTag[] = [TAGS.prjct, TAGS.parkingyou, TAGS.finance, TAGS.fiverr, TAGS.personal]
+
 /** Domain/area tags for an email, derived from its Gmail labels (deduped, ordered). */
 export function emailTags(email: EmailItem): EmailTag[] {
   const labels = email.labels ?? []
