@@ -52,8 +52,10 @@ export function isUntagged(category: string | null | undefined): boolean {
 
 /**
  * Normalised merchant → the vendor-cache key. Strips card/terminal noise, casing,
- * punctuation, city suffixes and trailing numbers so "Albert Heijn 1234 EINDHOVEN",
- * "ALBERT HEIJN" and "Albert Heijn BV" all collapse to the same key.
+ * punctuation and store/terminal numbers so "Albert Heijn 1234 EINDHOVEN",
+ * "ALBERT HEIJN 5678" and "Albert Heijn BV" collapse to the same "albert heijn"
+ * key. City tails are left in (so distinct cities stay distinct); the first 3
+ * tokens carry the brand.
  */
 export function vendorKey(merchant: string): string {
   let s = (merchant || '').toLowerCase()
@@ -62,8 +64,9 @@ export function vendorKey(merchant: string): string {
   s = s.replace(/\b(b\.?v\.?|n\.?v\.?|v\.?o\.?f\.?|ltd|inc|gmbh)\b/g, ' ')
   // strip anything that isn't a letter/number/space, then collapse
   s = s.replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
-  // drop a trailing run of digits (store/terminal number) and lone city tails are
-  // left in — the first 3 tokens carry the brand and keep it distinct enough.
-  s = s.replace(/\s+\d{2,}$/g, '').trim()
+  // drop any standalone run of digits (store/terminal number) wherever it sits —
+  // mid-string numbers used to survive into the key ("albert heijn 1234"), which
+  // defeated the cache for exactly the terminal-numbered descriptions it targets.
+  s = s.replace(/\b\d{2,}\b/g, ' ').replace(/\s+/g, ' ').trim()
   return s.split(' ').slice(0, 3).join(' ')
 }

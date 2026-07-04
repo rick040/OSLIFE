@@ -85,6 +85,12 @@ describe('guessCategory', () => {
   it('falls back to Uncategorized', () => {
     expect(guessCategory('volstrekt onbekend bedrijf', -5)).toBe('Uncategorized')
   })
+  it('does not match category keywords as substrings of other words', () => {
+    // Regression (M5): "shell" in "Michelle", "bp" in "ABP", "plus" in "OnePlus".
+    expect(guessCategory('Betaling Michelle de Vries', -20)).toBe('Uncategorized')
+    expect(guessCategory('ABP pensioen incasso', -100)).toBe('Uncategorized')
+    expect(guessCategory('OnePlus store', -300)).toBe('Uncategorized')
+  })
 })
 
 describe('parseCsv', () => {
@@ -100,16 +106,24 @@ describe('parseCsv', () => {
     expect(txns[1]).toMatchObject({ date: '2026-07-02', amount: 880, category: 'Client income' })
   })
 
-  // Documents current behavior, not necessarily desired behavior: on a
-  // headerless row the amount heuristic takes the FIRST money-looking cell
-  // that isn't the date. In a full ABN AMRO row (with start/endsaldo columns)
-  // that can be the end balance instead of the transaction amount.
-  it('headerless rows with saldo columns pick the first money-like cell', () => {
+  // In a full ABN AMRO row (with start/endsaldo columns) the transaction amount
+  // is the SIGNED cell; the balances are unsigned. The heuristic prefers the
+  // signed cell so it picks the real amount (-64,20), not a balance.
+  it('headerless rows with saldo columns pick the signed transaction amount', () => {
     const csv =
       '"NL12ABNA0123456789","EUR","20260701","20260701","1000,08","935,80","-64,20","BEA, Betaalpas Albert Heijn 1376,PAS123"'
     const txns = parseCsv(csv)
     expect(txns).toHaveLength(1)
-    expect(txns[0].amount).toBe(935.8)
+    expect(txns[0].amount).toBe(-64.2)
+  })
+
+  it('does not drop a headerless amount >= 1000 written without a thousands separator', () => {
+    // Regression (M3): "1234,56" failed the old exactly-3-digit-group regex and
+    // the whole row was skipped.
+    const csv = '"20260701","1234,56","BEA, Betaalpas Jumbo"'
+    const txns = parseCsv(csv)
+    expect(txns).toHaveLength(1)
+    expect(txns[0].amount).toBe(1234.56)
   })
 
   it('parses a semicolon export with Dutch headers', () => {

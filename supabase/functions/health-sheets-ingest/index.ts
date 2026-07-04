@@ -78,7 +78,8 @@ Deno.serve(async (req) => {
 
   // Validate shared secret
   const secret = req.headers.get('x-ingest-secret') ?? ''
-  if (INGEST_SECRET && secret !== INGEST_SECRET) {
+  // Fail CLOSED: an unset secret must NOT leave this service-role endpoint open.
+  if (!INGEST_SECRET || secret !== INGEST_SECRET) {
     return json({ ok: false, error: 'Unauthorized' }, 401)
   }
 

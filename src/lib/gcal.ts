@@ -34,7 +34,13 @@ export function googleCalendarUrl(d: TaskDraft): string {
   if (d.due) {
     if (d.time) {
       const start = stamp(d.due, d.time)
-      const end = stamp(d.due, addHour(d.time))
+      const endTime = addHour(d.time)
+      // If +1h wrapped past midnight, the end must fall on the next calendar day,
+      // otherwise the event would end before it starts.
+      const [startH] = d.time.split(':').map((n) => parseInt(n, 10))
+      const wrapped = startH === 23
+      const endDate = wrapped ? nextDay(d.due) : d.due.replace(/-/g, '')
+      const end = `${endDate}T${endTime.replace(':', '')}00`
       params.set('dates', `${start}/${end}`)
     } else {
       // all-day event: end date is exclusive (next day)

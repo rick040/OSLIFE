@@ -61,7 +61,7 @@ import {
   applyCheckins,
   buildNudge,
 } from './derive'
-import { TODAY, DOMAIN_META, KIND_LABEL } from './domains'
+import { today, habitStreak, DOMAIN_META, KIND_LABEL } from './domains'
 import * as mock from './mockData'
 import {
   supabase,
@@ -145,6 +145,11 @@ import {
   fetchAppSettings,
   upsertAppSettings,
 } from './lib/supabase'
+
+// The single Realtime channel opened by loadLiveData(). Held at module scope so
+// a repeat loadLiveData() (e.g. on every auth TOKEN_REFRESHED) tears the previous
+// channel down instead of leaking a new 22-handler subscription each time.
+let liveChannel: ReturnType<typeof supabase.channel> | null = null
 
 interface ActivitySignal {
   id: string
@@ -505,7 +510,8 @@ function touchClientContact(set: StoreSet, get: () => State, clientId: string | 
  * status badges correct without waiting for the next tick.
  */
 function reconcileInvoices(list: Invoice[]): Invoice[] {
-  return list.map((i) => (i.status === 'sent' && i.dueOn && i.dueOn < TODAY ? { ...i, status: 'overdue' as const } : i))
+  const day = today()
+  return list.map((i) => (i.status === 'sent' && i.dueOn && i.dueOn < day ? { ...i, status: 'overdue' as const } : i))
 }
 
 export const useStore = create<State>()(
@@ -696,19 +702,21 @@ export const useStore = create<State>()(
       tickHabit: (id) => {
         const prev = get().habits.find((x) => x.id === id)
         if (!prev) return
+        const day = today()
         const doneToday = !prev.doneToday
         set((s) => {
           const h = s.habits.find((x) => x.id === id)!
           const hist = new Set(h.history ?? [])
-          if (doneToday) hist.add(TODAY)
-          else hist.delete(TODAY)
+          if (doneToday) hist.add(day)
+          else hist.delete(day)
           return {
             habits: s.habits.map((x) =>
               x.id === id
                 ? {
                     ...x,
                     doneToday,
-                    streak: doneToday ? x.streak + 1 : Math.max(0, x.streak - 1),
+                    // Recompute from history, not ±1 — a real streak, not a tick counter.
+                    streak: habitStreak(hist, day),
                     history: [...hist].sort(),
                   }
                 : x,
@@ -720,7 +728,7 @@ export const useStore = create<State>()(
             }),
           }
         })
-        void persistHabitTick(id, TODAY, doneToday)
+        void persistHabitTick(id, day, doneToday)
       },
 
       addHabit: (name, emoji, color) => {
@@ -794,10 +802,11 @@ export const useStore = create<State>()(
         })),
 
       logCheckin: (energy, mood, note) => {
+        const day = today()
         set((s) => {
-          const others = s.checkins.filter((c) => c.date !== TODAY)
+          const others = s.checkins.filter((c) => c.date !== day)
           return {
-            checkins: [{ date: TODAY, energy, mood, note: note ?? null }, ...others],
+            checkins: [{ date: day, energy, mood, note: note ?? null }, ...others],
             activity: pushSignal(s.activity, {
               text: `Check-in: energie ${energy}/5 · stemming ${mood}/5`,
               domain: 'personal',
@@ -805,7 +814,7 @@ export const useStore = create<State>()(
             }),
           }
         })
-        void upsertCheckin({ date: TODAY, energy, mood, note: note ?? null })
+        void upsertCheckin({ date: day, energy, mood, note: note ?? null })
         // Felt signal feeds Reflect immediately: rebuild dayLogs + nudge.
         get().recomputeBrain()
       },
@@ -1197,18 +1206,20 @@ export const useStore = create<State>()(
         // A recurring task isn't "done" — it rolls its due date to the next cycle.
         if (done && t.recurrence) {
           const every = t.recurEvery ?? 1
-          const base = t.dueDate ? new Date(t.dueDate) : new Date(TODAY)
+          const base = new Date((t.dueDate ?? today()).slice(0, 10) + 'T00:00:00')
           if (t.recurrence === 'daily') base.setDate(base.getDate() + every)
           else if (t.recurrence === 'weekly') base.setDate(base.getDate() + 7 * every)
           else base.setMonth(base.getMonth() + every)
-          const nextDue = base.toISOString().slice(0, 10)
-          const patch = { done: false, lastDoneOn: TODAY, dueDate: nextDue }
+          // Local getters, not toISOString() — the latter rolls the next due date
+          // a day early in Europe/Amsterdam.
+          const nextDue = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, '0')}-${String(base.getDate()).padStart(2, '0')}`
+          const patch = { done: false, lastDoneOn: today(), dueDate: nextDue }
           patchSlice(set, 'projectTasks', taskId, patch)
           void updateProjectTaskRow(taskId, patch)
           return
         }
         patchSlice(set, 'projectTasks', taskId, { done })
-        void updateProjectTaskRow(taskId, { done, lastDoneOn: done ? TODAY : null })
+        void updateProjectTaskRow(taskId, { done, lastDoneOn: done ? today() : null })
       },
 
       deleteProjectTask: (id) => {
@@ -1258,7 +1269,7 @@ export const useStore = create<State>()(
           number: '',
           amount,
           status: 'draft',
-          issuedOn: TODAY,
+          issuedOn: today(),
           dueOn: null,
           paidOn: null,
           note: `${totalHours}u × €${rate}/u`,
@@ -1719,7 +1730,13 @@ export const useStore = create<State>()(
           { table: 'braindump_entries', onChange: () => fetchBraindumpEntries().then((d) => set({ braindumpEntries: d })) },
           { table: 'app_settings', onChange: () => fetchAppSettings().then((p) => { if (p) set({ settings: p }) }) },
         ]
-        syncSlices
+        // Tear down any channel from a previous loadLiveData() before opening a
+        // new one — otherwise each auth event leaks another full subscription.
+        if (liveChannel) {
+          supabase.removeChannel(liveChannel)
+          liveChannel = null
+        }
+        liveChannel = syncSlices
           .reduce(
             (channel, slice) =>
               channel.on('postgres_changes', { event: '*', schema: 'public', table: slice.table }, slice.onChange),

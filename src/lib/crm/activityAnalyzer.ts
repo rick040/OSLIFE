@@ -55,8 +55,10 @@ function tokenize(s: string): string[] {
 }
 
 function hasAny(body: string, words: string[]): boolean {
-  const b = ` ${body.toLowerCase()} `
-  return words.some((w) => b.includes(` ${w}`) || b.includes(`${w} `))
+  // Whole-word match (both boundaries). The old `' '+w OR w+' '` matched a word
+  // as a prefix/suffix of another: "af" fired on "afspraak", "mee" on "meeting".
+  const b = ` ${body.toLowerCase().replace(/[^a-z0-9\s]/gi, ' ')} `
+  return words.some((w) => b.includes(` ${w} `))
 }
 
 /** Detect an explicit percentage like "op 60%" / "60 procent". Returns 0..1 or null. */

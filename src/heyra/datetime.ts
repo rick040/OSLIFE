@@ -101,7 +101,7 @@ export function parseWhen(text: string): ParsedWhen {
       // next Monday
       let delta = (1 - base.getDay() + 7) % 7
       delta = delta === 0 ? 7 : delta
-      date = isoDate(addDays(base, delta + (/(volgende|next)/i.test(m[1]) ? 0 : 0)))
+      date = isoDate(addDays(base, delta))
     } else {
       const d = new Date(base); d.setMonth(d.getMonth() + 1, 1); date = isoDate(d)
     }
@@ -138,30 +138,36 @@ export function parseWhen(text: string): ParsedWhen {
   }
 
   // ── TIME ─────────────────────────────────────────────────────────────────────
+  // Match time against the text with the already-consumed date phrases removed,
+  // so a numeric date like "12.07" isn't also read as the time 12:07.
+  const timeText = strip.reduce((t, s) => t.replace(s, ' '), text)
+  const hasTime = (re: RegExp): RegExpMatchArray | null => timeText.match(re)
+
   // 1) HH:MM / HH.MM / HHuMM (e.g. "14:00", "9u30", "om 9.15")
-  if ((m = has(/\b(?:om\s+|at\s+|@\s*)?([01]?\d|2[0-3])[:.u]([0-5]\d)\b/i))) {
+  if ((m = hasTime(/\b(?:om\s+|at\s+|@\s*)?([01]?\d|2[0-3])[:.u]([0-5]\d)\b/i))) {
     time = `${pad(parseInt(m[1], 10))}:${m[2]}`
     strip.push(m[0])
   }
-  // 2) "om 9 uur", "9u", "9h", "at 9"
-  else if ((m = has(/\b(?:om\s+|at\s+)([01]?\d|2[0-3])\s*(?:uur|u|h)?\b/i)) ||
-           (m = has(/\b([01]?\d|2[0-3])\s*(?:uur|u|h)\b/i))) {
-    time = `${pad(parseInt(m[1], 10))}:00`
-    strip.push(m[0])
-  }
-  // 3) "9am" / "9 pm"
-  else if ((m = has(/\b(\d{1,2})\s*(am|pm)\b/i))) {
+  // 2) "9am" / "9 pm" — checked before the bare "at 9" branch so the am/pm
+  //    marker isn't lost (otherwise "at 9 pm" would parse as 09:00).
+  else if ((m = hasTime(/\b(\d{1,2})\s*(am|pm)\b/i))) {
     let h = parseInt(m[1], 10) % 12
     if (/pm/i.test(m[2])) h += 12
     time = `${pad(h)}:00`
     strip.push(m[0])
   }
+  // 3) "om 9 uur", "9u", "9h", "at 9"
+  else if ((m = hasTime(/\b(?:om\s+|at\s+)([01]?\d|2[0-3])\s*(?:uur|u|h)?\b/i)) ||
+           (m = hasTime(/\b([01]?\d|2[0-3])\s*(?:uur|u|h)\b/i))) {
+    time = `${pad(parseInt(m[1], 10))}:00`
+    strip.push(m[0])
+  }
 
   // 4) part-of-day words imply a time when none was given
   if (!time) {
-    if (has(/\bvanavond|tonight|'s avonds\b/i)) time = '19:00'
-    else if (has(/\bvanmiddag|'s middags\b/i)) time = '14:00'
-    else if (has(/\bvanochtend|vanmorgen|'s ochtends|ochtend\b/i)) time = '09:00'
+    if (hasTime(/\bvanavond|tonight|'s avonds\b/i)) time = '19:00'
+    else if (hasTime(/\bvanmiddag|'s middags\b/i)) time = '14:00'
+    else if (hasTime(/\bvanochtend|vanmorgen|'s ochtends|ochtend\b/i)) time = '09:00'
   }
 
   return { date, time, strip }

@@ -10,13 +10,15 @@ import { domainForCategory } from './categories'
 export function guessCategory(desc: string, amount: number): string {
   const d = desc.toLowerCase()
   if (amount > 0) return 'Client income'
-  if (/albert heijn|jumbo|lidl|aldi|plus|supermarkt/.test(d)) return 'Groceries'
-  if (/thuisbezorg|takeaway|dominos|new york pizza|mcdonald/.test(d)) return 'Takeout'
-  if (/adobe|canva|figma|notion|vercel|openai|chatgpt|google|microsoft/.test(d)) return 'Software'
-  if (/spotify|netflix|disney|videoland/.test(d)) return 'Subscriptions'
-  if (/esso|shell|bp|tango|tankstation/.test(d)) return 'Convenience'
-  if (/dier|vet|kyra|hond/.test(d)) return 'Dog'
-  if (/ns |trein|ov-|9292|transavia|ovpay/.test(d)) return 'Transport'
+  // Word boundaries throughout: unbounded substrings caused false positives like
+  // "shell" matching "Michelle", "bp" matching "ABP", "plus" matching "OnePlus".
+  if (/\b(albert heijn|jumbo|lidl|aldi|plus|supermarkt)\b/.test(d)) return 'Groceries'
+  if (/\b(thuisbezorg|takeaway|dominos|new york pizza|mcdonald)\b/.test(d)) return 'Takeout'
+  if (/\b(adobe|canva|figma|notion|vercel|openai|chatgpt|google|microsoft)\b/.test(d)) return 'Software'
+  if (/\b(spotify|netflix|disney|videoland)\b/.test(d)) return 'Subscriptions'
+  if (/\b(esso|shell|bp|tango|tankstation)\b/.test(d)) return 'Convenience'
+  if (/\b(dier|vet|kyra|hond)\b/.test(d)) return 'Dog'
+  if (/\b(ns|trein|ov-|9292|transavia|ovpay)\b/.test(d)) return 'Transport'
   return 'Uncategorized'
 }
 
@@ -120,9 +122,16 @@ export function parseCsv(text: string): Transaction[] {
     } else {
       const dateCell = cells.find((c) => toIsoDate(c) !== null)
       if (dateCell) date = toIsoDate(dateCell) ?? TODAY
-      amtCell = cells.find(
-        (c) => c !== dateCell && /^[+-]?\s*\d{1,3}([.,]\d{3})*([.,]\d{1,2})$/.test(c.replace(/\s/g, '')),
-      )
+      // Accept grouped thousands ("1.234,56") OR a plain integer part
+      // ("1234,56", "1000,08") — the old regex required exactly-3-digit groups and
+      // silently dropped ungrouped amounts >= 1000. A decimal is still required so
+      // dates / account numbers aren't mistaken for money.
+      const isMoney = (v: string) =>
+        /^[+-]?\d{1,3}(?:[.,]\d{3})*[.,]\d{1,2}$/.test(v) || /^[+-]?\d+[.,]\d{1,2}$/.test(v)
+      const moneyCells = cells.filter((c) => c !== dateCell && isMoney(c.replace(/\s/g, '')))
+      // Prefer a signed cell: in a full ABN row the transaction amount carries a
+      // +/- sign while the start/end balances don't, so this skips the balances.
+      amtCell = moneyCells.find((c) => /^\s*[+-]/.test(c)) ?? moneyCells[0]
     }
 
     if (!amtCell) continue

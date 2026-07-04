@@ -228,7 +228,8 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("ok");
 
   const secret = req.headers.get("x-telegram-bot-api-secret-token") ?? "";
-  if (WEBHOOK_SECRET && secret !== WEBHOOK_SECRET) return new Response("unauthorized", { status: 401 });
+  // Fail CLOSED: an unset secret must NOT leave this service-role endpoint open.
+  if (!WEBHOOK_SECRET || secret !== WEBHOOK_SECRET) return new Response("unauthorized", { status: 401 });
   if (!BOT_TOKEN) return new Response("ok"); // never let a missing secret surface to Telegram as an error loop
 
   let update: Record<string, unknown>;

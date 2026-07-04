@@ -5,7 +5,7 @@
 
 import type { useStore } from '../store'
 import type { Domain, Channel } from '../types'
-import { DOMAIN_META, TODAY } from '../domains'
+import { DOMAIN_META, today } from '../domains'
 
 type Store = ReturnType<typeof useStore.getState>
 
@@ -114,18 +114,25 @@ export function buildSearchCard(text: string, store: Store): SearchCardData {
 }
 
 function isoDaysAgo(n: number): string {
-  const d = new Date(TODAY + 'T00:00:00')
+  const d = new Date(today() + 'T00:00:00')
   d.setDate(d.getDate() - n)
-  return d.toISOString().slice(0, 10)
+  // Local getters, NOT toISOString(): the latter shifts a day earlier in
+  // Europe/Amsterdam and would bucket every day's spend against the wrong date.
+  const y = d.getFullYear()
+  const mo = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${mo}-${day}`
 }
-const last7 = Array.from({ length: 7 }, (_, i) => isoDaysAgo(6 - i))
+/** The last 7 Amsterdam dates ending today — recomputed per call so it can't
+ *  freeze at module load and always includes the true "today". */
+const last7Days = () => Array.from({ length: 7 }, (_, i) => isoDaysAgo(6 - i))
 
 /** Picks the metric that best matches the question and renders it as points. */
 export function buildChartCard(text: string, store: Store): ChartCardData {
   const t = text.toLowerCase()
 
   if (/geld|uitgaven|spend|financ|kosten/.test(t)) {
-    const points = last7.map((iso) => ({
+    const points = last7Days().map((iso) => ({
       label: iso.slice(5),
       value: Math.round(store.transactions.filter((tx) => tx.date === iso && tx.amount < 0).reduce((a, tx) => a + Math.abs(tx.amount), 0)),
     }))

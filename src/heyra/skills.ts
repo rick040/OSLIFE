@@ -85,11 +85,21 @@ export interface SkillDetection {
   trigger: string | null
 }
 
+/** Trigger match that requires a word boundary at the START of the phrase, so
+ *  "mail " doesn't match inside "email ", "bel " inside "tabel ", etc. Triggers
+ *  already encode their own trailing boundary (many end in a space). */
+function containsTrigger(t: string, w: string): boolean {
+  const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  // Only guard the leading boundary when the phrase starts with a word char.
+  const pattern = /^[a-z0-9]/.test(w) ? `(?:^|[^a-z0-9])${escaped}` : escaped
+  return new RegExp(pattern).test(t)
+}
+
 function scoreTriggers(t: string, triggers: string[]): { score: number; best: string | null } {
   let best: string | null = null
   let score = 0
   for (const w of triggers) {
-    if (t.includes(w)) {
+    if (containsTrigger(t, w)) {
       score += 1
       if (!best || w.length > best.length) best = w
     }

@@ -31,7 +31,7 @@ import type {
   BraindumpEntry,
   AppSettings,
 } from '../types'
-import { TODAY } from '../domains'
+import { today, habitStreak } from '../domains'
 import type { LearnedFact } from '../heyra/learning'
 
 // New oslife project (nhyunnnmdcmojvkxrbpl, eu-west-1).
@@ -716,7 +716,7 @@ export async function fetchBlocks(): Promise<Block[]> {
   const { data } = await supabase
     .from('day_blocks')
     .select('id,start_time,end_time,title,description,block_type,status')
-    .eq('date', TODAY)
+    .eq('date', today())
     .order('start_time')
 
   return (data ?? []).map((r) => ({
@@ -758,31 +758,17 @@ export async function fetchHabits(): Promise<Habit[]> {
     logByHabit.get(hid)!.add(l.on_date as string)
   }
 
+  const day = today()
   return habitRows.map((h) => {
     const datesSet = logByHabit.get(h.id as string) ?? new Set<string>()
     const history = [...datesSet].sort()
-    const doneToday = datesSet.has(TODAY)
-
-    // Compute streak: consecutive days ending today (or yesterday)
-    let streak = 0
-    const check = new Date(TODAY)
-    for (let i = 0; i < 30; i++) {
-      const d = check.toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' })
-      if (datesSet.has(d)) {
-        streak++
-        check.setDate(check.getDate() - 1)
-      } else {
-        break
-      }
-    }
-
     return {
       id: h.id as string,
       name: h.name as string,
       emoji: (h.icon as string) ?? '✅',
       color: (h.color as string) ?? undefined,
-      streak,
-      doneToday,
+      streak: habitStreak(datesSet, day),
+      doneToday: datesSet.has(day),
       history,
     }
   })
@@ -864,13 +850,16 @@ export async function persistLearnedFacts(facts: LearnedFact[]): Promise<void> {
 
 // ── Screen time (if available) ────────────────────────────────────────────────
 
-/** Classify an app by name into the four ScreenDay app categories. */
-function classifyApp(name: string): 'work' | 'social' | 'media' | 'comms' {
+/** Classify an app by name into the ScreenDay app categories. Known productivity
+ *  apps map to 'work'; everything unrecognised is 'other' (NOT 'work' — the old
+ *  default silently counted games/browsers/unknown apps as focus time). */
+function classifyApp(name: string): 'work' | 'social' | 'media' | 'comms' | 'other' {
   const n = name.toLowerCase()
   if (/whatsapp|instagram|snapchat|tinder|reddit|facebook|tiktok|discord|messenger|twitter|\bx\b|threads|bereal|linkedin/.test(n)) return 'social'
   if (/youtube|spotify|soundcloud|netflix|videoland|twitch|disney|prime video|podcast|muziek|music|film/.test(n)) return 'media'
   if (/gmail|\bmail\b|telefoon|phone|berichten|messages|\bsms\b|teams|outlook|signal|telegram/.test(n)) return 'comms'
-  return 'work'
+  if (/docs|sheets|slides|word|excel|powerpoint|notion|figma|canva|code|github|gitlab|slack|drive|calendar|agenda|jira|linear|vscode|xcode|terminal/.test(n)) return 'work'
+  return 'other'
 }
 
 export async function fetchScreenDays(): Promise<ScreenDay[]> {

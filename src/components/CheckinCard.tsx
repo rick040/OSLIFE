@@ -1,17 +1,25 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useStore } from '../store'
-import { TODAY } from '../domains'
+import { today } from '../domains'
 import { Zap, Smile, Check } from 'lucide-react'
 
 // The one signal no sensor captures: how Rick actually felt today. Feeds Reflect
 // so energy↔spend / energy↔screentime / meetings↔energy can be computed at all.
 export default function CheckinCard({ compact }: { compact?: boolean }) {
   const { checkins, logCheckin } = useStore()
-  const todays = checkins.find((c) => c.date === TODAY)
+  const todays = checkins.find((c) => c.date === today())
 
   const [energy, setEnergy] = useState<number>(todays?.energy ?? 0)
   const [mood, setMood] = useState<number>(todays?.mood ?? 0)
   const [savedAt, setSavedAt] = useState(false)
+
+  // Sync the sliders to today's stored check-in once it arrives (initial state is
+  // captured at mount, before loadLiveData()/realtime resolves — without this the
+  // card shows 0/0 and invites a duplicate entry over an existing check-in).
+  useEffect(() => {
+    setEnergy(todays?.energy ?? 0)
+    setMood(todays?.mood ?? 0)
+  }, [todays?.energy, todays?.mood])
 
   const canSave = energy > 0 && mood > 0
   const dirty = energy !== (todays?.energy ?? 0) || mood !== (todays?.mood ?? 0)
