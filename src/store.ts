@@ -40,6 +40,8 @@ import type {
   BraindumpEntry,
   BraindumpInput,
   AppSettings,
+  GoalProposal,
+  PlanBlock,
 } from './types'
 import { vendorKey, isUntagged } from './finance/categories'
 import { categorizeVendor } from './heyra/agents/vendorAgent'
@@ -52,6 +54,8 @@ import { invokeBraindumpIngest } from './lib/braindump'
 import { runReflect, computeCorrelations, computeAnomalies, buildNarrativePrompt, NARRATIVE_SYSTEM_PROMPT } from './reflect'
 import { askBrain } from './heyra/brainClient'
 import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
+import { proposeGoals as proposeGoalsAI } from './heyra/goals'
+import { buildWeekPlan, weekDates } from './heyra/planner'
 import {
   deriveEssentials,
   deriveThreads,
@@ -74,6 +78,11 @@ import {
   fetchHabits,
   fetchSubscriptions,
   fetchGoals,
+  createGoalRow,
+  updateGoalRow,
+  deleteGoalRow,
+  fetchBlocksRange,
+  insertDayBlock,
   fetchDogEntries,
   fetchBrainState,
   fetchLearnedFacts,
@@ -188,6 +197,11 @@ interface State {
   projectActivity: ActivityEntry[]
   goals: Goal[]
   milestones: Milestone[]
+  goalProposals: GoalProposal[]
+  proposingGoals: boolean
+  weekPlan: PlanBlock[]
+  weekPlanAt: string | null
+  planningWeek: boolean
   emails: EmailItem[]
   payments: Payment[]
   subscriptions: Subscription[]
@@ -256,6 +270,19 @@ interface State {
 
   // North Star + Inbox
   toggleMilestone: (id: string) => void
+  addGoalMilestone: (goalId: string, title: string, due?: string | null) => void
+  deleteGoalMilestone: (id: string) => void
+  // North Star goals — manual CRUD + brain-proposed goals Rick accepts/dismisses.
+  addGoal: (goal: Omit<Goal, 'id'>) => string
+  updateGoal: (id: string, patch: Partial<Omit<Goal, 'id'>>) => void
+  deleteGoal: (id: string) => void
+  proposeGoals: () => Promise<void>
+  acceptGoalProposal: (id: string) => void
+  dismissGoalProposal: (id: string) => void
+  // Dagplanner — generate/lock/dismiss the weekly day plan.
+  generateWeekPlan: () => Promise<void>
+  lockPlanBlock: (id: string) => void
+  dismissPlanBlock: (id: string) => void
   markEmailRead: (id: string) => void
   markAllEmailsRead: () => void
 
@@ -394,6 +421,11 @@ const seed = () => ({
   projectActivity: [] as ActivityEntry[],
   goals: mock.goals,
   milestones: mock.milestones,
+  goalProposals: [] as GoalProposal[],
+  proposingGoals: false,
+  weekPlan: [] as PlanBlock[],
+  weekPlanAt: null as string | null,
+  planningWeek: false,
   emails: mock.emails,
   payments: mock.payments,
   subscriptions: mock.subscriptions,
@@ -426,6 +458,7 @@ const SEED_WHEN_FALSY = ['threads', 'nudge', 'dogProfile'] as const
 const EMPTY_WHEN_FALSY = [
   'projectMilestones', 'projectTasks', 'projectHours', 'projectInvoices',
   'projectActivity', 'checkins', 'learnedFacts', 'vendorTags', 'braindumpEntries',
+  'goalProposals', 'weekPlan',
 ] as const
 
 /**
@@ -444,6 +477,11 @@ export function applyPersistDefaults(
   if (state.notificationPrefs === undefined) state.notificationPrefs = null
   if (!state.settings) state.settings = seeded.settings
   if (!state.dataSource) state.dataSource = 'mock'
+  // Transient flags never survive a reload — a page refresh mid-generation must
+  // not leave a spinner stuck on.
+  state.proposingGoals = false
+  state.planningWeek = false
+  if (state.weekPlanAt === undefined) state.weekPlanAt = null
 }
 
 /** Guard so overlapping auto-tag runs (load + realtime) don't double-work. */
@@ -916,6 +954,153 @@ export const useStore = create<State>()(
             }),
           }
         }),
+
+      addGoalMilestone: (goalId, title, due) => {
+        const t = title.trim()
+        if (!t) return
+        set((s) => ({
+          milestones: [...s.milestones, { id: uid('nsms'), goalId, title: t, done: false, due: due ?? null }],
+          activity: pushSignal(s.activity, { text: `Mijlpaal toegevoegd: ${t}`, domain: 'cross', loop: 'fast' }),
+        }))
+      },
+
+      deleteGoalMilestone: (id) => removeFromSlice(set, 'milestones', id),
+
+      addGoal: (goal) => {
+        const tempId = uid('goal')
+        set((s) => ({
+          goals: [...s.goals, { ...goal, id: tempId }],
+          activity: pushSignal(s.activity, { text: `Doel toegevoegd: ${goal.title}`, domain: goal.domain, loop: 'slow' }),
+        }))
+        void createGoalRow(goal).then(swapTempId(set, 'goals', tempId))
+        return tempId
+      },
+
+      updateGoal: (id, patch) => {
+        set((s) => ({ goals: s.goals.map((g) => (g.id === id ? { ...g, ...patch } : g)) }))
+        const g = get().goals.find((x) => x.id === id)
+        if (g) void updateGoalRow(id, patch, g.target > 0 ? Math.min(1, g.current / g.target) : 0)
+      },
+
+      deleteGoal: (id) => {
+        set((s) => {
+          const g = s.goals.find((x) => x.id === id)
+          return {
+            goals: s.goals.filter((x) => x.id !== id),
+            // North Star milestones hang off a goal — drop the orphans too.
+            milestones: s.milestones.filter((m) => m.goalId !== id),
+            activity: g ? pushSignal(s.activity, { text: `Doel verwijderd: ${g.title}`, domain: g.domain, loop: 'slow' }) : s.activity,
+          }
+        })
+        void deleteGoalRow(id)
+      },
+
+      proposeGoals: async () => {
+        set({ proposingGoals: true })
+        const s = get()
+        try {
+          const proposals = await proposeGoalsAI({
+            goals: s.goals,
+            learnedFacts: s.learnedFacts,
+            patterns: s.patterns,
+            projects: s.projects,
+            threads: s.threads,
+            transactions: s.transactions,
+          })
+          set((st) => ({
+            goalProposals: proposals,
+            proposingGoals: false,
+            activity: proposals.length
+              ? pushSignal(st.activity, { text: `HEYRA stelt ${proposals.length} nieuw doel(en) voor`, domain: 'cross', loop: 'slow' })
+              : st.activity,
+          }))
+        } catch (err) {
+          console.warn('[OSLIFE] goal proposal failed', err)
+          set({ proposingGoals: false })
+        }
+      },
+
+      acceptGoalProposal: (id) => {
+        const p = get().goalProposals.find((x) => x.id === id)
+        if (!p) return
+        get().addGoal({
+          title: p.title,
+          metric: p.metric,
+          target: p.target,
+          current: p.current,
+          deadline: p.deadline,
+          domain: p.domain,
+        })
+        set((s) => ({ goalProposals: s.goalProposals.filter((x) => x.id !== id) }))
+      },
+
+      dismissGoalProposal: (id) =>
+        set((s) => ({ goalProposals: s.goalProposals.filter((x) => x.id !== id) })),
+
+      generateWeekPlan: async () => {
+        set({ planningWeek: true })
+        try {
+          const dates = weekDates(today())
+          const allEvents = await fetchBlocksRange(dates[0], dates[dates.length - 1])
+          const s = get()
+          // Preserve blocks Rick already locked this session (not calendar rows,
+          // and still within the current week) so a regenerate doesn't wipe them.
+          const keepLocked = s.weekPlan.filter(
+            (b) => b.locked && b.source !== 'calendar' && dates.includes(b.date),
+          )
+          // A locked block is also now a real day_blocks row, so it comes back
+          // from fetchBlocksRange too — drop that duplicate in favour of the
+          // richer locked version (which keeps its kind/rationale).
+          const lockedKeys = new Set(keepLocked.map((b) => `${b.date}|${b.start}|${b.title}`))
+          const events = allEvents.filter((e) => !lockedKeys.has(`${e.date}|${e.start}|${e.title}`))
+          const busy = [...events, ...keepLocked]
+          const proposed = await buildWeekPlan(dates, {
+            events: busy,
+            habits: s.habits,
+            goals: s.goals,
+            threads: s.threads,
+            patterns: s.patterns,
+          })
+          set((st) => ({
+            weekPlan: [...events, ...keepLocked, ...proposed],
+            weekPlanAt: new Date().toISOString(),
+            planningWeek: false,
+            activity: pushSignal(st.activity, {
+              text: `Dagplan gegenereerd voor ${dates.length} dag(en)`,
+              domain: 'personal',
+              loop: 'slow',
+            }),
+          }))
+        } catch (err) {
+          console.warn('[OSLIFE] week plan generation failed', err)
+          set({ planningWeek: false })
+        }
+      },
+
+      lockPlanBlock: (id) => {
+        const b = get().weekPlan.find((x) => x.id === id)
+        if (!b || b.locked) return
+        // Optimistic: mark locked (keeps its kind/rationale). It's now also a real
+        // day_blocks row; generateWeekPlan dedupes that DB copy on the next run.
+        set((s) => ({
+          weekPlan: s.weekPlan.map((x) => (x.id === id ? { ...x, locked: true } : x)),
+          activity: pushSignal(s.activity, { text: `Blok vergrendeld: ${b.title}`, domain: b.domain, loop: 'fast' }),
+        }))
+        void insertDayBlock({
+          date: b.date,
+          start: b.start,
+          end: b.end,
+          title: b.title,
+          description: b.rationale,
+          domain: b.domain,
+        }).then(swapTempId(set, 'weekPlan', id))
+      },
+
+      dismissPlanBlock: (id) => {
+        const b = get().weekPlan.find((x) => x.id === id)
+        if (!b || b.source === 'calendar') return // never drop a real appointment
+        removeFromSlice(set, 'weekPlan', id)
+      },
 
       markEmailRead: (id) => {
         patchSlice(set, 'emails', id, { unread: false })

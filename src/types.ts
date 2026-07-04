@@ -393,6 +393,55 @@ export interface Milestone {
   due: string | null // ISO date
 }
 
+/**
+ * A goal HEYRA proposes but Rick hasn't accepted yet. Distilled from what the
+ * brain has learned (learned facts, patterns, live projects/finance). Lives only
+ * in the North Star "voorstellen" tray until accepted (→ becomes a real Goal) or
+ * dismissed. `rationale` is the one-line "why this, why now".
+ */
+export interface GoalProposal {
+  id: string
+  title: string
+  metric: string
+  target: number
+  current: number
+  deadline: string // ISO date
+  domain: Domain
+  rationale: string
+  source: 'ai' | 'rule'
+}
+
+// ── Dagplanner: an AI-proposed / calendar block on a specific day ─────────────
+
+export type PlanBlockKind =
+  | 'event' // an existing calendar appointment (fixed, source='calendar')
+  | 'focus' // deep work in the learned energy peak
+  | 'routine' // a habit / recurring ritual (morning routine, dog walk, workout)
+  | 'break' // rest / recharge
+  | 'meal' // lunch / dinner
+  | 'admin' // shallow work: mail, invoices, calls
+  | 'wind-down' // evening slow-down to protect tomorrow's sleep
+  | 'personal' // personal / flexible time
+
+/**
+ * One block in the weekly day-plan preview. Calendar events are pulled in
+ * (`source:'calendar'`, always `locked`); everything else is proposed by the
+ * planner (rule-based or brain) and stays `locked:false` until Rick locks it,
+ * which writes it back to `day_blocks` (the app's calendar mirror).
+ */
+export interface PlanBlock {
+  id: string
+  date: string // YYYY-MM-DD
+  title: string
+  domain: Domain
+  start: string // HH:MM
+  end: string // HH:MM
+  rationale: string
+  kind: PlanBlockKind
+  source: 'calendar' | 'ai' | 'rule'
+  locked: boolean
+}
+
 // ── Outstanding payments (logged in a dedicated Google Calendar) ─────────────
 
 export type PaymentDirection = 'incoming' | 'outgoing' // incoming = owed TO Rick

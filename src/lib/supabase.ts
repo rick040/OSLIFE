@@ -30,6 +30,7 @@ import type {
   VendorTag,
   BraindumpEntry,
   AppSettings,
+  PlanBlock,
 } from '../types'
 import { today, habitStreak } from '../domains'
 import type { LearnedFact } from '../heyra/learning'
@@ -730,6 +731,60 @@ export async function fetchBlocks(): Promise<Block[]> {
   }))
 }
 
+/**
+ * Fetch every calendar/day block in [start, end] (inclusive) as PlanBlocks the
+ * Dagplanner treats as fixed appointments. These are the "scheduled calendar
+ * events" the AI planner plans around.
+ */
+export async function fetchBlocksRange(start: string, end: string): Promise<PlanBlock[]> {
+  const { data } = await supabase
+    .from('day_blocks')
+    .select('id,date,start_time,end_time,title,description,block_type,status')
+    .gte('date', start)
+    .lte('date', end)
+    .order('date')
+    .order('start_time')
+
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    date: r.date as string,
+    title: (r.title as string) ?? '',
+    domain: blockTypeToDomain((r.block_type as string) ?? ''),
+    start: toHHMM(r.start_time as string),
+    end: toHHMM(r.end_time as string),
+    rationale: (r.description as string) ?? '',
+    kind: 'event' as const,
+    source: 'calendar' as const,
+    locked: true,
+  }))
+}
+
+/**
+ * Lock a proposed plan block into `day_blocks` (the app's calendar mirror) so it
+ * survives reloads and shows up as a real appointment. Returns the new row id.
+ */
+export async function insertDayBlock(b: {
+  date: string
+  start: string
+  end: string
+  title: string
+  description?: string
+  domain: Domain
+  status?: string
+}): Promise<string | null> {
+  const rand = Math.random().toString(36).slice(2, 8)
+  return insertRow('day_blocks', {
+    external_id: `plan-${b.date}-${b.start.replace(':', '')}-${rand}`,
+    date: b.date,
+    start_time: b.start,
+    end_time: b.end,
+    title: b.title,
+    description: b.description ?? '',
+    block_type: b.domain,
+    status: b.status ?? 'planned',
+  })
+}
+
 // ── Habits ────────────────────────────────────────────────────────────────────
 
 export async function fetchHabits(): Promise<Habit[]> {
@@ -795,6 +850,52 @@ export async function fetchGoals(): Promise<Goal[]> {
       domain: ((r.domain as Domain) ?? 'personal'),
     }
   })
+}
+
+const GOAL_COLS: Record<string, string> = {
+  title: 'title',
+  domain: 'domain',
+  target: 'target_value',
+  metric: 'unit',
+  deadline: 'due_on',
+}
+
+/** Progress a goal stores (0..1) from a current/target pair. */
+function goalProgress(current: number, target: number): number {
+  return target > 0 ? Math.max(0, Math.min(1, current / target)) : 0
+}
+
+/** Insert a goal (status 'active') and return the new id, or null when signed out/failed. */
+export async function createGoalRow(goal: Omit<Goal, 'id'>): Promise<string | null> {
+  return insertRow('goals', {
+    title: goal.title,
+    domain: goal.domain,
+    target_value: goal.target,
+    unit: goal.metric,
+    due_on: goal.deadline || null,
+    progress: goalProgress(goal.current, goal.target),
+    status: 'active',
+  })
+}
+
+/**
+ * Patch a goal. `current`/`target` never map to a column directly — they drive
+ * the derived `progress` — so the caller passes the final progress in `progress`.
+ */
+export async function updateGoalRow(
+  id: string,
+  patch: Partial<Goal>,
+  progress?: number,
+): Promise<{ ok: boolean; count: number }> {
+  // Never send an empty deadline to a `date` column.
+  const clean: Partial<Goal> = { ...patch }
+  if (clean.deadline === '') delete clean.deadline
+  const extra = progress !== undefined ? { progress } : undefined
+  return updateRow('goals', id, clean, GOAL_COLS, extra)
+}
+
+export async function deleteGoalRow(id: string): Promise<void> {
+  return deleteRow('goals', id)
 }
 
 // ── Dog tracker ───────────────────────────────────────────────────────────────
