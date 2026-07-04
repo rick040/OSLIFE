@@ -208,7 +208,7 @@ export interface NotificationPrefs {
 export interface AppUse {
   name: string
   minutes: number
-  category: 'work' | 'social' | 'media' | 'comms'
+  category: 'work' | 'social' | 'media' | 'comms' | 'other'
 }
 
 export interface ScreenDay {

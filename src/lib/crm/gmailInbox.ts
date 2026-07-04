@@ -134,12 +134,25 @@ export function buildMatcher(clients: Client[], projects: Project[]): ClientProj
       return null
     },
     weak(senderName, text) {
+      // Match on shared WHOLE tokens (>= 4 chars), not substring containment —
+      // the old `sn.includes(key) || key.includes(sn)` let "denmark" match a
+      // client keyed "mark", and any client name appearing mid-word in a subject.
+      const sigTokens = (s: string) => s.split(/\s+/).filter((w) => w.length >= 4)
+      const matchesKey = (haystackTokens: Set<string>, key: string, sn?: string) => {
+        if (sn !== undefined && sn === key) return true
+        const kt = sigTokens(key)
+        return kt.length > 0 && kt.every((t) => haystackTokens.has(t))
+      }
       const sn = normName(senderName)
       if (sn.length >= 4) {
-        for (const { c, key } of named) if (sn === key || sn.includes(key) || key.includes(sn)) return c
+        const snTokens = new Set(sn.split(/\s+/))
+        for (const { c, key } of named) if (matchesKey(snTokens, key, sn)) return c
       }
       const hay = normName(text)
-      if (hay) for (const { c, key } of named) if (hay.includes(key)) return c
+      if (hay) {
+        const hayTokens = new Set(hay.split(/\s+/))
+        for (const { c, key } of named) if (matchesKey(hayTokens, key)) return c
+      }
       return null
     },
     projectFor(clientId) {

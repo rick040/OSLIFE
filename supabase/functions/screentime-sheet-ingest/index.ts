@@ -43,7 +43,8 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ ok: false, error: "Method not allowed" }, 405);
 
   const secret = req.headers.get("x-ingest-secret") ?? "";
-  if (INGEST_SECRET && secret !== INGEST_SECRET) return json({ ok: false, error: "Unauthorized" }, 401);
+  // Fail CLOSED: an unset secret must NOT leave this service-role endpoint open.
+  if (!INGEST_SECRET || secret !== INGEST_SECRET) return json({ ok: false, error: "Unauthorized" }, 401);
 
   let payload: { rows?: InRow[]; unlocks?: UnlockRow[] };
   try {

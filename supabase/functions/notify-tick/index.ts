@@ -87,7 +87,25 @@ function inQuietHours(start: string | null, end: string | null, nowMinutes: numb
 // deno-lint-ignore no-explicit-any
 async function claim(sb: any, kind: string, dedupKey: string): Promise<boolean> {
   const { error } = await sb.from("notification_log").insert({ user_id: USER_ID, kind, dedup_key: dedupKey });
-  return !error;
+  if (!error) return true;
+  // Only a unique-constraint violation means "already sent" → skip. Any other
+  // error is transient; throw so the tick 500s and the cron retries, rather than
+  // silently dropping the notification (the old `return !error` swallowed it).
+  if ((error as { code?: string }).code === "23505") return false;
+  throw new Error(`claim(${kind}) failed: ${error.message}`);
+}
+
+/** Flip sent invoices whose due date has passed to 'overdue'. Runs every tick,
+ *  independent of notification prefs, so status reconciliation is never coupled
+ *  to whether urgent alerts are on or whether it's quiet hours. */
+// deno-lint-ignore no-explicit-any
+async function reconcileOverdueInvoices(sb: any, today: string): Promise<void> {
+  await sb.from("project_invoices")
+    .update({ status: "overdue" })
+    .eq("user_id", USER_ID)
+    .eq("status", "sent")
+    .not("due_on", "is", null)
+    .lt("due_on", today);
 }
 
 // ── Morning briefing (server-side subset of src/derive.ts buildNudge()) ─────
@@ -262,17 +280,16 @@ async function urgentAlerts(sb: any, today: string): Promise<UrgentAlert[]> {
     });
   }
 
-  // Overdue invoices — a sent invoice whose due date has passed. Flip it to
-  // 'overdue' server-side (mirrors the client-side reconcile) and nudge once.
+  // Overdue invoices — reconcileOverdueInvoices() has already flipped due-passed
+  // invoices to 'overdue' (unconditionally, every tick). Here we just nudge once
+  // per overdue invoice; the claim keyed by invoice id dedups repeat ticks.
   const { data: invoiceRows } = await sb
     .from("project_invoices")
     .select("id,number,amount,due_on")
     .eq("user_id", USER_ID)
-    .eq("status", "sent")
-    .not("due_on", "is", null)
-    .lt("due_on", today);
+    .eq("status", "overdue")
+    .not("due_on", "is", null);
   for (const inv of invoiceRows ?? []) {
-    await sb.from("project_invoices").update({ status: "overdue" }).eq("id", inv.id);
     const label = (inv.number as string) ? `Factuur ${inv.number}` : "Een factuur";
     alerts.push({
       kind: "urgent_invoice_overdue",
@@ -292,7 +309,8 @@ async function urgentAlerts(sb: any, today: string): Promise<UrgentAlert[]> {
     const cycle = (c.follow_up_cycle_days as number) ?? 30;
     const due = new Date((c.last_contacted_at as string).slice(0, 10) + "T00:00:00");
     due.setDate(due.getDate() + cycle);
-    const dueStr = due.toISOString().slice(0, 10);
+    // Local getters, not toISOString() — the latter shifts a day early vs `today`.
+    const dueStr = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, "0")}-${String(due.getDate()).padStart(2, "0")}`;
     if (dueStr < today) {
       const daysSince = daysBetween((c.last_contacted_at as string).slice(0, 10), today);
       alerts.push({
@@ -310,10 +328,14 @@ async function urgentAlerts(sb: any, today: string): Promise<UrgentAlert[]> {
 
 Deno.serve(async (req) => {
   const auth = bearerToken(req);
-  if (CRON_SECRET && auth !== CRON_SECRET) return json({ error: "Unauthorized" }, 401);
+  // Fail CLOSED: an unset secret must NOT leave this service-role endpoint open.
+  if (!CRON_SECRET || auth !== CRON_SECRET) return json({ error: "Unauthorized" }, 401);
   if (!BOT_TOKEN) return json({ error: "TELEGRAM_BOT_TOKEN secret is not set" }, 503);
 
   const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  // Reconcile invoice status every tick, before (and independent of) any pref
+  // gating — status must stay correct even with alerts off or during quiet hours.
+  await reconcileOverdueInvoices(sb, amsterdamToday());
   const { data: prefs } = await sb.from("notification_prefs").select("*").eq("user_id", USER_ID).maybeSingle();
   if (!prefs?.telegram_chat_id) return json({ ok: true, skipped: "not linked" });
 

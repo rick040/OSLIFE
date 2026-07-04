@@ -70,9 +70,11 @@ Deno.serve(async (req) => {
   // Allow OPTIONS for CORS preflight
   if (req.method === "OPTIONS") return corsPreflight(CORS_BASIC);
 
-  // Auth: accept either a Bearer token matching SYNC_SECRET or the Supabase service key
+  // Auth: accept either a Bearer token matching SYNC_SECRET or the Supabase service
+  // key. Fail CLOSED — require one of the configured secrets. The service key is
+  // always injected, so an unset SYNC_SECRET no longer leaves this endpoint open.
   const token = bearerToken(req);
-  if (SYNC_SECRET && token !== SYNC_SECRET && token !== SUPABASE_SERVICE_KEY) {
+  if (token !== SUPABASE_SERVICE_KEY && !(SYNC_SECRET && token === SYNC_SECRET)) {
     return jsonBare({ error: "Unauthorized" }, 401);
   }
 

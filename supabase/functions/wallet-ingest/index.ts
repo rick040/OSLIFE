@@ -19,6 +19,17 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { SUPABASE_SERVICE_KEY, SUPABASE_URL, USER_ID, jsonResponder } from '../_shared/http.ts'
+import { amsterdamToday } from '../_shared/dates.ts'
+
+/** Parse a Dutch/EN money string; the LAST separator is the decimal point,
+ *  everything before it is thousands grouping ("1.234,50" → 1234.5). */
+function parseMoney(s: string): number {
+  const lastSep = Math.max(s.lastIndexOf(','), s.lastIndexOf('.'))
+  if (lastSep === -1) return parseFloat(s)
+  const intPart = s.slice(0, lastSep).replace(/[.,\s]/g, '')
+  const decPart = s.slice(lastSep + 1)
+  return parseFloat(`${intPart}.${decPart}`)
+}
 
 const WEBHOOK_SECRET = Deno.env.get('WALLET_WEBHOOK_SECRET') ?? ''
 
@@ -74,10 +85,12 @@ function inferDomain(merchant: string): string {
  */
 function parseNotification(title: string, text: string): { amount: number; merchant: string } | null {
   const combined = `${title} ${text}`
-  const amountMatch = combined.match(/[€$£]?\s*(\d{1,6}[.,]\d{2})/u)
+  // Handle grouped thousands ("€1.234,50") — the old \d{1,6}[.,]\d{2} matched only
+  // "1.23" of that and stored 1.23 instead of 1234.50.
+  const amountMatch = combined.match(/[€$£]?\s*(\d{1,3}(?:[.,]\d{3})*[.,]\d{2}|\d+[.,]\d{2})/u)
   if (!amountMatch) return null
 
-  const amount = parseFloat(amountMatch[1].replace(',', '.'))
+  const amount = parseMoney(amountMatch[1])
 
   // Extract merchant: everything after "bij", "at", "@", "van" keywords
   const merchantMatch = combined.match(/(?:bij|at|@|from|van)\s+([A-Za-zÀ-ÿ0-9\s&'.,-]{2,40}?)(?:\s*$|\s*\.|,)/i)
@@ -95,7 +108,8 @@ Deno.serve(async (req) => {
 
   // Validate shared secret
   const secret = req.headers.get('x-webhook-secret') ?? ''
-  if (WEBHOOK_SECRET && secret !== WEBHOOK_SECRET) {
+  // Fail CLOSED: an unset secret must NOT leave this service-role endpoint open.
+  if (!WEBHOOK_SECRET || secret !== WEBHOOK_SECRET) {
     return new Response('Unauthorized', { status: 401 })
   }
 
@@ -116,16 +130,21 @@ Deno.serve(async (req) => {
 
   const { amount, merchant } = parsed
   const now = new Date().toISOString()
-  const dedupKey = `${now.slice(0, 16)}|${amount}|${merchant.toLowerCase()}`
+  const occurredOn = amsterdamToday()       // Amsterdam calendar day, not UTC
+  const storedAmount = -Math.abs(amount)    // spending = negative
+  // Shared cross-source dedup contract `${occurred_on}|${amount.toFixed(2)}` — the
+  // exact key the ABN CSV import and Betalingen sheet use, so the same purchase
+  // arriving from Wallet AND a later CSV/sheet import collapses to one row.
+  const dedupKey = `${occurredOn}|${storedAmount.toFixed(2)}`
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
   const { error } = await supabase.from('finance_tx').upsert(
     {
       user_id: USER_ID,
       dedup_key: dedupKey,
-      occurred_on: now.slice(0, 10),      // schema: occurred_on (not 'date')
+      occurred_on: occurredOn,             // schema: occurred_on (not 'date')
       paid_at: now,
-      amount: -Math.abs(amount),           // spending = negative
+      amount: storedAmount,
       counterparty: merchant,              // schema: counterparty (not 'merchant')
       description: `${title} | ${text}`.slice(0, 200),
       category: inferCategory(merchant),

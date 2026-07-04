@@ -20,7 +20,12 @@ export function nextFollowUp(client: Client): string | null {
   const cycle = client.followUpCycleDays ?? DEFAULT_CYCLE_DAYS
   const base = new Date(client.lastContactedAt.slice(0, 10) + 'T00:00:00')
   base.setDate(base.getDate() + cycle)
-  return base.toISOString().slice(0, 10)
+  // Format with local getters — NOT toISOString(), which converts local midnight
+  // to UTC and lands a day early in Europe/Amsterdam (UTC+1/+2).
+  const y = base.getFullYear()
+  const mo = String(base.getMonth() + 1).padStart(2, '0')
+  const d = String(base.getDate()).padStart(2, '0')
+  return `${y}-${mo}-${d}`
 }
 
 /**

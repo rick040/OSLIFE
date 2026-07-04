@@ -112,4 +112,11 @@ describe('buildMatcher', () => {
     expect(m.weak('Studio X', '')?.id).toBe('c1')
     expect(m.projectFor('c1')?.id).toBe('p1')
   })
+
+  it('weak match requires a shared whole token, not a substring', () => {
+    // Regression (M13): "denmark" must not match a client keyed "mark".
+    const m = buildMatcher([client({ id: 'cm', name: 'Mark' })], [])
+    expect(m.weak('Denmark Tourism', '')).toBeNull()
+    expect(m.weak('Mark Jansen', '')?.id).toBe('cm')
+  })
 })
