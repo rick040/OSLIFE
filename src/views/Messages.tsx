@@ -211,9 +211,14 @@ export default function Messages({
 }
 
 function Thread({ conv, onBack }: { conv: Conversation; onBack: () => void }) {
-  const { deleteMessage } = useStore()
+  const { deleteMessage, clients, linkSenderToClient } = useStore()
   const meta = CH[conv.latest.channel]
   const ordered = [...conv.messages].sort((a, b) => a.ts.localeCompare(b.ts))
+  // Unmatched email conversations are keyed by sender address ("email:<addr>").
+  // Offer to link that sender to a client — persists in-app, no Notion.
+  const senderAddr = !conv.messages.some((m) => m.clientId) && conv.key.startsWith('email:')
+    ? conv.key.slice('email:'.length)
+    : null
   return (
     <>
       <div className="flex items-center gap-3 p-4 border-b border-line">
@@ -230,6 +235,19 @@ function Thread({ conv, onBack }: { conv: Conversation; onBack: () => void }) {
             {conv.count} berichten
           </div>
         </div>
+        {senderAddr && (
+          <select
+            defaultValue=""
+            onChange={(e) => { if (e.target.value) { linkSenderToClient(e.target.value, senderAddr); onBack() } }}
+            className="text-[11px] bg-sunken border border-line rounded-lg px-2 py-1 text-muted shrink-0 max-w-[42%]"
+            title={`Koppel ${senderAddr} aan een klant`}
+          >
+            <option value="">Koppel aan klant…</option>
+            {[...clients].sort((a, b) => a.name.localeCompare(b.name)).map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
         {ordered.map((m) => (m.channel === 'whatsapp'

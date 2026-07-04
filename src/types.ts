@@ -347,6 +347,7 @@ export interface Client {
   website?: string | null
   lastContactedAt?: string | null // ISO — bumped when a message links to the client
   followUpCycleDays?: number // cadence the follow-up health dot measures against
+  aliases?: string[] // sender emails and/or domains that map inbound mail to this client (learned in-app)
 }
 
 // ── CRM: unified client messages (email / fiverr / whatsapp) ─────────────────

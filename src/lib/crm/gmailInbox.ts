@@ -88,15 +88,24 @@ export function buildMatcher(clients: Client[], projects: Project[]): ClientProj
   const byDomain = new Map<string, Client>()
   const named: { c: Client; key: string }[] = []
 
+  const addEmail = (c: Client, raw: string) => {
+    const e = raw.trim().toLowerCase()
+    if (!e) return
+    byEmail.set(e, c)
+    const d = domainOfEmail(e)
+    if (d && !GENERIC_DOMAINS.has(d) && !byDomain.has(d)) byDomain.set(d, c)
+  }
+  const addDomain = (c: Client, raw: string) => {
+    const d = raw.trim().toLowerCase()
+    if (d && !GENERIC_DOMAINS.has(d) && !byDomain.has(d)) byDomain.set(d, c)
+  }
+
   for (const c of clients) {
-    if (c.email) {
-      const e = c.email.trim().toLowerCase()
-      byEmail.set(e, c)
-      const d = domainOfEmail(e)
-      if (d && !GENERIC_DOMAINS.has(d) && !byDomain.has(d)) byDomain.set(d, c)
-    }
-    const wd = domainOfWebsite(c.website ?? '')
-    if (wd && !GENERIC_DOMAINS.has(wd) && !byDomain.has(wd)) byDomain.set(wd, c)
+    if (c.email) addEmail(c, c.email)
+    addDomain(c, domainOfWebsite(c.website ?? ''))
+    // Learned in-app aliases (Notion-free): an entry with '@' is a full sender
+    // address, otherwise it's a company domain that maps the whole company.
+    for (const a of c.aliases ?? []) (a.includes('@') ? addEmail : addDomain)(c, a)
     const n = normName(c.name)
     if (n.length >= 4) named.push({ c, key: n })
   }

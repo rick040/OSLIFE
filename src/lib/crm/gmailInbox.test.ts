@@ -88,6 +88,22 @@ describe('deriveGmailMessages — attribution', () => {
   })
 })
 
+describe('deriveGmailMessages — learned aliases (Notion-free)', () => {
+  it('matches an unlabelled sender via a learned email alias', () => {
+    const clients = [client({ email: null, aliases: ['jan@studio-x.nl'] })]
+    const out = deriveGmailMessages([email({ from: 'jan@studio-x.nl' })], clients)
+    expect(out).toHaveLength(1)
+    expect(out[0].clientId).toBe('c1')
+  })
+
+  it('matches any address at a learned company domain alias', () => {
+    const clients = [client({ email: null, aliases: ['studio-x.nl'] })]
+    const out = deriveGmailMessages([email({ from: 'anyone@studio-x.nl' })], clients)
+    expect(out).toHaveLength(1)
+    expect(out[0].clientId).toBe('c1')
+  })
+})
+
 describe('buildMatcher', () => {
   it('exposes strong/weak/projectFor', () => {
     const m = buildMatcher([client({ email: 'jan@studio-x.nl' })], [project({ clientId: 'c1' })])

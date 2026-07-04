@@ -949,7 +949,7 @@ export async function fetchProjects(): Promise<Project[]> {
 }
 
 export async function fetchClients(): Promise<Client[]> {
-  return fetchRows('clients', 'id,name,domain,client_status,potentie,scope,first_contact,email,website_url,notion_url,last_contacted_at,follow_up_cycle_days', { column: 'name', ascending: true }, (r) => ({
+  return fetchRows('clients', 'id,name,domain,client_status,potentie,scope,first_contact,email,website_url,notion_url,last_contacted_at,follow_up_cycle_days,aliases', { column: 'name', ascending: true }, (r) => ({
     id:               r.id as string,
     name:             r.name as string,
     domain:           ((r.domain as Domain) ?? 'personal'),
@@ -961,6 +961,7 @@ export async function fetchClients(): Promise<Client[]> {
     website:          (r.website_url as string) ?? null,
     lastContactedAt:  (r.last_contacted_at as string) ?? null,
     followUpCycleDays: (r.follow_up_cycle_days as number) ?? 30,
+    aliases:          (r.aliases as string[]) ?? [],
   }))
 }
 
@@ -986,6 +987,7 @@ const CLIENT_COLS: Record<string, string> = {
   domain: 'domain',
   lastContactedAt: 'last_contacted_at',
   followUpCycleDays: 'follow_up_cycle_days',
+  aliases: 'aliases',
 }
 
 export async function createClientRow(c: Omit<Client, 'id'>): Promise<Client | null> {

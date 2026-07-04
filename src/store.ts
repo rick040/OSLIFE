@@ -258,6 +258,9 @@ interface State {
   addClient: (client: Omit<Client, 'id'>) => void
   updateClient: (id: string, patch: Partial<Client>) => void
   deleteClient: (id: string) => void
+  // Learn an inbox sender→client mapping in-app (adds the address + its company
+  // domain to the client's aliases so future mail auto-attributes). No Notion.
+  linkSenderToClient: (clientId: string, senderAddr: string) => void
 
   // CRM — messages (unified inbox)
   markConversationRead: (contactKey: string) => void
@@ -960,6 +963,28 @@ export const useStore = create<State>()(
       updateClient: (id, patch) => {
         patchSlice(set, 'clients', id, patch)
         void updateClientRow(id, patch)
+      },
+
+      linkSenderToClient: (clientId, senderAddr) => {
+        // Extract the bare address and, when it's not a free provider, its domain.
+        const m = senderAddr.match(/<([^>]+)>/)
+        const email = (m ? m[1] : senderAddr).trim().toLowerCase()
+        if (!email.includes('@')) return
+        const domain = email.slice(email.lastIndexOf('@') + 1)
+        const FREE = new Set([
+          'gmail.com', 'googlemail.com', 'hotmail.com', 'hotmail.nl', 'outlook.com', 'outlook.nl',
+          'live.com', 'live.nl', 'yahoo.com', 'icloud.com', 'me.com', 'aol.com', 'proton.me',
+          'protonmail.com', 'ziggo.nl', 'kpnmail.nl', 'telfort.nl', 'home.nl', 'planet.nl', 'hetnet.nl',
+        ])
+        const additions = [email, ...(domain && !FREE.has(domain) ? [domain] : [])]
+        const client = get().clients.find((c) => c.id === clientId)
+        if (!client) return
+        const aliases = [...new Set([...(client.aliases ?? []), ...additions])]
+        patchSlice(set, 'clients', clientId, { aliases })
+        set((s) => ({
+          activity: pushSignal(s.activity, { text: `Afzender gekoppeld aan ${client.name}`, domain: client.domain, loop: 'fast' }),
+        }))
+        void updateClientRow(clientId, { aliases })
       },
 
       deleteClient: (id) => {
