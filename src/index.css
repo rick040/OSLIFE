@@ -2,36 +2,144 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: light;
+@layer base {
+  :root {
+    /* ── OSLIFE neutrals (warm paper) ─────────────────────────── */
+    --canvas: 68.6 22.6% 93.9%;
+    --surface: 0 0% 100%;
+    --sunken: 68.6 25.9% 94.7%;
+    --line: 70.9 20% 89.2%;
+    --scrim: 77.1 18.9% 7.3%;
+
+    /* text ramp */
+    --ink: 80 11.5% 10.2%;
+    --ink-soft: 77.1 10.8% 25.5%;
+    --muted-foreground: 77.6 9.6% 34.7%;
+    --faint: 75 6.7% 53.3%;
+
+    /* brand */
+    --forest: 85 36.7% 19.2%;
+    --forest-hi: 85.7 37.4% 25.7%;
+    --lime: 70.3 70% 59.4%;
+    --lime-hi: 70.5 73.3% 66.3%;
+
+    /* ── shadcn semantic tokens ───────────────────────────────── */
+    --background: var(--canvas);
+    --foreground: var(--ink);
+    --card: var(--surface);
+    --card-foreground: var(--ink);
+    --popover: var(--surface);
+    --popover-foreground: var(--ink);
+    --primary: var(--forest);
+    --primary-foreground: 0 0% 100%;
+    --secondary: var(--sunken);
+    --secondary-foreground: var(--ink);
+    --muted: var(--sunken);
+    --accent: var(--line);
+    --accent-foreground: var(--ink);
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: var(--line);
+    --input: var(--line);
+    --ring: var(--forest);
+    --radius: 0.75rem;
+
+    /* sidebar */
+    --sidebar-background: var(--surface);
+    --sidebar-foreground: var(--muted-foreground);
+    --sidebar-primary: var(--forest);
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: var(--sunken);
+    --sidebar-accent-foreground: var(--ink);
+    --sidebar-border: var(--line);
+    --sidebar-ring: var(--forest);
+
+    color-scheme: light;
+  }
+
+  .dark {
+    /* ── OSLIFE neutrals (warm charcoal) ──────────────────────── */
+    --canvas: 80 10% 8%;
+    --surface: 84 9% 12%;
+    --sunken: 84 8% 16%;
+    --line: 84 7% 20%;
+    --scrim: 77 18% 5%;
+
+    /* text ramp */
+    --ink: 68 12% 92%;
+    --ink-soft: 70 10% 72%;
+    --muted-foreground: 75 8% 62%;
+    --faint: 75 7% 48%;
+
+    /* brand (lightened so it reads on charcoal) */
+    --forest: 88 34% 42%;
+    --forest-hi: 88 36% 50%;
+    --lime: 70.3 65% 60%;
+    --lime-hi: 70.5 68% 66%;
+
+    /* ── shadcn semantic tokens ───────────────────────────────── */
+    --background: var(--canvas);
+    --foreground: var(--ink);
+    --card: var(--surface);
+    --card-foreground: var(--ink);
+    --popover: var(--surface);
+    --popover-foreground: var(--ink);
+    --primary: var(--forest);
+    --primary-foreground: 68 12% 96%;
+    --secondary: var(--sunken);
+    --secondary-foreground: var(--ink);
+    --muted: var(--sunken);
+    --accent: 84 8% 22%;
+    --accent-foreground: var(--ink);
+    --destructive: 0 62% 46%;
+    --destructive-foreground: 0 0% 98%;
+    --border: var(--line);
+    --input: 84 7% 24%;
+    --ring: 88 34% 50%;
+
+    /* sidebar */
+    --sidebar-background: 84 10% 10%;
+    --sidebar-foreground: 75 8% 65%;
+    --sidebar-primary: 88 32% 40%;
+    --sidebar-primary-foreground: 68 12% 96%;
+    --sidebar-accent: 84 8% 18%;
+    --sidebar-accent-foreground: var(--ink);
+    --sidebar-border: 84 7% 20%;
+    --sidebar-ring: 88 34% 50%;
+
+    color-scheme: dark;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
 }
 
-html,
-body,
-#root {
-  height: 100%;
-}
-
-body {
-  margin: 0;
-  background: #f2f3ec;
-  color: #1b1d17;
-  -webkit-font-smoothing: antialiased;
-  font-feature-settings: 'cv11', 'ss01';
-}
-
-/* calm light scrollbars */
+/* calm scrollbars (theme-aware) */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #dcded2;
+  background: hsl(var(--line));
   border-radius: 8px;
-  border: 2px solid #f2f3ec;
+  border: 2px solid hsl(var(--canvas));
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #c7cabb;
+  background: hsl(var(--faint) / 0.6);
 }
 
 @layer components {
