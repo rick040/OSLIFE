@@ -4,6 +4,7 @@ import { TODAY, fmtDate } from '../domains'
 import { SectionTitle, Empty } from '../components/ui'
 import { Mail, MailOpen, CheckCheck, ExternalLink } from 'lucide-react'
 import type { EmailItem } from '../types'
+import { classifyImportance, emailTags } from '../lib/crm/emailClassify'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -26,9 +27,9 @@ function impColor(imp: string | null | undefined): string {
 }
 
 function resolveImportance(e: EmailItem): 'high' | 'med' | 'low' | null {
-  if (e.importance) return e.importance
-  if (e.important) return 'high'
-  return null
+  // The synced `importance` is unreliable (flags social/newsletters high), so
+  // classify locally from sender + subject instead.
+  return classifyImportance(e)
 }
 
 function when(iso: string) {
@@ -145,6 +146,7 @@ export default function Inbox() {
             const imp = resolveImportance(e)
             const color = impColor(imp)
             const name = extractName(e.from)
+            const tags = emailTags(e)
             return (
               <div
                 key={e.threadId ?? e.id}
@@ -165,6 +167,15 @@ export default function Inbox() {
                     <span className={`text-sm truncate ${e.unread ? 'text-ink font-semibold' : 'text-ink-soft'}`}>
                       {name}
                     </span>
+                    {tags.map((t) => (
+                      <span
+                        key={t.key}
+                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0"
+                        style={{ color: t.hex, background: `${t.hex}22` }}
+                      >
+                        {t.label}
+                      </span>
+                    ))}
                     {count > 1 && (
                       <span className="text-[11px] font-bold text-ink-soft bg-sunken rounded-full px-1.5 py-0.5 shrink-0">
                         {count}

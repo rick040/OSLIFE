@@ -22,6 +22,7 @@
 // These rows are read-only here: marking one read persists back to
 // gmail_messages (via markEmailRead), never written into client_messages.
 import type { Client, EmailItem, Message, Project, ProjectStatus } from '../../types'
+import { classifyImportance } from './emailClassify'
 
 export const PRJCT_LABEL = 'Rick - PRJCT Agency'
 export const FIVERR_LABEL = 'fiverr-logged'
@@ -165,6 +166,10 @@ export function deriveGmailMessages(emails: EmailItem[], clients: Client[], proj
 
     // Inclusion gate: CRM-labelled mail, or a strong sender→client match.
     if (!labelled && !client) continue
+    // The "Rick - PRJCT Agency" label covers the whole mailbox, so drop social /
+    // marketing / notification noise — unless it's tied to a client or is an
+    // explicitly-curated Fiverr conversation.
+    if (!client && !fiverr && classifyImportance(e) === 'low') continue
 
     const proj = client ? matcher.projectFor(client.id) : null
     const channel = fiverr ? 'fiverr' : 'email'
