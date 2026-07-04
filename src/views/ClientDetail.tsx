@@ -20,7 +20,7 @@ export default function ClientDetail({ client: initial, onClose }: { client: Cli
   const nextFu = nextFollowUp(client)
 
   const clientProjects = projects.filter((p) => p.clientId === client.id || p.client === client.name)
-  const gmailDerived = useMemo(() => deriveGmailMessages(emails, clients), [emails, clients])
+  const gmailDerived = useMemo(() => deriveGmailMessages(emails, clients, projects), [emails, clients, projects])
   const allMessages = useMemo(() => [...messages, ...gmailDerived], [messages, gmailDerived])
   const clientMessages = allMessages
     .filter((m) => m.clientId === client.id)

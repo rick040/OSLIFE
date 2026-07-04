@@ -44,7 +44,7 @@ export default function Messages({
   onClose: () => void
   onReadConversation: (contactKey: string) => void
 }) {
-  const { emails, clients, markEmailRead } = useStore()
+  const { emails, clients, projects, markEmailRead } = useStore()
   const [filter, setFilter] = useState<'all' | Channel>('all')
   const [query, setQuery] = useState('')
   const [openKey, setOpenKey] = useState<string | null>(null)
@@ -52,7 +52,7 @@ export default function Messages({
 
   // Client/Fiverr correspondence mirrored from Gmail, merged in read-only
   // alongside manually-added and WhatsApp-imported messages.
-  const gmailDerived = useMemo(() => deriveGmailMessages(emails, clients), [emails, clients])
+  const gmailDerived = useMemo(() => deriveGmailMessages(emails, clients, projects), [emails, clients, projects])
   const allMessages = useMemo(() => [...messages, ...gmailDerived], [messages, gmailDerived])
 
   const conversations = useMemo(() => {

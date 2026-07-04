@@ -669,7 +669,9 @@ export async function fetchSubscriptions(): Promise<Subscription[]> {
 // ── Email / Inbox ─────────────────────────────────────────────────────────────
 
 export async function fetchEmails(): Promise<EmailItem[]> {
-  return fetchRows('gmail_messages', 'id,from_addr,subject,snippet,received_at,read,importance,labels', { column: 'received_at', ascending: false, limit: 50 }, (r) => ({
+  // 400 (up from 50) so the label-filtered CRM inbox (deriveGmailMessages) sees
+  // enough history — client/Fiverr-labelled mail is interleaved among all mail.
+  return fetchRows('gmail_messages', 'id,from_addr,subject,snippet,received_at,read,importance,labels', { column: 'received_at', ascending: false, limit: 400 }, (r) => ({
     id: r.id as string,
     from: (r.from_addr as string) ?? '',
     subject: (r.subject as string) ?? '',
