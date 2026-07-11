@@ -21,6 +21,7 @@ import {
   Home,
   Dog,
   CheckSquare,
+  Signal,
 } from 'lucide-react'
 
 // ── Central screen registry ──────────────────────────────────────────────────
@@ -48,6 +49,7 @@ export type View =
   | 'memory'
   | 'reflect'
   | 'mindmap'
+  | 'sync'
 
 export type ScreenGroup = 'Surface' | 'Life' | 'Business' | 'Intake' | 'Reflect'
 
@@ -95,6 +97,7 @@ export const SCREENS: Screen[] = [
   { id: 'memory', label: 'Geheugen', icon: Database, layer: 'Herinnering', group: 'Reflect', accent: 'text-muted' },
   { id: 'reflect', label: 'Reflectie', icon: Brain, layer: 'Reflectie', group: 'Reflect', accent: 'text-cross' },
   { id: 'mindmap', label: 'Verbanden', icon: Network, layer: 'Reflectie · grafiek', group: 'Reflect', accent: 'text-prjct' },
+  { id: 'sync', label: 'Databronnen', icon: Signal, layer: 'Systeem · sync-status', group: 'Reflect', accent: 'text-forest' },
 ]
 
 export const GROUP_ORDER: ScreenGroup[] = ['Surface', 'Life', 'Business', 'Intake', 'Reflect']
