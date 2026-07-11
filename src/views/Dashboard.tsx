@@ -3,8 +3,10 @@ import { TODAY, DOMAIN_META, fmtDate, daysBetween } from '../domains'
 import { dueLabel } from '../lib/dates'
 import { OPENING_BALANCE } from '../mockData'
 import { DomainChip, Empty, Ring, SetupHint } from '../components/ui'
+import { useWeather } from '../hooks/useWeather'
+import LocationWeather from '../components/LocationWeather'
+import NudgeCard, { type DashNudge, type NudgeTone } from '../components/NudgeCard'
 import {
-  Bell,
   CheckCircle2,
   SkipForward,
   Clock,
@@ -103,28 +105,95 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const hour = amsterdamHour()
   const greeting = hour < 12 ? 'Goedemorgen' : hour < 18 ? 'Goedemiddag' : 'Goedenavond'
 
+  // Live location + temperature (single geolocation request, shared with the card).
+  const weather = useWeather()
+  const locationLabel = weather.place ?? 'Geldrop'
+
   // Nudge: a Reflect pass writes a rich cross-domain nudge. Until then (e.g. fresh
   // live data, before any nightly reflect), derive the single most pressing nudge
-  // from the live data so the card is never blank.
+  // from the live data so the card is never blank. Either way we hand NudgeCard a
+  // structured nudge (tone + domain + source + action), not a bare string.
   const overduePay = openPayments.filter((p) => p.due && daysBetween(TODAY, p.due) < 0)
   const overdueProjects = activeProjects.filter((p) => p.deadline && daysBetween(TODAY, p.deadline) < 0)
   const habitsLeft = habits.filter((h) => !h.doneToday)
-  const computedNudge = (() => {
+  const unreadImportant = importantMail.filter((e) => e.unread)
+
+  const dashNudge: DashNudge | null = (() => {
+    // Prefer a Reflect-authored nudge when one is present.
+    const authored = nudge.text?.trim()
+    if (authored) {
+      const tone: NudgeTone =
+        nudge.id === 'nudge-overdue' || nudge.id === 'nudge-blocked'
+          ? 'urgent'
+          : nudge.id === 'nudge-calm'
+            ? 'calm'
+            : 'attention'
+      const ctaMap: Record<string, { label: string; view: string } | undefined> = {
+        'nudge-overdue': { label: 'Naar Geheugen', view: 'memory' },
+        'nudge-blocked': { label: 'Naar Projecten', view: 'projects' },
+        'nudge-corr': { label: 'Naar Reflectie', view: 'reflect' },
+        'nudge-next': { label: 'Naar Geheugen', view: 'memory' },
+        'nudge-calm': { label: 'Naar Noordster', view: 'northstar' },
+      }
+      return {
+        text: authored,
+        domain: nudge.domain,
+        reason: nudge.reason || 'gekozen uit je geheugen',
+        tone,
+        cta: ctaMap[nudge.id],
+      }
+    }
+    // Otherwise derive the single most pressing nudge from live data.
     if (overduePay.length)
-      return `Je hebt ${overduePay.length} betaling${overduePay.length > 1 ? 'en' : ''} over de vervaldatum (o.a. ${overduePay[0].payee}). Regel die eerst — ze blokkeren je hoofd.`
+      return {
+        text: `Je hebt ${overduePay.length} betaling${overduePay.length > 1 ? 'en' : ''} over de vervaldatum (o.a. ${overduePay[0].payee}). Regel die eerst — ze blokkeren je hoofd.`,
+        domain: 'buurtkaart',
+        reason: 'oudste verlopen betaling',
+        tone: 'urgent',
+        cta: { label: 'Naar Geld', view: 'money' },
+      }
     if (overdueProjects.length)
-      return `${overdueProjects[0].name} staat over de deadline. Plan vandaag één concreet blok om 'm los te trekken.`
+      return {
+        text: `${overdueProjects[0].name} staat over de deadline. Plan vandaag één concreet blok om 'm los te trekken.`,
+        domain: overdueProjects[0].domain,
+        reason: 'project over de deadline',
+        tone: 'urgent',
+        cta: { label: 'Naar Projecten', view: 'projects' },
+      }
     if (todayIsLive && today && today.sleepHours > 0 && today.sleepHours < 6.5)
-      return `Maar ${today.sleepHours}u geslapen. Houd vandaag je zwaarste denkwerk in de ochtend en plan niks na 22:30.`
-    if (importantMail.some((e) => e.unread))
-      return `${importantMail.filter((e) => e.unread).length} belangrijke mail wacht op antwoord. Beantwoord 'm nu het nog klein is.`
+      return {
+        text: `Maar ${today.sleepHours}u geslapen. Houd vandaag je zwaarste denkwerk in de ochtend en plan niks na 22:30.`,
+        domain: 'cross',
+        reason: 'weinig slaap gemeten',
+        tone: 'attention',
+        cta: { label: 'Naar Gezondheid', view: 'vitals' },
+      }
+    if (unreadImportant.length)
+      return {
+        text: `${unreadImportant.length} belangrijke mail wacht op antwoord. Beantwoord 'm nu het nog klein is.`,
+        domain: 'parkingyou',
+        reason: 'belangrijke mail ongelezen',
+        tone: 'attention',
+        cta: { label: 'Naar Inbox', view: 'inbox' },
+      }
     if (habitsLeft.length && habits.length)
-      return `Nog ${habitsLeft.length}/${habits.length} gewoonten open vandaag. Pak de makkelijkste eerst voor de momentum.`
+      return {
+        text: `Nog ${habitsLeft.length}/${habits.length} gewoonten open vandaag. Pak de makkelijkste eerst voor de momentum.`,
+        domain: 'buurtkaart',
+        reason: 'gewoonten nog open vandaag',
+        tone: 'attention',
+        cta: { label: 'Naar Gewoonten', view: 'habits' },
+      }
     if (habits.length)
-      return 'Alle gewoonten staan, geen betaling te laat. Mooie dag — kies één ding dat je vooruit helpt.'
-    return ''
+      return {
+        text: 'Alle gewoonten staan, geen betaling te laat. Mooie dag — kies één ding dat je vooruit helpt.',
+        domain: 'personal',
+        reason: 'alles onder controle',
+        tone: 'calm',
+        cta: { label: 'Naar Noordster', view: 'northstar' },
+      }
+    return null
   })()
-  const nudgeText = nudge.text?.trim() || computedNudge
 
   // header summary — only show the stat line once there's something to count,
   // so a freshly-connected account doesn't read "0 · 0 · 0 · 0/0".
@@ -136,29 +205,22 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
 
   return (
     <div className="space-y-6">
-      {/* header */}
-      <div className="animate-fade-up">
-        <div className="text-sm text-muted">{fmtDate(TODAY)} · Geldrop</div>
-        <h1 className="text-2xl font-semibold mt-1">{greeting}, Rick.</h1>
-        <p className="text-muted text-sm mt-1">
-          {summaryParts.length ? summaryParts.join(' · ') : 'Verbind je data hieronder om je dag in één oogopslag te zien.'}
-        </p>
+      {/* header: greeting + live location/weather */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch animate-fade-up">
+        <div className="lg:col-span-2 flex flex-col justify-center">
+          <div className="text-sm text-muted">
+            {fmtDate(TODAY)} · {locationLabel}
+          </div>
+          <h1 className="text-2xl font-semibold mt-1">{greeting}, Rick.</h1>
+          <p className="text-muted text-sm mt-1">
+            {summaryParts.length ? summaryParts.join(' · ') : 'Verbind je data hieronder om je dag in één oogopslag te zien.'}
+          </p>
+        </div>
+        <LocationWeather weather={weather} onRefresh={weather.refresh} />
       </div>
 
       {/* nudge */}
-      {nudgeText && (
-        <div className="card p-4 border-cross/40 bg-cross/5 animate-fade-up" style={{ animationDelay: '40ms' }}>
-          <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-cross/15 p-2 animate-pulse-ring">
-              <Bell className="h-4 w-4 text-cross" />
-            </div>
-            <div>
-              <div className="text-xs uppercase tracking-wider text-cross font-semibold">Nudge van vandaag</div>
-              <p className="text-sm text-ink mt-1">{nudgeText}</p>
-            </div>
-          </div>
-        </div>
-      )}
+      {dashNudge && <NudgeCard nudge={dashNudge} onNav={onNav} />}
 
       {/* hero row: right-now + vitals */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-up" style={{ animationDelay: '80ms' }}>
