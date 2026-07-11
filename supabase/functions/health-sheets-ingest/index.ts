@@ -166,6 +166,9 @@ Deno.serve(async (req) => {
       deep_min:   r.deep_min   ?? 0,
       rem_min:    r.rem_min    ?? 0,
       awake_min:  r.awake_min  ?? 0,
+      // Real Samsung-Health session — overwrites any phone-derived estimate for
+      // this night (phone-events-ingest writes source='phone' and defers to this).
+      source:     'health_app',
     })), (r) => r.date)
 
     const { error } = await supabase

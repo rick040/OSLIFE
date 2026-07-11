@@ -47,6 +47,7 @@ Notion (read)  → notion-sync / notion-hq
 Notion (write) ◀── notion-mutate  (app edits a project/client → Notion)
 Geldrop Buurtkaart WordPress API ─▶ gbk-overview ─▶ Buurtkaart screen
 Google Wallet (MacroDroid)       ─▶ wallet-ingest ─▶ finance_tx
+Phone unlock/screen-off (MacroDroid) ─▶ phone-events-ingest ─▶ phone_events ─▶ health_sleep
 ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betalingen sheet)
 ```
 
@@ -67,7 +68,7 @@ ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betaling
 | Geld · transacties | **Betalingen Google Sheet** + **ABN AMRO CSV** (in-app) + Google Wallet | `payments-sheet-ingest` · in-app import · `wallet-ingest` | `finance_tx` |
 | Geld · Te betalen | **Payments Google Calendar** | Code.gs `syncPayments` | `payments` |
 | Schermtijd | **Schermtijd Google Sheet** (tab per categorie) | `screentime-sheet-ingest` | `screentime` |
-| Gezondheid | **Health Google Sheet** (slaap/activiteiten/gewicht/stappen) | `health-sheets-ingest` | `health_daily_stats`, `health_sleep`, `health_body_metrics` |
+| Gezondheid | **Health Google Sheet** (slaap/activiteiten/gewicht/stappen) + **phone-afgeleide slaap** (MacroDroid) | `health-sheets-ingest` · `phone-events-ingest` | `health_daily_stats`, `health_sleep`, `health_body_metrics`, `phone_events` |
 | Inbox / mail | **Gmail** | Code.gs `syncGmail` | `gmail_messages` |
 | Dagplanner / agenda | **Google Calendar** | Code.gs `syncCalendarBlocks` | `day_blocks` |
 | Gewoonten · Doelen · Kyra · Abonnementen | in-app (handmatig) | app write-back | `habits`, `goals`, `dog_log`, `subscriptions` |
@@ -97,6 +98,15 @@ cost. It runs automatically on load, on CSV import and when a new row is ingeste
 (realtime). Every tag is editable by hand in **Geld → Vendors**, and tapping any
 transaction opens an editor to change its category/domain or add a note; a manual
 category change also teaches the vendor cache for next time.
+
+### Phone-derived sleep
+When the Samsung Health export is empty, sleep still lands — inferred the way SHealth does it:
+from *not touching your phone at night*. A MacroDroid macro POSTs a timestamp on each **unlock**
+and **screen-off** to `phone-events-ingest`; the function logs them to `phone_events` and derives a
+session from the longest overnight gap (last activity before bed → first morning unlock), writing it
+to `health_sleep` with `source='phone'`. A real Samsung-Health session (`source='health_app'`) always
+wins for that night and is never overwritten by an estimate. Setup:
+`integrations/macrodroid/phone-sleep.md`.
 
 ### Finance dedup
 The Betalingen sheet and the in-app ABN AMRO CSV import both write `finance_tx` with the same
