@@ -36,6 +36,9 @@ maken niet uit. De verwachte tabs/kolommen + sheet-id properties staan boven in 
   Sheet-payloads en upserten idempotent.
 - `wallet-ingest` (`supabase/functions/wallet-ingest/`) — Google Wallet notificaties (MacroDroid) →
   `finance_tx`.
+- `phone-events-ingest` (`supabase/functions/phone-events-ingest/`) — MacroDroid ontgrendel- en
+  scherm-uit-events → `phone_events`, leidt daaruit slaap af → `health_sleep` (`source='phone'`).
+  Setup: `macrodroid/phone-sleep.md`.
 
 ## Finance dedup
 
