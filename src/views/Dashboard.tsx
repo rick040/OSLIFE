@@ -5,7 +5,7 @@ import { OPENING_BALANCE } from '../mockData'
 import { DomainChip, Empty, Ring, SetupHint } from '../components/ui'
 import { useWeather } from '../hooks/useWeather'
 import LocationWeather from '../components/LocationWeather'
-import NudgeCard, { type DashNudge, type NudgeTone } from '../components/NudgeCard'
+import NudgeCard, { storeNudgeToDash, type DashNudge } from '../components/NudgeCard'
 import {
   CheckCircle2,
   SkipForward,
@@ -120,29 +120,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
 
   const dashNudge: DashNudge | null = (() => {
     // Prefer a Reflect-authored nudge when one is present.
-    const authored = nudge.text?.trim()
-    if (authored) {
-      const tone: NudgeTone =
-        nudge.id === 'nudge-overdue' || nudge.id === 'nudge-blocked'
-          ? 'urgent'
-          : nudge.id === 'nudge-calm'
-            ? 'calm'
-            : 'attention'
-      const ctaMap: Record<string, { label: string; view: string } | undefined> = {
-        'nudge-overdue': { label: 'Naar Geheugen', view: 'memory' },
-        'nudge-blocked': { label: 'Naar Projecten', view: 'projects' },
-        'nudge-corr': { label: 'Naar Reflectie', view: 'reflect' },
-        'nudge-next': { label: 'Naar Geheugen', view: 'memory' },
-        'nudge-calm': { label: 'Naar Noordster', view: 'northstar' },
-      }
-      return {
-        text: authored,
-        domain: nudge.domain,
-        reason: nudge.reason || 'gekozen uit je geheugen',
-        tone,
-        cta: ctaMap[nudge.id],
-      }
-    }
+    if (nudge.text?.trim()) return storeNudgeToDash(nudge)
     // Otherwise derive the single most pressing nudge from live data.
     if (overduePay.length)
       return {

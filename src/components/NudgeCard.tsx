@@ -1,5 +1,5 @@
 import { AlertTriangle, Bell, Sparkles, ArrowRight, type LucideIcon } from 'lucide-react'
-import type { Domain } from '../types'
+import type { Domain, Nudge } from '../types'
 import { DOMAIN_META, DOMAIN_HEX } from '../domains'
 
 export type NudgeTone = 'urgent' | 'attention' | 'calm'
@@ -18,6 +18,34 @@ const TONE: Record<NudgeTone, { hex: string; label: string; icon: LucideIcon }> 
   urgent: { hex: '#C58392', label: 'Urgent', icon: AlertTriangle },
   attention: { hex: '#C6A05B', label: 'Aandacht', icon: Bell },
   calm: { hex: '#6FA07C', label: 'Rustig', icon: Sparkles },
+}
+
+/**
+ * Adapt a stored (Reflect-authored) Nudge into the structured shape the card
+ * renders: it derives the tone from the nudge id and maps it to a screen to act
+ * on. Shared by the Dashboard and Today headers so they stay in sync.
+ */
+export function storeNudgeToDash(nudge: Nudge): DashNudge {
+  const tone: NudgeTone =
+    nudge.id === 'nudge-overdue' || nudge.id === 'nudge-blocked'
+      ? 'urgent'
+      : nudge.id === 'nudge-calm'
+        ? 'calm'
+        : 'attention'
+  const ctaMap: Record<string, { label: string; view: string } | undefined> = {
+    'nudge-overdue': { label: 'Naar Geheugen', view: 'memory' },
+    'nudge-blocked': { label: 'Naar Projecten', view: 'projects' },
+    'nudge-corr': { label: 'Naar Reflectie', view: 'reflect' },
+    'nudge-next': { label: 'Naar Geheugen', view: 'memory' },
+    'nudge-calm': { label: 'Naar Noordster', view: 'northstar' },
+  }
+  return {
+    text: nudge.text,
+    domain: nudge.domain,
+    reason: nudge.reason || 'gekozen uit je geheugen',
+    tone,
+    cta: ctaMap[nudge.id],
+  }
 }
 
 /**

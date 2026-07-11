@@ -5,10 +5,18 @@ import { dueLabel } from '../lib/dates'
 import { DomainChip, SectionTitle, Empty } from '../components/ui'
 import CheckinCard from '../components/CheckinCard'
 import DopamineBar from '../components/DopamineBar'
-import { Sun, Bell, CheckCircle2, SkipForward, Flame, Clock, ArrowRight, Check } from 'lucide-react'
+import NudgeCard, { storeNudgeToDash } from '../components/NudgeCard'
+import { useWeather, weatherMeta } from '../hooks/useWeather'
+import { Sun, CheckCircle2, SkipForward, Flame, Clock, ArrowRight, Check } from 'lucide-react'
 
 export default function Today({ onNav }: { onNav: (v: string) => void }) {
   const { threads, blocks, habits, nudge, completeBlock, skipBlock, tickHabit, activity, projects, projectTasks, toggleProjectTask } = useStore()
+
+  // Live location + temperature for the header (falls back to Geldrop if denied).
+  const weather = useWeather()
+  const { Icon: WeatherIcon } = weatherMeta(weather.code, weather.isDay ?? true)
+  const locationLabel = weather.place ?? 'Geldrop'
+  const dashNudge = storeNudgeToDash(nudge)
 
   const openThreads = threads
     .filter((t) => t.status === 'open')
@@ -34,9 +42,19 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
     <div className="space-y-6">
       {/* header */}
       <div className="animate-fade-up">
-        <div className="flex items-center gap-2 text-muted text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-muted text-sm">
           <Sun className="h-4 w-4 text-personal" />
-          {new Date().toLocaleDateString('nl-NL', { weekday: 'long', timeZone: 'Europe/Amsterdam' }).replace(/^\w/, c => c.toUpperCase())}, {fmtDate(TODAY)} · Geldrop
+          <span>
+            {new Date().toLocaleDateString('nl-NL', { weekday: 'long', timeZone: 'Europe/Amsterdam' }).replace(/^\w/, c => c.toUpperCase())}, {fmtDate(TODAY)} · {locationLabel}
+          </span>
+          {weather.tempC != null && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-parkingyou/12 text-parkingyou-deep px-2 py-0.5 text-xs font-medium"
+              title={weather.usedFallback ? 'Weer op standaardlocatie (Geldrop)' : `Weer in ${locationLabel}`}
+            >
+              <WeatherIcon className="h-3.5 w-3.5" /> {weather.tempC}°C
+            </span>
+          )}
         </div>
         <h1 className="text-2xl font-semibold mt-1">{new Date().toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam', hour: '2-digit' }) < '12' ? 'Goedemorgen' : new Date().toLocaleTimeString('nl-NL', { timeZone: 'Europe/Amsterdam', hour: '2-digit' }) < '18' ? 'Goedemiddag' : 'Goedenavond'}, Rick.</h1>
         <p className="text-muted text-sm mt-1">
@@ -46,21 +64,7 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
       </div>
 
       {/* nudge */}
-      <div
-        className="card p-4 border-cross/40 bg-cross/5 animate-fade-up"
-        style={{ animationDelay: '40ms' }}
-      >
-        <div className="flex items-start gap-3">
-          <div className="rounded-xl bg-cross/15 p-2 animate-pulse-ring">
-            <Bell className="h-4 w-4 text-cross" />
-          </div>
-          <div>
-            <div className="text-xs uppercase tracking-wider text-cross font-semibold">Nudge van vandaag</div>
-            <p className="text-sm text-ink mt-1">{nudge.text}</p>
-            <p className="text-[11px] text-faint mt-1">waarom: {nudge.reason}</p>
-          </div>
-        </div>
-      </div>
+      <NudgeCard nudge={dashNudge} onNav={onNav} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* left: next + plan */}
