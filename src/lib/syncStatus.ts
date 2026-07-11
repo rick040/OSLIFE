@@ -1,10 +1,12 @@
 // ── Data-source sync status ───────────────────────────────────────────────────
 // Health check for every live ingestion pipeline. Each table is written by an
 // external connection (Apps Script sheet ingest, Edge Function, Notion sync,
-// Gmail/Calendar sync, …). None of those tables store an explicit "ingested_at",
-// so the freshest signal available is the timestamp of the most recent row —
-// i.e. the last data point that actually landed. We read that per source and
-// grade it against an expected cadence to flag connections that went quiet.
+// Gmail/Calendar sync, …). Purely-ingested tables carry an `ingested_at` column
+// stamped server-side on every write (see migration 20260711120000), so their
+// newest value is a TRUE last-synced time. projects/clients are also edited
+// in-app, so they fall back to their own updated_at / synced_at columns. We
+// read the freshest value per source and grade it against an expected cadence
+// to flag connections that went quiet.
 
 import { supabase } from './supabase'
 
@@ -16,7 +18,8 @@ export interface SyncSource {
   /** Short human description of the connection / pipeline behind this table. */
   pipeline: string
   table: string
-  /** Column whose newest value marks the most recent data point. */
+  /** Column whose newest value marks the last sync. `ingested_at` where the
+   *  trigger stamps it; otherwise a natural / update timestamp. */
   tsColumn: string
   /** 'date' columns are date-only (local midnight); 'ts' are full timestamptz. */
   tsKind: 'date' | 'ts'
@@ -25,9 +28,9 @@ export interface SyncSource {
   /** Above this age (hours) the source is considered down. */
   downH: number
   /**
-   * True when future-dated rows are normal (agenda / planned payments). The
-   * newest row then sits in the future; we treat that as fresh rather than an
-   * error, so a healthy calendar isn't graded on a past-only assumption.
+   * True when future-dated rows are normal for the chosen column (only when a
+   * source has no ingested_at and must fall back to a future-capable column).
+   * Now that ingested_at is always a past write time, this is unused.
    */
   futureOk?: boolean
 }
@@ -44,19 +47,19 @@ export interface SyncSourceStatus extends SyncSource {
 // per cadence: near-realtime feeds (mail) get tight windows; irregular ones
 // (weight, purchases) get generous ones so a quiet-but-alive feed isn't red.
 export const SYNC_SOURCES: SyncSource[] = [
-  // ── Gezondheid ──
-  { key: 'health', label: 'Gezondheid', pipeline: 'Health Sheet → health-sheets-ingest', table: 'health_daily_stats', tsColumn: 'date', tsKind: 'date', warnH: 36, downH: 96 },
-  { key: 'sleep', label: 'Slaap', pipeline: 'Health Sheet → health-sheets-ingest', table: 'health_sleep', tsColumn: 'date', tsKind: 'date', warnH: 36, downH: 96 },
-  { key: 'weight', label: 'Gewicht', pipeline: 'Health Sheet → health-sheets-ingest', table: 'health_body_metrics', tsColumn: 'datetime', tsKind: 'ts', warnH: 24 * 14, downH: 24 * 45 },
+  // ── Gezondheid ── (ingested_at = true server-side sync time)
+  { key: 'health', label: 'Gezondheid', pipeline: 'Health Sheet → health-sheets-ingest', table: 'health_daily_stats', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 36, downH: 96 },
+  { key: 'sleep', label: 'Slaap', pipeline: 'Health Sheet → health-sheets-ingest', table: 'health_sleep', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 36, downH: 96 },
+  { key: 'weight', label: 'Gewicht', pipeline: 'Health Sheet → health-sheets-ingest', table: 'health_body_metrics', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 24 * 14, downH: 24 * 45 },
   // ── Geld ──
-  { key: 'finance', label: 'Transacties', pipeline: 'Betalingen Sheet · ABN CSV · Wallet', table: 'finance_tx', tsColumn: 'occurred_on', tsKind: 'date', warnH: 96, downH: 24 * 10 },
-  { key: 'payments', label: 'Te betalen', pipeline: 'Payments Calendar → syncPayments', table: 'payments', tsColumn: 'due', tsKind: 'date', warnH: 24 * 21, downH: 24 * 60, futureOk: true },
+  { key: 'finance', label: 'Transacties', pipeline: 'Betalingen Sheet · ABN CSV · Wallet', table: 'finance_tx', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 96, downH: 24 * 10 },
+  { key: 'payments', label: 'Te betalen', pipeline: 'Payments Calendar → syncPayments', table: 'payments', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 24 * 21, downH: 24 * 60 },
   // ── Digitaal gedrag ──
-  { key: 'screentime', label: 'Schermtijd', pipeline: 'Schermtijd Sheet → screentime-sheet-ingest', table: 'screentime', tsColumn: 'usage_date', tsKind: 'date', warnH: 48, downH: 24 * 5 },
+  { key: 'screentime', label: 'Schermtijd', pipeline: 'Schermtijd Sheet → screentime-sheet-ingest', table: 'screentime', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 48, downH: 24 * 5 },
   // ── Communicatie / agenda ──
-  { key: 'gmail', label: 'Inbox / mail', pipeline: 'Gmail → syncGmail', table: 'gmail_messages', tsColumn: 'received_at', tsKind: 'ts', warnH: 12, downH: 48 },
-  { key: 'calendar', label: 'Agenda', pipeline: 'Google Calendar → syncCalendarBlocks', table: 'day_blocks', tsColumn: 'date', tsKind: 'date', warnH: 24 * 7, downH: 24 * 21, futureOk: true },
-  // ── Notion (CRM) ──
+  { key: 'gmail', label: 'Inbox / mail', pipeline: 'Gmail → syncGmail', table: 'gmail_messages', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 12, downH: 48 },
+  { key: 'calendar', label: 'Agenda', pipeline: 'Google Calendar → syncCalendarBlocks', table: 'day_blocks', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 24 * 7, downH: 24 * 21 },
+  // ── Notion (CRM) ── (edited in-app too → own update/sync columns)
   { key: 'projects', label: 'Projecten', pipeline: 'Notion → notion-sync (of in-app)', table: 'projects', tsColumn: 'updated_at', tsKind: 'ts', warnH: 24 * 7, downH: 24 * 30 },
   { key: 'clients', label: 'Klanten', pipeline: 'Notion → notion-sync', table: 'clients', tsColumn: 'synced_at', tsKind: 'ts', warnH: 24 * 7, downH: 24 * 30 },
 ]

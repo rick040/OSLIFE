@@ -193,7 +193,7 @@ export default function SyncStatus() {
 
       {/* Source cards */}
       <div>
-        <SectionTitle hint="“Laatste data” = tijdstip van de nieuwste rij per bron — het beste signaal dat de pijplijn nog rijen aanlevert.">
+        <SectionTitle hint="“Laatste data” = het echte moment waarop er voor het laatst is gesynct.">
           Verbindingen
         </SectionTitle>
         {loading && !sources ? (
@@ -212,10 +212,12 @@ export default function SyncStatus() {
       </div>
 
       <p className="text-[11px] text-faint leading-relaxed">
-        De ingest-tabellen bewaren geen apart “opgehaald op”-tijdstempel, dus dit toont het tijdstip
-        van het nieuwste record per bron. Voor Agenda en “Te betalen” kan dat in de toekomst liggen
-        (geplande items) — die tellen als vers. Onregelmatige bronnen zoals Gewicht en Transacties
-        krijgen ruimere marges voordat ze op vertraagd/offline springen.
+        “Laatste data” komt uit een <code className="text-muted">ingested_at</code>-stempel die de
+        database bij elke schrijfactie server-side zet — dus het echte moment van synchroniseren,
+        ongeacht welke verbinding de rij schreef. Projecten en Klanten worden ook in-app bewerkt en
+        gebruiken daarom hun eigen <code className="text-muted">updated_at</code>/
+        <code className="text-muted">synced_at</code>. Onregelmatige bronnen zoals Gewicht en
+        Transacties krijgen ruimere marges voordat ze op vertraagd/offline springen.
       </p>
     </div>
   )
