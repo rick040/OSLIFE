@@ -39,6 +39,9 @@ maken niet uit. De verwachte tabs/kolommen + sheet-id properties staan boven in 
 - `phone-events-ingest` (`supabase/functions/phone-events-ingest/`) — MacroDroid ontgrendel- en
   scherm-uit-events → `phone_events`, leidt daaruit slaap af → `health_sleep` (`source='phone'`).
   Setup: `macrodroid/phone-sleep.md`.
+- `widget-summary` (`supabase/functions/widget-summary/`) — read-only JSON-samenvatting (taken/CRM,
+  gewoontes/doelen, slaap/gezondheid) voor Android/Samsung-homescreen-widgets via **KWGT**. Token-
+  beveiligd (`WIDGET_TOKEN`, als `Bearer` óf `?token=`), schrijft nooit. Setup: `kwgt/README.md`.
 
 ## Finance dedup
 

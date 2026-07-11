@@ -108,6 +108,15 @@ to `health_sleep` with `source='phone'`. A real Samsung-Health session (`source=
 wins for that night and is never overwritten by an estimate. Setup:
 `integrations/macrodroid/phone-sleep.md`.
 
+### Home-screen widgets (Android / Samsung)
+Echte homescreen-widgets kunnen niet uit een PWA (dat vereist native Android-code), dus OSLIFE
+levert ze via **KWGT** (Kustom Widget Maker) op een kleine, read-only endpoint. De `widget-summary`
+edge function geeft een compacte JSON-samenvatting terug — taken/CRM, gewoontes/doelen en
+slaap/gezondheid, elk met kant-en-klare tekstregels — beveiligd met een `WIDGET_TOKEN` (als
+`Bearer` of `?token=`) en schrijft nooit iets. Je ontwerpt de widget één keer in KWGT en bindt de
+velden. Hetzelfde endpoint voedt later ook een eventuele native APK-widget. Setup:
+`integrations/kwgt/README.md`.
+
 ### Finance dedup
 The Betalingen sheet and the in-app ABN AMRO CSV import both write `finance_tx` with the same
 `dedup_key = "YYYY-MM-DD|amount"`. The `UNIQUE (user_id, dedup_key)` constraint plus
