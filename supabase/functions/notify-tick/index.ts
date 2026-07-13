@@ -95,6 +95,32 @@ async function claim(sb: any, kind: string, dedupKey: string): Promise<boolean> 
   throw new Error(`claim(${kind}) failed: ${error.message}`);
 }
 
+/** Release a claim so the next tick can retry it (used when a send is rejected). */
+// deno-lint-ignore no-explicit-any
+async function unclaim(sb: any, kind: string, dedupKey: string): Promise<void> {
+  await sb.from("notification_log").delete()
+    .eq("user_id", USER_ID).eq("kind", kind).eq("dedup_key", dedupKey);
+}
+
+/**
+ * Send a message for an already-claimed notification. Telegram's sendMessage
+ * never throws — it returns { ok:false } on 429/5xx — so a bare send after a
+ * claim would silently drop the notification forever (the claim row blocks any
+ * retry). On rejection we release the claim and throw, so the tick 500s and the
+ * cron retries the drop on the next run instead of losing it permanently.
+ */
+// deno-lint-ignore no-explicit-any
+async function sendClaimed(
+  sb: any, kind: string, dedupKey: string,
+  token: string, chatId: number, text: string, keyboard?: InlineKeyboard,
+): Promise<void> {
+  const { ok } = await sendMessage(token, chatId, text, keyboard);
+  if (!ok) {
+    await unclaim(sb, kind, dedupKey);
+    throw new Error(`sendMessage(${kind}) rejected by Telegram`);
+  }
+}
+
 /** Flip sent invoices whose due date has passed to 'overdue'. Runs every tick,
  *  independent of notification prefs, so status reconciliation is never coupled
  *  to whether urgent alerts are on or whether it's quiet hours. */
@@ -246,7 +272,14 @@ async function urgentAlerts(sb: any, today: string): Promise<UrgentAlert[]> {
     .not("due", "is", null);
   for (const p of paymentRows ?? []) {
     const due = p.due as string;
-    if (daysBetween(today, due) <= 3) {
+    const daysLeft = daysBetween(today, due); // due − today; negative = overdue
+    if (daysLeft < 0) {
+      alerts.push({
+        kind: "urgent_payment",
+        dedupKey: p.id as string,
+        text: `⚠️ Betaling te laat: ${p.payee} — €${p.amount} was ${fmtDateNL(due)} verschuldigd.`,
+      });
+    } else if (daysLeft <= 3) {
       alerts.push({
         kind: "urgent_payment",
         dedupKey: p.id as string,
@@ -346,14 +379,14 @@ Deno.serve(async (req) => {
 
   try {
     if (prefs.morning_briefing && withinWindow(prefs.morning_time, nowMinutes) && (await claim(sb, "morning", today))) {
-      await sendMessage(BOT_TOKEN, chatId, await buildMorningBriefing(sb, today));
+      await sendClaimed(sb, "morning", today, BOT_TOKEN, chatId, await buildMorningBriefing(sb, today));
       sent.push("morning");
     }
 
     if (prefs.evening_checkin && withinWindow(prefs.evening_time, nowMinutes) && (await claim(sb, "evening_checkin", today))) {
       if (!(await hasCheckinToday(sb, today))) {
         const keyboard: InlineKeyboard = [[1, 2, 3, 4, 5].map((n) => ({ text: String(n), callback_data: `ci_e:${n}` }))];
-        await sendMessage(BOT_TOKEN, chatId, "🌙 Hoe ging vandaag? Kies je energie (1-5):", keyboard);
+        await sendClaimed(sb, "evening_checkin", today, BOT_TOKEN, chatId, "🌙 Hoe ging vandaag? Kies je energie (1-5):", keyboard);
       }
       sent.push("evening_checkin");
     }
@@ -367,7 +400,7 @@ Deno.serve(async (req) => {
             callback_data: `hb_done:${h.id}`,
           },
         ]);
-        await sendMessage(BOT_TOKEN, chatId, "🔁 Nog openstaande gewoontes vandaag:", keyboard);
+        await sendClaimed(sb, "habit_reminder", today, BOT_TOKEN, chatId, "🔁 Nog openstaande gewoontes vandaag:", keyboard);
       }
       sent.push("habit_reminder");
     }
@@ -375,7 +408,7 @@ Deno.serve(async (req) => {
     if (prefs.urgent_alerts && !inQuietHours(prefs.quiet_hours_start, prefs.quiet_hours_end, nowMinutes)) {
       for (const a of await urgentAlerts(sb, today)) {
         if (await claim(sb, a.kind, a.dedupKey)) {
-          await sendMessage(BOT_TOKEN, chatId, a.text);
+          await sendClaimed(sb, a.kind, a.dedupKey, BOT_TOKEN, chatId, a.text);
           sent.push(`${a.kind}:${a.dedupKey}`);
         }
       }

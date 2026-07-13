@@ -15,7 +15,7 @@ import type {
   Correlation,
   Anomaly,
 } from './types'
-import { DOMAIN_META, TODAY, fmtDate, daysBetween } from './domains'
+import { DOMAIN_META, TODAY, today, fmtDate, daysBetween } from './domains'
 
 // ── Live-data derivation layer ───────────────────────────────────────────────
 // The app is live-only: the mock seed is empty. These pure helpers reconstruct
@@ -192,15 +192,18 @@ export function buildNudge(
   reflectCount = 0,
 ): Nudge {
   const prefix = reflectCount > 0 ? `Reflectie #${reflectCount}: ` : ''
+  // Recompute the date at call time — this runs in a long-lived PWA, so the
+  // frozen TODAY constant would misjudge "overdue" across a midnight rollover.
+  const now = today()
 
   const overdue = threads
-    .filter((t) => t.status === 'open' && t.due && daysBetween(t.due, TODAY) > 0)
-    .sort((a, b) => daysBetween(b.due!, TODAY) - daysBetween(a.due!, TODAY))[0]
+    .filter((t) => t.status === 'open' && t.due && daysBetween(t.due, now) > 0)
+    .sort((a, b) => daysBetween(b.due!, now) - daysBetween(a.due!, now))[0]
   if (overdue) {
     return {
       id: 'nudge-overdue',
       domain: overdue.domain,
-      text: `${prefix}"${overdue.title}" is ${daysBetween(overdue.due!, TODAY)} dag(en) over de deadline (${overdue.owedTo}). Sluit deze loop eerst — een openstaande belofte weegt het zwaarst.`,
+      text: `${prefix}"${overdue.title}" is ${daysBetween(overdue.due!, now)} dag(en) over de deadline (${overdue.owedTo}). Sluit deze loop eerst — een openstaande belofte weegt het zwaarst.`,
       reason: 'oudste verlopen open loop',
     }
   }
@@ -227,7 +230,7 @@ export function buildNudge(
 
   const nextDue = threads
     .filter((t) => t.status === 'open' && t.due)
-    .sort((a, b) => daysBetween(TODAY, a.due!) - daysBetween(TODAY, b.due!))[0]
+    .sort((a, b) => daysBetween(now, a.due!) - daysBetween(now, b.due!))[0]
   if (nextDue) {
     return {
       id: 'nudge-next',
