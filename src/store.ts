@@ -49,6 +49,7 @@ import { unbilledBillableHours, sumHours, invoiceAmountFromHours } from './lib/c
 import { parseWhatsapp } from './lib/crm/whatsapp'
 import { classifyWithBrain, type Classification } from './understand'
 import { invokeBraindumpIngest } from './lib/braindump'
+import type { ClaudeImportRecord } from './lib/claudeImport'
 import { runReflect, computeCorrelations, computeAnomalies, buildNarrativePrompt, NARRATIVE_SYSTEM_PROMPT } from './reflect'
 import { askBrain } from './heyra/brainClient'
 import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
@@ -99,6 +100,7 @@ import {
   deleteVendorTag as deleteVendorTagRow,
   fetchBraindumpEntries,
   insertBraindumpEntry,
+  insertReadyBraindumpEntries,
   deleteBraindumpEntryRow,
   resetBraindumpEntryRow,
   persistEmailRead,
@@ -221,6 +223,11 @@ interface State {
   braindumpCapture: (input: BraindumpInput) => Promise<BraindumpEntry | null>
   deleteBraindumpEntry: (id: string) => void
   retryBraindumpEntry: (id: string) => void
+  // Import a parsed claude.ai chat export as `ready` knowledge entries so HEYRA
+  // can search/reference past Claude conversations. Skips ones already imported
+  // (matched on meta.conversationId) so re-uploading the same export is safe.
+  importClaudeConversations: (records: ClaudeImportRecord[]) => Promise<{ imported: number; skipped: number }>
+
 
   // HEYRA Taakmaker — commit a parsed task draft as an open loop (thread)
   addTask: (draft: TaskDraft) => string
@@ -626,6 +633,60 @@ export const useStore = create<State>()(
           ),
         }))
         void resetBraindumpEntryRow(id).then(() => invokeBraindumpIngest(id))
+      },
+
+      importClaudeConversations: async (records) => {
+        if (!records.length) return { imported: 0, skipped: 0 }
+
+        // Dedup against anything already imported from a Claude export, so
+        // re-uploading a fresh export only adds the new conversations.
+        const seen = new Set<string>()
+        for (const e of get().braindumpEntries) {
+          const cid = e.meta?.conversationId
+          if (e.meta?.source === 'claude-export' && typeof cid === 'string') seen.add(cid)
+        }
+        const fresh = records.filter((r) => !seen.has(r.conversationId))
+        if (!fresh.length) return { imported: 0, skipped: records.length }
+
+        const rows = fresh.map((r) => ({
+          title: r.title,
+          markdown: r.markdown,
+          summary: r.summary,
+          // A general Claude chat isn't tied to one business area.
+          domain: 'cross' as Domain,
+          kind: 'note' as const,
+          sentiment: 'neutral' as const,
+          tags: r.tags,
+          meta: {
+            source: 'claude-export',
+            conversationId: r.conversationId,
+            messageCount: r.messageCount,
+            claudeCreatedAt: r.createdAt,
+            claudeUpdatedAt: r.updatedAt,
+          },
+        }))
+
+        // Insert in chunks so a large export doesn't hit payload limits; prepend
+        // each batch as it lands so the grid fills in progressively.
+        const CHUNK = 50
+        let imported = 0
+        for (let i = 0; i < rows.length; i += CHUNK) {
+          const inserted = await insertReadyBraindumpEntries(rows.slice(i, i + CHUNK))
+          if (inserted.length) {
+            imported += inserted.length
+            set((s) => ({ braindumpEntries: [...inserted, ...s.braindumpEntries] }))
+          }
+        }
+        if (imported) {
+          set((s) => ({
+            activity: pushSignal(s.activity, {
+              text: `${imported} Claude-gesprek(ken) geïmporteerd in je kennis`,
+              domain: 'cross',
+              loop: 'fast',
+            }),
+          }))
+        }
+        return { imported, skipped: records.length - fresh.length }
       },
 
       learnFromExchange: async (userText, heyraText) => {

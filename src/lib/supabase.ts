@@ -604,6 +604,46 @@ export async function insertBraindumpEntry(input: {
   return data ? mapBraindumpRow(data) : null
 }
 
+/** A fully-derived braindump row inserted straight as `ready` (no ingest pass) —
+ *  used by the Claude-chat importer, which already has the markdown transcript so
+ *  it needs no server-side enrichment. */
+export interface ReadyBraindumpInput {
+  title: string | null
+  markdown: string
+  summary: string | null
+  domain: Domain | null
+  kind: BraindumpEntry['kind']
+  sentiment: BraindumpEntry['sentiment']
+  tags: string[]
+  meta?: Record<string, unknown>
+}
+
+/** Bulk-insert already-enriched `ready` entries in one round trip. Returns the mapped rows ([] on failure). */
+export async function insertReadyBraindumpEntries(rows: ReadyBraindumpInput[]): Promise<BraindumpEntry[]> {
+  if (!rows.length) return []
+  const user_id = await currentUserId()
+  if (!user_id) return []
+  const payload = rows.map((r) => ({
+    user_id,
+    source_kind: 'text',
+    status: 'ready',
+    title: r.title,
+    markdown: r.markdown,
+    summary: r.summary,
+    domain: r.domain,
+    kind: r.kind,
+    sentiment: r.sentiment,
+    tags: r.tags,
+    meta: r.meta ?? {},
+  }))
+  const { data, error } = await supabase
+    .from('braindump_entries')
+    .insert(payload)
+    .select(BRAINDUMP_COLS)
+  warnWrite('braindump_entries.insertReady', error)
+  return data ? (data as Record<string, unknown>[]).map(mapBraindumpRow) : []
+}
+
 export async function deleteBraindumpEntryRow(id: string): Promise<void> {
   return deleteRow('braindump_entries', id)
 }
