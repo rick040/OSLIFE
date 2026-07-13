@@ -17,9 +17,9 @@ de notificatie zet (sommige scale-apps tonen het resultaat alleen in-app).
 https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/weight-ingest
 ```
 
-Auth: header `x-webhook-secret: <WALLET_WEBHOOK_SECRET>` (zelfde secret als
-Wallet/telefoon-events — geen aparte secret nodig, tenzij je `WEIGHT_WEBHOOK_SECRET`
-los instelt).
+Auth: header `x-webhook-secret: <PHONE_WEBHOOK_SECRET>` (dezelfde secret die
+`phone-events-ingest` al gebruikt — geen aparte secret nodig, tenzij je
+`WEIGHT_WEBHOOK_SECRET` los instelt).
 
 ## Macro
 

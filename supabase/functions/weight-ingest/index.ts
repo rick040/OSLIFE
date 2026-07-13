@@ -22,7 +22,7 @@
  *   Trigger:  Notification received → App: "Smart Life" (com.tuya.smartlife or similar)
  *   Action:   HTTP Request → POST → https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/weight-ingest
  *   Headers:  Content-Type: application/json
- *             x-webhook-secret: <WEIGHT_WEBHOOK_SECRET, or your existing WALLET_WEBHOOK_SECRET>
+ *             x-webhook-secret: <your PHONE_WEBHOOK_SECRET — same one phone-events-ingest uses>
  *   Body:     {"title": "[notification_title]", "text": "[notification_text]"}
  *
  * Structured alternative (if MacroDroid already extracted the number via a
@@ -30,13 +30,17 @@
  *
  * Deploy:
  *   supabase functions deploy weight-ingest --project-ref nhyunnnmdcmojvkxrbpl
- *   (reuses WALLET_WEBHOOK_SECRET + OSLIFE_USER_ID; set WEIGHT_WEBHOOK_SECRET only for a separate secret)
+ *   (reuses PHONE_WEBHOOK_SECRET + OSLIFE_USER_ID — no new secret needed; set
+ *   WEIGHT_WEBHOOK_SECRET only if you want a secret dedicated to this function)
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { SUPABASE_SERVICE_KEY, SUPABASE_URL, USER_ID, jsonResponder } from '../_shared/http.ts'
 
-const WEBHOOK_SECRET = Deno.env.get('WEIGHT_WEBHOOK_SECRET') ?? Deno.env.get('WALLET_WEBHOOK_SECRET') ?? ''
+// Reuse the Phone-events secret by default — same phone/MacroDroid instance,
+// no reason to invent a third secret. WEIGHT_WEBHOOK_SECRET can still override.
+const WEBHOOK_SECRET =
+  Deno.env.get('WEIGHT_WEBHOOK_SECRET') ?? Deno.env.get('PHONE_WEBHOOK_SECRET') ?? Deno.env.get('WALLET_WEBHOOK_SECRET') ?? ''
 
 const json = jsonResponder()
 
