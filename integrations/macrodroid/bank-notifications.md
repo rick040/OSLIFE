@@ -32,6 +32,30 @@ De functie zoekt zelf een bedrag (`€ 12,50` / `12.50`) en een winkelnaam
 duidelijk bedrag en "bij <winkel>" bevat — check dat met "Test acties" voordat
 je 'm aanzet.
 
+### ABN AMRO's generieke "bedrag afgeschreven"-melding
+
+ABN's standaard afschrijvingsmelding bevat **geen winkelnaam**, alleen bedrag
+en rekeningnummer:
+
+> Er is een bedrag afgeschreven
+> Er is € 0,50 afgeschreven van uw rekening \*6153. U vindt dit terug in uw
+> bij- en afschrijvingen.
+
+Voor dit soort meldingen slaat `wallet-ingest` de transactie toch op — met
+bedrag en datum, real-time — maar met `counterparty = "Onbekend (bank-melding)"`
+als duidelijke placeholder in plaats van er iets van te gokken. Zodra je
+daarna je maandelijkse ABN CSV importeert, wordt die placeholder-rij
+automatisch **verrijkt** met de echte winkelnaam/categorie uit de CSV (i.p.v.
+dat de CSV-rij wordt genegeerd omdat er al iets op die datum+bedrag staat).
+Kortom: je ziet de uitgave meteen, de winkelnaam volgt bij de eerstvolgende
+CSV-import.
+
+Heb je meerdere ABN-rekeningen (privé + zakelijk) en wil je dat de juiste
+`domain` meteen goed staat i.p.v. te wachten op de CSV? Voeg in MacroDroid een
+**voorwaarde** aan de trigger toe: "Notificatie tekst bevat" → `*6153` (het
+rekeningnummer uit de melding), en maak een tweede macro voor je andere
+rekeningnummer met een andere `account_type` in de body (zie Optie B).
+
 ## Optie B — al-uitgepakte velden meesturen (nauwkeuriger)
 
 Als je macro het bedrag/de winkelnaam al met een regex/lokale variabele uit de
@@ -70,7 +94,11 @@ de originele notificatie zei.
 Alle bronnen (Wallet, bank-notificatie, ABN CSV-import, Betalingen-sheet)
 gebruiken dezelfde sleutel `datum|bedrag`. Dezelfde aankoop die uit twee
 bronnen binnenkomt (bv. real-time notificatie + later CSV-import) landt dus
-precies één keer in `finance_tx`.
+precies één keer in `finance_tx`. Uitzondering die juist gewenst is: een rij
+die real-time zonder winkelnaam is binnengekomen (`"Onbekend (bank-melding)"`,
+zie hierboven) wordt door de eerstvolgende CSV-import **overschreven** met de
+echte winkelnaam/categorie, in plaats van dedup-geblokkeerd — zie
+`insertFinanceTx` in `src/lib/supabase.ts`.
 
 ## Testen
 
