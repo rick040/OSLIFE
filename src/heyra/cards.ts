@@ -107,6 +107,24 @@ export function buildSearchCard(text: string, store: Store): SearchCardData {
       const score = matchScore(keywords, it.text, it.summary)
       if (score > 0) scored.push({ score, item: { id: it.id, title: it.summary, domain: it.domain, kind: it.kind } })
     }
+    // Braindumps + imported Claude chats: the durable knowledge log. Searching
+    // the markdown means a past Claude conversation surfaces here too.
+    for (const b of store.braindumpEntries ?? []) {
+      if (b.status !== 'ready') continue
+      const score = matchScore(keywords, b.title, b.summary, b.markdown, b.tags.join(' '))
+      if (score > 0) {
+        scored.push({
+          score,
+          item: {
+            id: b.id,
+            title: b.title || b.summary || 'Notitie',
+            domain: b.domain ?? 'cross',
+            kind: b.meta?.source === 'claude-export' ? 'claude-chat' : 'notitie',
+            detail: b.meta?.source === 'claude-export' ? null : b.summary,
+          },
+        })
+      }
+    }
   }
 
   scored.sort((a, b) => b.score - a.score)

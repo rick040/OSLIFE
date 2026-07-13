@@ -20,6 +20,7 @@ import { runFinanceAgent } from './agents/financeAgent'
 import { runSignalAgent } from './agents/signalAgent'
 import { runBriefingAgent } from './agents/briefingAgent'
 import { runChatAgent } from './agents/chatAgent'
+import { runAssistantAgent } from './agents/assistantAgent'
 import type { AgentResult, Agent, Store } from './agents/types'
 import type { AgentId } from './skills'
 import type { StructuredItem } from '../types'
@@ -39,12 +40,16 @@ const AGENTS: Record<AgentId, Agent> = {
   signal: runSignalAgent,
   briefing: runBriefingAgent,
   chat: runChatAgent,
+  assistant: runAssistantAgent,
 }
 
 // Skills that get their own dedicated card/handling and therefore never open a
 // loop themselves — everything else (chat, finance, signal, briefing) falls
 // under the old "chat bucket" that detectSkill() used to gate openThread on.
-const CAPTURE_ONLY_AGENTS: AgentId[] = ['task', 'project', 'chart', 'search', 'clientIntake']
+// `assistant` joins them: a general/creative question ("leg X uit", "schrijf een
+// skill") is not a life-loop and must never pollute Rick's open loops — it's
+// still captured, just without opening a thread.
+const CAPTURE_ONLY_AGENTS: AgentId[] = ['task', 'project', 'chart', 'search', 'clientIntake', 'assistant']
 
 /** The old keyword-scored router — now used only as the fallback when the brain is unavailable. */
 export function detectAgentRuleBased(input: string): { agent: AgentId; trigger: string | null } {
@@ -64,6 +69,10 @@ const ROUTE_SYSTEM = `Je bent de intent- en classificatielaag van HEYRA (OSLIFE)
 1. Kies EXACT één functie die het bericht het beste afhandelt uit:
 ${Object.values(SKILLS).map((s) => `- ${s.id}: ${s.blurb}`).join('\n')}
 Let op: als het bericht een instructie bevat die een los geplakt stuk tekst omvat (klantbericht, mail, chatlog), negeer losse woorden die toevallig in dat geplakte stuk voorkomen (zoals "stuur" of "bellen" in de tekst van een klant zelf) — kijk naar Ricks ECHTE intentie, niet naar losse woorden.
+
+Onderscheid chat vs assistant scherp:
+- chat = vragen die ALLEEN uit Ricks eigen opgeslagen leven/data te beantwoorden zijn (zijn projecten, loops, betalingen, agenda, gewoontes) — bv. "hoe ziet mijn week eruit?", "wat staat er open bij Buurtkaart?".
+- assistant = algemene kennis, uitleg, brainstorm, advies, of maakwerk dat NIET uit zijn opgeslagen data komt — bv. "leg X uit", "schrijf een e-mail/skill/prompt voor me", "hoe pak ik Y aan?", "help me met deze code". Kies assistant zodra het antwoord van algemene kennis of schrijf-/denkwerk afhangt in plaats van van Ricks eigen rijen.
 
 2. Classificeer het bericht zelf:
 - domain: parkingyou, prjct, buurtkaart, personal, of cross
