@@ -19,6 +19,11 @@
  * (source='health_app', from health-sheets-ingest) always take precedence and
  * are never overwritten.
  *
+ * Unlock events also feed `screentime_daily.pickups` (recomputed from the raw
+ * `unlock` events on every call, same pattern as sleep) — this is now the
+ * primary source for daily pickup counts, replacing the "Ontgrendelingen" tab
+ * in the Schermtijd sheet (screentime-sheet.gs no longer sends it).
+ *
  * MacroDroid setup (on the phone — see integrations/macrodroid/phone-sleep.md):
  *   Preferred  Trigger: Sleep (asleep) → HTTP GET …?kind=sleep_start
  *              Trigger: Sleep (awake)  → HTTP GET …?kind=sleep_end
@@ -193,6 +198,34 @@ async function refreshSleep(supabase: SupabaseClient): Promise<number> {
   return rows.length
 }
 
+/** Recompute recent days' unlock counts from `phone_events` and upsert into
+ *  `screentime_daily.pickups` — the count is derived fresh each time (not
+ *  incremented), so it's always exactly right regardless of retries/dupes. */
+async function refreshPickups(supabase: SupabaseClient): Promise<number> {
+  const since = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000).toISOString()
+  const { data, error } = await supabase
+    .from('phone_events')
+    .select('ts')
+    .eq('user_id', USER_ID)
+    .eq('kind', 'unlock')
+    .gte('ts', since)
+  if (error) throw error
+
+  const byDate = new Map<string, number>()
+  for (const r of data ?? []) {
+    const date = amsDate(new Date(r.ts as string))
+    byDate.set(date, (byDate.get(date) ?? 0) + 1)
+  }
+  const rows = [...byDate.entries()].map(([usage_date, pickups]) => ({ user_id: USER_ID, usage_date, pickups }))
+  if (!rows.length) return 0
+
+  const { error: upErr } = await supabase
+    .from('screentime_daily')
+    .upsert(rows, { onConflict: 'user_id,usage_date', ignoreDuplicates: false })
+  if (upErr) throw upErr
+  return rows.length
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST' && req.method !== 'GET') {
     return json({ ok: false, error: 'Method not allowed' }, 405)
@@ -242,7 +275,7 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: error.message }, 500)
   }
 
-  // Recompute sleep. A derivation hiccup must not fail the (already-stored) event.
+  // Recompute sleep + pickups. A derivation hiccup must not fail the (already-stored) event.
   let sleepRows = 0
   try {
     sleepRows = await refreshSleep(supabase)
@@ -250,5 +283,12 @@ Deno.serve(async (req) => {
     console.error('sleep derivation error:', err)
   }
 
-  return json({ ok: true, logged: toInsert.length, sleep_sessions: sleepRows })
+  let pickupDays = 0
+  try {
+    pickupDays = await refreshPickups(supabase)
+  } catch (err) {
+    console.error('pickups derivation error:', err)
+  }
+
+  return json({ ok: true, logged: toInsert.length, sleep_sessions: sleepRows, pickup_days: pickupDays })
 })

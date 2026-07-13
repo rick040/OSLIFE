@@ -1,10 +1,16 @@
 /**
  * Supabase Edge Function: screentime-sheet-ingest
  * ------------------------------------------------
- * Receives screen-time / app-usage / unlocks from the "Schermtijd" Google Sheet
+ * Receives screen-time / app-usage from the "Schermtijd" Google Sheet
  * (screentime-sheet.gs, bound to that sheet) and upserts into `screentime`.
  * Each category has its own tab in the sheet; the Apps Script flattens them to
- * one row per (date, app, category).
+ * one row per (date, app, category). Per-app duration has no MacroDroid
+ * equivalent (no generic foreground-app trigger), so this sheet stays the
+ * source for it.
+ *
+ * `unlocks` (daily pickup counts) is still accepted for backward compatibility,
+ * but screentime-sheet.gs no longer sends it — pickups are now derived in
+ * real time from `phone_events` by phone-events-ingest's refreshPickups().
  *
  * dedup_key = `${usage_date}|${app_name}|${category}` so re-syncing the same
  * sheet is idempotent (UNIQUE (user_id, dedup_key)).
