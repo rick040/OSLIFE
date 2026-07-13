@@ -48,7 +48,7 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
       id: 'm0',
       role: 'heyra',
       text:
-        'Ik lees uit je ene geheugen over ParkingYou, PRJCT, Buurtkaart en je persoonlijke leven. Vraag me iets, praat tegen me, of dump een gedachte. Hoor ik een taak, dan maak ik een taakkaart. Vraag je naar een project, cijfers of iets specifieks, dan krijg je een projectkaart, grafiek of zoekresultaat terug — anders antwoord ik gewoon uit het geheugen.',
+        'Ik lees uit je ene geheugen over ParkingYou, PRJCT, Buurtkaart en je persoonlijke leven. Vraag me iets, praat tegen me, of dump een gedachte. Hoor ik een taak, dan maak ik een taakkaart. Vraag je naar een project, cijfers of iets specifieks, dan krijg je een projectkaart, grafiek of zoekresultaat terug. En voor alles daarbuiten — iets uitleggen, meedenken, een e-mail, skill of prompt schrijven, code — schakel ik naar mijn assistent-modus, zodat je hier niet meer naar Claude hoeft.',
     },
   ])
   const endRef = useRef<HTMLDivElement>(null)
