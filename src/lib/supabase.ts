@@ -223,7 +223,10 @@ export async function insertFinanceTx(txns: Transaction[]): Promise<number> {
       toEnrich.map((r) =>
         supabase
           .from('finance_tx')
-          .update({ counterparty: r.counterparty, category: r.category, domain: r.domain, source: r.source })
+          .update(
+            { counterparty: r.counterparty, category: r.category, domain: r.domain, source: r.source },
+            { count: 'exact' },
+          )
           .eq('user_id', user_id)
           .eq('dedup_key', r.dedup_key)
           // Re-check counterparty at write time: don't clobber a manual edit
@@ -232,7 +235,9 @@ export async function insertFinanceTx(txns: Transaction[]): Promise<number> {
       ),
     )
     results.forEach((r) => warnWrite('finance_tx.enrich', r.error))
-    count += results.filter((r) => !r.error).length
+    // Count rows actually enriched, not merely non-erroring updates — the
+    // write-time counterparty guard can match 0 rows if a manual edit raced in.
+    count += results.reduce((n, r) => n + (r.error ? 0 : r.count ?? 0), 0)
   }
   if (toInsert.length) {
     const { error, count: insCount } = await supabase
@@ -406,7 +411,10 @@ export async function fetchHealthDays(): Promise<HealthDay[]> {
 
   return (statsRes.data ?? []).map((r) => {
     const date = r.date as string
-    const sleepMin = asleepByDate.get(date) ?? (r.sleep_min as number) ?? 0
+    // Prefer the per-stage sum, but a health_sleep row with all-null stages sums
+    // to 0 — treat that as "no breakdown" and fall back to the denormalised
+    // sleep_min, otherwise a real night with only sleep_min populated reads as 0h.
+    const sleepMin = (asleepByDate.get(date) || (r.sleep_min as number)) ?? 0
     const activeMin = (r.active_min as number) || (r.duration_min as number) || 0
     return {
       date,
@@ -784,7 +792,9 @@ export async function fetchMeetingDays(): Promise<MeetingDay[]> {
     if (!date) continue
     const [sh, sm] = toHHMM(ev.start_time as string).split(':').map(Number)
     const [eh, em] = toHHMM(ev.end_time as string).split(':').map(Number)
-    const mins = Math.max(0, eh * 60 + em - (sh * 60 + sm))
+    // Wrap past midnight (end earlier than start) instead of clamping to 0.
+    let mins = eh * 60 + em - (sh * 60 + sm)
+    if (mins < 0) mins += 24 * 60
     const existing = byDate.get(date)
     if (existing) {
       existing.count++

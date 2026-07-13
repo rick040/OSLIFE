@@ -10,7 +10,7 @@ import type {
   MeetingDay,
   Habit,
 } from './types'
-import { TODAY, daysBetween } from './domains'
+import { today, daysBetween } from './domains'
 import { hasSleepSignal, hasEnergySignal } from './derive'
 
 // ── Layer 4: REFLECT, the cross-domain brain (the keystone) ──────────────────
@@ -224,15 +224,17 @@ export const NARRATIVE_SYSTEM_PROMPT =
 export function computeAnomalies(logs: DayLog[], txns: Transaction[], threads: Thread[]): Anomaly[] {
   const out: Anomaly[] = []
 
-  // overdue thread (owed) anomaly
-  const overdue = threads.filter((t) => t.status === 'open' && t.due && daysBetween(t.due, TODAY) > 0)
+  // overdue thread (owed) anomaly — compute the date now (not the frozen TODAY),
+  // so overdue detection stays correct across a midnight rollover in an open PWA.
+  const now = today()
+  const overdue = threads.filter((t) => t.status === 'open' && t.due && daysBetween(t.due, now) > 0)
   if (overdue.length) {
-    const worst = overdue.sort((a, b) => daysBetween(b.due!, TODAY) - daysBetween(a.due!, TODAY))[0]
+    const worst = overdue.sort((a, b) => daysBetween(b.due!, now) - daysBetween(a.due!, now))[0]
     out.push({
       id: 'a1',
       domain: worst.domain,
       title: `Verlopen loop: ${worst.title}`,
-      detail: `${daysBetween(worst.due!, TODAY)} dag(en) over de deadline (${worst.owedTo}). Een openstaande belofte weegt zwaarder dan alles wat geleerd is.`,
+      detail: `${daysBetween(worst.due!, now)} dag(en) over de deadline (${worst.owedTo}). Een openstaande belofte weegt zwaarder dan alles wat geleerd is.`,
     })
   }
 
@@ -261,7 +263,7 @@ function correlationPatterns(correlations: Correlation[]): Pattern[] {
     domain: c.domains[0] ?? 'cross',
     text: c.title,
     confidence: c.strength,
-    lastReinforced: TODAY,
+    lastReinforced: today(),
     trend: 'up' as const,
   }))
 }
@@ -284,6 +286,7 @@ export function applyReflection(
   const prevById = new Map(prev.map((p) => [p.id, p]))
 
   const next: Pattern[] = []
+  const now = today()
 
   // 1) Update / reinforce patterns that already existed.
   for (const p of prev) {
@@ -291,9 +294,9 @@ export function applyReflection(
     if (fresh) {
       const to = Math.min(0.98, round(p.confidence + 0.08, 2))
       reinforced.push({ patternId: p.id, from: p.confidence, to })
-      next.push({ ...p, text: fresh.text, confidence: to, lastReinforced: TODAY, trend: 'up' })
+      next.push({ ...p, text: fresh.text, confidence: to, lastReinforced: now, trend: 'up' })
     } else {
-      const staleDays = daysBetween(p.lastReinforced, TODAY)
+      const staleDays = daysBetween(p.lastReinforced, now)
       const decayRate = staleDays > 14 ? 0.06 : 0.03
       const to = Math.max(0.05, round(p.confidence - decayRate, 2))
       if (to < p.confidence) decayed.push({ patternId: p.id, from: p.confidence, to })

@@ -639,7 +639,14 @@ function syncPayments() {
       var text      = e.getTitle() + ' ' + (e.getDescription() || '');
       var amt       = (text.match(/(\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:,\d{1,2})?)/) || [])[1];
       var amount    = amt ? parseFloat(amt.replace(/\./g, '').replace(',', '.')) : 0;
-      var direction = /\b(in|ontvang|factuur|invoice)\b/i.test(text) ? 'incoming' : 'outgoing';
+      // Prefer the explicit [in]/[uit] marker (the same convention payee strips
+      // below). Fall back to unambiguous keywords — NOT a bare "in" (matched any
+      // title with the word "in", e.g. "Betaling in termijnen") and NOT
+      // "factuur"/"invoice" (an invoice can just as easily be payable/outgoing).
+      var direction = /\[in\]/i.test(text) ? 'incoming'
+        : /\[uit\]/i.test(text) ? 'outgoing'
+        : /\b(ontvang(?:en|st)?|inkomend|incoming)\b/i.test(text) ? 'incoming'
+        : 'outgoing';
       var paid      = /betaald|paid|✓|✔/i.test(text);
       var payee     = e.getTitle().replace(/\[(in|uit)\]/i, '').replace(/€?\s*\d+[.,]?\d*/, '').trim() || 'Onbekend';
       return {

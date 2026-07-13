@@ -27,7 +27,9 @@ function completion30(h: Habit): number {
 
 export default function Habits() {
   const { habits, tickHabit, addHabit, deleteHabit } = useStore()
-  const [sel, setSel] = useState(0)
+  // Track the selected habit by id, not index — an index goes stale when a habit
+  // is deleted and would silently point the heatmap at a different habit.
+  const [selId, setSel] = useState<string | null>(null)
   const [form, setForm] = useState(false)
   const [name, setName] = useState('')
   const [emoji, setEmoji] = useState('')
@@ -44,7 +46,7 @@ export default function Habits() {
     [habits],
   )
 
-  const active = habits[sel] ?? habits[0] ?? null
+  const active = habits.find((h) => h.id === selId) ?? habits[0] ?? null
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -146,11 +148,11 @@ export default function Habits() {
               </div>
               {habits.length > 1 && (
                 <div className="flex flex-wrap gap-1.5 mb-3">
-                  {habits.map((h, i) => (
+                  {habits.map((h) => (
                     <button
                       key={h.id}
-                      onClick={() => setSel(i)}
-                      className={`chip ${i === sel ? 'bg-forest text-white' : 'bg-surface border border-line text-muted'}`}
+                      onClick={() => setSel(h.id)}
+                      className={`chip ${h.id === active.id ? 'bg-forest text-white' : 'bg-surface border border-line text-muted'}`}
                     >
                       {h.emoji} {h.name.split(' ')[0]}
                     </button>
@@ -186,14 +188,14 @@ export default function Habits() {
           <div>
             <SectionTitle>Overzicht</SectionTitle>
             <div className="card divide-y divide-line">
-              {habits.map((h, i) => {
+              {habits.map((h) => {
                 const c = completion30(h)
                 return (
                   <div key={h.id} className="p-3.5">
                     <div className="flex items-center gap-2.5 mb-2">
                       <span className="h-2 w-2 rounded-full shrink-0" style={{ background: h.color ?? '#6FA07C' }} />
                       <span className="text-lg shrink-0">{h.emoji}</span>
-                      <button onClick={() => setSel(i)} className="flex-1 text-left text-sm font-medium truncate hover:text-forest">{h.name}</button>
+                      <button onClick={() => setSel(h.id)} className="flex-1 text-left text-sm font-medium truncate hover:text-forest">{h.name}</button>
                       {h.streak > 0 && <span className="text-[11px] text-personal-deep flex items-center gap-0.5"><Flame className="h-3 w-3" /> {h.streak}</span>}
                       <button onClick={() => deleteHabit(h.id)} className="text-faint hover:text-cross p-1 shrink-0" aria-label="Verwijder"><X className="h-3.5 w-3.5" /></button>
                     </div>

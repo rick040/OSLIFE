@@ -78,6 +78,10 @@ export const PROJECT_TYPE_OPTIONS = [
  * `panelClassName` sets the panel's sizing (max-width/height, margins) and
  * `className` overrides the container's alignment.
  */
+// Module-level count of mounted sheets — shared across all SheetShell instances
+// so the body scroll lock survives nested sheets (see the effect below).
+let openSheetCount = 0
+
 export function SheetShell({
   onClose, children, className = 'md:items-center md:justify-center', panelClassName = 'md:max-w-lg md:max-h-[90dvh] max-h-[92dvh]',
 }: {
@@ -87,8 +91,18 @@ export function SheetShell({
   panelClassName?: string
 }) {
   useEffect(() => {
+    // Sheets nest (client → project → form). Count open sheets so the body scroll
+    // lock is only released when the LAST one closes — otherwise closing an inner
+    // sheet would unlock scrolling behind a still-open outer sheet.
+    openSheetCount++
     document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = '' }
+    return () => {
+      openSheetCount--
+      if (openSheetCount <= 0) {
+        openSheetCount = 0
+        document.body.style.overflow = ''
+      }
+    }
   }, [])
   return (
     <div className={`fixed inset-0 z-50 flex flex-col ${className}`}>

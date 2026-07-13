@@ -63,8 +63,9 @@ export default function Today({ onNav }: { onNav: (v: string) => void }) {
         </p>
       </div>
 
-      {/* nudge */}
-      <NudgeCard nudge={dashNudge} onNav={onNav} />
+      {/* nudge — only when a Reflect pass has actually authored one; otherwise the
+          store nudge is empty and the card would render with a blank body. */}
+      {nudge.text?.trim() && <NudgeCard nudge={dashNudge} onNav={onNav} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* left: next + plan */}

@@ -1464,8 +1464,12 @@ export const useStore = create<State>()(
           void updateProjectTaskRow(taskId, patch)
           return
         }
-        patchSlice(set, 'projectTasks', taskId, { done })
-        void updateProjectTaskRow(taskId, { done, lastDoneOn: done ? today() : null })
+        // Patch lastDoneOn locally too (not just in the DB write) — Today's
+        // "Vandaag afmaken" counts done-today via lastDoneOn, so omitting it here
+        // made a just-completed task vanish from the Dopamine bar until reload.
+        const patch = { done, lastDoneOn: done ? today() : null }
+        patchSlice(set, 'projectTasks', taskId, patch)
+        void updateProjectTaskRow(taskId, patch)
       },
 
       deleteProjectTask: (id) => {

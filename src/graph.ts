@@ -87,8 +87,8 @@ const STOP = new Set([
   'owed', 'marketing', 'partner', 'print', 'distro', 'vendor', 'safety', 'deposit', 'client', 'income',
   'software', 'groceries', 'takeout', 'convenience', 'q2', 'ops',
 ])
-const tokensOf = (name: string): string[] =>
-  name.toLowerCase().replace(/\(.*?\)/g, ' ').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length >= 4 && !STOP.has(w))
+const tokensOf = (name: string | null | undefined): string[] =>
+  (name ?? '').toLowerCase().replace(/\(.*?\)/g, ' ').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((w) => w.length >= 4 && !STOP.has(w))
 
 // Intentionally not src/lib/format: graph labels drop the sign (absolute value),
 // which no canonical formatter does — direction is carried by the label text.
@@ -181,7 +181,7 @@ export function buildBrain(
 
   // goals + milestones (goal acts as a hub for its milestones)
   goals.forEach((g) => {
-    const pct = Math.round((g.current / g.target) * 100)
+    const pct = g.target > 0 ? Math.round((g.current / g.target) * 100) : 0
     nodes.push({ id: `goal:${g.id}`, kind: 'record', recordType: 'goal', label: g.title, detail: `${pct}%`, cat: 'goals', parent: 'cat:goals', flag: pct >= 100 ? 'done' : 'open', hub: false })
     search[`goal:${g.id}`] = g.title.toLowerCase()
   })
