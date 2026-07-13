@@ -1,15 +1,12 @@
 # MacroDroid → slaap uit telefoongebruik
 
-Vervangt de Samsung-Health "je gebruikt je telefoon 's nachts niet, dus je slaapt"-
-schatting **zonder health-app**. Twee kleine MacroDroid-macro's sturen een timestamp bij
-**ontgrendelen** (opgepakt) en **scherm uit** (neergelegd) naar de `phone-events-ingest`
-Edge Function. Die logt ze in `phone_events` en leidt per nacht een slaapsessie af uit het
-langste nachtelijke gat (laatste activiteit vóór bed → eerste ontgrendeling 's ochtends) en
-schrijft die naar `health_sleep` met `source='phone'`.
+Slaap **zonder health-app**. MacroDroid stuurt bij slaap-events een timestamp naar de
+`phone-events-ingest` Edge Function; die schrijft er een slaapsessie van in `health_sleep`
+(`source='phone'`). Echte Samsung-Health-sessies (`source='health_app'`) winnen altijd en
+worden nooit overschreven.
 
-Echte Samsung-Health-sessies (`source='health_app'`) winnen altijd: een phone-schatting
-overschrijft nooit een nacht waarvoor de health-sheet al data leverde, en zodra de sheet
-alsnog binnenkomt vervangt die de schatting.
+Er zijn **twee manieren**, in volgorde van nauwkeurigheid. Je hoeft er maar één te doen —
+manier A is de aanrader. Doe je beide, dan wint A per nacht.
 
 ## Endpoint
 
@@ -17,52 +14,74 @@ alsnog binnenkomt vervangt die de schatting.
 https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/phone-events-ingest
 ```
 
-Auth via de header `x-webhook-secret: <PHONE_WEBHOOK_SECRET>` (of, als je die niet apart
-zet, valt de functie terug op `WALLET_WEBHOOK_SECRET` — zelfde telefoon, zelfde MacroDroid).
+Auth: de header `x-webhook-secret: <secret>` **of** de query-param `?secret=<secret>`. De functie
+gebruikt `PHONE_WEBHOOK_SECRET`, en valt terug op je bestaande `WALLET_WEBHOOK_SECRET` (zelfde
+telefoon/MacroDroid). De query-param is het makkelijkst op de telefoon.
 
-## Macro 1 — Ontgrendeling (wakker/pickup)
+---
 
-- **Trigger:** Device Events → Device Unlocked
-- **Action:** HTTP Request
-  - Method: **GET**
-  - URL: `https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/phone-events-ingest?kind=unlock`
-  - Header: `x-webhook-secret` = `<PHONE_WEBHOOK_SECRET>`
+## Manier A — MacroDroid's eigen slaapdetectie (aanrader)
 
-## Macro 2 — Scherm uit (neergelegd/bedtijd)
+MacroDroid heeft een **Slaap**-trigger die zelf detecteert wanneer je in slaap valt en wakker
+wordt (op basis van bewegingloosheid + tijd). Dat is de nauwkeurigste bron: geen schatting, maar
+een echte begin- en eindtijd. Maak twee macro's.
 
-- **Trigger:** Device Events → Screen Off
-- **Action:** HTTP Request
-  - Method: **GET**
-  - URL: `https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/phone-events-ingest?kind=screen_off`
-  - Header: `x-webhook-secret` = `<PHONE_WEBHOOK_SECRET>`
+### Macro A1 — In slaap gevallen
+- **Trigger:** Slaap → toestand **In slaap / Asleep**
+- **Actie:** HTTP-verzoek → **GET**
+  `…/functions/v1/phone-events-ingest?kind=sleep_start&secret=<secret>`
 
-> Macro 2 is optioneel maar maakt de bedtijd nauwkeuriger. Zonder scherm-uit-events gebruikt
-> de afleiding de laatste avond-ontgrendeling als bedtijd (schat de nacht dan iets langer in).
+### Macro A2 — Wakker geworden
+- **Trigger:** Slaap → toestand **Wakker / Awake**
+- **Actie:** HTTP-verzoek → **GET**
+  `…/functions/v1/phone-events-ingest?kind=sleep_end&secret=<secret>`
 
-Je hoeft de tijd niet zelf mee te sturen — de server stempelt het moment van binnenkomst.
-Wil je toch een expliciete tijd (bv. bij een test), voeg dan `&ts=2026-07-11T23:45:00Z` toe.
+De functie koppelt elke `sleep_end` aan de laatste `sleep_start` ervoor (binnen 14 u) en zet dat
+één-op-één als slaapsessie neer — geen heuristiek.
 
-## Afleiding (server, `phone-events-ingest`)
+---
 
-- Kijkt terug over de laatste **4 dagen** en herberekent na elk event.
-- Slaapgat = grootste gat tussen twee opeenvolgende ontgrendelingen dat **≥ 3 u** en **≤ 14 u**
-  duurt, begint in de avond/nacht (bedtijd 19:00–04:00) en eindigt 's ochtends (03:00–13:00).
-- Bedtijd = eerste **scherm-uit** ná de laatste avond-ontgrendeling (anders die ontgrendeling).
-- Wakker = eerste ochtend-ontgrendeling. De sessie hangt aan de **wakker-datum**.
-- Telefoon-inactiviteit kent geen slaapfases → de hele duur komt in `light_min` te staan
-  (de app leest totaal = light+deep+rem); `source='phone'` markeert het als schatting.
+## Manier B — Ontgrendel-/scherm-uit-events (fallback)
 
-De afgeleide uren verschijnen automatisch in **Gezondheid/Vitals** (leest `health_sleep`), en de
-feed staat als **Telefoon-events** op het **Databronnen**-scherm zodat je ziet of MacroDroid nog
-stuurt.
+Werkt zónder de Slaap-trigger. De functie leidt de nacht af uit het langste gat tussen
+ontgrendelingen (Samsung Health's "je gebruikt je telefoon 's nachts niet" -aanpak).
+
+### Macro B1 — Ontgrendeling
+- **Trigger:** Apparaat-events → **Scherm ontgrendeld** (Screen Unlocked)
+- **Actie:** HTTP GET `…?kind=unlock&secret=<secret>`
+
+### Macro B2 — Scherm uit (bedtijd, optioneel maar nauwkeuriger)
+- **Trigger:** Apparaat-events → **Scherm aan/uit** → **Uit**
+- **Actie:** HTTP GET `…?kind=screen_off&secret=<secret>`
+
+Nachten waarvoor manier A een sessie levert, worden door B genegeerd.
+
+---
+
+## Testen
+
+- Draai de macro één keer (MacroDroid → macro → ⋮ → **Test acties**) of plak de URL met je echte
+  secret in een browser. Verwacht: `{"ok":true,"logged":1,"sleep_sessions":0}`.
+- `sleep_sessions` wordt 1 zodra er een compleet paar is (bij manier A: een `sleep_start` gevolgd
+  door een `sleep_end`; bij B: een avond-event + ochtend-ontgrendeling ≥ 3 u later).
+- `{"ok":false,"error":"Unauthorized"}` → de secret klopt niet.
+
+Batterij: geef MacroDroid vrijstelling van batterij-optimalisatie, anders kunnen nachtelijke
+triggers gemist worden.
+
+De afgeleide uren verschijnen automatisch in **Gezondheid/Vitals** en de feed staat als
+**Telefoon-events** op het **Databronnen**-scherm.
+
+## Geldige `kind`-waarden
+
+`sleep_start`, `sleep_end` (manier A) · `unlock`, `screen_off`, `screen_on` (manier B). NL/EN
+aliassen (`in_slaap`/`wakker`/`asleep`/`awake`, …) worden ook herkend.
 
 ## Deploy + secret
 
 ```bash
 supabase functions deploy phone-events-ingest --project-ref nhyunnnmdcmojvkxrbpl
 supabase secrets set PHONE_WEBHOOK_SECRET=<random string> --project-ref nhyunnnmdcmojvkxrbpl
-# OSLIFE_USER_ID is al gezet voor de andere ingest-functies.
 ```
 
-En de migratie `supabase/migrations/20260711130000_phone_events.sql` (tabel `phone_events` +
-`health_sleep.source`).
+En de migratie `supabase/migrations/20260711130000_phone_events.sql`.
