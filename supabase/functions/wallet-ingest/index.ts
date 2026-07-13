@@ -1,16 +1,34 @@
 /**
  * Supabase Edge Function: wallet-ingest
  * --------------------------------------
- * Receives POST from MacroDroid on Android when Google Wallet sends a payment notification.
- * Parses the notification text, categorizes the merchant, and upserts to `finance_tx`.
+ * Receives POST from MacroDroid on Android for ANY payment-notification source —
+ * Google Wallet, or a banking app (ABN AMRO, ING, …) — and upserts to `finance_tx`
+ * in real time. Two ways to feed it, mixable per-macro:
  *
- * MacroDroid setup (on Samsung phone):
+ *   1. Raw notification (original Wallet flow) — send {title, text, app} and let
+ *      this function parse the amount + merchant out of the notification text.
+ *   2. Structured fields — if MacroDroid already extracted values (e.g. via a
+ *      regex/local-variable macro that used to fill the "Betalingen" sheet),
+ *      send them directly: {amount, merchant, domain|account_type, payment_method,
+ *      category, date}. Any structured field takes priority over the raw parse;
+ *      you can mix (e.g. send amount+merchant but let category be inferred).
+ *
+ * This replaces the Betalingen-sheet → Apps Script (30 min) → payments-sheet-ingest
+ * path for macros that can POST directly: same MacroDroid trigger, just change the
+ * action from "add Sheet row" to "HTTP Request", and data lands instantly instead
+ * of up to 30 minutes later. See integrations/macrodroid/bank-notifications.md.
+ *
+ * MacroDroid setup — Google Wallet (unchanged):
  *   Trigger:  Notification received → App: "Google Wallet" (com.google.android.apps.walletnfcrel)
  *   Action:   HTTP Request → POST → https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/wallet-ingest
  *   Headers:  Content-Type: application/json
  *             x-webhook-secret: <your WALLET_WEBHOOK_SECRET>
  *   Body:     {"title": "[notification_title]", "text": "[notification_text]", "app": "Google Wallet"}
  *   (Use MacroDroid's magic text variables: {notification_title}, {notification_text})
+ *
+ * MacroDroid setup — bank app (structured, see the doc above for the full macro):
+ *   Body:     {"app": "ABN AMRO", "amount": [lv=amount], "merchant": "[lv=merchant]",
+ *              "account_type": "Zakelijk", "title": "[notification_title]", "text": "[notification_text]"}
  *
  * Deploy:
  *   supabase functions deploy wallet-ingest --project-ref nhyunnnmdcmojvkxrbpl
@@ -75,6 +93,23 @@ function inferDomain(merchant: string): string {
   return 'personal'
 }
 
+/** Explicit domain/account-type label → app domain. Mirrors payDomain_() in
+ *  integrations/apps-script/payments-sheet.gs so the two paths agree. */
+function mapAccountType(label: string): string {
+  const s = label.toLowerCase()
+  if (/zakelijk|business|prjct|zaak/.test(s)) return 'prjct'
+  if (/parking|strijp/.test(s)) return 'parkingyou'
+  if (/buurtkaart|geldrop/.test(s)) return 'buurtkaart'
+  if (/persoonlijk|priv[ée]|personal/.test(s)) return 'personal'
+  return ''
+}
+
+/** "ABN AMRO" / "Google Wallet" → "abn_amro" / "google_wallet" for the `source` column. */
+function normalizeSource(app: string): string {
+  const s = app.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  return s || 'google_wallet'
+}
+
 /**
  * Parse Google Wallet notification text.
  * Examples:
@@ -113,7 +148,12 @@ Deno.serve(async (req) => {
     return new Response('Unauthorized', { status: 401 })
   }
 
-  let body: { title?: string; text?: string; app?: string }
+  let body: {
+    title?: string; text?: string; app?: string
+    amount?: number; merchant?: string
+    domain?: string; account_type?: string
+    payment_method?: string; category?: string; date?: string
+  }
   try {
     body = await req.json()
   } catch {
@@ -121,21 +161,33 @@ Deno.serve(async (req) => {
   }
 
   const { title = '', text = '' } = body
-  const parsed = parseNotification(title, text)
 
-  if (!parsed) {
-    // Not a payment notification (e.g. loyalty card scan) — ignore silently
-    return json({ ok: true, skipped: true })
+  // Structured fields (from a MacroDroid macro that already extracted values)
+  // win; otherwise fall back to parsing the raw notification text.
+  let amount: number, merchant: string
+  if (Number.isFinite(body.amount)) {
+    amount = Math.abs(body.amount as number)
+    merchant = (body.merchant ?? '').trim() || 'Unknown'
+  } else {
+    const parsed = parseNotification(title, text)
+    if (!parsed) {
+      // Not a payment notification (e.g. loyalty card scan) — ignore silently
+      return json({ ok: true, skipped: true })
+    }
+    amount = parsed.amount
+    merchant = parsed.merchant
   }
 
-  const { amount, merchant } = parsed
   const now = new Date().toISOString()
-  const occurredOn = amsterdamToday()       // Amsterdam calendar day, not UTC
+  // Amsterdam calendar day, not UTC — overridable when the macro supplies its own date.
+  const occurredOn = body.date?.trim() || amsterdamToday()
   const storedAmount = -Math.abs(amount)    // spending = negative
   // Shared cross-source dedup contract `${occurred_on}|${amount.toFixed(2)}` — the
   // exact key the ABN CSV import and Betalingen sheet use, so the same purchase
-  // arriving from Wallet AND a later CSV/sheet import collapses to one row.
+  // arriving from Wallet/bank AND a later CSV/sheet import collapses to one row.
   const dedupKey = `${occurredOn}|${storedAmount.toFixed(2)}`
+
+  const domain = mapAccountType(body.domain ?? body.account_type ?? '') || inferDomain(merchant)
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
   const { error } = await supabase.from('finance_tx').upsert(
@@ -147,10 +199,10 @@ Deno.serve(async (req) => {
       amount: storedAmount,
       counterparty: merchant,              // schema: counterparty (not 'merchant')
       description: `${title} | ${text}`.slice(0, 200),
-      category: inferCategory(merchant),
-      domain: inferDomain(merchant),
-      source: 'google_wallet',
-      payment_method: 'contactless',
+      category: body.category?.trim() || inferCategory(merchant),
+      domain,
+      source: normalizeSource(body.app ?? ''),
+      payment_method: body.payment_method?.trim() || 'contactless',
     },
     { onConflict: 'user_id,dedup_key' },
   )
