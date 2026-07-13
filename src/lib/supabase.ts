@@ -172,11 +172,22 @@ export async function persistBlockStatus(id: string, status: Block['status']): P
   warnWrite('day_blocks.status', error)
 }
 
+// Sentinel merchant wallet-ingest stores for a real-time bank notification
+// that carries only an amount, no merchant (e.g. ABN AMRO's generic "Er is
+// een bedrag afgeschreven" alert). MUST match PENDING_MERCHANT in
+// supabase/functions/wallet-ingest/index.ts.
+const PENDING_MERCHANT = 'Onbekend (bank-melding)'
+
 // ── Finance: ABN AMRO CSV import ──────────────────────────────────────────────
 // Persists imported bank transactions to finance_tx. The dedup_key matches the
-// one payments-sheet-ingest uses (`date|amount`), so a purchase already logged
-// via the Betalingen Google Sheet is NOT duplicated (ignoreDuplicates keeps the
-// existing row). Returns the number of NEW rows actually inserted.
+// one payments-sheet-ingest/wallet-ingest use (`date|amount`), so a purchase
+// already logged via the Betalingen Google Sheet or a Wallet/bank notification
+// is NOT duplicated. A row a real-time notification wrote as a PENDING_MERCHANT
+// placeholder (no merchant known yet) gets enriched with the CSV's real
+// merchant/category/domain instead of being dedup-blocked by it — the CSV is
+// the closest thing OSLIFE has to ground truth for merchant names. Any other
+// existing row (already has a real merchant, or was manually edited) wins as
+// before. Returns the number of rows actually inserted or enriched.
 export async function insertFinanceTx(txns: Transaction[]): Promise<number> {
   const user_id = await currentUserId()
   if (!user_id || !txns.length) return 0
@@ -192,11 +203,44 @@ export async function insertFinanceTx(txns: Transaction[]): Promise<number> {
     payment_method: 'unknown',
     dedup_key: `${t.date}|${t.amount.toFixed(2)}`,
   }))
-  const { error, count } = await supabase
+
+  const dedupKeys = rows.map((r) => r.dedup_key)
+  const { data: pendingRows } = await supabase
     .from('finance_tx')
-    .upsert(rows, { onConflict: 'user_id,dedup_key', ignoreDuplicates: true, count: 'exact' })
-  warnWrite('finance_tx.import', error)
-  return count ?? 0
+    .select('dedup_key')
+    .eq('user_id', user_id)
+    .eq('counterparty', PENDING_MERCHANT)
+    .in('dedup_key', dedupKeys)
+  const pendingKeys = new Set((pendingRows ?? []).map((r) => r.dedup_key as string))
+
+  const toEnrich = rows.filter((r) => pendingKeys.has(r.dedup_key))
+  const toInsert = rows.filter((r) => !pendingKeys.has(r.dedup_key))
+
+  let count = 0
+  if (toEnrich.length) {
+    const results = await Promise.all(
+      toEnrich.map((r) =>
+        supabase
+          .from('finance_tx')
+          .update({ counterparty: r.counterparty, category: r.category, domain: r.domain, source: r.source })
+          .eq('user_id', user_id)
+          .eq('dedup_key', r.dedup_key)
+          // Re-check counterparty at write time: don't clobber a manual edit
+          // that landed between the select above and this update.
+          .eq('counterparty', PENDING_MERCHANT),
+      ),
+    )
+    results.forEach((r) => warnWrite('finance_tx.enrich', r.error))
+    count += results.filter((r) => !r.error).length
+  }
+  if (toInsert.length) {
+    const { error, count: insCount } = await supabase
+      .from('finance_tx')
+      .upsert(toInsert, { onConflict: 'user_id,dedup_key', ignoreDuplicates: true, count: 'exact' })
+    warnWrite('finance_tx.import', error)
+    count += insCount ?? 0
+  }
+  return count
 }
 
 // ── Email / Inbox ─────────────────────────────────────────────────────────────

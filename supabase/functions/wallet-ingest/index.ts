@@ -53,6 +53,14 @@ const WEBHOOK_SECRET = Deno.env.get('WALLET_WEBHOOK_SECRET') ?? ''
 
 const json = jsonResponder()
 
+// Sentinel merchant for real-time notifications that carry no merchant name —
+// e.g. ABN AMRO's generic "Er is een bedrag afgeschreven" alert, which only
+// gives an amount + account number. insertFinanceTx (the ABN CSV import, in
+// src/lib/supabase.ts) looks for this EXACT string to enrich the row with the
+// real merchant later instead of being dedup-blocked by this placeholder.
+// Keep the two in sync if you change it.
+const PENDING_MERCHANT = 'Onbekend (bank-melding)'
+
 // Known merchant → category mappings. Values match the canonical TX_CATEGORIES
 // casing (src/finance/categories.ts) and mirror the CSV guesser's decisions for
 // the same merchants (src/finance/csvImport.ts guessCategory) so wallet rows land
@@ -127,11 +135,12 @@ function parseNotification(title: string, text: string): { amount: number; merch
 
   const amount = parseMoney(amountMatch[1])
 
-  // Extract merchant: everything after "bij", "at", "@", "van" keywords
+  // Extract merchant: everything after "bij", "at", "@", "van" keywords.
+  // Some bank alerts (e.g. ABN AMRO's generic debit notification) report only
+  // the amount, no merchant — PENDING_MERCHANT flags the row instead of
+  // storing whatever garbled fragment a blind text-strip would produce.
   const merchantMatch = combined.match(/(?:bij|at|@|from|van)\s+([A-Za-zÀ-ÿ0-9\s&'.,-]{2,40}?)(?:\s*$|\s*\.|,)/i)
-  const merchant = merchantMatch
-    ? merchantMatch[1].trim()
-    : text.replace(/[€$£\d.,]/g, '').replace(/betaald|payment|paid|bij|at/gi, '').trim().slice(0, 50) || 'Unknown'
+  const merchant = merchantMatch ? merchantMatch[1].trim() : PENDING_MERCHANT
 
   return { amount, merchant }
 }
@@ -167,7 +176,7 @@ Deno.serve(async (req) => {
   let amount: number, merchant: string
   if (Number.isFinite(body.amount)) {
     amount = Math.abs(body.amount as number)
-    merchant = (body.merchant ?? '').trim() || 'Unknown'
+    merchant = (body.merchant ?? '').trim() || PENDING_MERCHANT
   } else {
     const parsed = parseNotification(title, text)
     if (!parsed) {
