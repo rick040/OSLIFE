@@ -1,22 +1,144 @@
+import { useMemo } from 'react'
 import { useStore } from '../store'
-import { DOMAIN_META } from '../domains'
+import { DOMAIN_META, today } from '../domains'
 import { DomainChip, Empty } from '../components/ui'
+import { weekDates, PEAK_START, PEAK_END } from '../heyra/planner'
+import { googleCalendarUrlForBlock } from '../lib/gcal'
+import type { PlanBlock, PlanBlockKind } from '../types'
 import {
   CalendarRange,
-  CheckCircle2,
-  SkipForward,
-  RotateCcw,
-  ChevronUp,
-  ChevronDown,
+  CalendarClock,
+  Zap,
+  Repeat,
+  Coffee,
+  Utensils,
+  Inbox,
+  Moon,
+  User,
+  Lock,
+  LockKeyhole,
+  CalendarPlus,
+  X,
   Sparkles,
   Sun,
+  RefreshCw,
 } from 'lucide-react'
 
-export default function DayBuilder() {
-  const { blocks, planAdapted, completeBlock, skipBlock, resetBlock, moveBlock, acceptPlan } = useStore()
+const KIND_META: Record<PlanBlockKind, { label: string; icon: typeof Zap }> = {
+  event: { label: 'afspraak', icon: CalendarClock },
+  focus: { label: 'diep werk', icon: Zap },
+  routine: { label: 'routine', icon: Repeat },
+  break: { label: 'pauze', icon: Coffee },
+  meal: { label: 'eten', icon: Utensils },
+  admin: { label: 'admin', icon: Inbox },
+  'wind-down': { label: 'wind-down', icon: Moon },
+  personal: { label: 'persoonlijk', icon: User },
+}
 
-  const done = blocks.filter((b) => b.status === 'done').length
-  const skipped = blocks.filter((b) => b.status === 'skipped').length
+function dayHeading(date: string): { weekday: string; rest: string } {
+  const d = new Date(date + 'T00:00:00')
+  const weekday = d.toLocaleDateString('nl-NL', { weekday: 'long', timeZone: 'Europe/Amsterdam' })
+  const rest = d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', timeZone: 'Europe/Amsterdam' })
+  return { weekday: weekday.charAt(0).toUpperCase() + weekday.slice(1), rest }
+}
+
+function BlockRow({ b }: { b: PlanBlock }) {
+  const { lockPlanBlock, dismissPlanBlock } = useStore()
+  const meta = DOMAIN_META[b.domain]
+  const kind = KIND_META[b.kind]
+  const Icon = kind.icon
+  const inPeak = b.start >= PEAK_START && b.start < PEAK_END
+  const isCalendar = b.source === 'calendar'
+  const isLocked = b.locked && !isCalendar // a proposal Rick committed
+  const isProposal = !isCalendar && !b.locked
+
+  return (
+    <div
+      className={`card p-3 flex items-stretch gap-3 transition-all ${
+        isCalendar ? 'bg-sunken/60' : isLocked ? 'border-buurtkaart/40' : inPeak ? 'border-personal/40' : ''
+      }`}
+    >
+      {/* time rail */}
+      <div className="flex flex-col items-center justify-center w-14 shrink-0">
+        <span className="text-sm font-medium tabular-nums">{b.start}</span>
+        <span className="text-[10px] text-faint tabular-nums">{b.end}</span>
+      </div>
+      <div className={`w-1 rounded-full ${meta.dot}`} />
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="chip bg-sunken text-muted flex items-center gap-1">
+            <Icon className="h-3 w-3" /> {kind.label}
+          </span>
+          <DomainChip domain={b.domain} small />
+          {inPeak && b.kind === 'focus' && <span className="chip bg-personal/15 text-personal">focuspiek</span>}
+          {isCalendar && (
+            <span className="chip bg-sunken text-muted flex items-center gap-1">
+              <Lock className="h-3 w-3" /> agenda
+            </span>
+          )}
+          {isLocked && (
+            <span className="chip bg-buurtkaart/15 text-buurtkaart flex items-center gap-1">
+              <Lock className="h-3 w-3" /> vergrendeld
+            </span>
+          )}
+          {isProposal && (
+            <span className="chip bg-cross/15 text-cross flex items-center gap-1">
+              <Sparkles className="h-3 w-3" /> voorstel
+            </span>
+          )}
+        </div>
+        <p className="text-sm mt-1 text-ink">{b.title}</p>
+        {b.rationale && <p className="text-[11px] text-faint mt-0.5">{b.rationale}</p>}
+
+        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+          {isProposal && (
+            <>
+              <button className="btn-ghost !py-1 !px-2.5 text-xs" onClick={() => lockPlanBlock(b.id)}>
+                <LockKeyhole className="h-3.5 w-3.5" /> Vergrendel
+              </button>
+              <button className="btn-ghost !py-1 !px-2.5 text-xs" onClick={() => dismissPlanBlock(b.id)}>
+                <X className="h-3.5 w-3.5" /> Negeer
+              </button>
+            </>
+          )}
+          <a
+            className="btn-ghost !py-1 !px-2.5 text-xs"
+            href={googleCalendarUrlForBlock(b)}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <CalendarPlus className="h-3.5 w-3.5" /> Google Agenda
+          </a>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default function DayBuilder() {
+  const { weekPlan, weekPlanAt, planningWeek, generateWeekPlan } = useStore()
+
+  const dates = useMemo(() => weekDates(today()), [])
+  const dateSet = useMemo(() => new Set(dates), [dates])
+
+  // Only show blocks in the current week; group by day, sort by start.
+  const byDate = useMemo(() => {
+    const map = new Map<string, PlanBlock[]>()
+    for (const d of dates) map.set(d, [])
+    for (const b of weekPlan) {
+      if (!dateSet.has(b.date)) continue
+      map.get(b.date)!.push(b)
+    }
+    for (const list of map.values()) list.sort((a, b) => a.start.localeCompare(b.start))
+    return map
+  }, [weekPlan, dates, dateSet])
+
+  const inWeek = weekPlan.filter((b) => dateSet.has(b.date))
+  const events = inWeek.filter((b) => b.source === 'calendar').length
+  const proposed = inWeek.filter((b) => b.source !== 'calendar' && !b.locked).length
+  const locked = inWeek.filter((b) => b.source !== 'calendar' && b.locked).length
+  const hasPlan = inWeek.length > 0
 
   return (
     <div className="space-y-5 max-w-3xl mx-auto">
@@ -26,124 +148,84 @@ export default function DayBuilder() {
             <CalendarRange className="h-5 w-5 text-personal" /> Dagplanner
           </h1>
           <p className="text-sm text-muted mt-1 max-w-xl">
-            Een plan afgestemd op jouw <span className="text-ink">aangeleerde</span> ritme: diep werk zit in jouw
-            echte focuspiek van 09:30–12:30, niet een standaard 9u.
+            Een optimaal plan voor vandaag en de rest van de week, gebouwd rond je{' '}
+            <span className="text-ink">agenda-afspraken</span>, je <span className="text-ink">routines</span> en je
+            aangeleerde focuspiek. Vergrendel de blokken die kloppen of zet ze in Google Agenda.
           </p>
         </div>
-        <button className="btn-primary" onClick={acceptPlan}>
-          <CheckCircle2 className="h-4 w-4" /> Plan accepteren
+        <button className="btn-primary" onClick={generateWeekPlan} disabled={planningWeek}>
+          {planningWeek ? (
+            <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+          ) : hasPlan ? (
+            <RefreshCw className="h-4 w-4" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+          {planningWeek ? 'Plannen…' : hasPlan ? 'Herbereken' : 'Genereer plan'}
         </button>
       </div>
-
-      <div className="flex items-center gap-2 text-xs">
-        <span className="chip bg-buurtkaart/15 text-buurtkaart">{done} gedaan</span>
-        <span className="chip bg-orange-500/15 text-orange-300">{skipped} overgeslagen</span>
-        <span className="chip bg-sunken text-muted">{blocks.length - done - skipped} gepland</span>
-      </div>
-
-      {planAdapted && (
-        <div className="card p-3 border-cross/40 bg-cross/5 flex items-start gap-2 animate-fade-up">
-          <Sparkles className="h-4 w-4 text-cross mt-0.5 shrink-0" />
-          <p className="text-sm text-ink-soft">
-            Reflectie heeft dit plan aangepast: er is een avond <b>wind-down</b> blok toegevoegd om de slaap van morgen te beschermen
-            (slaap↔energie patroon versterkt). De trage loop veranderde zojuist je dag.
-          </p>
-        </div>
-      )}
 
       {/* learned-window banner */}
       <div className="card p-3 flex items-center gap-2 text-sm text-ink-soft">
         <Sun className="h-4 w-4 text-personal" />
-        Aangeleerd hoog-energie venster: <b className="text-personal">09:30 – 12:30</b>. Diep werk is hier beschermd.
+        Aangeleerd hoog-energie venster:{' '}
+        <b className="text-personal">
+          {PEAK_START} – {PEAK_END}
+        </b>
+        . Diep werk wordt hier beschermd.
       </div>
 
-      {blocks.length ? (
-        <div className="space-y-2">
-          {blocks.map((b, i) => {
-            const meta = DOMAIN_META[b.domain]
-            const inPeak = b.start >= '09:30' && b.start < '12:30'
+      {hasPlan && (
+        <div className="flex items-center gap-2 text-xs flex-wrap">
+          <span className="chip bg-buurtkaart/15 text-buurtkaart">{events} afspraken</span>
+          <span className="chip bg-cross/15 text-cross">{proposed} voorgesteld</span>
+          <span className="chip bg-personal/15 text-personal">{locked} vergrendeld</span>
+          {weekPlanAt && (
+            <span className="text-faint">
+              bijgewerkt{' '}
+              {new Date(weekPlanAt).toLocaleTimeString('nl-NL', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'Europe/Amsterdam',
+              })}
+            </span>
+          )}
+        </div>
+      )}
+
+      {!hasPlan ? (
+        <Empty>
+          {planningWeek
+            ? 'HEYRA stelt je week samen…'
+            : 'Nog geen plan. Tik op "Genereer plan" — HEYRA bouwt een dagindeling rond je agenda en routines.'}
+        </Empty>
+      ) : (
+        <div className="space-y-6">
+          {dates.map((date) => {
+            const list = byDate.get(date) ?? []
+            const { weekday, rest } = dayHeading(date)
+            const isToday = date === today()
             return (
-              <div
-                key={b.id}
-                className={`card p-3 flex items-stretch gap-3 transition-all ${
-                  b.status === 'done'
-                    ? 'opacity-60 border-buurtkaart/30'
-                    : b.status === 'skipped'
-                    ? 'opacity-50'
-                    : inPeak
-                    ? 'border-personal/40'
-                    : ''
-                }`}
-              >
-                {/* time rail */}
-                <div className="flex flex-col items-center justify-center w-14 shrink-0">
-                  <span className="text-sm font-medium tabular-nums">{b.start}</span>
-                  <span className="text-[10px] text-faint tabular-nums">{b.end}</span>
+              <div key={date} className="space-y-2">
+                <div className="flex items-baseline gap-2 sticky top-0 bg-canvas/80 backdrop-blur-sm py-1 z-10">
+                  <h2 className="text-base font-semibold">{weekday}</h2>
+                  <span className="text-xs text-faint">{rest}</span>
+                  {isToday && <span className="chip bg-forest/15 text-forest">vandaag</span>}
                 </div>
-                <div className={`w-1 rounded-full ${meta.dot}`} />
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <DomainChip domain={b.domain} small />
-                    {inPeak && <span className="chip bg-personal/15 text-personal">focuspiek</span>}
-                    {b.status === 'done' && <span className="chip bg-buurtkaart/15 text-buurtkaart">gedaan</span>}
-                    {b.status === 'skipped' && <span className="chip bg-orange-500/15 text-orange-300">overgeslagen</span>}
-                  </div>
-                  <p
-                    className={`text-sm mt-1 ${
-                      b.status === 'done' ? 'line-through text-faint' : 'text-ink'
-                    }`}
-                  >
-                    {b.title}
-                  </p>
-                  <p className="text-[11px] text-faint mt-0.5">{b.rationale}</p>
-
-                  {/* actions */}
-                  <div className="flex items-center gap-1.5 mt-2">
-                    {b.status === 'planned' ? (
-                      <>
-                        <button className="btn-ghost !py-1 !px-2.5 text-xs" onClick={() => completeBlock(b.id)}>
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Gedaan
-                        </button>
-                        <button className="btn-ghost !py-1 !px-2.5 text-xs" onClick={() => skipBlock(b.id)}>
-                          <SkipForward className="h-3.5 w-3.5" /> Overslaan
-                        </button>
-                      </>
-                    ) : (
-                      <button className="btn-ghost !py-1 !px-2.5 text-xs" onClick={() => resetBlock(b.id)}>
-                        <RotateCcw className="h-3.5 w-3.5" /> Reset
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* reorder */}
-                <div className="flex flex-col justify-center gap-1">
-                  <button
-                    className="text-faint hover:text-ink disabled:opacity-20"
-                    disabled={i === 0}
-                    onClick={() => moveBlock(b.id, -1)}
-                  >
-                    <ChevronUp className="h-4 w-4" />
-                  </button>
-                  <button
-                    className="text-faint hover:text-ink disabled:opacity-20"
-                    disabled={i === blocks.length - 1}
-                    onClick={() => moveBlock(b.id, 1)}
-                  >
-                    <ChevronDown className="h-4 w-4" />
-                  </button>
-                </div>
+                {list.length ? (
+                  list.map((b) => <BlockRow key={b.id} b={b} />)
+                ) : (
+                  <p className="text-[11px] text-faint italic pl-1">Geen blokken.</p>
+                )}
               </div>
             )
           })}
         </div>
-      ) : (
-        <Empty>Geen blokken gepland.</Empty>
       )}
 
       <p className="text-[11px] text-faint">
-        Overgeslagen en voltooide blokken worden teruggeschreven als trainingssignalen. Na verloop van tijd plant de planner niet meer in wat je consequent overslaat.
+        Vergrendelde blokken worden opgeslagen in je dagplan (day_blocks) en verschijnen bij "Vandaag". Via Google
+        Agenda opent HEYRA een vooraf ingevulde afspraak — jij bevestigt.
       </p>
     </div>
   )
