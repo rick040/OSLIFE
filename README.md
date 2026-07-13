@@ -100,13 +100,13 @@ transaction opens an editor to change its category/domain or add a note; a manua
 category change also teaches the vendor cache for next time.
 
 ### Phone-derived sleep
-When the Samsung Health export is empty, sleep still lands — inferred the way SHealth does it:
-from *not touching your phone at night*. A MacroDroid macro POSTs a timestamp on each **unlock**
-and **screen-off** to `phone-events-ingest`; the function logs them to `phone_events` and derives a
-session from the longest overnight gap (last activity before bed → first morning unlock), writing it
-to `health_sleep` with `source='phone'`. A real Samsung-Health session (`source='health_app'`) always
-wins for that night and is never overwritten by an estimate. Setup:
-`integrations/macrodroid/phone-sleep.md`.
+When the Samsung Health export is empty, sleep still lands — derived from your phone via MacroDroid,
+in priority order: (1) MacroDroid's own **sleep/wake detection** (`sleep_start`/`sleep_end` events →
+used verbatim), else (2) the SHealth-style **activity gap** — a timestamp on each **unlock** and
+**screen-off**, from which the function takes the longest overnight gap (last activity before bed →
+first morning unlock). Either way it writes to `health_sleep` with `source='phone'`, and a real
+Samsung-Health session (`source='health_app'`) always wins for that night and is never overwritten by
+an estimate. Setup: `integrations/macrodroid/phone-sleep.md`.
 
 ### Finance dedup
 The Betalingen sheet and the in-app ABN AMRO CSV import both write `finance_tx` with the same

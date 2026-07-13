@@ -2,24 +2,29 @@
  * Supabase Edge Function: phone-events-ingest
  * -------------------------------------------
  * Receives phone-activity events from a MacroDroid macro on Android and derives
- * a nightly sleep session from them — the "I don't use my phone at night, so I
- * must be asleep" heuristic Samsung Health uses, but without a health app.
+ * a nightly sleep session from them, without a health app.
  *
- *   Screen Off  → you laid the phone down (bedtime candidate)
- *   Unlock      → you picked it up   (wake candidate = first morning unlock)
+ * Two sources, in priority order:
+ *   1. Explicit sleep/wake — MacroDroid's own "asleep"/"awake" detection:
+ *        sleep_start → you fell asleep       sleep_end → you woke up
+ *      These are the most accurate and are used verbatim (no heuristic).
+ *   2. Activity gap (fallback for nights without explicit events) — the "I don't
+ *      use my phone at night, so I must be asleep" heuristic Samsung Health uses:
+ *        screen_off → you laid the phone down     unlock → you picked it up
+ *      Bedtime/wake come from the longest overnight gap between unlocks.
  *
  * Each event is logged to `phone_events`; after every write we recompute the
- * last few nights and upsert the longest overnight gap into `health_sleep` as a
+ * last few nights and upsert the resulting session into `health_sleep` as a
  * phone-derived estimate (source='phone'). Real Samsung-Health sessions
  * (source='health_app', from health-sheets-ingest) always take precedence and
  * are never overwritten.
  *
  * MacroDroid setup (on the phone — see integrations/macrodroid/phone-sleep.md):
- *   Macro 1  Trigger: Device Unlocked
- *            Action:  HTTP GET  …/functions/v1/phone-events-ingest?kind=unlock
- *   Macro 2  Trigger: Screen Off
- *            Action:  HTTP GET  …/functions/v1/phone-events-ingest?kind=screen_off
- *   Header (both): x-webhook-secret: <PHONE_WEBHOOK_SECRET>
+ *   Preferred  Trigger: Sleep (asleep) → HTTP GET …?kind=sleep_start
+ *              Trigger: Sleep (awake)  → HTTP GET …?kind=sleep_end
+ *   Fallback   Trigger: Screen Off     → HTTP GET …?kind=screen_off
+ *              Trigger: Device Unlocked→ HTTP GET …?kind=unlock
+ *   Secret (all): header x-webhook-secret OR ?secret= query param.
  *
  * Deploy:
  *   supabase functions deploy phone-events-ingest --project-ref nhyunnnmdcmojvkxrbpl
@@ -42,7 +47,7 @@ const MAX_SLEEP_H = 14     // longer than this is the phone being off/lost, not 
 const LOOKBACK_DAYS = 4    // recompute recent nights on every event
 const TZ = 'Europe/Amsterdam'
 
-type Kind = 'unlock' | 'screen_off' | 'screen_on'
+type Kind = 'unlock' | 'screen_off' | 'screen_on' | 'sleep_start' | 'sleep_end'
 interface PhoneEvent { ts: Date; kind: Kind }
 
 /** Normalise the many spellings MacroDroid / URLs might send to a canonical kind. */
@@ -51,6 +56,9 @@ function normalizeKind(raw: string | null | undefined): Kind | null {
   if (/^unlock(ed)?$/.test(k) || k === 'device_unlocked' || k === 'picked_up') return 'unlock'
   if (k === 'screen_off' || k === 'off' || k === 'screenoff' || k === 'laid_down') return 'screen_off'
   if (k === 'screen_on' || k === 'on' || k === 'screenon') return 'screen_on'
+  // Explicit sleep/wake from MacroDroid's own detection (NL + EN aliases).
+  if (k === 'sleep_start' || k === 'asleep' || k === 'fell_asleep' || k === 'sleeping' || k === 'in_slaap' || k === 'slaap' || k === 'bedtime') return 'sleep_start'
+  if (k === 'sleep_end' || k === 'awake' || k === 'woke' || k === 'woke_up' || k === 'wake' || k === 'wakeup' || k === 'wakker' || k === 'wakker_geworden') return 'sleep_end'
   return null
 }
 
@@ -65,6 +73,32 @@ function amsHour(d: Date): number {
 }
 
 interface SleepSession { date: string; start: Date; end: Date; minutes: number }
+
+/**
+ * Explicit sessions from MacroDroid's own asleep/awake detection: pair each
+ * `sleep_end` (wake) with the most recent preceding `sleep_start` (bed) within
+ * MAX_SLEEP_H. Trusted verbatim — no night-hour or minimum-length filtering, so
+ * naps count too. Longest session wins per wake-date.
+ */
+function deriveExplicitSleep(events: PhoneEvent[]): SleepSession[] {
+  const starts = events.filter((e) => e.kind === 'sleep_start')
+  const best = new Map<string, SleepSession>()
+  for (const end of events.filter((e) => e.kind === 'sleep_end')) {
+    let bed: Date | null = null
+    for (const s of starts) {
+      if (s.ts < end.ts && (end.ts.getTime() - s.ts.getTime()) <= MAX_SLEEP_H * 3_600_000) {
+        if (!bed || s.ts > bed) bed = s.ts
+      }
+    }
+    if (!bed) continue
+    const minutes = Math.round((end.ts.getTime() - bed.getTime()) / 60_000)
+    if (minutes <= 0) continue
+    const date = amsDate(end.ts)
+    const prev = best.get(date)
+    if (!prev || minutes > prev.minutes) best.set(date, { date, start: bed, end: end.ts, minutes })
+  }
+  return [...best.values()]
+}
 
 /**
  * Find each night's sleep session from a sorted event stream: the largest gap
@@ -117,7 +151,12 @@ async function refreshSleep(supabase: SupabaseClient): Promise<number> {
   if (error) throw error
 
   const events: PhoneEvent[] = (data ?? []).map((r) => ({ ts: new Date(r.ts as string), kind: r.kind as Kind }))
-  const sessions = deriveSleep(events)
+  // Explicit asleep/awake detection wins; the activity-gap heuristic only fills
+  // nights that have no explicit session.
+  const explicit = deriveExplicitSleep(events)
+  const explicitDates = new Set(explicit.map((s) => s.date))
+  const gap = deriveSleep(events).filter((s) => !explicitDates.has(s.date))
+  const sessions = [...explicit, ...gap]
   if (!sessions.length) return 0
 
   // Skip any date that already has a real Samsung-Health session — real data wins.
@@ -189,7 +228,7 @@ Deno.serve(async (req) => {
   }
 
   if (!toInsert.length) {
-    return json({ ok: false, error: 'No valid event (need kind=unlock|screen_off|screen_on)' }, 400)
+    return json({ ok: false, error: 'No valid event (need kind=sleep_start|sleep_end|unlock|screen_off)' }, 400)
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
