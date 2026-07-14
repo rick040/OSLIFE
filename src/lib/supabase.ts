@@ -1722,6 +1722,17 @@ export async function fetchSummaries(): Promise<MemorySummary[]> {
   }))
 }
 
+/**
+ * Right-to-be-forgotten (Slice 4): hard-delete a record, purge its mirrored copy
+ * in the event-log, and leave a contentless tombstone. The RPC enforces ownership
+ * and the allowed-table list. Use for tier=geheim records the user wants gone.
+ */
+export async function forgetRecord(table: string, id: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('forget', { p_table: table, p_id: id })
+  warnWrite('forget', error)
+  return data === true
+}
+
 /** Tier-safe full-text recall over normaal-tier memory (braindump/interaction/summaries). */
 export async function searchMemory(query: string, limit = 8): Promise<MemoryHit[]> {
   if (!query.trim()) return []
