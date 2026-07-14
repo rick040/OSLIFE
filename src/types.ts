@@ -197,6 +197,27 @@ export interface TypeRegistryEntry {
   updatedAt: string
 }
 
+// ── Inference engine (PM-201 Slice 1) ─────────────────────────────────────────
+
+export type InferenceDecision = 'confirm' | 'reject'
+
+/**
+ * A pending inference awaiting the user's confirm/reject. It is an `events` row
+ * with status='inferred'; the run_inference() rules produce these and
+ * confirm_inference() resolves them (inference_with_confirmation).
+ */
+export interface InferredItem {
+  id: string
+  ruleId: string | null
+  type: string
+  domains: LifeDomain[]
+  confidence: number
+  /** Human-facing confirm prompt, from payload.question. */
+  question: string
+  occurredAt: string // ISO
+  payload: Record<string, unknown>
+}
+
 // ── Passive-sensed substance ─────────────────────────────────────────────────
 
 export interface DayLog {

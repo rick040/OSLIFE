@@ -26,6 +26,7 @@ import Dakmeester from './views/Dakmeester'
 import InboxView from './views/Inbox'
 import NorthStar from './views/NorthStar'
 import Mindmap from './views/Mindmap'
+import Inferences from './views/Inferences'
 import SyncStatus from './views/SyncStatus'
 import LoopExplainer from './components/LoopExplainer'
 import SettingsModal from './components/SettingsModal'
@@ -78,6 +79,7 @@ export default function App() {
     memory: <Memory />,
     reflect: <Reflect />,
     mindmap: <Mindmap />,
+    inferences: <Inferences />,
     sync: <SyncStatus />,
     // built in later phases
     habits: <Habits />,

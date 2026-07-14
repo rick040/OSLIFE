@@ -326,6 +326,18 @@ Deno.serve(async (req) => {
       return new Response("ok");
     }
 
+    // Inference confirm/reject (PM-201 Slice 1). callback_data: infer:ok|no:<eventId>.
+    // Runs the SECURITY DEFINER confirm_inference — trusted here (service role, no
+    // JWT), which sets status confirmed/rejected and applies any effect.
+    if (data.startsWith("infer:")) {
+      const [, verdict, eventId] = data.split(":");
+      const decision = verdict === "ok" ? "confirm" : "reject";
+      const { data: ok, error } = await sb.rpc("confirm_inference", { p_event_id: eventId, p_decision: decision });
+      const label = error || !ok ? "Kon het niet verwerken" : decision === "confirm" ? "Bevestigd ✅" : "Verworpen";
+      await answerCallbackQuery(BOT_TOKEN, callbackId, label);
+      return new Response("ok");
+    }
+
     await answerCallbackQuery(BOT_TOKEN, callbackId);
   }
 

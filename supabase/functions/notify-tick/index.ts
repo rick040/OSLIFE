@@ -251,6 +251,31 @@ async function openHabitsWithStreak(sb: any, today: string): Promise<OpenHabit[]
   return open;
 }
 
+// ── Inference digest (PM-201 Slice 1) ──────────────────────────────────────
+// Pending inferences (events.status='inferred') routed to the evening digest.
+// Each gets a ✅/❌ pair; telegram-webhook's infer: branch resolves the tap via
+// confirm_inference. Batched so low-confidence guesses never interrupt the day.
+
+interface PendingInference {
+  id: string;
+  question: string;
+}
+
+// deno-lint-ignore no-explicit-any
+async function pendingInferences(sb: any): Promise<PendingInference[]> {
+  const { data } = await sb
+    .from("events")
+    .select("id,payload")
+    .eq("user_id", USER_ID)
+    .eq("status", "inferred")
+    .order("occurred_at", { ascending: false })
+    .limit(6);
+  // deno-lint-ignore no-explicit-any
+  return ((data ?? []) as any[])
+    .filter((r) => (r.payload?.confirm_channel ?? "digest") !== "immediate")
+    .map((r) => ({ id: r.id as string, question: (r.payload?.question as string) ?? "Bevestig deze afleiding?" }));
+}
+
 // ── Urgent alerts ─────────────────────────────────────────────────────────
 
 interface UrgentAlert {
@@ -403,6 +428,24 @@ Deno.serve(async (req) => {
         await sendClaimed(sb, "habit_reminder", today, BOT_TOKEN, chatId, "🔁 Nog openstaande gewoontes vandaag:", keyboard);
       }
       sent.push("habit_reminder");
+    }
+
+    // Inference digest rides the evening slot: one batched message with a
+    // confirm/reject pair per pending guess. Claimed once per day like the check-in.
+    if (prefs.evening_checkin && withinWindow(prefs.evening_time, nowMinutes)) {
+      const pending = await pendingInferences(sb);
+      // Only claim once there's something to send, so an empty evening doesn't
+      // burn the daily claim and block a later tick when a guess appears.
+      if (pending.length && (await claim(sb, "inference_digest", today))) {
+        const lines = ["🔎 Een paar dingen die ik afleidde — kloppen ze?", ""];
+        pending.forEach((p, i) => lines.push(`${i + 1}. ${p.question}`));
+        const keyboard: InlineKeyboard = pending.map((p, i) => [
+          { text: `✅ ${i + 1}`, callback_data: `infer:ok:${p.id}` },
+          { text: `❌ ${i + 1}`, callback_data: `infer:no:${p.id}` },
+        ]);
+        await sendClaimed(sb, "inference_digest", today, BOT_TOKEN, chatId, lines.join("\n"), keyboard);
+        sent.push("inference_digest");
+      }
     }
 
     if (prefs.urgent_alerts && !inQuietHours(prefs.quiet_hours_start, prefs.quiet_hours_end, nowMinutes)) {

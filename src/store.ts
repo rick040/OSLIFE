@@ -42,6 +42,8 @@ import type {
   AppSettings,
   GoalProposal,
   PlanBlock,
+  InferredItem,
+  InferenceDecision,
 } from './types'
 import { vendorKey, isUntagged } from './finance/categories'
 import { categorizeVendor } from './heyra/agents/vendorAgent'
@@ -155,6 +157,8 @@ import {
   deleteMessageRow,
   fetchAppSettings,
   upsertAppSettings,
+  fetchPendingInferences,
+  confirmInference,
 } from './lib/supabase'
 
 // The single Realtime channel opened by loadLiveData(). Held at module scope so
@@ -214,6 +218,7 @@ interface State {
   learnedFacts: LearnedFact[]
   vendorTags: VendorTag[]
   braindumpEntries: BraindumpEntry[]
+  inferences: InferredItem[]
   settings: AppSettings
   dataSource: 'mock' | 'live'
   isLoading: boolean
@@ -271,6 +276,10 @@ interface State {
 
   // LIVE DATA
   loadLiveData: () => Promise<void>
+
+  // Inference engine (Slice 1): load the pending review queue and resolve one.
+  loadInferences: () => Promise<void>
+  resolveInference: (id: string, decision: InferenceDecision) => Promise<void>
   // Rebuild the REMEMBER layer (essentials/threads/dayLogs/baseline patterns)
   // and today's nudge from whatever live data is currently loaded.
   recomputeBrain: () => void
@@ -443,6 +452,7 @@ const seed = () => ({
   learnedFacts: [] as LearnedFact[],
   vendorTags: [] as VendorTag[],
   braindumpEntries: [] as BraindumpEntry[],
+  inferences: [] as InferredItem[],
   settings: { hourlyRate: 0 } as AppSettings,
   dataSource: 'mock' as const,
   isLoading: true,
@@ -1885,7 +1895,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -1897,6 +1907,7 @@ export const useStore = create<State>()(
             fetchVendorTags(),
             fetchBraindumpEntries(),
             fetchAppSettings(),
+            fetchPendingInferences(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -1931,6 +1942,8 @@ export const useStore = create<State>()(
             // Braindump is app-owned (no mock fallback) — set directly so an empty
             // result genuinely means "nothing captured yet".
             braindumpEntries,
+            // Inference review queue is app-owned too — set directly.
+            inferences,
             dataSource: 'live',
             isLoading: false,
           })
@@ -1993,6 +2006,30 @@ export const useStore = create<State>()(
             supabase.channel('oslife-live'),
           )
           .subscribe()
+      },
+
+      loadInferences: async () => {
+        const inferences = await fetchPendingInferences()
+        set({ inferences })
+      },
+
+      resolveInference: async (id, decision) => {
+        // Optimistic: drop it from the review queue immediately.
+        const prev = get().inferences
+        set({ inferences: prev.filter((i) => i.id !== id) })
+        const ok = await confirmInference(id, decision)
+        if (!ok) {
+          // Roll back on failure so the user can retry.
+          set({ inferences: prev })
+          return
+        }
+        // A confirmed subscription_candidate created a subscription row — refresh.
+        if (decision === 'confirm') {
+          const item = prev.find((i) => i.id === id)
+          if (item?.type === 'subscription_candidate') {
+            void fetchSubscriptions().then((d) => d.length > 0 && set({ subscriptions: d }))
+          }
+        }
       },
 
       resetDemo: () => {

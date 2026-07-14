@@ -61,10 +61,29 @@ P1 3× vet_visit in 6 weken → `health_condition(subject=kyra)`. P2 3× recurri
 `subscriptions`. P3 herhaalde owed_reply → belangrijke relatie. P4 terugkerend
 admin-document → `admin_item`. P5 herhaald braindump-idee → `knowledge_item`.
 
+## Slice 1 (geïmplementeerd) — inferentiemotor + hybride bevestiging
+Migratie: `supabase/migrations/20260714130000_inference_engine.sql`.
+- **`run_inference()`** (SECURITY DEFINER, pg_cron elk uur op :07): past R1/R5/R6/R7 toe,
+  schrijft `inferred` events idempotent (NOT EXISTS op rule_id+dedup_key). Afgewezen
+  inferenties blijven staan zodat ze niet opnieuw voorgesteld worden.
+- **`confirm_inference(event_id, decision)`** (SECURITY DEFINER + eigen autorisatiecheck):
+  zet status confirmed/rejected en past het effect toe (subscription_candidate → subscriptions).
+  Aangeroepen vanuit de app (RLS-eigenaar) én de Telegram-webhook (service-role).
+- **`rule_performance`**-view (security_invoker): proposed/confirmed/rejected/pending per regel,
+  puur afgeleid uit events. Tuning-signaal voor fase 7.
+- Hybride levering: hoge confidence (≥0.85) auto-commit; overige naar de review-queue
+  (in-app scherm **Inferenties**) + een gebundelde **Telegram-avonddigest** met ✅/❌-knoppen
+  (notify-tick), bevestigd via de `infer:`-callback in telegram-webhook.
+- Client: `fetchPendingInferences`/`confirmInference` (supabase.ts), `inferences` +
+  `loadInferences`/`resolveInference` (store), scherm `src/views/Inferences.tsx`.
+- **Deploy-noot:** de twee edge-functions (notify-tick, telegram-webhook) moeten opnieuw
+  gedeployd worden (`supabase functions deploy …`, JWT-verificatie uit) voordat de Telegram-
+  digest live is. De motor (pg_cron) en het in-app scherm werken zodra de migratie is toegepast.
+
 ## Bouwvolgorde
 - **Slice 0 (klaar):** envelop + `events` + `type_registry` + tier + emit_event-trigger.
-- **Slice 1:** regelmotor R1–R9 als reducers op events; hybride bevestiging (avonddigest +
-  direct-vragen + stil auto-commit), hergebruik notify-tick + Telegram + notification_log.
+- **Slice 1 (klaar):** regelmotor R1/R5/R6/R7 + confirm_inference + rule_performance +
+  in-app review + Telegram-digest. (R2/R3/R4 wachten op Slice 2-entiteiten/signalen.)
 - **Slice 2:** nieuwe v1-entiteiten — `person`+`interaction` (Client wordt rol),
   `admin_item`+`admin_document`, `health_condition` + Kyra-dossier (P1).
 - **Slice 3:** `summaries` + nachtelijke roll-up; embedding-search op tier=normaal;

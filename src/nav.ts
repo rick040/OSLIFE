@@ -22,6 +22,7 @@ import {
   Dog,
   CheckSquare,
   Signal,
+  Sparkles,
 } from 'lucide-react'
 
 // ── Central screen registry ──────────────────────────────────────────────────
@@ -49,6 +50,7 @@ export type View =
   | 'memory'
   | 'reflect'
   | 'mindmap'
+  | 'inferences'
   | 'sync'
 
 export type ScreenGroup = 'Surface' | 'Life' | 'Business' | 'Intake' | 'Reflect'
@@ -94,6 +96,7 @@ export const SCREENS: Screen[] = [
   { id: 'capture', label: 'Vastleggen', icon: Inbox, layer: 'Intake', group: 'Intake', primary: true, accent: 'text-forest' },
 
   // Reflect
+  { id: 'inferences', label: 'Inferenties', icon: Sparkles, layer: 'Reflectie · te bevestigen', group: 'Reflect', accent: 'text-cross' },
   { id: 'memory', label: 'Geheugen', icon: Database, layer: 'Herinnering', group: 'Reflect', accent: 'text-muted' },
   { id: 'reflect', label: 'Reflectie', icon: Brain, layer: 'Reflectie', group: 'Reflect', accent: 'text-cross' },
   { id: 'mindmap', label: 'Verbanden', icon: Network, layer: 'Reflectie · grafiek', group: 'Reflect', accent: 'text-prjct' },
