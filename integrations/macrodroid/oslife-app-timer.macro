@@ -1,0 +1,111 @@
+{
+  "macro": {
+    "m_name": "OSLIFE app timer",
+    "m_enabled": true,
+    "m_completed": true,
+    "m_GUID": 0,
+    "aiGenerated": 1,
+    "m_description": "Meet actieve tijd per app met een stopwatch en stuurt die bij het sluiten van de app naar OSLIFE (phone-events-ingest, kind=app_usage). App geopend -> stopwatch reset+start + zwevende tekst. App gesloten -> HTTP GET met app-naam + stopwatch-waarde, stopwatch stop, tekst verbergen.",
+    "m_category": "OSLIFE",
+    "localVariables": [
+      {
+        "m_name": "secret",
+        "m_type": 2,
+        "m_stringValue": "ZET-HIER-JE-PHONE_WEBHOOK_SECRET",
+        "isLocalVar": true
+      }
+    ],
+    "m_triggerList": [
+      {
+        "m_classType": "ApplicationLaunchedTrigger",
+        "m_SIGUID": 112233445566771,
+        "m_launched": true,
+        "m_appName": [],
+        "m_packageNameList": [],
+        "m_comment": "App GEOPEND: selecteer hier de apps die je wilt bijhouden (YouTube, Instagram, TikTok, ...)."
+      },
+      {
+        "m_classType": "ApplicationLaunchedTrigger",
+        "m_SIGUID": 112233445566772,
+        "m_launched": false,
+        "m_appName": [],
+        "m_packageNameList": [],
+        "m_comment": "App GESLOTEN: selecteer exact dezelfde apps als bij de eerste trigger."
+      }
+    ],
+    "m_actionList": [
+      {
+        "m_classType": "IfConditionAction",
+        "m_SIGUID": 0,
+        "m_constraintList": [
+          {
+            "m_classType": "TriggerThatInvokedConstraint",
+            "m_SIGUID": 0,
+            "m_triggerSIGUID": 112233445566771
+          }
+        ]
+      },
+      {
+        "m_classType": "StopWatchAction",
+        "m_SIGUID": 0,
+        "m_stopwatchName": "app timer",
+        "m_option": 2,
+        "m_comment": "Reset de stopwatch zodat elke app-sessie op 0 begint."
+      },
+      {
+        "m_classType": "StopWatchAction",
+        "m_SIGUID": 0,
+        "m_stopwatchName": "app timer",
+        "m_option": 0,
+        "m_comment": "Start de stopwatch."
+      },
+      {
+        "m_classType": "FloatingTextAction",
+        "m_SIGUID": 0,
+        "m_text": "{stopwatch=app timer}",
+        "m_option": 0,
+        "m_comment": "Toon de lopende tijd als overlay. Gebruik desgewenst de Magic Text-knop om de stopwatch-waarde opnieuw te kiezen."
+      },
+      {
+        "m_classType": "ElseIfConditionAction",
+        "m_SIGUID": 0,
+        "m_constraintList": [
+          {
+            "m_classType": "TriggerThatInvokedConstraint",
+            "m_SIGUID": 0,
+            "m_triggerSIGUID": 112233445566772
+          }
+        ]
+      },
+      {
+        "m_classType": "HttpRequestAction",
+        "m_SIGUID": 0,
+        "m_urlToOpen": "https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/phone-events-ingest?kind=app_usage&app={app_name}&seconds={stopwatch=app timer}&secret={lv=secret}",
+        "m_httpMethod": 0,
+        "m_blockNextAction": true,
+        "m_disableUrlEncode": false,
+        "m_comment": "Stuurt app-naam + stopwatch-waarde naar OSLIFE. De server berekent er de dag-totalen per app van."
+      },
+      {
+        "m_classType": "StopWatchAction",
+        "m_SIGUID": 0,
+        "m_stopwatchName": "app timer",
+        "m_option": 1,
+        "m_comment": "Stop de stopwatch."
+      },
+      {
+        "m_classType": "FloatingTextAction",
+        "m_SIGUID": 0,
+        "m_text": "",
+        "m_option": 1,
+        "m_comment": "Verberg de zwevende tekst."
+      },
+      {
+        "m_classType": "EndIfAction",
+        "m_SIGUID": 0
+      }
+    ]
+  },
+  "globalVariables": [],
+  "userIcons": []
+}
