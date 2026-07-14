@@ -16,6 +16,7 @@ import { useStore } from '../store'
 import { TODAY } from '../domains'
 import { Ring, SectionTitle } from '../components/ui'
 import CheckinCard from '../components/CheckinCard'
+import HealthConditions from '../components/HealthConditions'
 import { Activity, Footprints, Moon, Heart, Zap, Smile } from 'lucide-react'
 
 const d = (iso: string) => iso.slice(8)
@@ -68,6 +69,8 @@ export default function Vitals() {
       </div>
 
       <CheckinCard />
+
+      <HealthConditions subject="rick" />
 
       {/* today */}
       <div className="card p-4">

@@ -5,6 +5,7 @@ import { useStore } from '../store'
 import { TODAY, fmtDate, daysBetween } from '../domains'
 import { daysUntil, overdueLabel } from '../lib/dates'
 import { SectionTitle, Empty, Overlay } from '../components/ui'
+import HealthConditions from '../components/HealthConditions'
 import { useLongPress } from '../lib/useLongPress'
 import { isoToDatetimeLocal, nowDatetimeLocal } from '../lib/datetimeLocal'
 import type { DogKind, DogEntry, DogMedicalType } from '../types'
@@ -645,6 +646,9 @@ export default function Dog() {
           })}
         </div>
       </div>
+
+      {/* Auto-gepromoveerde dossiers (P1) — read-only */}
+      <HealthConditions subject="kyra" />
 
       {/* Medical dossier */}
       <div>

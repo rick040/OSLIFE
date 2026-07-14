@@ -119,8 +119,27 @@ Migratie: `supabase/migrations/20260714150000_memory_retrieval.sql`.
   R3/R4 + promotie P1 + Relaties- en Huis&Admin-schermen.
 - **Slice 3 (klaar):** summaries + nachtelijke roll-up + tier-veilige search_memory +
   context-assemblage-recept.
-- **Slice 4:** regel-tuning uit rule_performance; maandelijkse self-audit; vergeetbeleid +
-  tombstones (recht op vergeten voor `geheim`).
+- **Slice 4 (klaar):** regel-tuning (suppress-trigger) + maandelijkse self-audit +
+  vergeetbeleid + tombstones.
+
+## Slice 4 (geïmplementeerd) — leer-loop
+Migratie: `supabase/migrations/20260714160000_learning_loop.sql`.
+- **Regel-tuning:** `rule_suppressed(user, rule)` (≥3 resolved én ≥70% verworpen) + een
+  `BEFORE INSERT`-trigger op `events` die nieuwe inferenties van een onderdrukte regel stil
+  laat vallen. run_inference blijft ongewijzigd; een regel die je blijft verwerpen stopt
+  vanzelf met naggen.
+- **Self-audit:** `run_self_audit()` (pg_cron, 1e van de maand 04:00) schrijft een
+  `summaries`-rij (period='month', domain='audit'): welke regels actief zijn, welke nooit
+  vuurden, welke onderdrukt zijn, welke nieuwe domeinen leeg blijven. Zichtbaar in de tab
+  Samenvattingen.
+- **Vergeten + tombstones:** `forget(table, id)` verwijdert een record hard, purgeert de
+  gespiegelde kopie in de event-log (emit_event dupliceerde de inhoud daarheen) en laat een
+  inhoudsloze `tombstone`-event achter — herleidbare verwijdering zonder inhoud te bewaren.
+  Eigenaarscheck; allowlist van tabellen. Client: `forgetRecord()` (supabase.ts).
+
+## Achtergrondtaken (pg_cron, autonoom)
+`oslife-inference` (uurlijks), `oslife-summaries` (03:30), `oslife-self-audit` (maandelijks
+04:00), plus de bestaande `oslife-notify-tick`.
 - **Slice 3:** `summaries` + nachtelijke roll-up; embedding-search op tier=normaal;
   context-assemblage-recept in de HEYRA-router.
 - **Slice 4:** regel-tuning uit accept/reject; maandelijkse self-audit; vergeetbeleid +
