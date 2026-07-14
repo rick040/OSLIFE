@@ -55,7 +55,7 @@ export const SYNC_SOURCES: SyncSource[] = [
   { key: 'finance', label: 'Transacties', pipeline: 'Bank-notificatie (MacroDroid) · Wallet · ABN CSV · Betalingen Sheet', table: 'finance_tx', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 96, downH: 24 * 10 },
   { key: 'payments', label: 'Te betalen', pipeline: 'Payments Calendar → syncPayments', table: 'payments', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 24 * 21, downH: 24 * 60 },
   // ── Digitaal gedrag ──
-  { key: 'screentime', label: 'Schermtijd', pipeline: 'Schermtijd Sheet → screentime-sheet-ingest', table: 'screentime', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 48, downH: 24 * 5 },
+  { key: 'screentime', label: 'Schermtijd', pipeline: 'App-timer (MacroDroid) → phone-events-ingest · Schermtijd Sheet (fallback)', table: 'screentime', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 48, downH: 24 * 5 },
   { key: 'phone_events', label: 'Telefoon-events', pipeline: 'MacroDroid (unlock/screen-off) → phone-events-ingest', table: 'phone_events', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 18, downH: 48 },
   // ── Communicatie / agenda ──
   { key: 'gmail', label: 'Inbox / mail', pipeline: 'Gmail → syncGmail', table: 'gmail_messages', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 12, downH: 48 },
