@@ -25,6 +25,7 @@ import {
   Sparkles,
   Contact,
   FileText,
+  SprayCan,
 } from 'lucide-react'
 
 // ── Central screen registry ──────────────────────────────────────────────────
@@ -36,6 +37,7 @@ export type View =
   | 'daybuilder'
   | 'vitals'
   | 'habits'
+  | 'cleaning'
   | 'signals'
   | 'money'
   | 'crm'
@@ -81,6 +83,7 @@ export const SCREENS: Screen[] = [
   // Life
   { id: 'vitals', label: 'Gezondheid', icon: Activity, layer: 'Leven · gezondheid', group: 'Life', primary: true, accent: 'text-cross' },
   { id: 'habits', label: 'Gewoonten', icon: Repeat, layer: 'Leven · gedrag', group: 'Life', accent: 'text-buurtkaart' },
+  { id: 'cleaning', label: 'Schoonmaak', icon: SprayCan, layer: 'Leven · huishouden', group: 'Life', primary: true, accent: 'text-buurtkaart' },
   { id: 'signals', label: 'Signalen', icon: Radar, layer: 'Leven · gedrag', group: 'Life', accent: 'text-personal' },
   { id: 'money', label: 'Geld', icon: Wallet, layer: 'Leven · financiën', group: 'Life', primary: true, accent: 'text-buurtkaart' },
   { id: 'dog', label: 'Kyra', icon: Dog, layer: 'Leven · hond', group: 'Life', accent: 'text-personal' },
