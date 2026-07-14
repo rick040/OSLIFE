@@ -23,6 +23,8 @@ import {
   CheckSquare,
   Signal,
   Sparkles,
+  Contact,
+  FileText,
 } from 'lucide-react'
 
 // ── Central screen registry ──────────────────────────────────────────────────
@@ -45,6 +47,8 @@ export type View =
   | 'eyes'
   | 'dakmeester'
   | 'dog'
+  | 'relaties'
+  | 'huisadmin'
   | 'heyra'
   | 'capture'
   | 'memory'
@@ -80,6 +84,8 @@ export const SCREENS: Screen[] = [
   { id: 'signals', label: 'Signalen', icon: Radar, layer: 'Leven · gedrag', group: 'Life', accent: 'text-personal' },
   { id: 'money', label: 'Geld', icon: Wallet, layer: 'Leven · financiën', group: 'Life', primary: true, accent: 'text-buurtkaart' },
   { id: 'dog', label: 'Kyra', icon: Dog, layer: 'Leven · hond', group: 'Life', accent: 'text-personal' },
+  { id: 'relaties', label: 'Relaties', icon: Contact, layer: 'Leven · mensen', group: 'Life', accent: 'text-prjct' },
+  { id: 'huisadmin', label: 'Huis & Admin', icon: FileText, layer: 'Leven · admin', group: 'Life', accent: 'text-buurtkaart' },
   { id: 'inbox', label: 'Inbox', icon: Mail, layer: 'Leven · mail', group: 'Life', accent: 'text-parkingyou' },
   { id: 'northstar', label: 'Noordster', icon: Target, layer: 'Leven · doelen', group: 'Life', accent: 'text-prjct' },
 

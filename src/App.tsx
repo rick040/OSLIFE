@@ -27,6 +27,8 @@ import InboxView from './views/Inbox'
 import NorthStar from './views/NorthStar'
 import Mindmap from './views/Mindmap'
 import Inferences from './views/Inferences'
+import Relaties from './views/Relaties'
+import HuisAdmin from './views/HuisAdmin'
 import SyncStatus from './views/SyncStatus'
 import LoopExplainer from './components/LoopExplainer'
 import SettingsModal from './components/SettingsModal'
@@ -89,6 +91,8 @@ export default function App() {
     eyes: <Eyes />,
     dakmeester: <Dakmeester />,
     dog: <Dog />,
+    relaties: <Relaties />,
+    huisadmin: <HuisAdmin />,
   }
 
   if (!authChecked) return (

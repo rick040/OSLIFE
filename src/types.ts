@@ -218,6 +218,74 @@ export interface InferredItem {
   payload: Record<string, unknown>
 }
 
+// ── Slice 2 domains: mensen/relaties, huis & admin, gezondheidsdossier ─────────
+
+export type PersonKind = 'network' | 'business' | 'both'
+
+/** A person in the network/business graph. Client becomes a role on this. */
+export interface Person {
+  id: string
+  displayName: string
+  kind: PersonKind
+  emails: string[]
+  phones: string[]
+  birthday: string | null
+  cadenceDays: number | null
+  lastInteractionAt: string | null
+  clientId: string | null
+  notes: string | null
+  tier: Tier
+}
+
+export type InteractionChannel = 'mail' | 'whatsapp' | 'call' | 'in_person' | 'fiverr'
+
+/** One contact moment with a person. owedReply feeds the open-loops. */
+export interface Interaction {
+  id: string
+  personId: string | null
+  channel: InteractionChannel
+  direction: 'in' | 'out'
+  summary: string | null
+  owedReply: boolean
+  occurredAt: string // ISO
+}
+
+export type AdminCategory =
+  | 'insurance'
+  | 'contract'
+  | 'warranty'
+  | 'vehicle'
+  | 'house'
+  | 'subscription_admin'
+  | 'document'
+
+/** A home/admin item to track: contracts, warranties, renewals. */
+export interface AdminItem {
+  id: string
+  title: string
+  category: AdminCategory
+  provider: string | null
+  renewalOn: string | null // ISO date
+  noticePeriodDays: number | null
+  amount: number | null
+  cancellable: boolean
+  notes: string | null
+  tier: Tier
+}
+
+export type HealthConditionStatus = 'active' | 'monitoring' | 'resolved'
+
+/** A tracked medical file, for Rick or Kyra. Promoted by P1 or added by hand. */
+export interface HealthCondition {
+  id: string
+  subject: string // 'rick' | 'kyra'
+  label: string
+  openedAt: string // ISO date
+  status: HealthConditionStatus
+  notes: string | null
+  tier: Tier
+}
+
 // ── Passive-sensed substance ─────────────────────────────────────────────────
 
 export interface DayLog {
