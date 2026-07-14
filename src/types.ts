@@ -116,6 +116,87 @@ export interface Pattern {
   trend?: 'up' | 'down' | 'flat'
 }
 
+// ── Event spine · universal metadata envelope (PM-201 Slice 0) ────────────────
+// The life-domain axis is distinct from the business `Domain` above: `Domain`
+// tags which venture a record belongs to (parkingyou/prjct/…); `LifeDomain`
+// tags which life area a signal feeds (health/finance/…). One signal can carry
+// several LifeDomains (signal multiplexing).
+
+export type LifeDomain =
+  | 'health'
+  | 'finance'
+  | 'work'
+  | 'relationships'
+  | 'home_admin'
+  | 'behaviour'
+  | 'pet'
+  | 'calendar'
+  | 'mindset'
+  | 'learning'
+  | 'cross'
+
+/** Two-tier sensitivity. `geheim` never leaves for cloud-AI / external processing. */
+export type Tier = 'normaal' | 'geheim'
+
+/** Provenance class carried by every event. */
+export type EventSource =
+  | 'sensor'
+  | 'import'
+  | 'manual'
+  | 'inferred'
+  | 'assistant'
+  | 'external'
+  | 'system'
+
+/** Lifecycle of an observed/inferred fact (inference_with_confirmation). */
+export type RecordStatus =
+  | 'observed'
+  | 'inferred'
+  | 'confirmed'
+  | 'rejected'
+  | 'superseded'
+
+/** The universal metadata envelope every record and event carries. */
+export interface Envelope {
+  id: string
+  userId: string
+  type: string
+  domains: LifeDomain[]
+  occurredAt: string // ISO — when it happened in the world
+  recordedAt: string // ISO — when the system learned it
+  source: EventSource
+  sourceDetail?: string | null
+  sourceRef?: string | null
+  confidence: number // 0..1
+  status: RecordStatus
+  derivedFrom: string[] // lineage: event ids this was derived from
+  ruleId?: string | null
+  tags: string[]
+  tier: Tier
+  validFrom?: string | null
+  validTo?: string | null
+}
+
+/** One row of the append-only `events` log. */
+export interface EventRecord extends Envelope {
+  seq: number
+  payload: Record<string, unknown>
+  dedupKey?: string | null
+}
+
+/** A `type_registry` entry: per-type domains, sensitivity, projection & contract. */
+export interface TypeRegistryEntry {
+  type: string
+  label: string
+  defaultDomains: LifeDomain[]
+  defaultTier: Tier
+  projectionTable?: string | null
+  fieldContract: Record<string, unknown>
+  version: number
+  active: boolean
+  updatedAt: string
+}
+
 // ── Passive-sensed substance ─────────────────────────────────────────────────
 
 export interface DayLog {
