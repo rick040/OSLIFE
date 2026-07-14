@@ -3,18 +3,19 @@ import { useStore } from '../store'
 import { fmtDate } from '../domains'
 import { dueLabel } from '../lib/dates'
 import { DomainChip, ConfidenceBar, Empty } from '../components/ui'
-import { Lock, GitBranch, Repeat, CheckCircle2, RotateCcw, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { Lock, GitBranch, Repeat, CheckCircle2, RotateCcw, TrendingUp, TrendingDown, Minus, ScrollText } from 'lucide-react'
 
-type Tab = 'essentials' | 'threads' | 'patterns'
+type Tab = 'essentials' | 'threads' | 'patterns' | 'summaries'
 
 export default function Memory() {
-  const { essentials, threads, patterns, closeThread, reopenThread } = useStore()
+  const { essentials, threads, patterns, summaries, closeThread, reopenThread } = useStore()
   const [tab, setTab] = useState<Tab>('threads')
 
   const tabs: { id: Tab; label: string; icon: typeof Lock; count: number; desc: string }[] = [
     { id: 'essentials', label: 'Feiten', icon: Lock, count: essentials.length, desc: 'Permanente feiten. Ze veranderen niet en verlopen niet.' },
     { id: 'threads', label: 'Threads', icon: GitBranch, count: threads.filter((t) => t.status === 'open').length, desc: 'Open loops & openstaande beloften. Deze vragen om afsluiting.' },
     { id: 'patterns', label: 'Patronen', icon: Repeat, count: patterns.length, desc: 'Terugkerende observaties, gewogen op betrouwbaarheid. Ze nemen af als ze niet worden versterkt.' },
+    { id: 'summaries', label: 'Samenvattingen', icon: ScrollText, count: summaries.length, desc: 'Nachtelijke dag-digests: ruwe events ingedikt tot leesbare context (tier=normaal).' },
   ]
 
   return (
@@ -26,7 +27,7 @@ export default function Memory() {
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {tabs.map((t) => {
           const Icon = t.icon
           const active = tab === t.id
@@ -139,6 +140,22 @@ export default function Memory() {
                 </div>
               )
             })}
+        </div>
+      ))}
+
+      {tab === 'summaries' && (summaries.length === 0 ? (
+        <Empty>Nog geen samenvattingen. De nachtelijke roll-up vult deze zodra er dagdata is.</Empty>
+      ) : (
+        <div className="space-y-2 animate-fade-up">
+          {summaries.map((s) => (
+            <div key={s.id} className="card p-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase tracking-wider text-faint">{s.period} · {fmtDate(s.periodStart)}</span>
+                <span className="text-[11px] text-faint">{s.eventCount} signalen</span>
+              </div>
+              <p className="text-sm text-ink mt-1 whitespace-pre-line">{s.text}</p>
+            </div>
+          ))}
         </div>
       ))}
     </div>

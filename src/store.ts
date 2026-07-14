@@ -48,6 +48,7 @@ import type {
   Interaction,
   AdminItem,
   HealthCondition,
+  MemorySummary,
 } from './types'
 import { vendorKey, isUntagged } from './finance/categories'
 import { categorizeVendor } from './heyra/agents/vendorAgent'
@@ -174,6 +175,7 @@ import {
   updateAdminItemRow,
   deleteAdminItemRow,
   fetchHealthConditions,
+  fetchSummaries,
 } from './lib/supabase'
 
 // The single Realtime channel opened by loadLiveData(). Held at module scope so
@@ -238,6 +240,7 @@ interface State {
   interactions: Interaction[]
   adminItems: AdminItem[]
   healthConditions: HealthCondition[]
+  summaries: MemorySummary[]
   settings: AppSettings
   dataSource: 'mock' | 'live'
   isLoading: boolean
@@ -485,6 +488,7 @@ const seed = () => ({
   interactions: [] as Interaction[],
   adminItems: [] as AdminItem[],
   healthConditions: [] as HealthCondition[],
+  summaries: [] as MemorySummary[],
   settings: { hourlyRate: 0 } as AppSettings,
   dataSource: 'mock' as const,
   isLoading: true,
@@ -1927,7 +1931,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, people, interactions, adminItems, healthConditions] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, people, interactions, adminItems, healthConditions, summaries] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -1944,6 +1948,7 @@ export const useStore = create<State>()(
             fetchInteractions(),
             fetchAdminItems(),
             fetchHealthConditions(),
+            fetchSummaries(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -1985,6 +1990,7 @@ export const useStore = create<State>()(
             interactions,
             adminItems,
             healthConditions,
+            summaries,
             dataSource: 'live',
             isLoading: false,
           })

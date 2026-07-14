@@ -286,6 +286,29 @@ export interface HealthCondition {
   tier: Tier
 }
 
+// ── Memory & retrieval (PM-201 Slice 3) ───────────────────────────────────────
+
+/** A rolled-up digest of a period (nightly build_summaries). */
+export interface MemorySummary {
+  id: string
+  period: string // day | week | month | quarter
+  periodStart: string // ISO date
+  domain: string
+  text: string
+  eventCount: number
+  tier: Tier
+}
+
+/** One retrieval hit from search_memory (tier=normaal only). */
+export interface MemoryHit {
+  id: string
+  source: string // braindump | interaction | summary
+  title: string
+  snippet: string
+  ts: string // ISO
+  rank: number
+}
+
 // ── Passive-sensed substance ─────────────────────────────────────────────────
 
 export interface DayLog {
