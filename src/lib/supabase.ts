@@ -31,6 +31,9 @@ import type {
   BraindumpEntry,
   AppSettings,
   PlanBlock,
+  InferredItem,
+  InferenceDecision,
+  LifeDomain,
 } from '../types'
 import { today, habitStreak } from '../domains'
 import type { LearnedFact } from '../heyra/learning'
@@ -1550,4 +1553,36 @@ export async function upsertAppSettings(patch: Partial<AppSettings>): Promise<bo
   )
   warnWrite('app_settings', error)
   return !error
+}
+
+// ── Inference engine (PM-201 Slice 1) ─────────────────────────────────────────
+// Pending inferences are events with status='inferred', produced by the
+// run_inference() rules. confirm_inference() resolves one (status + effect).
+
+export async function fetchPendingInferences(): Promise<InferredItem[]> {
+  const { data } = await supabase
+    .from('events')
+    .select('id,rule_id,type,domains,confidence,occurred_at,payload')
+    .eq('status', 'inferred')
+    .order('occurred_at', { ascending: false })
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map((r) => {
+    const payload = (r.payload as Record<string, unknown>) ?? {}
+    return {
+      id: r.id as string,
+      ruleId: (r.rule_id as string) ?? null,
+      type: r.type as string,
+      domains: ((r.domains as LifeDomain[]) ?? []),
+      confidence: Number(r.confidence ?? 0),
+      question: (payload.question as string) ?? `Bevestig: ${r.type as string}`,
+      occurredAt: r.occurred_at as string,
+      payload,
+    }
+  })
+}
+
+/** Resolve a pending inference. The RPC enforces ownership and applies the effect. */
+export async function confirmInference(id: string, decision: InferenceDecision): Promise<boolean> {
+  const { data, error } = await supabase.rpc('confirm_inference', { p_event_id: id, p_decision: decision })
+  warnWrite('confirm_inference', error)
+  return data === true
 }
