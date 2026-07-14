@@ -94,12 +94,33 @@ Migratie: `supabase/migrations/20260714140000_slice2_domains.sql`.
 - Resterende Slice 2-UI (klein): `health_condition` read-only tonen op de Kyra-view (subject=kyra)
   en Gezondheid-view (subject=rick). Datalaag + P1 werken al; alleen de weergave ontbreekt.
 
+## Slice 3 (geïmplementeerd) — geheugen & retrieval
+Migratie: `supabase/migrations/20260714150000_memory_retrieval.sql`.
+- **`summaries`** + **`build_summaries()`** (SECURITY DEFINER, pg_cron 03:30): nachtelijke
+  deterministische dag-roll-up (steps/slaap/finance/werk/relaties; geen LLM). Energie uit de
+  geheim-getierde daily_checkin blijft er bewust buiten, dus de digest zelf is tier=normaal.
+- **`search_memory(query, limit)`** (SECURITY INVOKER, RLS + expliciet tier<>'geheim'): de
+  retrieval-primitive, Postgres full-text search (config `dutch`) over braindump/interaction/
+  summaries. `geheim` komt er nooit in — het mag niet in cloud-AI-context belanden.
+  pgvector (`vector` 0.8 staat klaar) kan later achter dezelfde RPC geschoven worden zodra
+  een embedding-provider gekozen is (aparte, out-of-scope ingestie-keuze).
+- **Context-assemblage-recept** (`src/heyra/context.ts`, fase 4.6): `assembleContext()` bouwt
+  de bundel (facts + open loops + doelen + vandaag altijd, dan semantische recall via
+  search_memory), geheim per constructie uitgesloten; `renderContext()` maakt het prompt-blok.
+  Puur + unit-getest (`context.test.ts`). Beschikbaar voor de HEYRA-agents (adoptie incrementeel).
+- Client: `fetchSummaries`/`searchMemory` (supabase.ts), `summaries`-store-slice, tab
+  **Samenvattingen** in het Geheugen-scherm.
+
 ## Bouwvolgorde
 - **Slice 0 (klaar):** envelop + `events` + `type_registry` + tier + emit_event-trigger.
 - **Slice 1 (klaar):** regelmotor R1/R5/R6/R7 + confirm_inference + rule_performance +
   in-app review + Telegram-digest.
 - **Slice 2 (klaar):** person/interaction/admin_item/admin_document/health_condition +
   R3/R4 + promotie P1 + Relaties- en Huis&Admin-schermen.
+- **Slice 3 (klaar):** summaries + nachtelijke roll-up + tier-veilige search_memory +
+  context-assemblage-recept.
+- **Slice 4:** regel-tuning uit rule_performance; maandelijkse self-audit; vergeetbeleid +
+  tombstones (recht op vergeten voor `geheim`).
 - **Slice 3:** `summaries` + nachtelijke roll-up; embedding-search op tier=normaal;
   context-assemblage-recept in de HEYRA-router.
 - **Slice 4:** regel-tuning uit accept/reject; maandelijkse self-audit; vergeetbeleid +

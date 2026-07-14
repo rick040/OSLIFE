@@ -38,6 +38,8 @@ import type {
   Interaction,
   AdminItem,
   HealthCondition,
+  MemorySummary,
+  MemoryHit,
 } from '../types'
 import { today, habitStreak } from '../domains'
 import type { LearnedFact } from '../heyra/learning'
@@ -1703,5 +1705,34 @@ export async function fetchHealthConditions(): Promise<HealthCondition[]> {
     status: (r.status as HealthCondition['status']) ?? 'active',
     notes: (r.notes as string) ?? null,
     tier: (r.tier as HealthCondition['tier']) ?? 'geheim',
+  }))
+}
+
+// ── Geheugen & retrieval (Slice 3) ────────────────────────────────────────────
+
+export async function fetchSummaries(): Promise<MemorySummary[]> {
+  return fetchRows('summaries', 'id,period,period_start,domain,text,event_count,tier', { column: 'period_start', ascending: false, limit: 60 }, (r) => ({
+    id: r.id as string,
+    period: (r.period as string) ?? 'day',
+    periodStart: (r.period_start as string) ?? '',
+    domain: (r.domain as string) ?? 'all',
+    text: (r.text as string) ?? '',
+    eventCount: (r.event_count as number) ?? 0,
+    tier: (r.tier as MemorySummary['tier']) ?? 'normaal',
+  }))
+}
+
+/** Tier-safe full-text recall over normaal-tier memory (braindump/interaction/summaries). */
+export async function searchMemory(query: string, limit = 8): Promise<MemoryHit[]> {
+  if (!query.trim()) return []
+  const { data, error } = await supabase.rpc('search_memory', { p_query: query, p_limit: limit })
+  warnWrite('search_memory', error)
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({
+    id: r.id as string,
+    source: (r.source as string) ?? '',
+    title: (r.title as string) ?? '',
+    snippet: (r.snippet as string) ?? '',
+    ts: (r.ts as string) ?? '',
+    rank: Number(r.rank ?? 0),
   }))
 }
