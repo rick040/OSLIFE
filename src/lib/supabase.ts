@@ -34,6 +34,10 @@ import type {
   InferredItem,
   InferenceDecision,
   LifeDomain,
+  Person,
+  Interaction,
+  AdminItem,
+  HealthCondition,
 } from '../types'
 import { today, habitStreak } from '../domains'
 import type { LearnedFact } from '../heyra/learning'
@@ -1585,4 +1589,119 @@ export async function confirmInference(id: string, decision: InferenceDecision):
   const { data, error } = await supabase.rpc('confirm_inference', { p_event_id: id, p_decision: decision })
   warnWrite('confirm_inference', error)
   return data === true
+}
+
+// ── Mensen / relaties (Slice 2) ───────────────────────────────────────────────
+
+export async function fetchPeople(): Promise<Person[]> {
+  return fetchRows('person', 'id,display_name,kind,emails,phones,birthday,cadence_days,last_interaction_at,client_id,notes,tier', { column: 'display_name' }, (r) => ({
+    id: r.id as string,
+    displayName: (r.display_name as string) ?? '',
+    kind: (r.kind as Person['kind']) ?? 'network',
+    emails: (r.emails as string[]) ?? [],
+    phones: (r.phones as string[]) ?? [],
+    birthday: (r.birthday as string) ?? null,
+    cadenceDays: (r.cadence_days as number) ?? null,
+    lastInteractionAt: (r.last_interaction_at as string) ?? null,
+    clientId: (r.client_id as string) ?? null,
+    notes: (r.notes as string) ?? null,
+    tier: (r.tier as Person['tier']) ?? 'normaal',
+  }))
+}
+
+const PERSON_COLS: Record<string, string> = {
+  displayName: 'display_name', kind: 'kind', emails: 'emails', phones: 'phones',
+  birthday: 'birthday', cadenceDays: 'cadence_days', lastInteractionAt: 'last_interaction_at',
+  clientId: 'client_id', notes: 'notes', tier: 'tier',
+}
+
+export async function createPersonRow(p: Omit<Person, 'id'>): Promise<string | null> {
+  return insertRow('person', {
+    display_name: p.displayName, kind: p.kind, emails: p.emails, phones: p.phones,
+    birthday: p.birthday, cadence_days: p.cadenceDays, client_id: p.clientId,
+    notes: p.notes, tier: p.tier,
+  })
+}
+
+export async function updatePersonRow(id: string, patch: Partial<Person>): Promise<void> {
+  await updateRow('person', id, patch, PERSON_COLS, { updated_at: new Date().toISOString() })
+}
+
+export async function deletePersonRow(id: string): Promise<void> {
+  return deleteRow('person', id)
+}
+
+export async function fetchInteractions(): Promise<Interaction[]> {
+  return fetchRows('interaction', 'id,person_id,channel,direction,summary,owed_reply,occurred_at', { column: 'occurred_at', ascending: false }, (r) => ({
+    id: r.id as string,
+    personId: (r.person_id as string) ?? null,
+    channel: (r.channel as Interaction['channel']) ?? 'mail',
+    direction: (r.direction as Interaction['direction']) ?? 'in',
+    summary: (r.summary as string) ?? null,
+    owedReply: (r.owed_reply as boolean) ?? false,
+    occurredAt: r.occurred_at as string,
+  }))
+}
+
+export async function createInteractionRow(i: Omit<Interaction, 'id'>): Promise<string | null> {
+  const id = await insertRow('interaction', {
+    person_id: i.personId, channel: i.channel, direction: i.direction,
+    summary: i.summary, owed_reply: i.owedReply, occurred_at: i.occurredAt,
+  })
+  // Keep the person's last_interaction_at fresh so "too long since contact" stays honest.
+  if (id && i.personId) await updateRow('person', i.personId, { lastInteractionAt: i.occurredAt }, PERSON_COLS)
+  return id
+}
+
+// ── Huis & admin (Slice 2) ────────────────────────────────────────────────────
+
+export async function fetchAdminItems(): Promise<AdminItem[]> {
+  return fetchRows('admin_item', 'id,title,category,provider,renewal_on,notice_period_days,amount,cancellable,notes,tier', { column: 'renewal_on', ascending: true, nullsFirst: false }, (r) => ({
+    id: r.id as string,
+    title: (r.title as string) ?? '',
+    category: (r.category as AdminItem['category']) ?? 'contract',
+    provider: (r.provider as string) ?? null,
+    renewalOn: (r.renewal_on as string) ?? null,
+    noticePeriodDays: (r.notice_period_days as number) ?? null,
+    amount: (r.amount as number) ?? null,
+    cancellable: (r.cancellable as boolean) ?? false,
+    notes: (r.notes as string) ?? null,
+    tier: (r.tier as AdminItem['tier']) ?? 'normaal',
+  }))
+}
+
+const ADMIN_COLS: Record<string, string> = {
+  title: 'title', category: 'category', provider: 'provider', renewalOn: 'renewal_on',
+  noticePeriodDays: 'notice_period_days', amount: 'amount', cancellable: 'cancellable',
+  notes: 'notes', tier: 'tier',
+}
+
+export async function createAdminItemRow(a: Omit<AdminItem, 'id'>): Promise<string | null> {
+  return insertRow('admin_item', {
+    title: a.title, category: a.category, provider: a.provider, renewal_on: a.renewalOn,
+    notice_period_days: a.noticePeriodDays, amount: a.amount, cancellable: a.cancellable,
+    notes: a.notes, tier: a.tier,
+  })
+}
+
+export async function updateAdminItemRow(id: string, patch: Partial<AdminItem>): Promise<void> {
+  await updateRow('admin_item', id, patch, ADMIN_COLS, { updated_at: new Date().toISOString() })
+}
+
+export async function deleteAdminItemRow(id: string): Promise<void> {
+  return deleteRow('admin_item', id)
+}
+
+// ── Gezondheidsdossier (Slice 2) ──────────────────────────────────────────────
+
+export async function fetchHealthConditions(): Promise<HealthCondition[]> {
+  return fetchRows('health_condition', 'id,subject,label,opened_at,status,notes,tier', { column: 'opened_at', ascending: false }, (r) => ({
+    id: r.id as string,
+    subject: (r.subject as string) ?? 'rick',
+    label: (r.label as string) ?? '',
+    openedAt: (r.opened_at as string) ?? '',
+    status: (r.status as HealthCondition['status']) ?? 'active',
+    notes: (r.notes as string) ?? null,
+    tier: (r.tier as HealthCondition['tier']) ?? 'geheim',
+  }))
 }

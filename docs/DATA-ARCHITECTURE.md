@@ -80,12 +80,26 @@ Migratie: `supabase/migrations/20260714130000_inference_engine.sql`.
   gedeployd worden (`supabase functions deploy …`, JWT-verificatie uit) voordat de Telegram-
   digest live is. De motor (pg_cron) en het in-app scherm werken zodra de migratie is toegepast.
 
+## Slice 2 (geïmplementeerd) — nieuwe v1-domeinen
+Migratie: `supabase/migrations/20260714140000_slice2_domains.sql`.
+- Nieuwe tabellen: `person`, `interaction` (mensen/relaties), `admin_item`, `admin_document`
+  (huis & admin), `health_condition` (gezondheidsdossier, ook Kyra). RLS owner + realtime.
+- Nieuwe regels in `run_inference()`: **R3** owed_reply (ongelezen inbound van bekend persoon
+  >24u), **R4** renewal_due (admin-item binnen opzegtermijn, tijdgevoelig). Plus promotie
+  **P1**: 3+ vet_visit-events in 6 weken → automatisch `health_condition(subject=kyra)`.
+- `type_registry` uitgebreid met de nieuwe projectie- én afgeleide types; emit_event-triggers
+  op interaction/admin_item/health_condition.
+- Client: fetchers + CRUD (supabase.ts), store-slices + acties (people/interactions/adminItems/
+  healthConditions), schermen `Relaties.tsx` + `HuisAdmin.tsx`, nav + routing.
+- Resterende Slice 2-UI (klein): `health_condition` read-only tonen op de Kyra-view (subject=kyra)
+  en Gezondheid-view (subject=rick). Datalaag + P1 werken al; alleen de weergave ontbreekt.
+
 ## Bouwvolgorde
 - **Slice 0 (klaar):** envelop + `events` + `type_registry` + tier + emit_event-trigger.
 - **Slice 1 (klaar):** regelmotor R1/R5/R6/R7 + confirm_inference + rule_performance +
-  in-app review + Telegram-digest. (R2/R3/R4 wachten op Slice 2-entiteiten/signalen.)
-- **Slice 2:** nieuwe v1-entiteiten — `person`+`interaction` (Client wordt rol),
-  `admin_item`+`admin_document`, `health_condition` + Kyra-dossier (P1).
+  in-app review + Telegram-digest.
+- **Slice 2 (klaar):** person/interaction/admin_item/admin_document/health_condition +
+  R3/R4 + promotie P1 + Relaties- en Huis&Admin-schermen.
 - **Slice 3:** `summaries` + nachtelijke roll-up; embedding-search op tier=normaal;
   context-assemblage-recept in de HEYRA-router.
 - **Slice 4:** regel-tuning uit accept/reject; maandelijkse self-audit; vergeetbeleid +

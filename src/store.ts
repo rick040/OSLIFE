@@ -44,6 +44,10 @@ import type {
   PlanBlock,
   InferredItem,
   InferenceDecision,
+  Person,
+  Interaction,
+  AdminItem,
+  HealthCondition,
 } from './types'
 import { vendorKey, isUntagged } from './finance/categories'
 import { categorizeVendor } from './heyra/agents/vendorAgent'
@@ -159,6 +163,17 @@ import {
   upsertAppSettings,
   fetchPendingInferences,
   confirmInference,
+  fetchPeople,
+  createPersonRow,
+  updatePersonRow,
+  deletePersonRow,
+  fetchInteractions,
+  createInteractionRow,
+  fetchAdminItems,
+  createAdminItemRow,
+  updateAdminItemRow,
+  deleteAdminItemRow,
+  fetchHealthConditions,
 } from './lib/supabase'
 
 // The single Realtime channel opened by loadLiveData(). Held at module scope so
@@ -219,6 +234,10 @@ interface State {
   vendorTags: VendorTag[]
   braindumpEntries: BraindumpEntry[]
   inferences: InferredItem[]
+  people: Person[]
+  interactions: Interaction[]
+  adminItems: AdminItem[]
+  healthConditions: HealthCondition[]
   settings: AppSettings
   dataSource: 'mock' | 'live'
   isLoading: boolean
@@ -280,6 +299,15 @@ interface State {
   // Inference engine (Slice 1): load the pending review queue and resolve one.
   loadInferences: () => Promise<void>
   resolveInference: (id: string, decision: InferenceDecision) => Promise<void>
+
+  // Slice 2 domains: mensen/relaties, huis & admin.
+  addPerson: (p: Omit<Person, 'id'>) => void
+  updatePerson: (id: string, patch: Partial<Person>) => void
+  deletePerson: (id: string) => void
+  logInteraction: (i: Omit<Interaction, 'id'>) => void
+  addAdminItem: (a: Omit<AdminItem, 'id'>) => void
+  updateAdminItem: (id: string, patch: Partial<AdminItem>) => void
+  deleteAdminItem: (id: string) => void
   // Rebuild the REMEMBER layer (essentials/threads/dayLogs/baseline patterns)
   // and today's nudge from whatever live data is currently loaded.
   recomputeBrain: () => void
@@ -453,6 +481,10 @@ const seed = () => ({
   vendorTags: [] as VendorTag[],
   braindumpEntries: [] as BraindumpEntry[],
   inferences: [] as InferredItem[],
+  people: [] as Person[],
+  interactions: [] as Interaction[],
+  adminItems: [] as AdminItem[],
+  healthConditions: [] as HealthCondition[],
   settings: { hourlyRate: 0 } as AppSettings,
   dataSource: 'mock' as const,
   isLoading: true,
@@ -1895,7 +1927,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, people, interactions, adminItems, healthConditions] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -1908,6 +1940,10 @@ export const useStore = create<State>()(
             fetchBraindumpEntries(),
             fetchAppSettings(),
             fetchPendingInferences(),
+            fetchPeople(),
+            fetchInteractions(),
+            fetchAdminItems(),
+            fetchHealthConditions(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -1944,6 +1980,11 @@ export const useStore = create<State>()(
             braindumpEntries,
             // Inference review queue is app-owned too — set directly.
             inferences,
+            // Slice 2 domains — app-owned, set directly (empty = none yet).
+            people,
+            interactions,
+            adminItems,
+            healthConditions,
             dataSource: 'live',
             isLoading: false,
           })
@@ -1992,6 +2033,10 @@ export const useStore = create<State>()(
           { table: 'heyra_memory', onChange: () => fetchLearnedFacts().then((d) => set({ learnedFacts: d })) },
           { table: 'braindump_entries', onChange: () => fetchBraindumpEntries().then((d) => set({ braindumpEntries: d })) },
           { table: 'app_settings', onChange: () => fetchAppSettings().then((p) => { if (p) set({ settings: p }) }) },
+          { table: 'person', onChange: () => fetchPeople().then((d) => set({ people: d })) },
+          { table: 'interaction', onChange: () => fetchInteractions().then((d) => set({ interactions: d })) },
+          { table: 'admin_item', onChange: () => fetchAdminItems().then((d) => set({ adminItems: d })) },
+          { table: 'health_condition', onChange: () => fetchHealthConditions().then((d) => set({ healthConditions: d })) },
         ]
         // Tear down any channel from a previous loadLiveData() before opening a
         // new one — otherwise each auth event leaks another full subscription.
@@ -2030,6 +2075,41 @@ export const useStore = create<State>()(
             void fetchSubscriptions().then((d) => d.length > 0 && set({ subscriptions: d }))
           }
         }
+      },
+
+      // ── Slice 2: mensen/relaties ──────────────────────────────────────────
+      addPerson: (p) => {
+        void createPersonRow(p).then((id) => {
+          if (id) fetchPeople().then((d) => set({ people: d }))
+        })
+      },
+      updatePerson: (id, patch) => {
+        set((s) => ({ people: s.people.map((x) => (x.id === id ? { ...x, ...patch } : x)) }))
+        void updatePersonRow(id, patch)
+      },
+      deletePerson: (id) => {
+        set((s) => ({ people: s.people.filter((x) => x.id !== id) }))
+        void deletePersonRow(id)
+      },
+      logInteraction: (i) => {
+        void createInteractionRow(i).then((id) => {
+          if (id) Promise.all([fetchInteractions(), fetchPeople()]).then(([iv, pe]) => set({ interactions: iv, people: pe }))
+        })
+      },
+
+      // ── Slice 2: huis & admin ─────────────────────────────────────────────
+      addAdminItem: (a) => {
+        void createAdminItemRow(a).then((id) => {
+          if (id) fetchAdminItems().then((d) => set({ adminItems: d }))
+        })
+      },
+      updateAdminItem: (id, patch) => {
+        set((s) => ({ adminItems: s.adminItems.map((x) => (x.id === id ? { ...x, ...patch } : x)) }))
+        void updateAdminItemRow(id, patch)
+      },
+      deleteAdminItem: (id) => {
+        set((s) => ({ adminItems: s.adminItems.filter((x) => x.id !== id) }))
+        void deleteAdminItemRow(id)
       },
 
       resetDemo: () => {
