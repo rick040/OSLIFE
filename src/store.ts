@@ -176,6 +176,7 @@ import {
   deleteAdminItemRow,
   fetchHealthConditions,
   fetchSummaries,
+  forgetRecord as forgetRecordApi,
 } from './lib/supabase'
 
 // The single Realtime channel opened by loadLiveData(). Held at module scope so
@@ -311,6 +312,9 @@ interface State {
   addAdminItem: (a: Omit<AdminItem, 'id'>) => void
   updateAdminItem: (id: string, patch: Partial<AdminItem>) => void
   deleteAdminItem: (id: string) => void
+
+  // Recht op vergeten (Slice 4): hard-delete + tombstone via forget().
+  forgetRecord: (table: string, id: string) => void
   // Rebuild the REMEMBER layer (essentials/threads/dayLogs/baseline patterns)
   // and today's nudge from whatever live data is currently loaded.
   recomputeBrain: () => void
@@ -2116,6 +2120,21 @@ export const useStore = create<State>()(
       deleteAdminItem: (id) => {
         set((s) => ({ adminItems: s.adminItems.filter((x) => x.id !== id) }))
         void deleteAdminItemRow(id)
+      },
+
+      forgetRecord: (table, id) => {
+        // Optimistic removal from the matching in-memory slice.
+        set((s) => {
+          switch (table) {
+            case 'health_condition': return { healthConditions: s.healthConditions.filter((x) => x.id !== id) }
+            case 'braindump_entries': return { braindumpEntries: s.braindumpEntries.filter((x) => x.id !== id) }
+            case 'person': return { people: s.people.filter((x) => x.id !== id) }
+            case 'interaction': return { interactions: s.interactions.filter((x) => x.id !== id) }
+            case 'admin_item': return { adminItems: s.adminItems.filter((x) => x.id !== id) }
+            default: return {}
+          }
+        })
+        void forgetRecordApi(table, id)
       },
 
       resetDemo: () => {
