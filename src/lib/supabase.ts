@@ -423,9 +423,13 @@ export async function fetchHealthDays(): Promise<HealthDay[]> {
   // otherwise phone sleep is invisible whenever the health sheet is quiet.
   const statsByDate = new Map<string, Record<string, unknown>>()
   for (const r of statsRes.data ?? []) statsByDate.set(r.date as string, r)
+  // Chronological (oldest → newest): the Vitals/Dashboard charts plot the array
+  // left-to-right, the `today` fallback reads healthDays[length-1], and the
+  // HEYRA sparkline uses slice(-7) — all expect the newest day LAST. ISO date
+  // strings sort chronologically, so a plain sort + take the most recent 90.
   const allDates = [...new Set<string>([...statsByDate.keys(), ...asleepByDate.keys()])]
-    .sort((a, b) => (a < b ? 1 : -1)) // newest first
-    .slice(0, 90)
+    .sort()
+    .slice(-90)
 
   return allDates.map((date) => {
     const r = statsByDate.get(date) ?? {}
