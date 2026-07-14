@@ -418,8 +418,17 @@ export async function fetchHealthDays(): Promise<HealthDay[]> {
     asleepByDate.set(s.date as string, mins)
   }
 
-  return (statsRes.data ?? []).map((r) => {
-    const date = r.date as string
+  // Union of dates from both sources. A day may have ONLY sleep (phone-derived,
+  // with no Samsung-Health activity row for that date) and must still surface —
+  // otherwise phone sleep is invisible whenever the health sheet is quiet.
+  const statsByDate = new Map<string, Record<string, unknown>>()
+  for (const r of statsRes.data ?? []) statsByDate.set(r.date as string, r)
+  const allDates = [...new Set<string>([...statsByDate.keys(), ...asleepByDate.keys()])]
+    .sort((a, b) => (a < b ? 1 : -1)) // newest first
+    .slice(0, 90)
+
+  return allDates.map((date) => {
+    const r = statsByDate.get(date) ?? {}
     // Prefer the per-stage sum, but a health_sleep row with all-null stages sums
     // to 0 — treat that as "no breakdown" and fall back to the denormalised
     // sleep_min, otherwise a real night with only sleep_min populated reads as 0h.
