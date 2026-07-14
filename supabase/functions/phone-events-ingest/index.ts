@@ -80,27 +80,33 @@ function amsHour(d: Date): number {
 interface SleepSession { date: string; start: Date; end: Date; minutes: number }
 
 /**
- * Explicit sessions from MacroDroid's own asleep/awake detection: pair each
- * `sleep_end` (wake) with the most recent preceding `sleep_start` (bed) within
- * MAX_SLEEP_H. Trusted verbatim — no night-hour or minimum-length filtering, so
- * naps count too. Longest session wins per wake-date.
+ * Sessions from MacroDroid's asleep/awake detection. The Sleep trigger re-fires
+ * repeatedly (it's really a "phone still / moving" signal), so we can't naively
+ * pair events. Instead collapse runs into "still" intervals: an interval opens
+ * at a sleep_start (when none is open) and closes at the next sleep_end,
+ * ignoring the re-fires in between. Keep the longest interval per wake-date that
+ * lasts MIN_SLEEP_H–MAX_SLEEP_H and ends in the morning. (Events must be sorted
+ * ascending by ts.)
  */
 function deriveExplicitSleep(events: PhoneEvent[]): SleepSession[] {
-  const starts = events.filter((e) => e.kind === 'sleep_start')
   const best = new Map<string, SleepSession>()
-  for (const end of events.filter((e) => e.kind === 'sleep_end')) {
-    let bed: Date | null = null
-    for (const s of starts) {
-      if (s.ts < end.ts && (end.ts.getTime() - s.ts.getTime()) <= MAX_SLEEP_H * 3_600_000) {
-        if (!bed || s.ts > bed) bed = s.ts
-      }
+  let openStart: Date | null = null
+  for (const e of events) {
+    if (e.kind === 'sleep_start') {
+      if (!openStart) openStart = e.ts
+    } else if (e.kind === 'sleep_end' && openStart) {
+      const bed = openStart
+      const wake = e.ts
+      openStart = null
+      const hrs = (wake.getTime() - bed.getTime()) / 3_600_000
+      if (hrs < MIN_SLEEP_H || hrs > MAX_SLEEP_H) continue
+      const wakeHour = amsHour(wake)
+      if (wakeHour < 3 || wakeHour > 13) continue // woke in the morning, not a daytime still-period
+      const minutes = Math.round((wake.getTime() - bed.getTime()) / 60_000)
+      const date = amsDate(wake)
+      const prev = best.get(date)
+      if (!prev || minutes > prev.minutes) best.set(date, { date, start: bed, end: wake, minutes })
     }
-    if (!bed) continue
-    const minutes = Math.round((end.ts.getTime() - bed.getTime()) / 60_000)
-    if (minutes <= 0) continue
-    const date = amsDate(end.ts)
-    const prev = best.get(date)
-    if (!prev || minutes > prev.minutes) best.set(date, { date, start: bed, end: end.ts, minutes })
   }
   return [...best.values()]
 }
