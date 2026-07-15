@@ -48,6 +48,7 @@ Notion (write) ◀── notion-mutate  (app edits a project/client → Notion)
 Geldrop Buurtkaart WordPress API ─▶ gbk-overview ─▶ Buurtkaart screen
 Google Wallet (MacroDroid)       ─▶ wallet-ingest ─▶ finance_tx
 Phone unlock/screen-off (MacroDroid) ─▶ phone-events-ingest ─▶ phone_events ─▶ health_sleep
+App-timer stopwatch (MacroDroid)     ─▶ phone-events-ingest ─▶ app_sessions ─▶ screentime
 ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betalingen sheet)
 ```
 
@@ -67,7 +68,7 @@ ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betaling
 | Buurtkaart beheer | **Geldrop Buurtkaart WordPress API** | `gbk-overview` (header `X-GBK-Key`) | — (live read) |
 | Geld · transacties | **Betalingen Google Sheet** + **ABN AMRO CSV** (in-app) + Google Wallet | `payments-sheet-ingest` · in-app import · `wallet-ingest` | `finance_tx` |
 | Geld · Te betalen | **Payments Google Calendar** | Code.gs `syncPayments` | `payments` |
-| Schermtijd | **Schermtijd Google Sheet** (tab per categorie) | `screentime-sheet-ingest` | `screentime` |
+| Schermtijd | **App-timer stopwatch (MacroDroid)** — actieve tijd per app + **Schermtijd Google Sheet** (fallback) | `phone-events-ingest` (`app_sessions` → `screentime`) · `screentime-sheet-ingest` | `screentime`, `app_sessions` |
 | Gezondheid | **Health Google Sheet** (slaap/activiteiten/gewicht/stappen) + **phone-afgeleide slaap** (MacroDroid) | `health-sheets-ingest` · `phone-events-ingest` | `health_daily_stats`, `health_sleep`, `health_body_metrics`, `phone_events` |
 | Inbox / mail | **Gmail** | Code.gs `syncGmail` | `gmail_messages` |
 | Dagplanner / agenda | **Google Calendar** | Code.gs `syncCalendarBlocks` | `day_blocks` |
@@ -107,6 +108,17 @@ used verbatim), else (2) the SHealth-style **activity gap** — a timestamp on e
 first morning unlock). Either way it writes to `health_sleep` with `source='phone'`, and a real
 Samsung-Health session (`source='health_app'`) always wins for that night and is never overwritten by
 an estimate. Setup: `integrations/macrodroid/phone-sleep.md`.
+
+### Phone-derived per-app screen time
+Per-app active time comes straight from the phone via MacroDroid — no StayFree, no
+Sheet. A macro runs a **stopwatch** while an app is foregrounded (App Launched →
+reset+start, App Closed → stop) and, on close, sends the app name + the stopwatch
+value to `phone-events-ingest` (`kind=app_usage`). Each session lands in
+`app_sessions`; the function recomputes that day's per-app total into `screentime`
+from the raw sessions (so retries never double-count), exactly like pickups are
+recomputed from `phone_events`. This fills the one gap the Sheet used to own — the
+`screentime-sheet-ingest` path still works as a fallback. Setup:
+`integrations/macrodroid/app-timer.md`.
 
 ### Finance dedup
 The Betalingen sheet and the in-app ABN AMRO CSV import both write `finance_tx` with the same

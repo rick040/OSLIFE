@@ -24,11 +24,20 @@
  * primary source for daily pickup counts, replacing the "Ontgrendelingen" tab
  * in the Schermtijd sheet (screentime-sheet.gs no longer sends it).
  *
+ * Per-app screen time (kind=app_usage): a MacroDroid macro runs a stopwatch
+ * while an app is in the foreground (App Launched → start, App Closed → stop);
+ * on App Closed it sends the app name + the stopwatch value. Each session is
+ * stored raw in `app_sessions` and the day's per-app total is recomputed into
+ * `screentime` — the same derive-from-raw pattern as pickups. This is the
+ * MacroDroid equivalent the Schermtijd sheet used to be the only source for.
+ * See integrations/macrodroid/app-timer.md.
+ *
  * MacroDroid setup (on the phone — see integrations/macrodroid/phone-sleep.md):
  *   Preferred  Trigger: Sleep (asleep) → HTTP GET …?kind=sleep_start
  *              Trigger: Sleep (awake)  → HTTP GET …?kind=sleep_end
  *   Fallback   Trigger: Screen Off     → HTTP GET …?kind=screen_off
  *              Trigger: Device Unlocked→ HTTP GET …?kind=unlock
+ *   Per-app    Trigger: App Closed     → HTTP GET …?kind=app_usage&app=YouTube&seconds={stopwatch}
  *   Secret (all): header x-webhook-secret OR ?secret= query param.
  *
  * Deploy:
@@ -232,6 +241,82 @@ async function refreshPickups(supabase: SupabaseClient): Promise<number> {
   return rows.length
 }
 
+// ── Per-app foreground sessions (MacroDroid stopwatch) ────────────────────────
+
+/** Classify an app by name into the same buckets the frontend uses
+ *  (src/lib/supabase.ts classifyApp). Unknown apps are 'other', not 'work'. */
+function classifyApp(name: string): 'work' | 'social' | 'media' | 'comms' | 'other' {
+  const n = name.toLowerCase()
+  if (/whatsapp|instagram|snapchat|tinder|reddit|facebook|tiktok|discord|messenger|twitter|\bx\b|threads|bereal|linkedin/.test(n)) return 'social'
+  if (/youtube|spotify|soundcloud|netflix|videoland|twitch|disney|prime video|podcast|muziek|music|film/.test(n)) return 'media'
+  if (/gmail|\bmail\b|telefoon|phone|berichten|messages|\bsms\b|teams|outlook|signal|telegram/.test(n)) return 'comms'
+  if (/docs|sheets|slides|word|excel|powerpoint|notion|figma|canva|code|github|gitlab|slack|drive|calendar|agenda|jira|linear|vscode|xcode|terminal/.test(n)) return 'work'
+  return 'other'
+}
+
+/**
+ * Turn whatever MacroDroid's stopwatch magic-text produced into seconds. Accepts
+ * plain seconds ("754"), a clock string ("12:34" = mm:ss, "1:02:03" = h:mm:ss),
+ * or token form ("1u 3m 12s" / "2m 27s"). Returns 0 when nothing usable.
+ */
+function parseSeconds(raw: string | null | undefined): number {
+  const s = (raw ?? '').trim()
+  if (!s) return 0
+  if (/^\d+(\.\d+)?$/.test(s)) return Math.round(parseFloat(s))     // plain seconds
+  if (s.includes(':')) {                                            // [h:]mm:ss
+    const parts = s.split(':').map((p) => parseInt(p, 10))
+    if (parts.some(isNaN)) return 0
+    return parts.reduce((acc, p) => acc * 60 + p, 0)
+  }
+  let total = 0                                                     // token form
+  const m = s.toLowerCase().match(/(\d+)\s*(u|h|m|s)/g)
+  if (!m) return 0
+  for (const tok of m) {
+    const n = parseInt(tok, 10)
+    if (/[uh]$/.test(tok)) total += n * 3600
+    else if (/m$/.test(tok)) total += n * 60
+    else total += n
+  }
+  return total
+}
+
+/** Recompute recent days' per-app totals from `app_sessions` and upsert into
+ *  `screentime` (duration_ms). Totals are summed fresh from the raw sessions
+ *  each time, so retries/duplicate sends never inflate a day's number. dedup_key
+ *  (`date|app|category`) matches the Schermtijd-sheet ingester's scheme. */
+async function refreshAppScreentime(supabase: SupabaseClient): Promise<number> {
+  const since = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000).toISOString()
+  const { data, error } = await supabase
+    .from('app_sessions')
+    .select('app_name,category,seconds,ended_at')
+    .eq('user_id', USER_ID)
+    .gte('ended_at', since)
+  if (error) throw error
+
+  const byKey = new Map<string, { usage_date: string; app_name: string; category: string; ms: number }>()
+  for (const r of data ?? []) {
+    const usage_date = amsDate(new Date(r.ended_at as string))
+    const app_name = (r.app_name as string) ?? 'Unknown'
+    const category = (r.category as string) ?? 'other'
+    const key = `${usage_date}|${app_name}|${category}`
+    const cur = byKey.get(key)
+    const ms = Math.round(((r.seconds as number) ?? 0) * 1000)
+    if (cur) cur.ms += ms
+    else byKey.set(key, { usage_date, app_name, category, ms })
+  }
+  const rows = [...byKey.entries()].map(([dedup_key, v]) => ({
+    user_id: USER_ID, usage_date: v.usage_date, app_name: v.app_name,
+    duration_ms: v.ms, category: v.category, dedup_key,
+  }))
+  if (!rows.length) return 0
+
+  const { error: upErr } = await supabase
+    .from('screentime')
+    .upsert(rows, { onConflict: 'user_id,dedup_key', ignoreDuplicates: false })
+  if (upErr) throw upErr
+  return rows.length
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST' && req.method !== 'GET') {
     return json({ ok: false, error: 'Method not allowed' }, 405)
@@ -247,9 +332,71 @@ Deno.serve(async (req) => {
   // Kind + optional timestamp may arrive as a query param (simplest MacroDroid
   // GET) or a JSON body. Also accept a batch under `events`.
   const url = new URL(req.url)
-  let body: { kind?: string; event?: string; ts?: string; events?: { kind?: string; ts?: string }[] } = {}
+  let body: {
+    kind?: string; event?: string; ts?: string; events?: { kind?: string; ts?: string }[]
+    app?: string; seconds?: number | string; ms?: number | string; duration?: string
+    app_sessions?: { app?: string; seconds?: number | string; ms?: number | string; duration?: string; ended_at?: string; ts?: string }[]
+  } = {}
   if (req.method === 'POST') {
     try { body = await req.json() } catch { /* allow empty body + query params */ }
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
+  // ── Per-app foreground session (MacroDroid stopwatch) ─────────────────────
+  // A separate shape from phone_events: it carries an app name + a duration, not
+  // just a kind. Recognised by kind=app_usage/app_closed OR simply the presence
+  // of an `app` param. Handled and returned here so it never falls through to
+  // the sleep/pickup path.
+  const kindParam = (body.kind ?? body.event ?? url.searchParams.get('kind') ?? url.searchParams.get('event') ?? '')
+    .toString().trim().toLowerCase().replace(/[\s-]+/g, '_')
+  const isAppUsage = /^app_(usage|close|closed|stop|stopped)$/.test(kindParam) ||
+    !!(body.app ?? url.searchParams.get('app')) || !!body.app_sessions?.length
+  if (isAppUsage) {
+    const raw = body.app_sessions?.length
+      ? body.app_sessions
+      : [{ app: body.app ?? url.searchParams.get('app') ?? undefined,
+           seconds: body.seconds ?? url.searchParams.get('seconds') ?? undefined,
+           ms: body.ms ?? url.searchParams.get('ms') ?? undefined,
+           duration: body.duration ?? url.searchParams.get('duration') ?? url.searchParams.get('value') ?? undefined,
+           ended_at: body.ts ?? url.searchParams.get('ended_at') ?? url.searchParams.get('ts') ?? undefined }]
+
+    const sessions: { user_id: string; app_name: string; category: string; seconds: number; ended_at: string; dedup_key: string }[] = []
+    for (const r of raw) {
+      const app = (r.app ?? '').toString().trim().slice(0, 120)
+      if (!app) continue
+      // Duration priority: explicit ms, then seconds, then a parsed clock/token string.
+      let seconds = 0
+      if (r.ms != null && r.ms !== '') seconds = Math.round(Number(r.ms) / 1000)
+      else if (r.seconds != null && r.seconds !== '') seconds = parseSeconds(String(r.seconds))
+      else seconds = parseSeconds(r.duration)
+      if (!Number.isFinite(seconds) || seconds <= 0) continue
+      const ended = r.ended_at ? new Date(r.ended_at) : new Date()
+      if (isNaN(ended.getTime())) continue
+      const ended_at = ended.toISOString()
+      sessions.push({ user_id: USER_ID, app_name: app, category: classifyApp(app), seconds, ended_at, dedup_key: `${ended_at}|${app}` })
+    }
+
+    if (!sessions.length) {
+      return json({ ok: false, error: 'No valid app session (need app=<name> and a positive duration: seconds/ms/duration)' }, 400)
+    }
+
+    // ignoreDuplicates: a re-sent session (same user/ended_at/app) is a no-op.
+    const { error } = await supabase
+      .from('app_sessions')
+      .upsert(sessions, { onConflict: 'user_id,dedup_key', ignoreDuplicates: true })
+    if (error) {
+      console.error('app_sessions insert error:', error)
+      return json({ ok: false, error: error.message }, 500)
+    }
+
+    let appDays = 0
+    try {
+      appDays = await refreshAppScreentime(supabase)
+    } catch (err) {
+      console.error('app-screentime derivation error:', err)
+    }
+    return json({ ok: true, logged: sessions.length, screentime_rows: appDays })
   }
 
   const rawEvents = body.events?.length
@@ -269,8 +416,6 @@ Deno.serve(async (req) => {
   if (!toInsert.length) {
     return json({ ok: false, error: 'No valid event (need kind=sleep_start|sleep_end|unlock|screen_off)' }, 400)
   }
-
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
   // ignoreDuplicates: a re-sent event (same user/ts/kind) is a no-op.
   const { error } = await supabase
