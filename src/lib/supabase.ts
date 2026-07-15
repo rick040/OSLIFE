@@ -298,6 +298,33 @@ export async function persistHabitTick(habitId: string, onDate: string, done: bo
   }
 }
 
+// ── Cleaning schedule ────────────────────────────────────────────────────────
+// The schedule (zones/tasks) is static content in src/cleaning/schedule.ts —
+// only per-task completions round-trip through Supabase, keyed the same way
+// the store keeps them in memory: `${on_date}__${task_key}` → done.
+
+export async function fetchCleaningLog(): Promise<Record<string, boolean>> {
+  const since = new Date()
+  since.setDate(since.getDate() - 90)
+  const sinceIso = since.toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' })
+  const { data } = await supabase
+    .from('cleaning_log')
+    .select('task_key,on_date,done')
+    .gte('on_date', sinceIso)
+  const log: Record<string, boolean> = {}
+  for (const row of data ?? []) log[`${row.on_date}__${row.task_key}`] = row.done
+  return log
+}
+
+export async function persistCleaningTick(taskKey: string, onDate: string, done: boolean): Promise<void> {
+  const user_id = await currentUserId()
+  if (!user_id) return
+  const { error } = await supabase
+    .from('cleaning_log')
+    .upsert({ user_id, task_key: taskKey, on_date: onDate, done }, { onConflict: 'user_id,task_key,on_date' })
+  warnWrite('cleaning_log.upsert', error)
+}
+
 // ── Subscriptions ───────────────────────────────────────────────────────────────
 
 const SUBSCRIPTION_COLS: Record<string, string> = {

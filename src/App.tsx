@@ -18,6 +18,7 @@ import Money from './views/Money'
 import Projects from './views/Projects'
 import CRM from './views/CRM'
 import Habits from './views/Habits'
+import Cleaning from './views/Cleaning'
 import Dog from './views/Dog'
 import StrategieHQ from './views/StrategieHQ'
 import Buurtkaart from './views/Buurtkaart'
@@ -85,6 +86,7 @@ export default function App() {
     sync: <SyncStatus />,
     // built in later phases
     habits: <Habits />,
+    cleaning: <Cleaning />,
     crm: <CRM />,
     strategiehq: <StrategieHQ onNav={(v) => setView(v)} />,
     buurtkaart: <Buurtkaart />,

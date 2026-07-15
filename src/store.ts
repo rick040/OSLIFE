@@ -74,6 +74,7 @@ import {
   buildNudge,
 } from './derive'
 import { today, habitStreak, DOMAIN_META, KIND_LABEL } from './domains'
+import { logKey } from './cleaning/gamify'
 import * as mock from './mockData'
 import {
   supabase,
@@ -124,6 +125,8 @@ import {
   createHabitRow,
   softDeleteHabitRow,
   persistHabitTick,
+  fetchCleaningLog,
+  persistCleaningTick,
   createSubscriptionRow,
   updateSubscriptionRow,
   deleteSubscriptionRow,
@@ -200,6 +203,8 @@ interface State {
   dayLogs: DayLog[]
   transactions: Transaction[]
   habits: Habit[]
+  /** `${onDate}__${taskKey}` → done, for the ADHD-proof cleaning schedule. */
+  cleaningLog: Record<string, boolean>
   blocks: Block[]
   nudge: Nudge
   lastDigest: ReflectDigest | null
@@ -282,6 +287,8 @@ interface State {
   tickHabit: (id: string) => void
   addHabit: (name: string, emoji: string, color?: string) => void
   deleteHabit: (id: string) => void
+  /** Flip one cleaning-schedule task for a date (defaults to today). */
+  toggleCleaningTask: (taskKey: string, onDate?: string) => void
   completeBlock: (id: string) => void
   skipBlock: (id: string) => void
   resetBlock: (id: string) => void
@@ -451,6 +458,7 @@ const seed = () => ({
   dayLogs: mock.dayLogs,
   transactions: mock.transactions,
   habits: mock.habits,
+  cleaningLog: {} as Record<string, boolean>,
   blocks: mock.blocks,
   nudge: mock.initialNudge,
   lastDigest: null,
@@ -531,6 +539,7 @@ export function applyPersistDefaults(
   for (const k of SEED_WHEN_EMPTY) if (!state[k]?.length) state[k] = seeded[k]
   for (const k of SEED_WHEN_FALSY) if (!state[k]) state[k] = seeded[k]
   for (const k of EMPTY_WHEN_FALSY) if (!state[k]) state[k] = []
+  if (!state.cleaningLog) state.cleaningLog = {}
   if (state.notificationPrefs === undefined) state.notificationPrefs = null
   if (!state.settings) state.settings = seeded.settings
   if (!state.dataSource) state.dataSource = 'mock'
@@ -894,6 +903,14 @@ export const useStore = create<State>()(
       deleteHabit: (id) => {
         removeFromSlice(set, 'habits', id)
         void softDeleteHabitRow(id)
+      },
+
+      toggleCleaningTask: (taskKey, onDate) => {
+        const day = onDate ?? today()
+        const key = logKey(day, taskKey)
+        const done = !get().cleaningLog[key]
+        set((s) => ({ cleaningLog: { ...s.cleaningLog, [key]: done } }))
+        void persistCleaningTick(taskKey, day, done)
       },
 
       completeBlock: (id) => {
@@ -1935,7 +1952,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, people, interactions, adminItems, healthConditions, summaries] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, people, interactions, adminItems, healthConditions, summaries, cleaningLog] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -1953,6 +1970,7 @@ export const useStore = create<State>()(
             fetchAdminItems(),
             fetchHealthConditions(),
             fetchSummaries(),
+            fetchCleaningLog(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -1995,6 +2013,7 @@ export const useStore = create<State>()(
             adminItems,
             healthConditions,
             summaries,
+            cleaningLog,
             dataSource: 'live',
             isLoading: false,
           })
@@ -2026,6 +2045,7 @@ export const useStore = create<State>()(
           { table: 'payments', onChange: () => fetchPayments().then((d) => d.length > 0 && set({ payments: d })) },
           { table: 'habits', onChange: () => fetchHabits().then((d) => d.length > 0 && set({ habits: d })) },
           { table: 'habit_log', onChange: () => fetchHabits().then((d) => d.length > 0 && set({ habits: d })) },
+          { table: 'cleaning_log', onChange: () => fetchCleaningLog().then((d) => set({ cleaningLog: d })) },
           { table: 'goals', onChange: () => fetchGoals().then((d) => d.length > 0 && set({ goals: d })) },
           { table: 'daily_checkin', onChange: () => fetchCheckins().then((d) => { set({ checkins: d }); get().recomputeBrain() }) },
           { table: 'notification_prefs', onChange: () => fetchNotificationPrefs().then((p) => set({ notificationPrefs: p })) },
