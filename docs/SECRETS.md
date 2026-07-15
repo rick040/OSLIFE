@@ -32,6 +32,7 @@ Publiek/veilig (RLS beschermt de data).
 | `SYNC_SECRET` *(optioneel)* | notion-sync / notion-mutate | **zelf verzinnen** (random) |
 | `GBK_BASE_URL` *(optioneel)* | gbk-overview | `https://www.geldropbuurtkaart.nl` (default) |
 | `ANTHROPIC_API_KEY` | heyra-brain | console.anthropic.com → API keys. HEYRA's agents (src/heyra/agents/) en de nachtelijke Reflect-narrative vallen terug op de bestaande rule-based tekst als deze niet gezet is — de app breekt nooit zonder deze key. |
+| `VOYAGE_API_KEY` *(optioneel)* | embed-memory, embed-memory-backfill, memory-search | dash.voyageai.com → API keys. Voedt search_memory()'s vector-recall (naast de bestaande full-text). Zonder deze key blijft alles zoals nu: puur full-text zoeken, geen embeddings. |
 | `TELEGRAM_BOT_TOKEN` | notify-tick, telegram-webhook | @BotFather → `/newbot` → token |
 | `TELEGRAM_WEBHOOK_SECRET` | telegram-webhook | **zelf verzinnen** (random) — meegegeven aan `setWebhook` als `secret_token`; Telegram stuurt 'm terug als header `X-Telegram-Bot-Api-Secret-Token` |
 | `CRON_SECRET` | notify-tick | **zelf verzinnen** (random) — ook letterlijk gebruikt in de eenmalige `cron.schedule()`-SQL (niet elders opgeslagen, nooit ingevuld committen) |
@@ -106,6 +107,33 @@ project `nhyunnnmdcmojvkxrbpl`:
 8. **Account koppelen**: open `https://t.me/<username>` en stuur `/start`.
 9. **Frontend deployen** zodat het tandwiel-icoon (Instellingen) live staat.
 
+## 6. Vector memory (embed-memory-backfill): eenmalige setup
+
+De nachtelijke `summaries`-roll-up (`build_summaries()`, plain SQL/pg_cron, geen HTTP)
+kan zelf geen embeddings ophalen. `embed-memory-backfill` vangt dat op, en dient ook als
+achtervang voor alles wat de fire-and-forget `embed-memory`-call miste. Zelfde
+shared-secret patroon als notify-tick.
+
+1. **Secret zetten**: `VOYAGE_API_KEY` (zie tabel hierboven).
+2. **Functie deployen**: `supabase functions deploy embed-memory-backfill --project-ref nhyunnnmdcmojvkxrbpl`,
+   daarna in het dashboard **"Enforce JWT verification"** uitzetten (pg_cron kan geen
+   Supabase-JWT sturen).
+3. **Cron inplannen** (eenmalig in de SQL Editor, `<CRON_SECRET>` invullen met de echte
+   waarde — dezelfde secret als notify-tick gebruikt; dit ingevulde statement nooit committen):
+   ```sql
+   select cron.schedule(
+     'oslife-embed-memory-backfill',
+     '15 3 * * *',  -- ná oslife-summaries (03:30) is niet nodig; embeddings volgen los
+     $cron$
+     select net.http_post(
+       url     := 'https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/embed-memory-backfill',
+       headers := jsonb_build_object('Content-Type', 'application/json', 'Authorization', 'Bearer <CRON_SECRET>'),
+       body    := '{}'::jsonb
+     );
+     $cron$
+   );
+   ```
+
 ---
 
 ## Waarden die op meerdere plekken **gelijk** moeten zijn
@@ -118,7 +146,7 @@ project `nhyunnnmdcmojvkxrbpl`:
 ## Zelf verzinnen vs. opzoeken
 
 - **Verzinnen** (`openssl rand -base64 32`): `INGEST_SECRET`, `WALLET_WEBHOOK_SECRET`, `SYNC_SECRET`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`.
-- **Opzoeken**: `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `OSLIFE_USER_ID`, `NOTION_TOKEN`, `GBK_API_KEY`, `TELEGRAM_BOT_TOKEN`.
+- **Opzoeken**: `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `OSLIFE_USER_ID`, `NOTION_TOKEN`, `GBK_API_KEY`, `TELEGRAM_BOT_TOKEN`, `VOYAGE_API_KEY`.
 
 ## Per databron: welke secrets heb je nodig
 
@@ -134,3 +162,4 @@ project `nhyunnnmdcmojvkxrbpl`:
 | Inbox / Agenda / Te betalen | Apps Script: `SUPABASE_SERVICE_KEY`, `OSLIFE_USER_ID` (+ `PAYMENTS_CAL_ID`) |
 | HEYRA brain-agents / Reflect-narrative | `ANTHROPIC_API_KEY` (optioneel — zonder deze key blijft alles rule-based zoals nu) |
 | Telegram-meldingen | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, `OSLIFE_USER_ID`, `VITE_TELEGRAM_BOT_USERNAME` |
+| Vector memory (search_memory hybrid recall) | `VOYAGE_API_KEY` (optioneel — zonder deze key blijft alles full-text zoals nu), `CRON_SECRET`, `OSLIFE_USER_ID` (voor de backfill) |

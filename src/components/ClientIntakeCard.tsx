@@ -91,6 +91,10 @@ export default function ClientIntakeCard({
           <h3 className="text-base font-semibold leading-snug">{draft.clientName}</h3>
         )}
 
+        {draft.researchNote && (
+          <p className="text-[11px] text-muted bg-sunken rounded-xl px-3 py-2">{draft.researchNote}</p>
+        )}
+
         {draft.matchedClientId && !forceNewClient && (
           <div className="text-xs rounded-xl bg-line/60 text-muted px-3 py-2 flex items-center justify-between gap-2">
             <span>Bestaande klant herkend — koppelt aan “{draft.clientName}”.</span>

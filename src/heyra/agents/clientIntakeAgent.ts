@@ -7,9 +7,10 @@
 
 import { askBrain } from '../brainClient'
 import { parseBrainJson } from '../brainJson'
+import { enrichClient, guessWebsiteFromEmail, type ClientResearchNote } from './clientResearch'
 import type { Agent } from './types'
 import type { ClientIntakeDraft } from '../cards'
-import type { Channel } from '../../types'
+import type { Channel, Client } from '../../types'
 
 function guessChannel(text: string): Channel {
   const t = text.toLowerCase()
@@ -74,8 +75,26 @@ function asStringArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.trim().length > 0) : []
 }
 
+/**
+ * Company/person research note for the intake card. Prefers a client's
+ * already-cached note, then their website on file, then a best-effort guess
+ * from the sender's email domain — each best-effort, `null` on any miss.
+ */
+async function resolveResearchNote(matched: Client | null, emailResearch: Promise<ClientResearchNote | null>): Promise<string | null> {
+  if (matched?.researchNote) return matched.researchNote
+  if (matched?.website) {
+    const url = /^https?:\/\//i.test(matched.website) ? matched.website : `https://${matched.website}`
+    return (await enrichClient(url))?.note ?? null
+  }
+  return (await emailResearch)?.note ?? null
+}
+
 export const runClientIntakeAgent: Agent = async (input, ctx) => {
   const clientNames = ctx.store.clients.map((c) => c.name)
+  // Kicked off in parallel with the brain call below — it doesn't depend on
+  // the brain's answer, and best-effort research shouldn't add to the wait.
+  const guessedWebsite = guessWebsiteFromEmail(extractEmail(input))
+  const emailResearch = guessedWebsite ? enrichClient(guessedWebsite).catch(() => null) : Promise.resolve(null)
 
   const system = `Je bent het "Klant-intake" brein van HEYRA, voor Rick van Mierlo (PRJCT Agency, KvK 89078802, Geldrop/Eindhoven). Rick plakt een ruw klantbericht (WhatsApp, e-mail of Fiverr) en jij:
 1. Herkent de taal: Nederlands voor lokale klanten, Engels voor Fiverr/internationale klanten.
@@ -118,6 +137,9 @@ Antwoord ALLEEN met een fenced \`\`\`json blok, geen andere tekst, exact dit sch
   }
 
   if (!draft) draft = fallbackExtraction(input)
+
+  const matchedClient = draft.matchedClientId ? ctx.store.clients.find((c) => c.id === draft!.matchedClientId) ?? null : null
+  draft.researchNote = await resolveResearchNote(matchedClient, emailResearch)
 
   return {
     text: draft.fromBrain

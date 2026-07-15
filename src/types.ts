@@ -541,6 +541,8 @@ export interface Client {
   lastContactedAt?: string | null // ISO — bumped when a message links to the client
   followUpCycleDays?: number // cadence the follow-up health dot measures against
   aliases?: string[] // sender emails and/or domains that map inbound mail to this client (learned in-app)
+  researchNote?: string | null // cached one-line "what does this company do" (enrich-client)
+  researchedAt?: string | null // ISO — when researchNote was last fetched
 }
 
 // ── CRM: unified client messages (email / fiverr / whatsapp) ─────────────────

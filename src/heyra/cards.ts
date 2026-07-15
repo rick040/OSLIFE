@@ -48,6 +48,7 @@ export interface ClientIntakeDraft {
   reply: string
   channelGuess: Channel
   fromBrain: boolean
+  researchNote?: string | null // enrich-client's "what does this company do" (best-effort, may be absent)
 }
 
 const NOISE_PHRASES = [
