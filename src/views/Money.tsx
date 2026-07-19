@@ -241,8 +241,8 @@ export default function Money() {
                   <Sparkline values={balanceTrend} className="text-[#16210f]" width={56} height={24} />
                 </span>
               )}
-              <div className="text-xs font-semibold uppercase tracking-wide">Saldo</div>
-              <div className="text-2xl font-semibold mt-1">{eur(balance)}</div>
+              <div className="text-xs font-semibold uppercase tracking-wider">Saldo</div>
+              <div className="text-2xl font-bold tabular-nums mt-1">{eur(balance)}</div>
               <div className="text-xs font-medium mt-1">incl. {transactions.length} transacties</div>
             </div>
             <div className="card p-4">
@@ -262,7 +262,7 @@ export default function Money() {
                 <div className="text-xs uppercase tracking-wider text-muted flex items-center gap-1 truncate">
                   <Target className="h-3.5 w-3.5 text-prjct shrink-0" /> Doel {eur0(revenueGoal.target)}
                 </div>
-                <div className="text-2xl font-semibold mt-1">{Math.round((revenueGoal.current / revenueGoal.target) * 100)}%</div>
+                <div className="text-2xl font-bold tabular-nums mt-1">{Math.round((revenueGoal.current / revenueGoal.target) * 100)}%</div>
                 <div className="h-1.5 w-full rounded-full bg-line overflow-hidden mt-2">
                   <div className="h-full rounded-full bg-prjct" style={{ width: `${Math.min(1, revenueGoal.current / revenueGoal.target) * 100}%` }} />
                 </div>
@@ -750,12 +750,12 @@ function Abonnementen({
       <div className="grid grid-cols-2 gap-3">
         <div className="card p-4">
           <div className="text-xs uppercase tracking-wider text-muted">Per maand</div>
-          <div className="text-2xl font-semibold mt-1">{eur(monthlyTotal)}</div>
+          <div className="text-2xl font-bold tabular-nums mt-1">{eur(monthlyTotal)}</div>
           <div className="text-xs text-faint mt-1">{subscriptions.filter((s) => s.active).length} actief</div>
         </div>
         <div className="card p-4">
           <div className="text-xs uppercase tracking-wider text-muted">Per jaar</div>
-          <div className="text-2xl font-semibold mt-1">{eur(monthlyTotal * 12)}</div>
+          <div className="text-2xl font-bold tabular-nums mt-1">{eur(monthlyTotal * 12)}</div>
           <div className="text-xs text-faint mt-1">geschat op actieve abonnementen</div>
         </div>
       </div>

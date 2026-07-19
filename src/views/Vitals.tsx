@@ -83,7 +83,7 @@ export default function Vitals() {
 
       {/* today — the one hero focal point on this screen: today's snapshot */}
       <div className="card-hero p-4">
-        <div className="text-xs font-semibold uppercase tracking-wide mb-2">Vandaag</div>
+        <div className="text-xs font-semibold uppercase tracking-wider mb-2">Vandaag</div>
         <div className="flex flex-wrap items-center justify-around gap-4">
           <div className="flex flex-col items-center gap-1">
             <Ring value={today.steps / today.stepGoal} size={72} color="stroke-[#16210f]" label={today.steps.toLocaleString('nl-NL')} />
@@ -103,7 +103,7 @@ export default function Vitals() {
           </div>
           <div className="flex flex-col items-center justify-center">
             <Heart className="h-5 w-5 mb-1" />
-            <span className="text-lg font-semibold">{today.restingHR}</span>
+            <span className="text-lg font-bold tabular-nums">{today.restingHR}</span>
             <span className="text-xs font-medium">bpm rust</span>
           </div>
         </div>
@@ -121,7 +121,7 @@ export default function Vitals() {
               <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${s.color.replace('text-', 'bg-')}/12`}>
                 <Icon className={`h-4 w-4 ${s.color}`} />
               </span>
-              <div className="text-xl font-bold mt-2">{s.value}</div>
+              <div className="text-xl font-bold tabular-nums mt-2">{s.value}</div>
               <div className="text-xs text-faint">{s.label} · 14d</div>
             </div>
           )
