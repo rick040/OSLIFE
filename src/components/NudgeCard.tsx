@@ -48,24 +48,26 @@ export function storeNudgeToDash(nudge: Nudge): DashNudge {
 }
 
 /**
- * The daily nudge — genuinely a nudge now, not a headline: one line, a tone-
- * colored icon, an optional one-tap jump. It used to be a full card with
- * three badge rows, a 15px paragraph and a separate source line, which read
- * as a headline event rather than a passing prompt. Kept to a single ~44px
- * row on purpose so it can never dominate the screen it sits on top of.
+ * One ranked row: tone-colored icon, the nudge text, an optional one-tap
+ * jump. Shared by the single-nudge banner and the multi-item Prioriteiten
+ * list so both stay visually identical.
  */
-export default function NudgeCard({ nudge, onNav }: { nudge: DashNudge; onNav: (v: string) => void }) {
+function NudgeRow({ nudge, onNav }: { nudge: DashNudge; onNav: (v: string) => void }) {
   const tone = TONE[nudge.tone]
   const Icon = tone.icon
 
   return (
     <div
-      className="flex items-center gap-2.5 py-2.5 px-3.5"
+      className="flex items-start gap-2.5 py-2.5 px-3.5"
       style={{ borderLeft: `3px solid ${tone.hex}` }}
       title={nudge.reason}
     >
-      <Icon className="h-4 w-4 shrink-0" style={{ color: tone.hex }} aria-hidden />
-      <p className="text-sm text-ink truncate flex-1 min-w-0">{nudge.text}</p>
+      <Icon className="h-4 w-4 shrink-0 mt-0.5" style={{ color: tone.hex }} aria-hidden />
+      {/* line-clamp-2, not a single-line truncate: real nudge text (an overdue
+          loop's title, a correlation's detail) is often longer than one line
+          and used to get chopped into an unreadable fragment like
+          "Leverage …" — two lines keeps it compact but still legible. */}
+      <p className="text-sm text-ink line-clamp-2 flex-1 min-w-0">{nudge.text}</p>
       {nudge.cta && (
         <button
           onClick={() => onNav(nudge.cta!.view)}
@@ -76,6 +78,32 @@ export default function NudgeCard({ nudge, onNav }: { nudge: DashNudge; onNav: (
           <ChevronRight className="h-3.5 w-3.5" />
         </button>
       )}
+    </div>
+  )
+}
+
+/**
+ * The daily nudge — genuinely a nudge now, not a headline: one line, a tone-
+ * colored icon, an optional one-tap jump. It used to be a full card with
+ * three badge rows, a 15px paragraph and a separate source line, which read
+ * as a headline event rather than a passing prompt. Kept to a single ~44px
+ * row on purpose so it can never dominate the screen it sits on top of.
+ */
+export default function NudgeCard({ nudge, onNav }: { nudge: DashNudge; onNav: (v: string) => void }) {
+  return <NudgeRow nudge={nudge} onNav={onNav} />
+}
+
+/**
+ * Ranked "Prioriteiten" list — up to a handful of real, currently-true
+ * things that need attention today, most urgent first, instead of a single
+ * nudge that can only ever surface one of them at a time.
+ */
+export function PriorityList({ items, onNav }: { items: DashNudge[]; onNav: (v: string) => void }) {
+  return (
+    <div className="divide-y divide-line">
+      {items.map((item, i) => (
+        <NudgeRow key={`${item.domain}-${i}`} nudge={item} onNav={onNav} />
+      ))}
     </div>
   )
 }

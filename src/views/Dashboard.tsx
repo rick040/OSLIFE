@@ -5,8 +5,10 @@ import { dueLabel } from '../lib/dates'
 import { OPENING_BALANCE } from '../mockData'
 import { DomainChip, Empty, SetupHint, Ring, SegmentedProgress, Sparkline } from '../components/ui'
 import { useWeather, weatherMeta } from '../hooks/useWeather'
-import NudgeCard, { storeNudgeToDash, type DashNudge } from '../components/NudgeCard'
+import { storeNudgeToDash, PriorityList, type DashNudge, type NudgeTone } from '../components/NudgeCard'
 import { MetricDetailDialog, type MetricPoint } from '../components/MetricDetailDialog'
+import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip } from 'recharts'
+import { CHART_TIP, AXIS_TICK_11 } from '../components/chart'
 import {
   CheckCircle2,
   SkipForward,
@@ -100,6 +102,15 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const today = healthDays.find((d) => d.date === TODAY) ?? healthDays[healthDays.length - 1]
   const nextBlock = blocks.filter((b) => b.status === 'planned')[0]
 
+  // Step sync from the phone can land hours after sleep/energy are already
+  // logged — a bare "0.0k" then reads as "you haven't moved" rather than
+  // "not synced yet". Fall back to the most recent day that actually has
+  // steps, and say so, instead of showing a misleading zero ring.
+  const stepsStale = !today || today.steps === 0
+  const lastStepsDay = stepsStale ? [...healthDays].reverse().find((d) => d.steps > 0) : today
+  const stepsRingValue = lastStepsDay ? lastStepsDay.steps / lastStepsDay.stepGoal : 0
+  const stepsRingLabel = lastStepsDay ? (lastStepsDay.steps / 1000).toFixed(1) + 'k' : '–'
+
   const openThreads = threads
     .filter((t) => t.status === 'open')
     .sort((a, b) => (a.due ? daysBetween(TODAY, a.due) : 999) - (b.due ? daysBetween(TODAY, b.due) : 999))
@@ -108,8 +119,8 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     .filter((p) => p.status === 'active' || p.status === 'review' || p.status === 'blocked')
     .sort((a, b) => (a.deadline ? daysBetween(TODAY, a.deadline) : 999) - (b.deadline ? daysBetween(TODAY, b.deadline) : 999))
 
-  const importantMail = emails.filter((e) => e.important).slice(0, 3)
-  const unreadCount = emails.filter((e) => e.unread).length
+  const allImportantMail = emails.filter((e) => e.important)
+  const importantMail = allImportantMail.slice(0, 3)
 
   // money — balance is computed identically to the Money screen (opening balance
   // + every known transaction) so the two screens never disagree.
@@ -184,60 +195,104 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const overduePay = openPayments.filter((p) => p.due && daysBetween(TODAY, p.due) < 0)
   const overdueProjects = activeProjects.filter((p) => p.deadline && daysBetween(TODAY, p.deadline) < 0)
   const habitsLeft = habits.filter((h) => !h.doneToday)
-  const unreadImportant = importantMail.filter((e) => e.unread)
+  // Was filtering the already-sliced 3-item preview list — undercounted
+  // whenever there were more than 3 important mails. Count against the full set.
+  const unreadImportant = allImportantMail.filter((e) => e.unread)
 
-  const dashNudge: DashNudge | null = (() => {
-    if (nudge.text?.trim()) return storeNudgeToDash(nudge)
+  // Prioriteiten: every currently-true thing that actually needs attention,
+  // most urgent first — not just the single loudest one. A Reflect-authored
+  // nudge (if the nightly pass has run) always leads; live-derived signals
+  // fill in around it so the list never goes stale between Reflect runs.
+  const TONE_RANK: Record<NudgeTone, number> = { urgent: 0, attention: 1, calm: 2 }
+  const priorities: DashNudge[] = (() => {
+    const list: DashNudge[] = []
+    if (nudge.text?.trim()) list.push(storeNudgeToDash(nudge))
     if (overduePay.length)
-      return {
+      list.push({
         text: `Je hebt ${overduePay.length} betaling${overduePay.length > 1 ? 'en' : ''} over de vervaldatum (o.a. ${overduePay[0].payee}). Regel die eerst — ze blokkeren je hoofd.`,
         domain: 'buurtkaart',
         reason: 'oudste verlopen betaling',
         tone: 'urgent',
         cta: { label: 'Naar Geld', view: 'money' },
-      }
+      })
     if (overdueProjects.length)
-      return {
+      list.push({
         text: `${overdueProjects[0].name} staat over de deadline. Plan vandaag één concreet blok om 'm los te trekken.`,
         domain: overdueProjects[0].domain,
         reason: 'project over de deadline',
         tone: 'urgent',
         cta: { label: 'Naar Projecten', view: 'projects' },
-      }
+      })
     if (today && today.date === TODAY && today.sleepHours > 0 && today.sleepHours < 6.5)
-      return {
+      list.push({
         text: `Maar ${today.sleepHours}u geslapen. Houd vandaag je zwaarste denkwerk in de ochtend en plan niks na 22:30.`,
         domain: 'cross',
         reason: 'weinig slaap gemeten',
         tone: 'attention',
         cta: { label: 'Naar Gezondheid', view: 'vitals' },
-      }
+      })
     if (unreadImportant.length)
-      return {
+      list.push({
         text: `${unreadImportant.length} belangrijke mail wacht op antwoord. Beantwoord 'm nu het nog klein is.`,
         domain: 'parkingyou',
         reason: 'belangrijke mail ongelezen',
         tone: 'attention',
         cta: { label: 'Naar Inbox', view: 'inbox' },
-      }
+      })
     if (habitsLeft.length && habits.length)
-      return {
+      list.push({
         text: `Nog ${habitsLeft.length}/${habits.length} gewoonten open vandaag. Pak de makkelijkste eerst voor de momentum.`,
         domain: 'buurtkaart',
         reason: 'gewoonten nog open vandaag',
         tone: 'attention',
         cta: { label: 'Naar Gewoonten', view: 'habits' },
-      }
-    if (habits.length)
-      return {
+      })
+    if (!list.length && habits.length)
+      list.push({
         text: 'Alle gewoonten staan, geen betaling te laat. Mooie dag — kies één ding dat je vooruit helpt.',
         domain: 'personal',
         reason: 'alles onder controle',
         tone: 'calm',
         cta: { label: 'Naar Noordster', view: 'northstar' },
-      }
-    return null
+      })
+    return list.sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]).slice(0, 3)
   })()
+
+  // Levensbalans: one real 0-100 score per life domain, from the same data
+  // every other block on this screen already uses — not a vibe, a computed
+  // read of where things actually stand right now.
+  const healthScore = today
+    ? Math.round(
+        ((Math.min(1, (lastStepsDay?.steps ?? 0) / (today.stepGoal || 10000)) +
+          Math.min(1, today.sleepHours / 8) +
+          Math.min(1, today.energy / 5)) /
+          3) *
+          100,
+      )
+    : null
+  const moneyScore = (() => {
+    if (!revenueGoal && !openPayments.length) return null
+    let score = revenueGoal ? Math.min(100, Math.round(goalPct * 100)) : 70
+    score -= overduePay.length * 20
+    return Math.max(0, Math.min(100, score))
+  })()
+  const werkScore = activeProjects.length
+    ? Math.max(
+        0,
+        100 - overdueProjects.length * 25 - activeProjects.filter((p) => p.status === 'blocked' && !overdueProjects.includes(p)).length * 10,
+      )
+    : null
+  const gewoontesScore = habits.length ? Math.round((habits.filter((h) => h.doneToday).length / habits.length) * 100) : null
+  const communicatieScore = emails.length ? Math.max(0, 100 - Math.min(100, unreadImportant.length * 25)) : null
+  const radarData = (
+    [
+      { domain: 'Gezondheid', score: healthScore },
+      { domain: 'Geld', score: moneyScore },
+      { domain: 'Werk', score: werkScore },
+      { domain: 'Gewoontes', score: gewoontesScore },
+      { domain: 'Communicatie', score: communicatieScore },
+    ] as { domain: string; score: number | null }[]
+  ).filter((d): d is { domain: string; score: number } => d.score !== null)
 
   return (
     <div className="space-y-4">
@@ -252,10 +307,21 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         </span>
       </div>
 
+      {/* ── prioriteiten: every real thing that needs attention today, ranked ── */}
+      {priorities.length > 0 && (
+        <div className="card p-0 overflow-hidden animate-fade-up" style={{ animationDelay: '20ms' }}>
+          <div className="px-3.5 pt-2.5">
+            <span className="text-xs uppercase tracking-wider text-muted font-semibold">
+              Prioriteiten
+            </span>
+          </div>
+          <PriorityList items={priorities} onNav={onNav} />
+        </div>
+      )}
+
       {/* ── focus hero: the one thing to look at first ──────────────────────── */}
       <div className="card p-0 overflow-hidden animate-fade-up" style={{ animationDelay: '40ms' }}>
-        {dashNudge && <NudgeCard nudge={dashNudge} onNav={onNav} />}
-        <div className={dashNudge ? 'border-t border-line p-3.5' : 'p-3.5'}>
+        <div className="p-3.5">
           <div className="flex items-center justify-between">
             <span className="text-xs uppercase tracking-wider text-muted font-semibold">Nu doen</span>
             {nextBlock && (
@@ -306,13 +372,22 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           </div>
           {today ? (
             <div className="flex items-center gap-3 mt-1.5">
-              <button
-                onClick={() => setMetricDialog('steps')}
-                className="rounded-xl p-1 -m-1 outline-none transition-colors hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-                aria-label="Stappen — bekijk 14-daagse grafiek"
-              >
-                <Ring value={today.steps / today.stepGoal} size={56} stroke={6} color="stroke-[#16210f]" label={(today.steps / 1000).toFixed(1) + 'k'} />
-              </button>
+              <div className="flex flex-col items-center gap-0.5 shrink-0">
+                <button
+                  onClick={() => setMetricDialog('steps')}
+                  className="rounded-xl p-1 -m-1 outline-none transition-colors hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                  aria-label={
+                    stepsStale && lastStepsDay
+                      ? `Stappen — nog niet gesynchroniseerd vandaag, laatst bekend ${fmtDate(lastStepsDay.date)}. Bekijk 14-daagse grafiek`
+                      : 'Stappen — bekijk 14-daagse grafiek'
+                  }
+                >
+                  <Ring value={stepsRingValue} size={56} stroke={6} color="stroke-[#16210f]" label={stepsRingLabel} />
+                </button>
+                {stepsStale && lastStepsDay && (
+                  <span className="text-xs font-medium whitespace-nowrap">nog niet gesynct</span>
+                )}
+              </div>
               <div className="flex flex-col gap-1 min-w-0">
                 <button
                   onClick={() => setMetricDialog('sleep')}
@@ -354,8 +429,8 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         <KpiTile
           icon={Mail}
           iconClass="text-parkingyou"
-          value={unreadCount || '0'}
-          label="ongelezen mail"
+          value={unreadImportant.length || '0'}
+          label="belangrijke mail"
           onClick={() => onNav('inbox')}
         />
         <KpiTile
@@ -390,6 +465,25 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           <div className="text-xs text-faint truncate mt-1">gewoontes</div>
         </button>
       </div>
+
+      {/* ── levensbalans: one computed score per domain, not a vibe ─────────── */}
+      {radarData.length >= 3 && (
+        <div className="card p-3.5 animate-fade-up" style={{ animationDelay: '70ms' }}>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs uppercase tracking-wider text-muted font-semibold">Levensbalans</span>
+            <span className="text-xs text-faint">score per domein · vandaag</span>
+          </div>
+          <ResponsiveContainer width="100%" height={190}>
+            <RadarChart data={radarData} outerRadius="68%">
+              <PolarGrid stroke="#E7E9DE" />
+              <PolarAngleAxis dataKey="domain" tick={AXIS_TICK_11} />
+              <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
+              <Radar dataKey="score" stroke="#6FA07C" fill="#6FA07C" fillOpacity={0.35} strokeWidth={2} />
+              <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v}/100`, 'score']} />
+            </RadarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {today && (
         <>
