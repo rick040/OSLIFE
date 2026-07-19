@@ -40,7 +40,12 @@ function amsterdamHour(): number {
   return parseInt(h, 10) % 24
 }
 
-/** Compact KPI tile — the dashboard's "cockpit" row. One glance, one tap through. */
+/**
+ * Compact KPI tile — the dashboard's "cockpit" row. One glance, one tap
+ * through. Icon sits inline beside the text (not stacked on its own row
+ * above it) so the tile hugs its content instead of reserving a fixed
+ * 76px of height that reads as dead space on narrow 2-col mobile grids.
+ */
 function KpiTile({
   icon: Icon,
   iconClass,
@@ -54,7 +59,7 @@ function KpiTile({
   value: React.ReactNode
   label: string
   onClick?: () => void
-  /** Optional small visual (sparkline, dots) anchored top-right of the tile. */
+  /** Optional small visual (sparkline, dots), right-aligned next to the text. */
   corner?: React.ReactNode
 }) {
   const Comp = onClick ? 'button' : 'div'
@@ -64,14 +69,19 @@ function KpiTile({
   return (
     <Comp
       onClick={onClick}
-      className={`card relative p-3 min-h-[76px] text-left ${onClick ? 'outline-none' : ''}`}
+      className={`card relative flex items-center gap-2.5 p-2.5 text-left ${onClick ? 'outline-none' : ''}`}
     >
-      {corner && <span className="absolute right-3 top-3">{corner}</span>}
-      <span className={`inline-flex h-7 w-7 items-center justify-center rounded-lg ${tintClass}`}>
-        <Icon className={`h-3.5 w-3.5 ${iconClass}`} />
+      {/* Sparkline flourish only where a tile has room to spare (sm+, wider
+          grid columns) — on the tight 2-col mobile grid it's the first
+          thing to go so the number itself gets the full width. */}
+      {corner && <span className="absolute right-2.5 top-2.5 hidden sm:inline-flex">{corner}</span>}
+      <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tintClass}`}>
+        <Icon className={`h-4 w-4 ${iconClass}`} />
       </span>
-      <div className="text-xl font-bold tabular-nums mt-2 truncate leading-tight pr-2">{value}</div>
-      <div className="text-xs text-faint truncate">{label}</div>
+      <div className={`min-w-0 flex-1 ${corner ? 'sm:pr-11' : ''}`}>
+        <div className="text-lg font-bold tabular-nums truncate leading-tight">{value}</div>
+        <div className="text-xs text-faint truncate">{label}</div>
+      </div>
     </Comp>
   )
 }
@@ -422,7 +432,19 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         <KpiTile
           icon={Receipt}
           iconClass="text-personal"
-          value={openPayments.length ? `${eur(toReceive)} / ${eur(toPay)}` : 'niks open'}
+          value={
+            openPayments.length ? (
+              // Two short stacked amounts, not one squeezed "€1.200 / €45"
+              // string — that format either truncated or forced the tile
+              // wider than its 2-col mobile column has room for.
+              <span className="flex flex-col gap-0.5 text-base leading-tight">
+                <span className="text-buurtkaart-deep">+{eur(toReceive)}</span>
+                <span className="text-cross-deep">-{eur(toPay)}</span>
+              </span>
+            ) : (
+              'niks open'
+            )
+          }
           label="te ontv. / te betalen"
           onClick={() => onNav('money')}
         />
@@ -449,20 +471,22 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         />
         <button
           onClick={() => onNav('habits')}
-          className="card min-h-[76px] p-3 text-left outline-none"
+          className="card flex items-center gap-2.5 p-2.5 text-left outline-none"
         >
-          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-personal/12">
-            <Flame className="h-3.5 w-3.5 text-personal" />
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-personal/12">
+            <Flame className="h-4 w-4 text-personal" />
           </span>
-          <div className="text-xl font-bold tabular-nums mt-2 leading-tight">
-            {habits.length ? `${habits.filter((h) => h.doneToday).length}/${habits.length}` : '–'}
-          </div>
-          {habits.length > 0 && (
-            <div className="mt-1.5">
-              <SegmentedProgress done={habits.filter((h) => h.doneToday).length} total={habits.length} color="bg-personal" />
+          <div className="min-w-0 flex-1">
+            <div className="text-lg font-bold tabular-nums leading-tight">
+              {habits.length ? `${habits.filter((h) => h.doneToday).length}/${habits.length}` : '–'}
             </div>
-          )}
-          <div className="text-xs text-faint truncate mt-1">gewoontes</div>
+            <div className="text-xs text-faint truncate">gewoontes</div>
+            {habits.length > 0 && (
+              <div className="mt-1">
+                <SegmentedProgress done={habits.filter((h) => h.doneToday).length} total={habits.length} color="bg-personal" />
+              </div>
+            )}
+          </div>
         </button>
       </div>
 
