@@ -6,9 +6,21 @@ import { CheckCircle2, PartyPopper } from 'lucide-react'
  * 100%. `done`/`total` are computed by the caller (Today) from the same task set
  * the "Vandaag afmaken" list renders, so bar and list never disagree.
  */
-export default function DopamineBar({ done, total }: { done: number; total: number }) {
+export default function DopamineBar({ done, total, compact }: { done: number; total: number; compact?: boolean }) {
   const pct = total > 0 ? Math.round((done / total) * 100) : 0
   const complete = total > 0 && done >= total
+
+  if (compact) {
+    return (
+      <div className="h-2 w-full rounded-full bg-line overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-700 ${complete ? 'bg-buurtkaart' : 'bg-forest'}`}
+          style={{ width: `${Math.max(4, pct)}%` }}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className={`card p-4 animate-fade-up ${complete ? 'border-buurtkaart/50 bg-buurtkaart/5' : ''}`}>
       <div className="flex items-center gap-2.5">

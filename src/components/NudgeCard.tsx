@@ -53,7 +53,16 @@ export function storeNudgeToDash(nudge: Nudge): DashNudge {
  * card: a tone-colored accent + icon, a "why this surfaced" source tag, the
  * message itself, and a one-tap jump to the screen where you can act on it.
  */
-export default function NudgeCard({ nudge, onNav }: { nudge: DashNudge; onNav: (v: string) => void }) {
+export default function NudgeCard({
+  nudge,
+  onNav,
+  embedded,
+}: {
+  nudge: DashNudge
+  onNav: (v: string) => void
+  /** Render without the outer card chrome — for nesting inside another card (e.g. the Dashboard focus hero). */
+  embedded?: boolean
+}) {
   const tone = TONE[nudge.tone]
   const Icon = tone.icon
   const domain = DOMAIN_META[nudge.domain]
@@ -61,10 +70,10 @@ export default function NudgeCard({ nudge, onNav }: { nudge: DashNudge; onNav: (
 
   return (
     <div
-      className="card relative overflow-hidden p-4 sm:p-5 animate-fade-up"
+      className={embedded ? 'relative overflow-hidden p-3.5' : 'card relative overflow-hidden p-4 sm:p-5 animate-fade-up'}
       style={{
-        animationDelay: '40ms',
-        borderColor: `${tone.hex}55`,
+        animationDelay: embedded ? undefined : '40ms',
+        borderColor: embedded ? undefined : `${tone.hex}55`,
         background: `linear-gradient(135deg, ${tone.hex}14, ${tone.hex}05 55%, transparent)`,
       }}
     >

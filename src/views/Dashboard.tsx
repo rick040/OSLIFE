@@ -1,11 +1,12 @@
+import { useMemo } from 'react'
 import { useStore } from '../store'
 import { TODAY, DOMAIN_META, fmtDate, daysBetween } from '../domains'
 import { dueLabel } from '../lib/dates'
 import { OPENING_BALANCE } from '../mockData'
-import { DomainChip, Empty, Ring, SetupHint } from '../components/ui'
-import { useWeather } from '../hooks/useWeather'
-import LocationWeather from '../components/LocationWeather'
+import { DomainChip, Empty, SetupHint } from '../components/ui'
+import { useWeather, weatherMeta } from '../hooks/useWeather'
 import NudgeCard, { storeNudgeToDash, type DashNudge } from '../components/NudgeCard'
+import DopamineBar from '../components/DopamineBar'
 import {
   CheckCircle2,
   SkipForward,
@@ -20,11 +21,10 @@ import {
   Flame,
   ArrowRight,
   Receipt,
-  ArrowDownLeft,
-  ArrowUpRight,
   Activity,
   CalendarRange,
-  Inbox as InboxIcon,
+  CheckSquare,
+  Check,
 } from 'lucide-react'
 
 import { eur0 as eur } from '../lib/format'
@@ -39,6 +39,33 @@ function amsterdamHour(): number {
   return parseInt(h, 10) % 24
 }
 
+/** Compact KPI tile — the dashboard's "cockpit" row. One glance, one tap through. */
+function KpiTile({
+  icon: Icon,
+  iconClass,
+  value,
+  label,
+  onClick,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  iconClass: string
+  value: React.ReactNode
+  label: string
+  onClick?: () => void
+}) {
+  const Comp = onClick ? 'button' : 'div'
+  return (
+    <Comp
+      onClick={onClick}
+      className={`card p-2.5 text-left ${onClick ? 'hover:border-line transition-colors' : ''}`}
+    >
+      <Icon className={`h-3.5 w-3.5 ${iconClass}`} />
+      <div className="text-base font-semibold mt-1 truncate leading-tight">{value}</div>
+      <div className="text-[10px] text-faint truncate">{label}</div>
+    </Comp>
+  )
+}
+
 export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const {
     threads,
@@ -47,6 +74,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     nudge,
     healthDays,
     projects,
+    projectTasks,
     goals,
     milestones,
     emails,
@@ -58,10 +86,10 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     toggleMilestone,
     markEmailRead,
     markPaymentPaid,
+    toggleProjectTask,
   } = useStore()
 
   const today = healthDays.find((d) => d.date === TODAY) ?? healthDays[healthDays.length - 1]
-  const todayIsLive = !!today && today.date === TODAY
   const nextBlock = blocks.filter((b) => b.status === 'planned')[0]
 
   const openThreads = threads
@@ -77,10 +105,6 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
 
   // money — balance is computed identically to the Money screen (opening balance
   // + every known transaction) so the two screens never disagree.
-  const month = TODAY.slice(0, 7)
-  const monthTx = transactions.filter((t) => t.date.slice(0, 7) === month)
-  const earned = monthTx.filter((t) => t.amount > 0).reduce((a, t) => a + t.amount, 0)
-  const spent = monthTx.filter((t) => t.amount < 0).reduce((a, t) => a + t.amount, 0)
   const balance = OPENING_BALANCE + transactions.reduce((a, t) => a + t.amount, 0)
 
   // outstanding payments
@@ -105,9 +129,19 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const hour = amsterdamHour()
   const greeting = hour < 12 ? 'Goedemorgen' : hour < 18 ? 'Goedemiddag' : 'Goedenavond'
 
-  // Live location + temperature (single geolocation request, shared with the card).
+  // Live location + temperature — a single compact header chip, not a full card.
   const weather = useWeather()
+  const { Icon: WeatherIcon } = weatherMeta(weather.code, weather.isDay ?? true)
   const locationLabel = weather.place ?? 'Geldrop'
+
+  // Project tasks due today (cap 5) — waiting-on-client projects excluded so the
+  // list only holds things actually in your control today.
+  const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
+  const notBlocked = (projectId: string) => projectById.get(projectId)?.status !== 'blocked'
+  const dueToday = projectTasks.filter((t) => !t.done && t.dueDate && t.dueDate <= TODAY && notBlocked(t.projectId))
+  const doneToday = projectTasks.filter((t) => t.lastDoneOn === TODAY && notBlocked(t.projectId))
+  const assignedToday = dueToday.length + doneToday.length
+  const focusTasks = [...dueToday].sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? '')).slice(0, 5)
 
   // Nudge: a Reflect pass writes a rich cross-domain nudge. Until then (e.g. fresh
   // live data, before any nightly reflect), derive the single most pressing nudge
@@ -119,9 +153,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const unreadImportant = importantMail.filter((e) => e.unread)
 
   const dashNudge: DashNudge | null = (() => {
-    // Prefer a Reflect-authored nudge when one is present.
     if (nudge.text?.trim()) return storeNudgeToDash(nudge)
-    // Otherwise derive the single most pressing nudge from live data.
     if (overduePay.length)
       return {
         text: `Je hebt ${overduePay.length} betaling${overduePay.length > 1 ? 'en' : ''} over de vervaldatum (o.a. ${overduePay[0].payee}). Regel die eerst — ze blokkeren je hoofd.`,
@@ -138,7 +170,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         tone: 'urgent',
         cta: { label: 'Naar Projecten', view: 'projects' },
       }
-    if (todayIsLive && today && today.sleepHours > 0 && today.sleepHours < 6.5)
+    if (today && today.date === TODAY && today.sleepHours > 0 && today.sleepHours < 6.5)
       return {
         text: `Maar ${today.sleepHours}u geslapen. Houd vandaag je zwaarste denkwerk in de ochtend en plan niks na 22:30.`,
         domain: 'cross',
@@ -173,127 +205,163 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     return null
   })()
 
-  // header summary — only show the stat line once there's something to count,
-  // so a freshly-connected account doesn't read "0 · 0 · 0 · 0/0".
-  const summaryParts: string[] = []
-  if (threads.length) summaryParts.push(`${openThreads.length} open loops`)
-  if (projects.length) summaryParts.push(`${activeProjects.length} actieve projecten`)
-  if (emails.length) summaryParts.push(`${unreadCount} nieuwe mails`)
-  if (habits.length) summaryParts.push(`${habits.filter((h) => h.doneToday).length}/${habits.length} gewoonten`)
-
   return (
-    <div className="space-y-6">
-      {/* header: greeting + live location/weather */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch animate-fade-up">
-        <div className="lg:col-span-2 flex flex-col justify-center">
-          <div className="text-sm text-muted">
-            {fmtDate(TODAY)} · {locationLabel}
-          </div>
-          <h1 className="text-2xl font-semibold mt-1">{greeting}, Rick.</h1>
-          <p className="text-muted text-sm mt-1">
-            {summaryParts.length ? summaryParts.join(' · ') : 'Verbind je data hieronder om je dag in één oogopslag te zien.'}
-          </p>
-        </div>
-        <LocationWeather weather={weather} onRefresh={weather.refresh} />
+    <div className="space-y-4">
+      {/* ── compact header: one line, no dedicated card ─────────────────────── */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 animate-fade-up">
+        <h1 className="text-xl font-semibold">
+          {greeting}, Rick. <span className="text-muted font-normal text-sm">{fmtDate(TODAY)}</span>
+        </h1>
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted">
+          <WeatherIcon className="h-4 w-4 text-parkingyou" />
+          {locationLabel}{weather.tempC != null && ` · ${weather.tempC}°C`}
+        </span>
       </div>
 
-      {/* nudge */}
-      {dashNudge && <NudgeCard nudge={dashNudge} onNav={onNav} />}
-
-      {/* hero row: right-now + vitals */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fade-up" style={{ animationDelay: '80ms' }}>
-        {/* right now */}
-        <div className="lg:col-span-2 card p-4">
+      {/* ── focus hero: the one thing to look at first ──────────────────────── */}
+      <div className="card p-0 overflow-hidden animate-fade-up" style={{ animationDelay: '40ms' }}>
+        {dashNudge && <NudgeCard nudge={dashNudge} onNav={onNav} embedded />}
+        <div className={dashNudge ? 'border-t border-line p-3.5' : 'p-3.5'}>
           <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-wider text-muted font-semibold">Nu doen</span>
+            <span className="text-[11px] uppercase tracking-wider text-muted font-semibold">Nu doen</span>
             {nextBlock && (
-              <span className="text-xs text-muted flex items-center gap-1">
+              <span className="text-[11px] text-muted flex items-center gap-1">
                 <Clock className="h-3 w-3" /> {nextBlock.start}–{nextBlock.end}
               </span>
             )}
           </div>
           {nextBlock ? (
-            <>
-              <div className="mt-2 flex items-center gap-2">
-                <DomainChip domain={nextBlock.domain} small />
-              </div>
-              <h3 className="text-lg font-medium mt-1.5">{nextBlock.title}</h3>
-              <p className="text-xs text-faint mt-1">{nextBlock.rationale}</p>
-              <div className="flex gap-2 mt-3">
-                <button className="btn-primary" onClick={() => completeBlock(nextBlock.id)}>
-                  <CheckCircle2 className="h-4 w-4" /> Klaar
+            <div className="flex flex-wrap items-center gap-2 mt-1.5">
+              <DomainChip domain={nextBlock.domain} small />
+              <span className="text-sm font-medium">{nextBlock.title}</span>
+              <div className="flex gap-1.5 ml-auto">
+                <button className="btn-primary !py-1 !px-2.5 text-xs" onClick={() => completeBlock(nextBlock.id)}>
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Klaar
                 </button>
-                <button className="btn-ghost" onClick={() => skipBlock(nextBlock.id)}>
-                  <SkipForward className="h-4 w-4" /> Overslaan
-                </button>
-                <button className="btn-ghost ml-auto" onClick={() => onNav('daybuilder')}>
-                  Dagplan <ArrowRight className="h-4 w-4" />
+                <button className="btn-ghost !py-1 !px-2.5 text-xs" onClick={() => skipBlock(nextBlock.id)}>
+                  <SkipForward className="h-3.5 w-3.5" /> Overslaan
                 </button>
               </div>
-            </>
+            </div>
           ) : blocks.length ? (
-            <Empty>Niks meer gepland vandaag. 🎉</Empty>
+            <p className="text-sm text-faint mt-1.5">Niks meer gepland vandaag. 🎉</p>
           ) : (
-            <SetupHint
-              icon={CalendarRange}
-              title="Nog geen dagplan"
-              cta="Bouw je dag"
-              onCta={() => onNav('daybuilder')}
-            >
-              Laat de Dagplanner je dag in blokken zetten op basis van je agenda en energie — sneller dan zelf plannen.
-            </SetupHint>
+            <button onClick={() => onNav('daybuilder')} className="text-xs text-muted hover:text-ink flex items-center gap-1 mt-1.5">
+              <CalendarRange className="h-3.5 w-3.5" /> Bouw je dag in de Dagplanner <ArrowRight className="h-3 w-3" />
+            </button>
           )}
         </div>
-
-        {/* vitals */}
-        <button
-          className="card p-4 text-left hover:border-line transition-colors"
-          onClick={() => onNav('vitals')}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-wider text-muted font-semibold">Vitaal vandaag</span>
-            {today && <span className="text-[11px] text-faint">{today.restingHR} bpm rust</span>}
-          </div>
-          {today ? (
-            <>
-              <div className="flex items-center justify-around mt-3">
-                <div className="flex flex-col items-center gap-1">
-                  <Ring
-                    value={today.steps / today.stepGoal}
-                    color="stroke-buurtkaart"
-                    label={(today.steps / 1000).toFixed(1) + 'k'}
-                    sub="stappen"
-                  />
-                  <Footprints className="h-3.5 w-3.5 text-buurtkaart" />
-                </div>
-                <div className="flex flex-col items-center gap-1">
-                  <Ring
-                    value={today.sleepHours / 8}
-                    color="stroke-parkingyou"
-                    label={today.sleepHours + 'u'}
-                    sub="slaap"
-                  />
-                  <Moon className="h-3.5 w-3.5 text-parkingyou" />
-                </div>
-                <div className="flex flex-col items-center gap-1">
-                  <Ring value={today.energy / 5} color="stroke-personal" label={today.energy + '/5'} sub="energie" />
-                  <Zap className="h-3.5 w-3.5 text-personal" />
-                </div>
-              </div>
-              {!todayIsLive && (
-                <div className="text-[10px] text-faint text-center mt-2">laatste meting · {fmtDate(today.date)}</div>
-              )}
-            </>
-          ) : (
-            <SetupHint icon={Activity} title="Geen gezondheidsdata">
-              Koppel Health Connect / Apple Health via het Apps Script — daarna stromen stappen, slaap en hartslag hier vanzelf binnen.
-            </SetupHint>
-          )}
-        </button>
       </div>
 
-      {/* main grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* ── KPI cockpit strip: everything at a glance, one tap through ──────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 animate-fade-up" style={{ animationDelay: '60ms' }}>
+        <button onClick={() => onNav('vitals')} className="card p-2.5 text-left hover:border-line transition-colors col-span-2 sm:col-span-1 lg:col-span-2">
+          <Activity className="h-3.5 w-3.5 text-cross" />
+          {today ? (
+            <div className="flex items-center gap-3 mt-1 text-sm font-semibold tabular-nums">
+              <span className="flex items-center gap-1"><Footprints className="h-3.5 w-3.5 text-buurtkaart" />{(today.steps / 1000).toFixed(1)}k</span>
+              <span className="flex items-center gap-1"><Moon className="h-3.5 w-3.5 text-parkingyou" />{today.sleepHours}u</span>
+              <span className="flex items-center gap-1"><Zap className="h-3.5 w-3.5 text-personal" />{today.energy}/5</span>
+            </div>
+          ) : (
+            <div className="text-sm text-faint mt-1">geen data</div>
+          )}
+          <div className="text-[10px] text-faint truncate">vitaal vandaag</div>
+        </button>
+
+        <KpiTile
+          icon={Wallet}
+          iconClass="text-buurtkaart"
+          value={transactions.length ? eur(balance) : '–'}
+          label="saldo"
+          onClick={() => onNav('money')}
+        />
+        <KpiTile
+          icon={Receipt}
+          iconClass="text-personal"
+          value={openPayments.length ? `${eur(toReceive)} / ${eur(toPay)}` : 'niks open'}
+          label="te ontv. / te betalen"
+          onClick={() => onNav('money')}
+        />
+        <KpiTile
+          icon={Mail}
+          iconClass="text-parkingyou"
+          value={unreadCount || '0'}
+          label="ongelezen mail"
+          onClick={() => onNav('inbox')}
+        />
+        <KpiTile
+          icon={CheckSquare}
+          iconClass="text-forest"
+          value={openThreads.length}
+          label="open taken"
+          onClick={() => onNav('tasks')}
+        />
+        <KpiTile
+          icon={Flame}
+          iconClass="text-personal"
+          value={habits.length ? `${habits.filter((h) => h.doneToday).length}/${habits.length}` : '–'}
+          label="gewoontes"
+          onClick={() => onNav('habits')}
+        />
+      </div>
+
+      {/* ── taken vandaag: project tasks due today, the actual to-do list ───── */}
+      {assignedToday > 0 && (
+        <div className="card p-3.5 animate-fade-up" style={{ animationDelay: '80ms' }}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] uppercase tracking-wider text-muted font-semibold">Vandaag afmaken</span>
+            <span className="text-xs text-muted tabular-nums">{doneToday.length}/{assignedToday}</span>
+          </div>
+          <DopamineBar done={doneToday.length} total={assignedToday} compact />
+          {focusTasks.length > 0 && (
+            <div className="space-y-1.5 mt-2.5">
+              {focusTasks.map((t) => {
+                const p = projectById.get(t.projectId)
+                const due = dueLabel(t.dueDate ?? null, { prefix: 'deadline ' })
+                return (
+                  <div key={t.id} className="flex items-center gap-2.5">
+                    <button
+                      onClick={() => toggleProjectTask(t.id, true)}
+                      title="Afvinken"
+                      className="shrink-0 h-4.5 w-4.5 rounded-md border border-line flex items-center justify-center text-transparent hover:border-forest hover:text-forest transition-colors"
+                    >
+                      <Check className="h-3 w-3" strokeWidth={2.5} />
+                    </button>
+                    <span className="text-sm text-ink truncate flex-1">{t.name}</span>
+                    <span className="text-[11px] text-faint truncate shrink-0 max-w-[9rem]">{p?.name ?? 'Project'}</span>
+                    <span className={`text-[11px] shrink-0 ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>{due.label}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── habits: compact tap-to-check chip row ───────────────────────────── */}
+      {habits.length > 0 && (
+        <div className="flex flex-wrap gap-2 animate-fade-up" style={{ animationDelay: '100ms' }}>
+          {habits.map((h) => (
+            <button
+              key={h.id}
+              onClick={() => tickHabit(h.id)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                h.doneToday ? 'border-buurtkaart/50 bg-buurtkaart/10 text-buurtkaart-deep' : 'border-line hover:border-line'
+              }`}
+            >
+              <span>{h.emoji}</span> {h.name}
+              <span className="text-[11px] text-faint flex items-center gap-0.5">
+                <Flame className="h-3 w-3 text-personal" /> {h.streak}
+              </span>
+              <CheckCircle2 className={`h-3.5 w-3.5 ${h.doneToday ? 'text-buurtkaart' : 'text-faint'}`} />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── below the fold: secondary detail, scroll for more ───────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-2">
         {/* North Star */}
         <div className="card p-4 animate-fade-up" style={{ animationDelay: '120ms' }}>
           <div className="flex items-center justify-between mb-3">
@@ -326,7 +394,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               cta="Stel je North Star in"
               onCta={() => onNav('northstar')}
             >
-              Eén meetbaar doel met deadline (bv. €10k omzet) geeft alle andere schermen richting. Begint het snelst in Noordster.
+              Eén meetbaar doel met deadline geeft alle andere schermen richting.
             </SetupHint>
           )}
           {revenueGoal && nextMilestone && (
@@ -343,101 +411,8 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           )}
         </div>
 
-        {/* Money */}
-        <button
-          className="card p-4 text-left animate-fade-up hover:border-line transition-colors"
-          style={{ animationDelay: '140ms' }}
-          onClick={() => onNav('money')}
-        >
-          <div className="flex items-center justify-between mb-3">
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <Wallet className="h-4 w-4 text-buurtkaart" /> Geld
-            </span>
-            <span className="text-xs text-faint">ABN AMRO · deze maand</span>
-          </div>
-          {transactions.length ? (
-            <>
-              <div className="flex items-baseline justify-between">
-                <span className="text-2xl font-semibold">{eur(balance)}</span>
-                <span className="text-sm text-muted">saldo</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mt-3">
-                <div className="rounded-xl bg-buurtkaart/10 p-2">
-                  <div className="text-[11px] text-muted">in</div>
-                  <div className="text-sm font-medium text-buurtkaart">{eur(earned)}</div>
-                </div>
-                <div className="rounded-xl bg-cross/10 p-2">
-                  <div className="text-[11px] text-muted">uit</div>
-                  <div className="text-sm font-medium text-cross">{eur(spent)}</div>
-                </div>
-              </div>
-            </>
-          ) : (
-            <SetupHint icon={Wallet} title="Nog geen transacties">
-              Open Geld en importeer je ABN AMRO CSV (of klik “Demo-import”) — saldo en uitgaven per categorie verschijnen meteen.
-            </SetupHint>
-          )}
-        </button>
-
-        {/* Outstanding payments */}
-        <div className="card p-4 animate-fade-up" style={{ animationDelay: '150ms' }}>
-          <div className="flex items-center justify-between mb-3">
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <Receipt className="h-4 w-4 text-personal" /> Openstaande betalingen
-            </span>
-            <button className="text-xs text-muted hover:text-ink flex items-center gap-1" onClick={() => onNav('money')}>
-              in Geld <ArrowRight className="h-3 w-3" />
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-2 mb-3">
-            <div className="rounded-xl bg-buurtkaart/10 p-2">
-              <div className="text-[11px] text-muted flex items-center gap-1">
-                <ArrowDownLeft className="h-3 w-3" /> te ontvangen
-              </div>
-              <div className="text-sm font-semibold text-buurtkaart-deep">{eur(toReceive)}</div>
-            </div>
-            <div className="rounded-xl bg-cross/10 p-2">
-              <div className="text-[11px] text-muted flex items-center gap-1">
-                <ArrowUpRight className="h-3 w-3" /> te betalen
-              </div>
-              <div className="text-sm font-semibold text-cross-deep">{eur(toPay)}</div>
-            </div>
-          </div>
-          {openPayments.length ? (
-            <div className="space-y-1.5">
-              {openPayments.slice(0, 3).map((p) => {
-                const due = dueLabel(p.due, { none: '–' })
-                return (
-                  <div key={p.id} className="flex items-center gap-2">
-                    <span
-                      className={`shrink-0 ${p.direction === 'incoming' ? 'text-buurtkaart' : 'text-cross'}`}
-                      title={p.direction === 'incoming' ? 'te ontvangen' : 'te betalen'}
-                    >
-                      {p.direction === 'incoming' ? <ArrowDownLeft className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
-                    </span>
-                    <span className="text-sm text-ink truncate flex-1">{p.payee}</span>
-                    <span className="text-sm tabular-nums shrink-0">{eur(p.amount)}</span>
-                    <span className={`text-[11px] shrink-0 w-16 text-right ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>
-                      {due.label}
-                    </span>
-                    <button
-                      className="text-faint hover:text-buurtkaart shrink-0"
-                      title="Markeer als voldaan"
-                      onClick={() => markPaymentPaid(p.id)}
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <Empty>Niks openstaand. 🎉</Empty>
-          )}
-        </div>
-
         {/* Projects */}
-        <div className="card p-4 animate-fade-up" style={{ animationDelay: '160ms' }}>
+        <div className="card p-4 animate-fade-up" style={{ animationDelay: '140ms' }}>
           <div className="flex items-center justify-between mb-3">
             <span className="flex items-center gap-2 text-sm font-semibold">
               <FolderKanban className="h-4 w-4 text-parkingyou" /> Projecten
@@ -473,13 +448,13 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               cta="Open Projecten"
               onCta={() => onNav('projects')}
             >
-              Projecten synchroniseren automatisch uit Notion. Koppel je Notion-database, dan staan deadlines en status hier vanzelf.
+              Projecten synchroniseren automatisch uit Notion.
             </SetupHint>
           )}
         </div>
 
         {/* Inbox */}
-        <div className="card p-4 animate-fade-up" style={{ animationDelay: '180ms' }}>
+        <div className="card p-4 animate-fade-up" style={{ animationDelay: '160ms' }}>
           <div className="flex items-center justify-between mb-3">
             <span className="flex items-center gap-2 text-sm font-semibold">
               <Mail className="h-4 w-4 text-personal" /> Belangrijke mail
@@ -519,94 +494,18 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               cta="Open Inbox"
               onCta={() => onNav('inbox')}
             >
-              Koppel Gmail via het Apps Script — belangrijke mails worden automatisch geclassificeerd en hier gesurfaced.
-            </SetupHint>
-          )}
-        </div>
-
-        {/* Open loops */}
-        <div className="card p-4 animate-fade-up" style={{ animationDelay: '200ms' }}>
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-semibold">Open loops</span>
-            <button className="text-xs text-muted hover:text-ink flex items-center gap-1" onClick={() => onNav('memory')}>
-              in Geheugen <ArrowRight className="h-3 w-3" />
-            </button>
-          </div>
-          {openThreads.length ? (
-            <div className="space-y-2">
-              {openThreads.slice(0, 4).map((t) => {
-                const due = dueLabel(t.due, { none: '–' })
-                return (
-                  <div key={t.id} className="flex items-center gap-2">
-                    <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${DOMAIN_META[t.domain].dot}`} />
-                    <span className="text-sm text-ink truncate flex-1">{t.title}</span>
-                    <span className={`text-[11px] shrink-0 ${due.overdue ? 'text-cross' : 'text-faint'}`}>
-                      {due.label}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          ) : threads.length ? (
-            <Empty>Alle loops gesloten. 🎉</Empty>
-          ) : (
-            <SetupHint
-              icon={InboxIcon}
-              title="Geen open loops"
-              cta="Leg iets vast"
-              onCta={() => onNav('capture')}
-            >
-              Loops ontstaan vanzelf: leg een taak of gedachte vast in Vastleggen en HEYRA opent er een loop voor.
-            </SetupHint>
-          )}
-        </div>
-
-        {/* Habits */}
-        <div className="card p-4 animate-fade-up" style={{ animationDelay: '220ms' }}>
-          <div className="flex items-center justify-between mb-3">
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <Flame className="h-4 w-4 text-personal" /> Gewoonten
-            </span>
-            {habits.length > 0 && (
-              <button className="text-xs text-muted hover:text-ink flex items-center gap-1" onClick={() => onNav('habits')}>
-                {habits.filter((h) => h.doneToday).length}/{habits.length} <ArrowRight className="h-3 w-3" />
-              </button>
-            )}
-          </div>
-          {habits.length ? (
-            <div className="space-y-2">
-              {habits.map((h) => (
-                <button
-                  key={h.id}
-                  onClick={() => tickHabit(h.id)}
-                  className={`w-full p-2.5 rounded-xl border flex items-center justify-between transition-colors ${
-                    h.doneToday ? 'border-buurtkaart/50 bg-buurtkaart/5' : 'border-line hover:border-line'
-                  }`}
-                >
-                  <span className="flex items-center gap-2 text-sm">
-                    <span className="text-base">{h.emoji}</span> {h.name}
-                  </span>
-                  <span className="flex items-center gap-2">
-                    <span className="text-xs text-muted flex items-center gap-0.5">
-                      <Flame className="h-3 w-3 text-personal" /> {h.streak}
-                    </span>
-                    <CheckCircle2 className={`h-5 w-5 ${h.doneToday ? 'text-buurtkaart' : 'text-faint'}`} />
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <SetupHint
-              icon={Flame}
-              title="Nog geen gewoonten"
-              cta="Voeg een gewoonte toe"
-              onCta={() => onNav('habits')}
-            >
-              Begin met één gewoonte (bv. 8.000 stappen). Streaks en afvinken verschijnen daarna direct hier.
+              Koppel Gmail via het Apps Script.
             </SetupHint>
           )}
         </div>
       </div>
+
+      {/* first-run: nothing connected anywhere yet */}
+      {!threads.length && !projects.length && !habits.length && !transactions.length && (
+        <SetupHint icon={CheckSquare} title="Verbind je data">
+          Zodra je databronnen leven, vult dit scherm zich vanzelf met je dag.
+        </SetupHint>
+      )}
     </div>
   )
 }
