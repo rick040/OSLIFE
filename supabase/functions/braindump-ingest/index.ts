@@ -29,6 +29,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 import { ANTHROPIC_API, MODEL, anthropicHeaders, extractText, parseJsonBlock } from "../_shared/anthropic.ts";
 import { CORS, SUPABASE_URL, corsPreflight, jsonResponder } from "../_shared/http.ts";
+import { fetchText, htmlToText, parseOG } from "../_shared/webpage.ts";
 
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
@@ -107,74 +108,6 @@ async function convert(apiKey: string, blocks: ContentBlock[]): Promise<Converte
     tags,
     markdown,
   };
-}
-
-// ── Fetch / OpenGraph helpers ─────────────────────────────────────────────────
-
-const BROWSER_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36";
-
-async function fetchText(url: string, ms = 9000): Promise<string | null> {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), ms);
-  try {
-    const res = await fetch(url, {
-      signal: ctrl.signal,
-      headers: { "user-agent": BROWSER_UA, "accept-language": "nl,en;q=0.8" },
-    });
-    if (!res.ok) return null;
-    return await res.text();
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-interface OG {
-  title: string | null;
-  description: string | null;
-  image: string | null;
-  video: string | null;
-}
-
-function metaContent(html: string, prop: string): string | null {
-  const re = new RegExp(
-    `<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`,
-    "i",
-  );
-  const m = html.match(re) ??
-    html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${prop}["']`, "i"));
-  return m ? m[1] : null;
-}
-
-function parseOG(html: string): OG {
-  const title =
-    metaContent(html, "og:title") ?? (html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] ?? null);
-  const desc = metaContent(html, "og:description") ?? metaContent(html, "description");
-  return {
-    title: title ? decodeEntities(title) : null,
-    description: desc ? decodeEntities(desc) : null,
-    image: metaContent(html, "og:image"),
-    video: metaContent(html, "og:video") ?? metaContent(html, "og:video:url") ?? metaContent(html, "og:video:secure_url"),
-  };
-}
-
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&#x27;/gi, "'");
-}
-
-/** Strip tags → readable-ish text (lightweight; no full readability lib). */
-function htmlToText(html: string, max = 8000): string {
-  const body = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return decodeEntities(body).slice(0, max);
 }
 
 // ── Per-type processors ────────────────────────────────────────────────────────
@@ -339,6 +272,18 @@ Deno.serve(async (req) => {
       meta: { ...meta, ...res.meta },
       error: null,
     }).eq("id", entryId);
+    // Fire-and-forget: feed search_memory()'s hybrid recall. A missing
+    // VOYAGE_API_KEY or any embedding failure is a silent no-op — the entry
+    // is already "ready" regardless.
+    fetch(`${SUPABASE_URL}/functions/v1/embed-memory`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: authHeader },
+      body: JSON.stringify({
+        source: "braindump",
+        id: entryId,
+        text: [res.note.title, res.note.summary, res.note.markdown].filter(Boolean).join("\n"),
+      }),
+    }).catch(() => {});
     return json({ ok: true, status: "ready" });
   };
 

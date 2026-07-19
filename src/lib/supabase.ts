@@ -1182,7 +1182,7 @@ export async function fetchProjects(): Promise<Project[]> {
 }
 
 export async function fetchClients(): Promise<Client[]> {
-  return fetchRows('clients', 'id,name,domain,client_status,potentie,scope,first_contact,email,website_url,notion_url,last_contacted_at,follow_up_cycle_days,aliases', { column: 'name', ascending: true }, (r) => ({
+  return fetchRows('clients', 'id,name,domain,client_status,potentie,scope,first_contact,email,website_url,notion_url,last_contacted_at,follow_up_cycle_days,aliases,research_note,researched_at', { column: 'name', ascending: true }, (r) => ({
     id:               r.id as string,
     name:             r.name as string,
     domain:           ((r.domain as Domain) ?? 'personal'),
@@ -1195,6 +1195,8 @@ export async function fetchClients(): Promise<Client[]> {
     lastContactedAt:  (r.last_contacted_at as string) ?? null,
     followUpCycleDays: (r.follow_up_cycle_days as number) ?? 30,
     aliases:          (r.aliases as string[]) ?? [],
+    researchNote:     (r.research_note as string) ?? null,
+    researchedAt:     (r.researched_at as string) ?? null,
   }))
 }
 
@@ -1221,6 +1223,8 @@ const CLIENT_COLS: Record<string, string> = {
   lastContactedAt: 'last_contacted_at',
   followUpCycleDays: 'follow_up_cycle_days',
   aliases: 'aliases',
+  researchNote: 'research_note',
+  researchedAt: 'researched_at',
 }
 
 export async function createClientRow(c: Omit<Client, 'id'>): Promise<Client | null> {
@@ -1236,6 +1240,8 @@ export async function createClientRow(c: Omit<Client, 'id'>): Promise<Client | n
     domain: c.domain,
     last_contacted_at: c.lastContactedAt ?? null,
     follow_up_cycle_days: c.followUpCycleDays ?? 30,
+    research_note: c.researchNote ?? null,
+    researched_at: c.researchedAt ?? null,
   })
   return id ? { ...c, id } : null
 }
@@ -1692,6 +1698,13 @@ export async function createInteractionRow(i: Omit<Interaction, 'id'>): Promise<
   })
   // Keep the person's last_interaction_at fresh so "too long since contact" stays honest.
   if (id && i.personId) await updateRow('person', i.personId, { lastInteractionAt: i.occurredAt }, PERSON_COLS)
+  // Fire-and-forget: feed search_memory()'s hybrid recall. No-op without
+  // VOYAGE_API_KEY configured server-side — never blocks or throws here.
+  if (id && i.summary) {
+    void supabase.functions
+      .invoke('embed-memory', { body: { source: 'interaction', id, text: i.summary } })
+      .catch(() => {})
+  }
   return id
 }
 
@@ -1773,10 +1786,15 @@ export async function forgetRecord(table: string, id: string): Promise<boolean> 
   return data === true
 }
 
-/** Tier-safe full-text recall over normaal-tier memory (braindump/interaction/summaries). */
+/**
+ * Tier-safe hybrid recall over normaal-tier memory (braindump/interaction/summaries).
+ * Proxies through the memory-search Edge Function so the Voyage embedding key
+ * never ships to the frontend; falls back to plain full-text ranking
+ * server-side when no embedding key is configured.
+ */
 export async function searchMemory(query: string, limit = 8): Promise<MemoryHit[]> {
   if (!query.trim()) return []
-  const { data, error } = await supabase.rpc('search_memory', { p_query: query, p_limit: limit })
+  const { data, error } = await supabase.functions.invoke('memory-search', { body: { query, limit } })
   warnWrite('search_memory', error)
   return ((data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({
     id: r.id as string,

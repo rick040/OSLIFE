@@ -118,7 +118,21 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
             email: draft.email,
             scope: draft.budgetGuess,
             firstContact: today,
+            researchNote: draft.researchNote ?? null,
+            researchedAt: draft.researchNote ? new Date().toISOString() : null,
           }
+
+    // Existing client, freshly researched: cache the note so it isn't re-fetched
+    // next time (clientIntakeAgent already skips this when a cached note exists).
+    if (useExisting && draft.researchNote && draft.matchedClientId) {
+      const existing = store.clients.find((c) => c.id === draft.matchedClientId)
+      if (existing && !existing.researchNote) {
+        store.updateClient(draft.matchedClientId, {
+          researchNote: draft.researchNote,
+          researchedAt: new Date().toISOString(),
+        })
+      }
+    }
 
     const projectPayload: Omit<Project, 'id'> | null = !opts.createProject
       ? null
