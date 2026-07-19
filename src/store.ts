@@ -228,9 +228,13 @@ interface State {
   milestones: Milestone[]
   goalProposals: GoalProposal[]
   proposingGoals: boolean
+  /** Set when the last proposeGoals() attempt threw; cleared on the next attempt/success. Lets the UI say *why* the button produced nothing instead of just going quiet. */
+  lastGoalProposalError: string | null
   weekPlan: PlanBlock[]
   weekPlanAt: string | null
   planningWeek: boolean
+  /** Same idea as lastGoalProposalError, for generateWeekPlan(). */
+  lastPlanError: string | null
   emails: EmailItem[]
   payments: Payment[]
   subscriptions: Subscription[]
@@ -482,9 +486,11 @@ const seed = () => ({
   milestones: mock.milestones,
   goalProposals: [] as GoalProposal[],
   proposingGoals: false,
+  lastGoalProposalError: null as string | null,
   weekPlan: [] as PlanBlock[],
   weekPlanAt: null as string | null,
   planningWeek: false,
+  lastPlanError: null as string | null,
   emails: mock.emails,
   payments: mock.payments,
   subscriptions: mock.subscriptions,
@@ -548,6 +554,8 @@ export function applyPersistDefaults(
   state.proposingGoals = false
   state.planningWeek = false
   if (state.weekPlanAt === undefined) state.weekPlanAt = null
+  if (state.lastGoalProposalError === undefined) state.lastGoalProposalError = null
+  if (state.lastPlanError === undefined) state.lastPlanError = null
 }
 
 /** Guard so overlapping auto-tag runs (load + realtime) don't double-work. */
@@ -1124,7 +1132,7 @@ export const useStore = create<State>()(
       },
 
       proposeGoals: async () => {
-        set({ proposingGoals: true })
+        set({ proposingGoals: true, lastGoalProposalError: null })
         const s = get()
         try {
           const proposals = await proposeGoalsAI({
@@ -1144,7 +1152,7 @@ export const useStore = create<State>()(
           }))
         } catch (err) {
           console.warn('[OSLIFE] goal proposal failed', err)
-          set({ proposingGoals: false })
+          set({ proposingGoals: false, lastGoalProposalError: 'HEYRA kon nu geen doelen voorstellen — probeer het zo nog eens.' })
         }
       },
 
@@ -1166,7 +1174,7 @@ export const useStore = create<State>()(
         set((s) => ({ goalProposals: s.goalProposals.filter((x) => x.id !== id) })),
 
       generateWeekPlan: async () => {
-        set({ planningWeek: true })
+        set({ planningWeek: true, lastPlanError: null })
         try {
           const dates = weekDates(today())
           const allEvents = await fetchBlocksRange(dates[0], dates[dates.length - 1])
@@ -1201,7 +1209,7 @@ export const useStore = create<State>()(
           }))
         } catch (err) {
           console.warn('[OSLIFE] week plan generation failed', err)
-          set({ planningWeek: false })
+          set({ planningWeek: false, lastPlanError: 'Kon geen dagplan genereren — probeer het zo nog eens.' })
         }
       },
 

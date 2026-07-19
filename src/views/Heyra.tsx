@@ -37,10 +37,18 @@ interface Msg {
 // Minimal typings for the Web Speech API (not in TS lib by default).
 type SpeechRec = { start: () => void; stop: () => void; onresult: ((e: any) => void) | null; onend: (() => void) | null; lang: string; interimResults: boolean; continuous: boolean }
 
+// A brain-routed reply can take a few sequential round-trips (routing, the
+// agent's own answer, semantic recall) — a static "..." reads as "did this
+// break?" past a couple of seconds. Cheap, honest staging: we don't know the
+// real stage, but a rotating label at least signals it's still working.
+const PENDING_LABELS = ['Denkt na…', 'Zoekt in je geheugen…', 'Bijna klaar…']
+
 export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
   const store = useStore()
   const [input, setInput] = useState('')
   const [listening, setListening] = useState(false)
+  const [pendingLabel, setPendingLabel] = useState(PENDING_LABELS[0])
+  const pendingTimers = useRef<number[]>([])
   const recRef = useRef<SpeechRec | null>(null)
   const memoryRef = useRef<ConversationMemory>(emptyMemory())
   const [msgs, setMsgs] = useState<Msg[]>([
@@ -71,6 +79,8 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [msgs])
+
+  useEffect(() => () => { pendingTimers.current.forEach(clearTimeout) }, [])
 
   const speechSupported =
     typeof window !== 'undefined' &&
@@ -171,10 +181,24 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
     setMsgs((m) => m.map((x) => (x.id === msgId ? { ...x, clientIntakeResult: result } : x)))
   }
 
+  function startPendingLabels() {
+    pendingTimers.current.forEach(clearTimeout)
+    setPendingLabel(PENDING_LABELS[0])
+    pendingTimers.current = [
+      window.setTimeout(() => setPendingLabel(PENDING_LABELS[1]), 2200),
+      window.setTimeout(() => setPendingLabel(PENDING_LABELS[2]), 5500),
+    ]
+  }
+  function stopPendingLabels() {
+    pendingTimers.current.forEach(clearTimeout)
+    pendingTimers.current = []
+  }
+
   async function send(text: string) {
     const clean = text.trim()
     if (!clean) return
     setInput('')
+    startPendingLabels()
 
     const rickId = crypto.randomUUID()
     const heyraId = crypto.randomUUID()
@@ -218,7 +242,15 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
             : x,
         ),
       )
-      setSuggestions(followUpSuggestions(result.topic, store, { domain: item.domain }))
+      setSuggestions(
+        followUpSuggestions(result.topic, store, {
+          domain: item.domain,
+          projectName: result.project?.name,
+          searchQuery: result.search?.query,
+          chartTitle: result.chart?.title,
+          clientName: result.clientIntake?.clientName,
+        }),
+      )
 
       // Learn as we speak: distil any durable fact from this exchange in the
       // background and, if HEYRA learned something new, tag the reply so the
@@ -233,9 +265,18 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
         })
         .catch(() => {})
     } catch {
+      // Give the text back — losing what you just typed on a failed send is a
+      // real dead-end, especially for a longer thought dumped in one go.
+      setInput(clean)
       setMsgs((m) =>
-        m.map((x) => (x.id === heyraId ? { ...x, pending: false, text: 'Er ging iets mis — probeer het nog eens.' } : x)),
+        m.map((x) =>
+          x.id === heyraId
+            ? { ...x, pending: false, text: 'Er ging iets mis — je bericht staat weer in het invoerveld, probeer het nog eens.' }
+            : x,
+        ),
       )
+    } finally {
+      stopPendingLabels()
     }
   }
 
@@ -267,10 +308,13 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
                 }`}
               >
                 {m.pending ? (
-                  <span className="inline-flex items-center gap-1 text-faint">
-                    <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse [animation-delay:150ms]" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse [animation-delay:300ms]" />
+                  <span className="inline-flex items-center gap-1.5 text-faint">
+                    <span className="inline-flex gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse [animation-delay:150ms]" />
+                      <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse [animation-delay:300ms]" />
+                    </span>
+                    <span className="text-xs">{pendingLabel}</span>
                   </span>
                 ) : (
                   m.text

@@ -28,7 +28,7 @@ export const runSearchAgent: Agent = async (input, ctx) => {
 
   if (!search.results.length) {
     search.graphInsight = await graphInsightPromise
-    return { text: fallbackText, topic: 'domain', search }
+    return { text: fallbackText, topic: 'search', search }
   }
 
   const facts = search.results.map((r) => `- ${r.title} (${r.kind}${r.detail ? `, ${r.detail}` : ''})`).join('\n')
@@ -42,5 +42,5 @@ export const runSearchAgent: Agent = async (input, ctx) => {
   ])
   search.graphInsight = graphInsight
 
-  return { text: brainText ?? fallbackText, topic: 'domain', search, fromBrain: !!brainText }
+  return { text: brainText ?? fallbackText, topic: 'search', search, fromBrain: !!brainText }
 }

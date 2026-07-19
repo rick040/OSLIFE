@@ -185,9 +185,13 @@ export default function NorthStar() {
     proposeGoals,
     acceptGoalProposal,
     dismissGoalProposal,
+    lastGoalProposalError,
   } = useStore()
 
   const [adding, setAdding] = useState(false)
+  // Tracks "did we just try" so a genuinely empty (not-enough-signal) result
+  // can say so instead of the spinner just stopping with no explanation.
+  const [proposalAttempted, setProposalAttempted] = useState(false)
   const [editing, setEditing] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Goal | null>(null)
   const [msDraft, setMsDraft] = useState<{ goalId: string; title: string } | null>(null)
@@ -210,7 +214,11 @@ export default function NorthStar() {
         <div className="flex items-center gap-2">
           <button
             className="btn-ghost !py-1.5"
-            onClick={proposeGoals}
+            onClick={async () => {
+              setProposalAttempted(false)
+              await proposeGoals()
+              setProposalAttempted(true)
+            }}
             disabled={proposingGoals}
           >
             {proposingGoals ? (
@@ -236,6 +244,16 @@ export default function NorthStar() {
           }}
           onCancel={() => setAdding(false)}
         />
+      )}
+
+      {lastGoalProposalError && !proposingGoals && (
+        <div className="card p-3 text-sm text-orange-700 bg-orange-500/10 border-orange-500/30">{lastGoalProposalError}</div>
+      )}
+      {!lastGoalProposalError && proposalAttempted && !proposingGoals && goalProposals.length === 0 && (
+        <div className="card p-3 text-sm text-muted bg-sunken">
+          Nog niet genoeg signaal voor een goed voorstel — leg een paar dingen vast (projecten, gewoontes, patronen) en
+          probeer het later opnieuw.
+        </div>
       )}
 
       {/* HEYRA-proposed goals */}

@@ -23,7 +23,20 @@ import type {
 } from '../types'
 import { DOMAIN_META, TODAY, fmtDate, daysBetween } from '../domains'
 
-export type Topic = 'open-loops' | 'energy' | 'money' | 'task-note' | 'task-draft' | 'vent' | 'domain' | 'generic'
+export type Topic =
+  | 'open-loops'
+  | 'energy'
+  | 'money'
+  | 'task-note'
+  | 'task-draft'
+  | 'vent'
+  | 'domain'
+  | 'generic'
+  | 'project'
+  | 'search'
+  | 'chart'
+  | 'clientIntake'
+  | 'briefing'
 
 /** The slice of store state suggestions read from. Store satisfies this shape. */
 export interface HeyraContext {
@@ -142,7 +155,14 @@ function domainOpenCount(ctx: HeyraContext, domain: Domain): number {
 export function followUpSuggestions(
   topic: Topic,
   ctx: HeyraContext,
-  extra?: { domain?: Domain; title?: string },
+  extra?: {
+    domain?: Domain
+    title?: string
+    projectName?: string
+    searchQuery?: string
+    chartTitle?: string
+    clientName?: string
+  },
 ): string[] {
   const c: Candidate[] = []
 
@@ -187,6 +207,41 @@ export function followUpSuggestions(
     case 'task-note': {
       push(c, `Wat staat er nog meer open?`, 80)
       push(c, `Zet er ook een deadline op`, 65)
+      break
+    }
+    case 'project': {
+      const name = extra?.projectName
+      if (name) {
+        push(c, `Wat is de volgende mijlpaal voor ${name}?`, 85)
+        push(c, `Hoeveel uur heb ik al aan ${name} besteed?`, 75)
+        push(c, `Maak een factuur voor ${name}`, 65)
+      }
+      break
+    }
+    case 'search': {
+      const q = extra?.searchQuery
+      push(c, q ? `Zoek breder naar "${q}"` : 'Zoek breder', 70)
+      push(c, 'Laat alles zien in Geheugen', 55)
+      break
+    }
+    case 'chart': {
+      const title = extra?.chartTitle
+      push(c, title ? `Vergelijk ${title.toLowerCase()} met vorige week` : 'Vergelijk met vorige week', 80)
+      push(c, 'Laat dit over een langere periode zien', 60)
+      break
+    }
+    case 'clientIntake': {
+      const name = extra?.clientName
+      if (name) {
+        push(c, `Staat ${name} al in het CRM?`, 80)
+        push(c, `Wat is de status van ${name}?`, 65)
+      }
+      break
+    }
+    case 'briefing': {
+      push(c, 'Wat is de belangrijkste loop nu?', 85)
+      push(c, 'Hoe staat het met mijn financiën?', 70)
+      push(c, 'Waarom voel ik me zo?', 60)
       break
     }
     case 'domain':

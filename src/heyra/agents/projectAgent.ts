@@ -31,5 +31,5 @@ export const runProjectAgent: Agent = async (input, ctx) => {
   }
 
   if (!project) return { text: '', topic: 'domain' } // router falls through to chatAgent
-  return { text: `${project.name} bij ${project.client}:`, topic: 'domain', project, entity: project.name }
+  return { text: `${project.name} bij ${project.client}:`, topic: 'project', project, entity: project.name }
 }
