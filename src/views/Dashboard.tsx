@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { TODAY, DOMAIN_META, fmtDate, daysBetween } from '../domains'
 import { dueLabel } from '../lib/dates'
@@ -6,6 +6,7 @@ import { OPENING_BALANCE } from '../mockData'
 import { DomainChip, Empty, SetupHint, Ring, SegmentedProgress, Sparkline } from '../components/ui'
 import { useWeather, weatherMeta } from '../hooks/useWeather'
 import NudgeCard, { storeNudgeToDash, type DashNudge } from '../components/NudgeCard'
+import { MetricDetailDialog, type MetricPoint } from '../components/MetricDetailDialog'
 import {
   CheckCircle2,
   SkipForward,
@@ -67,7 +68,7 @@ function KpiTile({
       <span className={`inline-flex h-7 w-7 items-center justify-center rounded-lg ${tintClass}`}>
         <Icon className={`h-3.5 w-3.5 ${iconClass}`} />
       </span>
-      <div className="text-xl font-bold mt-2 truncate leading-tight pr-2">{value}</div>
+      <div className="text-xl font-bold tabular-nums mt-2 truncate leading-tight pr-2">{value}</div>
       <div className="text-xs text-faint truncate">{label}</div>
     </Comp>
   )
@@ -123,6 +124,22 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const balanceTrend = Array.from({ length: 7 }, (_, i) => daysAgo(6 - i)).map(
     (date) => OPENING_BALANCE + transactions.filter((t) => t.date <= date).reduce((a, t) => a + t.amount, 0),
   )
+
+  // Tap-to-expand: a quick trend chart for a stat tile, without leaving the
+  // dashboard. Health data has no in-app deep link to Samsung Health/Health
+  // Connect (OSLIFE ingests it via Sheets/MacroDroid, not a health API), so
+  // this in-app expanded graph is the practical version of that request.
+  const [metricDialog, setMetricDialog] = useState<'steps' | 'sleep' | 'energy' | 'saldo' | null>(null)
+  const last14Health = healthDays.slice(-14)
+  const metricSeries: Record<'steps' | 'sleep' | 'energy', MetricPoint[]> = {
+    steps: last14Health.map((h) => ({ date: h.date.slice(8), value: h.steps })),
+    sleep: last14Health.map((h) => ({ date: h.date.slice(8), value: h.sleepHours })),
+    energy: last14Health.map((h) => ({ date: h.date.slice(8), value: h.energy })),
+  }
+  const saldoTrend: MetricPoint[] = Array.from({ length: 14 }, (_, i) => daysAgo(13 - i)).map((date) => ({
+    date: date.slice(8),
+    value: OPENING_BALANCE + transactions.filter((t) => t.date <= date).reduce((a, t) => a + t.amount, 0),
+  }))
 
   // outstanding payments
   const openPayments = payments
@@ -237,7 +254,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
 
       {/* ── focus hero: the one thing to look at first ──────────────────────── */}
       <div className="card p-0 overflow-hidden animate-fade-up" style={{ animationDelay: '40ms' }}>
-        {dashNudge && <NudgeCard nudge={dashNudge} onNav={onNav} embedded />}
+        {dashNudge && <NudgeCard nudge={dashNudge} onNav={onNav} />}
         <div className={dashNudge ? 'border-t border-line p-3.5' : 'p-3.5'}>
           <div className="flex items-center justify-between">
             <span className="text-xs uppercase tracking-wider text-muted font-semibold">Nu doen</span>
@@ -273,37 +290,58 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       {/* ── KPI cockpit strip: everything at a glance, one tap through ──────── */}
       {/* One bold "hero" bento tile (lime, dark text) for the single always-
           relevant daily number — vitals — everything else stays low-key so
-          it doesn't compete for attention (one focal point, not six). */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 animate-fade-up" style={{ animationDelay: '60ms' }}>
-        <button
-          onClick={() => onNav('vitals')}
-          className="card-hero p-3 text-left col-span-2 sm:col-span-3 lg:col-span-2 flex items-center gap-3 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        >
+          it doesn't compete for attention (one focal point, not eight).
+          8 units at lg:grid-cols-4 (hero=2 + six 1-col tiles) fills exactly
+          two full rows — no lonely tile stranded on its own row. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 animate-fade-up" style={{ animationDelay: '60ms' }}>
+        <div className="card-hero p-3 col-span-2 sm:col-span-3 lg:col-span-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider">Vitaal vandaag</span>
+            <button
+              onClick={() => onNav('vitals')}
+              className="text-xs font-semibold underline-offset-2 hover:underline outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded"
+            >
+              alles
+            </button>
+          </div>
           {today ? (
-            <>
-              <Ring value={today.steps / today.stepGoal} size={56} stroke={6} color="stroke-[#16210f]" label={(today.steps / 1000).toFixed(1) + 'k'} />
-              <div className="min-w-0">
-                <div className="text-xs font-semibold uppercase tracking-wide">Vitaal vandaag</div>
-                <div className="flex items-center gap-2.5 mt-1 text-sm font-semibold">
-                  <span className="flex items-center gap-1"><Moon className="h-3.5 w-3.5" />{today.sleepHours}u</span>
-                  <span className="flex items-center gap-1"><Zap className="h-3.5 w-3.5" />{today.energy}/5</span>
-                </div>
+            <div className="flex items-center gap-3 mt-1.5">
+              <button
+                onClick={() => setMetricDialog('steps')}
+                className="rounded-xl p-1 -m-1 outline-none transition-colors hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                aria-label="Stappen — bekijk 14-daagse grafiek"
+              >
+                <Ring value={today.steps / today.stepGoal} size={56} stroke={6} color="stroke-[#16210f]" label={(today.steps / 1000).toFixed(1) + 'k'} />
+              </button>
+              <div className="flex flex-col gap-1 min-w-0">
+                <button
+                  onClick={() => setMetricDialog('sleep')}
+                  className="flex items-center gap-1.5 text-sm font-semibold tabular-nums rounded-lg px-1.5 py-0.5 -mx-1.5 outline-none transition-colors hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                >
+                  <Moon className="h-3.5 w-3.5" />{today.sleepHours}u
+                </button>
+                <button
+                  onClick={() => setMetricDialog('energy')}
+                  className="flex items-center gap-1.5 text-sm font-semibold tabular-nums rounded-lg px-1.5 py-0.5 -mx-1.5 outline-none transition-colors hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                >
+                  <Zap className="h-3.5 w-3.5" />{today.energy}/5
+                </button>
               </div>
-            </>
+            </div>
           ) : (
-            <>
+            <button onClick={() => onNav('vitals')} className="flex items-center gap-3 mt-1.5 text-left">
               <Activity className="h-6 w-6 shrink-0" />
               <div className="text-sm font-medium">Nog geen gezondheidsdata — tik om te koppelen</div>
-            </>
+            </button>
           )}
-        </button>
+        </div>
 
         <KpiTile
           icon={Wallet}
           iconClass="text-buurtkaart"
           value={transactions.length ? eur(balance) : '–'}
           label="saldo"
-          onClick={() => onNav('money')}
+          onClick={() => setMetricDialog('saldo')}
           corner={transactions.length >= 2 ? <Sparkline values={balanceTrend} className="text-buurtkaart" width={44} height={20} /> : undefined}
         />
         <KpiTile
@@ -327,6 +365,13 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           label="open taken"
           onClick={() => onNav('tasks')}
         />
+        <KpiTile
+          icon={Target}
+          iconClass="text-prjct"
+          value={revenueGoal ? `${Math.round(goalPct * 100)}%` : '–'}
+          label="North Star"
+          onClick={() => onNav('northstar')}
+        />
         <button
           onClick={() => onNav('habits')}
           className="card min-h-[76px] p-3 text-left outline-none"
@@ -334,7 +379,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-personal/12">
             <Flame className="h-3.5 w-3.5 text-personal" />
           </span>
-          <div className="text-xl font-bold mt-2 leading-tight">
+          <div className="text-xl font-bold tabular-nums mt-2 leading-tight">
             {habits.length ? `${habits.filter((h) => h.doneToday).length}/${habits.length}` : '–'}
           </div>
           {habits.length > 0 && (
@@ -345,6 +390,55 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           <div className="text-xs text-faint truncate mt-1">gewoontes</div>
         </button>
       </div>
+
+      {today && (
+        <>
+          <MetricDetailDialog
+            open={metricDialog === 'steps'}
+            onClose={() => setMetricDialog(null)}
+            title="Stappen"
+            subtitle="Laatste 14 dagen"
+            data={metricSeries.steps}
+            color="#6FA07C"
+            goal={today.stepGoal}
+            kind="bar"
+            action={{ label: 'Naar Gezondheid', onClick: () => { setMetricDialog(null); onNav('vitals') } }}
+          />
+          <MetricDetailDialog
+            open={metricDialog === 'sleep'}
+            onClose={() => setMetricDialog(null)}
+            title="Slaap"
+            subtitle="Laatste 14 dagen"
+            data={metricSeries.sleep}
+            unit="u"
+            color="#6E8CA8"
+            goal={8}
+            kind="line"
+            action={{ label: 'Naar Gezondheid', onClick: () => { setMetricDialog(null); onNav('vitals') } }}
+          />
+          <MetricDetailDialog
+            open={metricDialog === 'energy'}
+            onClose={() => setMetricDialog(null)}
+            title="Energie"
+            subtitle="Laatste 14 dagen · schaal 1-5"
+            data={metricSeries.energy}
+            color="#C6A05B"
+            kind="line"
+            action={{ label: 'Naar Gezondheid', onClick: () => { setMetricDialog(null); onNav('vitals') } }}
+          />
+        </>
+      )}
+      <MetricDetailDialog
+        open={metricDialog === 'saldo'}
+        onClose={() => setMetricDialog(null)}
+        title="Saldo"
+        subtitle="Laatste 14 dagen"
+        data={saldoTrend}
+        unit="€"
+        color="#6FA07C"
+        kind="line"
+        action={{ label: 'Naar Geld', onClick: () => { setMetricDialog(null); onNav('money') } }}
+      />
 
       {/* ── taken vandaag: project tasks due today, the actual to-do list ───── */}
       {assignedToday > 0 && (
@@ -417,7 +511,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
             <>
               <div className="text-sm text-ink truncate">{revenueGoal.title}</div>
               <div className="flex items-baseline justify-between mt-1">
-                <span className="text-2xl font-semibold">{eur(revenueGoal.current)}</span>
+                <span className="text-2xl font-bold tabular-nums">{eur(revenueGoal.current)}</span>
                 <span className="text-sm text-muted">van {eur(revenueGoal.target)}</span>
               </div>
               <div className="h-2 w-full rounded-full bg-line overflow-hidden mt-2">
