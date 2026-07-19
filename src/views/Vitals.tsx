@@ -83,28 +83,28 @@ export default function Vitals() {
 
       {/* today — the one hero focal point on this screen: today's snapshot */}
       <div className="card-hero p-4">
-        <div className="text-[10px] font-semibold uppercase tracking-wide opacity-70 mb-2">Vandaag</div>
+        <div className="text-xs font-semibold uppercase tracking-wide mb-2">Vandaag</div>
         <div className="flex flex-wrap items-center justify-around gap-4">
           <div className="flex flex-col items-center gap-1">
             <Ring value={today.steps / today.stepGoal} size={72} color="stroke-[#16210f]" label={today.steps.toLocaleString('nl-NL')} />
-            <span className="text-[11px] opacity-70 flex items-center gap-1"><Footprints className="h-3 w-3" /> doel {today.stepGoal.toLocaleString('nl-NL')}</span>
+            <span className="text-xs font-medium flex items-center gap-1"><Footprints className="h-3.5 w-3.5" /> doel {today.stepGoal.toLocaleString('nl-NL')}</span>
           </div>
           <div className="flex flex-col items-center gap-1">
             <Ring value={today.sleepHours / 8} size={72} color="stroke-[#16210f]" label={today.sleepHours + 'u'} />
-            <span className="text-[11px] opacity-70 flex items-center gap-1"><Moon className="h-3 w-3" /> doel 8u</span>
+            <span className="text-xs font-medium flex items-center gap-1"><Moon className="h-3.5 w-3.5" /> doel 8u</span>
           </div>
           <div className="flex flex-col items-center gap-1">
             <Ring value={today.energy / 5} size={72} color="stroke-[#16210f]" label={today.energy + '/5'} />
-            <span className="text-[11px] opacity-70 flex items-center gap-1"><Zap className="h-3 w-3" /> energie</span>
+            <span className="text-xs font-medium flex items-center gap-1"><Zap className="h-3.5 w-3.5" /> energie</span>
           </div>
           <div className="flex flex-col items-center gap-1">
             <Ring value={today.mood / 5} size={72} color="stroke-[#16210f]" label={today.mood + '/5'} />
-            <span className="text-[11px] opacity-70 flex items-center gap-1"><Smile className="h-3 w-3" /> stemming</span>
+            <span className="text-xs font-medium flex items-center gap-1"><Smile className="h-3.5 w-3.5" /> stemming</span>
           </div>
           <div className="flex flex-col items-center justify-center">
             <Heart className="h-5 w-5 mb-1" />
             <span className="text-lg font-semibold">{today.restingHR}</span>
-            <span className="text-[11px] opacity-70">bpm rust</span>
+            <span className="text-xs font-medium">bpm rust</span>
           </div>
         </div>
       </div>
@@ -118,9 +118,11 @@ export default function Vitals() {
               <span className="absolute right-3 top-3">
                 <Sparkline values={s.trend} className={s.color} width={40} height={18} />
               </span>
-              <Icon className={`h-4 w-4 ${s.color}`} />
-              <div className="text-lg font-semibold mt-1">{s.value}</div>
-              <div className="text-[11px] text-faint">{s.label} · 14d</div>
+              <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${s.color.replace('text-', 'bg-')}/12`}>
+                <Icon className={`h-4 w-4 ${s.color}`} />
+              </span>
+              <div className="text-xl font-bold mt-2">{s.value}</div>
+              <div className="text-xs text-faint">{s.label} · 14d</div>
             </div>
           )
         })}
@@ -131,7 +133,7 @@ export default function Vitals() {
         <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
           <Footprints className="h-4 w-4 text-buurtkaart" /> Stappen (14 dagen)
         </h3>
-        <p className="text-[11px] text-faint mb-2">Groen = doel gehaald, lijn = dagdoel {today.stepGoal.toLocaleString('nl-NL')}.</p>
+        <p className="text-xs text-faint mb-2">Groen = doel gehaald, lijn = dagdoel {today.stepGoal.toLocaleString('nl-NL')}.</p>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={data} margin={{ top: 4, right: 4, left: -8, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
@@ -154,7 +156,7 @@ export default function Vitals() {
           <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
             <Moon className="h-4 w-4 text-parkingyou" /> Slaap
           </h3>
-          <p className="text-[11px] text-faint mb-2">Roze lijn = 6u drempel, daaronder keldert je energie.</p>
+          <p className="text-xs text-faint mb-2">Roze lijn = 6u drempel, daaronder keldert je energie.</p>
           <ResponsiveContainer width="100%" height={170}>
             <LineChart data={data} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
@@ -172,7 +174,7 @@ export default function Vitals() {
           <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
             <Heart className="h-4 w-4 text-cross" /> Rust-hartslag
           </h3>
-          <p className="text-[11px] text-faint mb-2">Hoger op slechte nachten, lager bij herstel.</p>
+          <p className="text-xs text-faint mb-2">Hoger op slechte nachten, lager bij herstel.</p>
           <ResponsiveContainer width="100%" height={170}>
             <LineChart data={data} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
@@ -196,7 +198,7 @@ export default function Vitals() {
         <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
           <Smartphone className="h-4 w-4 text-parkingyou" /> Schermtijd & app-gebruik
         </h3>
-        <p className="text-[11px] text-faint mb-2">Focus = werk/creatieve apps, afleiding = social/media. Pickups = telefoon ontgrendeld.</p>
+        <p className="text-xs text-faint mb-2">Focus = werk/creatieve apps, afleiding = social/media. Pickups = telefoon ontgrendeld.</p>
         {screenToday ? (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
@@ -216,7 +218,7 @@ export default function Vitals() {
               </BarChart>
             </ResponsiveContainer>
             <div className="mt-3">
-              <p className="text-[11px] text-faint mb-1.5">Top-apps vandaag</p>
+              <p className="text-xs text-faint mb-1.5">Top-apps vandaag</p>
               <div className="space-y-1.5">
                 {screenToday.topApps.map((a) => (
                   <div key={a.name} className="flex items-center gap-2 text-sm">
@@ -224,8 +226,8 @@ export default function Vitals() {
                     <div className="h-1.5 flex-1 rounded-full bg-line overflow-hidden">
                       <div className="h-full rounded-full bg-parkingyou" style={{ width: `${Math.min(100, (a.minutes / screenToday.totalMinutes) * 100)}%` }} />
                     </div>
-                    <span className="text-[11px] text-faint tabular-nums w-12 text-right">{fmtMin(a.minutes)}</span>
-                    <span className="chip bg-line text-ink-soft text-[10px] px-2 py-0 w-16 justify-center">{a.category}</span>
+                    <span className="text-xs text-faint tabular-nums w-12 text-right">{fmtMin(a.minutes)}</span>
+                    <span className="chip bg-line text-ink-soft text-xs px-2 py-0 w-16 justify-center">{a.category}</span>
                   </div>
                 ))}
               </div>
@@ -240,7 +242,7 @@ export default function Vitals() {
         <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
           <CalendarClock className="h-4 w-4 text-cross" /> Agenda-druk
         </h3>
-        <p className="text-[11px] text-faint mb-2">Roze = dag op/rond een PRJCT/campagne-deadline. 3+ meetings = versnipperde dag.</p>
+        <p className="text-xs text-faint mb-2">Roze = dag op/rond een PRJCT/campagne-deadline. 3+ meetings = versnipperde dag.</p>
         <ResponsiveContainer width="100%" height={160}>
           <BarChart data={meetingData} margin={{ top: 4, right: 4, left: -8, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
@@ -265,7 +267,7 @@ function Kpi({ icon: Icon, color, value, label }: { icon: typeof Smartphone; col
     <div className="card p-3">
       <Icon className={`h-4 w-4 ${color}`} />
       <div className="text-lg font-semibold mt-1">{value}</div>
-      <div className="text-[11px] text-faint">{label}</div>
+      <div className="text-xs text-faint">{label}</div>
     </div>
   )
 }

@@ -55,15 +55,20 @@ function KpiTile({
   corner?: React.ReactNode
 }) {
   const Comp = onClick ? 'button' : 'div'
+  // Tinted icon tile: same hue as the icon, at low coverage — the bento-card
+  // icon-badge pattern, not just a bare glyph floating above the number.
+  const tintClass = iconClass.replace('text-', 'bg-') + '/12'
   return (
     <Comp
       onClick={onClick}
-      className={`card relative p-2.5 min-h-[64px] text-left ${onClick ? 'outline-none' : ''}`}
+      className={`card relative p-3 min-h-[76px] text-left ${onClick ? 'outline-none' : ''}`}
     >
-      {corner && <span className="absolute right-2 top-2">{corner}</span>}
-      <Icon className={`h-3.5 w-3.5 ${iconClass}`} />
-      <div className="text-base font-semibold mt-1 truncate leading-tight pr-2">{value}</div>
-      <div className="text-[10px] text-faint truncate">{label}</div>
+      {corner && <span className="absolute right-3 top-3">{corner}</span>}
+      <span className={`inline-flex h-7 w-7 items-center justify-center rounded-lg ${tintClass}`}>
+        <Icon className={`h-3.5 w-3.5 ${iconClass}`} />
+      </span>
+      <div className="text-xl font-bold mt-2 truncate leading-tight pr-2">{value}</div>
+      <div className="text-xs text-faint truncate">{label}</div>
     </Comp>
   )
 }
@@ -235,9 +240,9 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         {dashNudge && <NudgeCard nudge={dashNudge} onNav={onNav} embedded />}
         <div className={dashNudge ? 'border-t border-line p-3.5' : 'p-3.5'}>
           <div className="flex items-center justify-between">
-            <span className="text-[11px] uppercase tracking-wider text-muted font-semibold">Nu doen</span>
+            <span className="text-xs uppercase tracking-wider text-muted font-semibold">Nu doen</span>
             {nextBlock && (
-              <span className="text-[11px] text-muted flex items-center gap-1">
+              <span className="text-xs text-muted flex items-center gap-1">
                 <Clock className="h-3 w-3" /> {nextBlock.start}–{nextBlock.end}
               </span>
             )}
@@ -276,9 +281,9 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         >
           {today ? (
             <>
-              <Ring value={today.steps / today.stepGoal} size={56} stroke={6} color="stroke-[#16210f]/70" label={(today.steps / 1000).toFixed(1) + 'k'} />
+              <Ring value={today.steps / today.stepGoal} size={56} stroke={6} color="stroke-[#16210f]" label={(today.steps / 1000).toFixed(1) + 'k'} />
               <div className="min-w-0">
-                <div className="text-[10px] font-semibold uppercase tracking-wide opacity-70">Vitaal vandaag</div>
+                <div className="text-xs font-semibold uppercase tracking-wide">Vitaal vandaag</div>
                 <div className="flex items-center gap-2.5 mt-1 text-sm font-semibold">
                   <span className="flex items-center gap-1"><Moon className="h-3.5 w-3.5" />{today.sleepHours}u</span>
                   <span className="flex items-center gap-1"><Zap className="h-3.5 w-3.5" />{today.energy}/5</span>
@@ -324,18 +329,20 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         />
         <button
           onClick={() => onNav('habits')}
-          className="card min-h-[64px] p-2.5 text-left outline-none"
+          className="card min-h-[76px] p-3 text-left outline-none"
         >
-          <Flame className="h-3.5 w-3.5 text-personal" />
-          <div className="text-base font-semibold mt-1 leading-tight">
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-personal/12">
+            <Flame className="h-3.5 w-3.5 text-personal" />
+          </span>
+          <div className="text-xl font-bold mt-2 leading-tight">
             {habits.length ? `${habits.filter((h) => h.doneToday).length}/${habits.length}` : '–'}
           </div>
           {habits.length > 0 && (
-            <div className="mt-1">
+            <div className="mt-1.5">
               <SegmentedProgress done={habits.filter((h) => h.doneToday).length} total={habits.length} color="bg-personal" />
             </div>
           )}
-          <div className="text-[10px] text-faint truncate mt-0.5">gewoontes</div>
+          <div className="text-xs text-faint truncate mt-1">gewoontes</div>
         </button>
       </div>
 
@@ -343,7 +350,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       {assignedToday > 0 && (
         <div className="card p-3.5 animate-fade-up" style={{ animationDelay: '80ms' }}>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] uppercase tracking-wider text-muted font-semibold">Vandaag afmaken</span>
+            <span className="text-xs uppercase tracking-wider text-muted font-semibold">Vandaag afmaken</span>
             <span className="text-xs text-muted tabular-nums">{doneToday.length}/{assignedToday}</span>
           </div>
           <SegmentedProgress done={doneToday.length} total={assignedToday} color="bg-forest" />
@@ -362,8 +369,8 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
                       <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
                     </button>
                     <span className="text-sm text-ink truncate flex-1">{t.name}</span>
-                    <span className="text-[11px] text-faint truncate shrink-0 max-w-[9rem]">{p?.name ?? 'Project'}</span>
-                    <span className={`text-[11px] shrink-0 ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>{due.label}</span>
+                    <span className="text-xs text-faint truncate shrink-0 max-w-[9rem]">{p?.name ?? 'Project'}</span>
+                    <span className={`text-xs shrink-0 ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>{due.label}</span>
                   </div>
                 )
               })}
@@ -385,7 +392,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               }`}
             >
               <span>{h.emoji}</span> {h.name}
-              <span className="text-[11px] text-faint flex items-center gap-0.5">
+              <span className="text-xs text-faint flex items-center gap-0.5">
                 <Flame className="h-3 w-3 text-personal" /> {h.streak}
               </span>
               <CheckCircle2 className={`h-3.5 w-3.5 ${h.doneToday ? 'text-buurtkaart' : 'text-faint'}`} />
@@ -465,8 +472,8 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
                     <span className="text-sm text-ink truncate flex-1">
                       {p.name} <span className="text-faint">· {p.client}</span>
                     </span>
-                    {p.status === 'blocked' && <span className="chip bg-cross/15 text-cross !py-0">geblokkeerd</span>}
-                    <span className={`text-[11px] shrink-0 ${due.overdue ? 'text-cross' : 'text-faint'}`}>
+                    {p.status === 'blocked' && <span className="chip bg-cross/15 text-cross-deep !py-0">geblokkeerd</span>}
+                    <span className={`text-xs shrink-0 ${due.overdue ? 'text-cross' : 'text-faint'}`}>
                       {due.label}
                     </span>
                   </div>
@@ -514,7 +521,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
                     <span className={`text-sm truncate block ${e.unread ? 'text-ink font-medium' : 'text-muted'}`}>
                       {e.from} <span className="text-faint font-normal">· {e.subject}</span>
                     </span>
-                    <span className="text-[11px] text-faint truncate block">{e.snippet}</span>
+                    <span className="text-xs text-faint truncate block">{e.snippet}</span>
                   </span>
                 </button>
               ))}

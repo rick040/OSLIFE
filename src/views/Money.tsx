@@ -15,6 +15,7 @@ import { TODAY, DOMAIN_META, DOMAIN_HEX, fmtDate, daysBetween } from '../domains
 import { dueLabel } from '../lib/dates'
 import { OPENING_BALANCE } from '../mockData'
 import { DomainChip, SectionTitle, Empty, Overlay, ConfirmDialog, Sparkline } from '../components/ui'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import type { Domain, Transaction, Cadence, Subscription, VendorTag, Payment } from '../types'
 import { TX_CATEGORIES, CATEGORY_DOMAIN, domainForCategory } from '../finance/categories'
 import { parseCsv } from '../finance/csvImport'
@@ -212,43 +213,37 @@ export default function Money() {
         </div>
       </div>
 
-      {/* tab nav */}
-      <div className="flex gap-1 rounded-2xl bg-sunken p-1" role="tablist">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex-1 min-h-[40px] rounded-xl px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-              tab === t.id ? 'bg-surface shadow-sm text-ink' : 'text-muted hover:text-ink'
-            }`}
-          >
-            {t.label}
-            {t.id === 'tebetalen' && openPayments.length > 0 && (
-              <span className="ml-1.5 text-[11px] text-faint">{openPayments.length}</span>
-            )}
-            {t.id === 'vendors' && vendorTags.length > 0 && (
-              <span className="ml-1.5 text-[11px] text-faint">{vendorTags.length}</span>
-            )}
-          </button>
-        ))}
-      </div>
+      {/* Radix Tabs — proper tablist/tab/tabpanel semantics and arrow-key/
+          Home/End keyboard navigation for free, replacing hand-rolled
+          buttons that only supported a mouse click. */}
+      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
+        <TabsList>
+          {TABS.map((t) => (
+            <TabsTrigger key={t.id} value={t.id}>
+              {t.label}
+              {t.id === 'tebetalen' && openPayments.length > 0 && (
+                <span className="ml-1.5 text-xs text-faint">{openPayments.length}</span>
+              )}
+              {t.id === 'vendors' && vendorTags.length > 0 && (
+                <span className="ml-1.5 text-xs text-faint">{vendorTags.length}</span>
+              )}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      {tab === 'overzicht' && (
-        <>
+      <TabsContent value="overzicht" className="space-y-6 mt-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* the one hero number on this screen — everything else on this
                 tab is detail you check, this is the thing you glance at */}
             <div className="card-hero relative p-4">
               {transactions.length >= 2 && (
                 <span className="absolute right-4 top-4">
-                  <Sparkline values={balanceTrend} className="text-[#16210f]/60" width={56} height={24} />
+                  <Sparkline values={balanceTrend} className="text-[#16210f]" width={56} height={24} />
                 </span>
               )}
-              <div className="text-xs uppercase tracking-wide opacity-70">Saldo</div>
+              <div className="text-xs font-semibold uppercase tracking-wide">Saldo</div>
               <div className="text-2xl font-semibold mt-1">{eur(balance)}</div>
-              <div className="text-[11px] opacity-70 mt-1">incl. {transactions.length} transacties</div>
+              <div className="text-xs font-medium mt-1">incl. {transactions.length} transacties</div>
             </div>
             <div className="card p-4">
               <div className="text-xs uppercase tracking-wider text-muted">Deze maand</div>
@@ -260,7 +255,7 @@ export default function Money() {
                   <TrendingDown className="h-3.5 w-3.5" /> {eur0(spent)} uit
                 </div>
               </div>
-              <div className="text-[11px] text-faint mt-1">netto {eur0(earned + spent)}</div>
+              <div className="text-xs text-faint mt-1">netto {eur0(earned + spent)}</div>
             </div>
             {revenueGoal && (
               <div className="card p-4">
@@ -271,7 +266,7 @@ export default function Money() {
                 <div className="h-1.5 w-full rounded-full bg-line overflow-hidden mt-2">
                   <div className="h-full rounded-full bg-prjct" style={{ width: `${Math.min(1, revenueGoal.current / revenueGoal.target) * 100}%` }} />
                 </div>
-                <div className="text-[11px] text-faint mt-1">nog {eur0(revenueGoal.target - revenueGoal.current)} te gaan</div>
+                <div className="text-xs text-faint mt-1">nog {eur0(revenueGoal.target - revenueGoal.current)} te gaan</div>
               </div>
             )}
           </div>
@@ -329,7 +324,7 @@ export default function Money() {
                           <span className={`h-2 w-2 rounded-full shrink-0 ${DOMAIN_META[t.domain].dot}`} />
                           <div className="min-w-0 flex-1">
                             <div className="text-sm text-ink truncate">{t.merchant}</div>
-                            <div className="text-[11px] text-faint flex items-center gap-1">
+                            <div className="text-xs text-faint flex items-center gap-1">
                               <span>{t.category}</span>
                               {t.autoTagged && <Sparkles className="h-3 w-3 text-prjct" aria-label="Auto-getagd" />}
                               {t.note && <span className="truncate">· {t.note}</span>}
@@ -350,10 +345,9 @@ export default function Money() {
               <Empty>Geen transacties in dit filter.</Empty>
             )}
           </div>
-        </>
-      )}
+      </TabsContent>
 
-      {tab === 'tebetalen' && (
+      <TabsContent value="tebetalen" className="mt-6">
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
             <SectionTitle hint="Gelogd in je betalingen-agenda. Te ontvangen van klanten en zelf te betalen.">
@@ -377,7 +371,7 @@ export default function Money() {
                       <div className="text-sm text-ink truncate">{p.payee}</div>
                       <div className="flex items-center gap-1.5">
                         <DomainChip domain={p.domain} small />
-                        <span className={`text-[11px] ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>
+                        <span className={`text-xs ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>
                           {due.label}
                         </span>
                       </div>
@@ -404,9 +398,9 @@ export default function Money() {
             <Empty>Geen openstaande betalingen.</Empty>
           )}
         </div>
-      )}
+      </TabsContent>
 
-      {tab === 'abonnementen' && (
+      <TabsContent value="abonnementen" className="mt-6">
         <Abonnementen
           subscriptions={subscriptions}
           monthlyTotal={subsMonthly}
@@ -414,9 +408,9 @@ export default function Money() {
           onToggle={toggleSubscription}
           onDelete={deleteSubscription}
         />
-      )}
+      </TabsContent>
 
-      {tab === 'vendors' && (
+      <TabsContent value="vendors" className="mt-6">
         <Vendors
           vendorTags={vendorTags}
           untagged={untagged}
@@ -425,7 +419,8 @@ export default function Money() {
           onSave={(key, patch) => setVendorTag(key, patch, { reapply: true })}
           onDelete={deleteVendorTag}
         />
-      )}
+      </TabsContent>
+      </Tabs>
 
       {editing && (
         <TransactionEditor
@@ -487,7 +482,7 @@ function TransactionEditor({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-sm font-semibold text-ink truncate">{tx.merchant}</div>
-            <div className="text-[11px] text-faint">{fmtDate(tx.date)} · {eur(tx.amount)}</div>
+            <div className="text-xs text-faint">{fmtDate(tx.date)} · {eur(tx.amount)}</div>
           </div>
           <button onClick={onClose} className="text-faint hover:text-ink p-1 shrink-0" aria-label="Sluiten">
             <X className="h-4 w-4" />
@@ -596,7 +591,7 @@ function Vendors({
           <SectionTitle hint="Elke winkelier die HEYRA één keer heeft opgezocht — daarna gratis herbruikt.">
             <span className="flex items-center gap-2"><Tag className="h-4 w-4 text-prjct" /> Vendor-geheugen</span>
           </SectionTitle>
-          <p className="text-[11px] text-faint mt-1">
+          <p className="text-xs text-faint mt-1">
             {vendorTags.length} onthouden{untagged ? ` · ${untagged} transactie(s) nog niet gecategoriseerd` : ' · alles getagd'}
           </p>
         </div>
@@ -640,7 +635,7 @@ function Vendors({
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-ink truncate">{v.vendorName}</div>
-                  <div className="text-[11px] text-faint truncate">
+                  <div className="text-xs text-faint truncate">
                     {v.category} · {DOMAIN_META[v.domain].label}
                     {v.info ? ` · ${v.info}` : ''}
                     {v.source === 'ai' ? ` · AI ${Math.round(v.confidence * 100)}%` : ' · handmatig'}
@@ -756,12 +751,12 @@ function Abonnementen({
         <div className="card p-4">
           <div className="text-xs uppercase tracking-wider text-muted">Per maand</div>
           <div className="text-2xl font-semibold mt-1">{eur(monthlyTotal)}</div>
-          <div className="text-[11px] text-faint mt-1">{subscriptions.filter((s) => s.active).length} actief</div>
+          <div className="text-xs text-faint mt-1">{subscriptions.filter((s) => s.active).length} actief</div>
         </div>
         <div className="card p-4">
           <div className="text-xs uppercase tracking-wider text-muted">Per jaar</div>
           <div className="text-2xl font-semibold mt-1">{eur(monthlyTotal * 12)}</div>
-          <div className="text-[11px] text-faint mt-1">geschat op actieve abonnementen</div>
+          <div className="text-xs text-faint mt-1">geschat op actieve abonnementen</div>
         </div>
       </div>
 
@@ -823,7 +818,7 @@ function Abonnementen({
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-ink truncate">{s.name}</div>
-                  <div className="text-[11px] text-faint truncate">{parts.join(' · ')}</div>
+                  <div className="text-xs text-faint truncate">{parts.join(' · ')}</div>
                 </div>
                 <span className="text-sm font-semibold tabular-nums shrink-0">{eur(s.amount)}</span>
                 <button

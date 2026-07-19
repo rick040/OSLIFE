@@ -146,7 +146,7 @@ export function Field({ label, children, hint }: { label: string; children: Reac
     <label className="block">
       <span className="text-xs font-semibold text-muted">{label}</span>
       <div className="mt-1">{children}</div>
-      {hint && <span className="text-[11px] text-faint mt-1 block">{hint}</span>}
+      {hint && <span className="text-xs text-faint mt-1 block">{hint}</span>}
     </label>
   )
 }
@@ -179,16 +179,18 @@ export { deadlineInfo }
 
 /** `alert` gives the tile a cross-tinted border/background — reserve it for
  *  a KPI that genuinely needs attention right now (overdue count > 0), so it
- *  reads as the one thing to look at first rather than four equal numbers. */
-export function Kpi({ icon, label, value, sub, alert }: { icon: React.ReactNode; label: string; value: string; sub: string; alert?: boolean }) {
+ *  reads as the one thing to look at first rather than four equal numbers.
+ *  `tint` colors the icon badge to match the metric's own hue (e.g.
+ *  `bg-buurtkaart/12`) instead of the generic neutral chip. */
+export function Kpi({ icon, label, value, sub, alert, tint }: { icon: React.ReactNode; label: string; value: string; sub: string; alert?: boolean; tint?: string }) {
   return (
     <div className={`card p-4 ${alert ? 'border-cross/40 bg-cross/5' : ''}`}>
       <div className="flex items-center gap-2 mb-1.5">
-        <span className={`h-7 w-7 rounded-xl flex items-center justify-center ${alert ? 'bg-cross/15' : 'bg-sunken'}`}>{icon}</span>
+        <span className={`h-8 w-8 rounded-lg flex items-center justify-center ${alert ? 'bg-cross/15' : tint ?? 'bg-sunken'}`}>{icon}</span>
         <span className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</span>
       </div>
-      <div className={`text-2xl font-semibold tabular-nums ${alert ? 'text-cross-deep' : ''}`}>{value}</div>
-      <div className="text-[11px] text-faint mt-0.5">{sub}</div>
+      <div className={`text-2xl font-bold tabular-nums ${alert ? 'text-cross-deep' : ''}`}>{value}</div>
+      <div className="text-xs text-faint mt-0.5">{sub}</div>
     </div>
   )
 }
@@ -197,7 +199,7 @@ export function StatusBadge({ status }: { status: ProjectStatus }) {
   const label = CRM_STATUS[status]
   const c = STATUS_HEX[label]
   return (
-    <Pill solid hex={c} className="text-[10px] font-semibold px-2 py-0.5 rounded-md whitespace-nowrap">
+    <Pill solid hex={c} className="text-xs font-semibold px-2 py-0.5 rounded-md whitespace-nowrap">
       {label}
     </Pill>
   )
@@ -239,19 +241,19 @@ export function ProjectCard({ p, onClick, onClientClick }: { p: Project; onClick
       <div className="flex-1" />
       <div className="flex flex-wrap gap-1 mt-2 mb-2">
         {p.priority && (
-          <Pill hex={PRIO_HEX[p.priority]} className="text-[10px] font-semibold px-1.5 py-0.5 rounded">
+          <Pill hex={PRIO_HEX[p.priority]} className="text-xs font-semibold px-1.5 py-0.5 rounded">
             {PRIO_NL[p.priority] ?? p.priority}
           </Pill>
         )}
         {dl && (
-          <Pill hex={dl.color} solid={dl.urgent} className="text-[10px] font-semibold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+          <Pill hex={dl.color} solid={dl.urgent} className="text-xs font-semibold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
             <Clock className="h-2.5 w-2.5" /> {dl.label}
           </Pill>
         )}
       </div>
       <div className="flex items-center justify-between border-t border-line pt-2">
         <span className="text-sm font-semibold tabular-nums">{eur(p.value)}</span>
-        {p.type?.[0] && <span className="text-[11px] text-faint">{p.type[0]}</span>}
+        {p.type?.[0] && <span className="text-xs text-faint">{p.type[0]}</span>}
       </div>
     </button>
   )
@@ -275,15 +277,15 @@ export function ProjectRow({ p, onClick, onClientClick }: { p: Project; onClick:
         <div className="flex flex-wrap gap-1.5 mt-2">
           <StatusBadge status={p.status} />
           {p.priority && (
-            <Pill hex={PRIO_HEX[p.priority]} className="text-[10px] font-semibold px-2 py-0.5 rounded-md">{PRIO_NL[p.priority] ?? p.priority}</Pill>
+            <Pill hex={PRIO_HEX[p.priority]} className="text-xs font-semibold px-2 py-0.5 rounded-md">{PRIO_NL[p.priority] ?? p.priority}</Pill>
           )}
           {dl && (
-            <Pill hex={dl.color} solid={dl.urgent} className="text-[10px] font-semibold px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+            <Pill hex={dl.color} solid={dl.urgent} className="text-xs font-semibold px-2 py-0.5 rounded-md inline-flex items-center gap-1">
               <Clock className="h-2.5 w-2.5" /> {dl.label}
             </Pill>
           )}
           {p.type?.slice(0, 2).map((t) => (
-            <span key={t} className="text-[10px] px-2 py-0.5 rounded-md bg-sunken text-faint">{t}</span>
+            <span key={t} className="text-xs px-2 py-0.5 rounded-md bg-sunken text-faint">{t}</span>
           ))}
         </div>
       </div>
@@ -300,12 +302,12 @@ export function ClientCard({ c, onClick }: { c: Client; onClick: () => void }) {
           {c.name.slice(0, 1).toUpperCase()}
         </span>
         {c.clientStatus && (
-          <Pill hex={color} className="text-[10px] font-semibold px-1.5 py-0.5 rounded">{CLIENT_STATUS_NL[c.clientStatus] ?? c.clientStatus}</Pill>
+          <Pill hex={color} className="text-xs font-semibold px-1.5 py-0.5 rounded">{CLIENT_STATUS_NL[c.clientStatus] ?? c.clientStatus}</Pill>
         )}
         <FollowUpDot client={c} className="ml-auto" />
       </div>
       <div className="text-sm font-semibold truncate">{c.name}</div>
-      <div className="mt-1.5 space-y-0.5 text-[11px] text-faint">
+      <div className="mt-1.5 space-y-0.5 text-xs text-faint">
         {c.potentie && <div>Potentie: {c.potentie}</div>}
         {c.scope != null && <div className="tabular-nums">Scope: {eur(c.scope)}</div>}
         <div className="flex items-center gap-1"><DomainChip domain={c.domain} small /></div>

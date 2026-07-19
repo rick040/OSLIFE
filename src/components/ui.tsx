@@ -21,13 +21,55 @@ export function KindChip({ kind }: { kind: string }) {
   return <span className="chip bg-line text-ink-soft">{kind}</span>
 }
 
-/** True when a hex color reads as "light" (needs dark text instead of white on a solid fill). */
-function isLightHex(hex: string): boolean {
+// ── WCAG contrast helpers ────────────────────────────────────────────────────
+function hexToRgb(hex: string): [number, number, number] {
   const c = hex.replace('#', '')
-  const r = parseInt(c.substring(0, 2), 16)
-  const g = parseInt(c.substring(2, 4), 16)
-  const b = parseInt(c.substring(4, 6), 16)
-  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6
+  return [parseInt(c.substring(0, 2), 16), parseInt(c.substring(2, 4), 16), parseInt(c.substring(4, 6), 16)]
+}
+
+/** WCAG relative luminance (0..1) from sRGB 0-255 channels. */
+function relativeLuminance([r, g, b]: [number, number, number]): number {
+  const f = (v: number) => {
+    const c = v / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  const [fr, fg, fb] = [f(r), f(g), f(b)]
+  return 0.2126 * fr + 0.7152 * fg + 0.0722 * fb
+}
+
+/** WCAG contrast ratio (1..21) between two sRGB colors. */
+function contrastRatio(a: [number, number, number], b: [number, number, number]): number {
+  const [l1, l2] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x)
+  return (l1 + 0.05) / (l2 + 0.05)
+}
+
+const WHITE: [number, number, number] = [255, 255, 255]
+const DARK_TEXT: [number, number, number] = [0x17, 0x17, 0x17]
+
+/**
+ * Pick whichever of white/near-black text actually contrasts better against
+ * `hex` — never a fixed luminance-threshold guess, which got 3 of OSLIFE's 4
+ * status colors wrong (picked white text at ~3:1, under the 4.5:1 AA
+ * minimum, because that heuristic's cutoff didn't match how sRGB luminance
+ * actually reads once weighted by the eye's green sensitivity). Falls back
+ * to progressively darkening the fill itself in the rare case neither
+ * candidate clears 4.5:1, so a solid badge can never ship under AA.
+ */
+function accessibleTextOn(hex: string): { color: string; background: string } {
+  const rgb = hexToRgb(hex)
+  const whiteRatio = contrastRatio(WHITE, rgb)
+  const darkRatio = contrastRatio(DARK_TEXT, rgb)
+  const useWhite = whiteRatio >= darkRatio
+  const best = useWhite ? whiteRatio : darkRatio
+  if (best >= 4.5) return { color: useWhite ? '#ffffff' : '#171717', background: hex }
+  // Neither candidate clears AA — darken the fill in steps until white text does.
+  let [r, g, b] = rgb
+  for (let i = 0; i < 8 && contrastRatio(WHITE, [r, g, b]) < 4.5; i++) {
+    r = Math.round(r * 0.85)
+    g = Math.round(g * 0.85)
+    b = Math.round(b * 0.85)
+  }
+  return { color: '#ffffff', background: `rgb(${r}, ${g}, ${b})` }
 }
 
 /**
@@ -52,14 +94,7 @@ export function Pill({
   children: React.ReactNode
 }) {
   return (
-    <span
-      className={className}
-      style={
-        solid
-          ? { color: isLightHex(hex) ? '#171717' : '#ffffff', background: hex }
-          : { color: hex, background: `${hex}22` }
-      }
-    >
+    <span className={className} style={solid ? accessibleTextOn(hex) : { color: hex, background: `${hex}22` }}>
       {children}
     </span>
   )

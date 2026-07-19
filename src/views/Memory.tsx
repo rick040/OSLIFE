@@ -333,7 +333,7 @@ export default function Memory() {
                         <div className="flex items-center gap-2">
                           <DomainChip domain={t.domain} small />
                           {t.status === 'closed' ? (
-                            <span className="chip bg-buurtkaart/15 text-buurtkaart">gesloten</span>
+                            <span className="chip bg-buurtkaart/15 text-buurtkaart-deep">gesloten</span>
                           ) : (
                             <span className={`text-[11px] ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>
                               {due.label}
