@@ -788,3 +788,85 @@ export interface ReflectDigest {
   /** Brain-synthesized prescriptive summary of THIS pass's correlations/anomalies — filled in async after the digest itself, never blocks the UI. Undefined until the brain call resolves (or is unavailable). */
   narrative?: string
 }
+
+// ── Strategie HQ: business ideas (voice/text → full elaborated analysis) ─────
+
+export type IdeaSource = 'voice' | 'text'
+export type IdeaElaborationStatus = 'pending' | 'processing' | 'ready' | 'failed'
+export type IdeaLifecycleStatus = 'idea' | 'active' | 'parked' | 'archived'
+export type ImpactLevel = 'low' | 'medium' | 'high'
+
+export interface IdeaMilestone {
+  title: string
+  due: string | null // relative period label ("Maand 1"), not a strict ISO date — the idea isn't committed yet
+  done: boolean
+}
+
+export interface RevenuePoint {
+  period: string // e.g. "Maand 1"
+  amount: number // EUR
+}
+
+export interface IdeaCost {
+  label: string
+  amount: number // EUR
+}
+
+export interface IdeaFinancials {
+  investmentNeeded: number | null // EUR
+  revenueProjection: RevenuePoint[]
+  costs: IdeaCost[]
+  breakEven: string | null // description or period
+  notes: string | null
+}
+
+export interface IdeaRisk {
+  risk: string
+  impact: ImpactLevel
+  mitigation: string | null
+}
+
+export interface IdeaOpportunity {
+  opportunity: string
+  potential: ImpactLevel
+}
+
+export interface IdeaSwot {
+  strengths: string[]
+  weaknesses: string[]
+  opportunities: string[]
+  threats: string[]
+}
+
+/**
+ * One business idea on Strategie HQ. Captured as a voice note or typed text
+ * (`rawInput`), then elaborated by the idea-elaborate edge function into a
+ * full strategic write-up — `markdown` is the complete document; every other
+ * analysis field is the same content pulled out into structured data for the
+ * UI's visualizations. `elaborationStatus` tracks that pipeline; `status` is
+ * the separate, user-managed lifecycle stage.
+ */
+export interface BusinessIdea {
+  id: string
+  createdAt: string
+  updatedAt: string
+  source: IdeaSource
+  rawInput: string | null
+  elaborationStatus: IdeaElaborationStatus
+  error: string | null
+  status: IdeaLifecycleStatus
+  title: string
+  overview: string | null
+  domain: Domain
+  tags: string[]
+  feasibilityScore: number | null
+  feasibilityReasoning: string | null
+  timeline: string | null
+  milestones: IdeaMilestone[]
+  financials: IdeaFinancials
+  risks: IdeaRisk[]
+  opportunities: IdeaOpportunity[]
+  swot: IdeaSwot
+  markdown: string | null
+  tier: Tier
+}
