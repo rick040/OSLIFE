@@ -215,18 +215,22 @@
   }
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium
-           transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+           transition-[background-color,transform,box-shadow] duration-150 outline-none
+           active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100
+           focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
   }
   .btn-primary {
-    @apply btn bg-forest hover:bg-forest-hi text-white shadow-sm;
+    @apply btn bg-forest hover:bg-forest-hi active:bg-forest text-white shadow-sm;
   }
   .btn-ghost {
-    @apply btn bg-sunken hover:bg-line text-ink;
+    @apply btn bg-sunken hover:bg-line active:bg-line/70 text-ink;
   }
   .btn-lime {
-    @apply btn bg-lime hover:bg-lime-hi text-forest;
+    @apply btn bg-lime hover:bg-lime-hi active:bg-lime text-forest;
   }
   .input {
-    @apply rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none focus:border-personal/60;
+    @apply rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none
+           transition-[border-color,box-shadow] duration-150
+           focus:border-personal/60 focus:ring-2 focus:ring-personal/20;
   }
 }

@@ -21,10 +21,45 @@ export function KindChip({ kind }: { kind: string }) {
   return <span className="chip bg-line text-ink-soft">{kind}</span>
 }
 
-/** Hex-getinte badge: tekst in `hex`, achtergrond dezelfde hex op ~13% dekking (`hex + '22'`). */
-export function Pill({ hex, className, children }: { hex: string; className?: string; children: React.ReactNode }) {
+/** True when a hex color reads as "light" (needs dark text instead of white on a solid fill). */
+function isLightHex(hex: string): boolean {
+  const c = hex.replace('#', '')
+  const r = parseInt(c.substring(0, 2), 16)
+  const g = parseInt(c.substring(2, 4), 16)
+  const b = parseInt(c.substring(4, 6), 16)
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6
+}
+
+/**
+ * Hex-tinted badge. Two treatments:
+ *  - default (categorical/low-key): text in `hex`, background the same hex at
+ *    ~13% coverage (`hex + '22'`) — for identity tags (priority, domain, a
+ *    due-date accent) that shouldn't compete for attention.
+ *  - `solid` (status/vivid): filled `hex` background with white or dark text
+ *    (picked by contrast) — for workflow status that should read as a clear
+ *    signal, not a soft tint. Mirrors the categorical-vs-semantic badge split
+ *    from Astryx's design system: identity stays pastel, status stays vivid.
+ */
+export function Pill({
+  hex,
+  className,
+  solid,
+  children,
+}: {
+  hex: string
+  className?: string
+  solid?: boolean
+  children: React.ReactNode
+}) {
   return (
-    <span className={className} style={{ color: hex, background: `${hex}22` }}>
+    <span
+      className={className}
+      style={
+        solid
+          ? { color: isLightHex(hex) ? '#171717' : '#ffffff', background: hex }
+          : { color: hex, background: `${hex}22` }
+      }
+    >
       {children}
     </span>
   )

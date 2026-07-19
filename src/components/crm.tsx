@@ -194,7 +194,7 @@ export function StatusBadge({ status }: { status: ProjectStatus }) {
   const label = CRM_STATUS[status]
   const c = STATUS_HEX[label]
   return (
-    <Pill hex={c} className="text-[10px] font-semibold px-2 py-0.5 rounded-md whitespace-nowrap">
+    <Pill solid hex={c} className="text-[10px] font-semibold px-2 py-0.5 rounded-md whitespace-nowrap">
       {label}
     </Pill>
   )
@@ -241,7 +241,7 @@ export function ProjectCard({ p, onClick, onClientClick }: { p: Project; onClick
           </Pill>
         )}
         {dl && (
-          <Pill hex={dl.color} className="text-[10px] font-semibold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
+          <Pill hex={dl.color} solid={dl.urgent} className="text-[10px] font-semibold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
             <Clock className="h-2.5 w-2.5" /> {dl.label}
           </Pill>
         )}
@@ -275,7 +275,7 @@ export function ProjectRow({ p, onClick, onClientClick }: { p: Project; onClick:
             <Pill hex={PRIO_HEX[p.priority]} className="text-[10px] font-semibold px-2 py-0.5 rounded-md">{PRIO_NL[p.priority] ?? p.priority}</Pill>
           )}
           {dl && (
-            <Pill hex={dl.color} className="text-[10px] font-semibold px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+            <Pill hex={dl.color} solid={dl.urgent} className="text-[10px] font-semibold px-2 py-0.5 rounded-md inline-flex items-center gap-1">
               <Clock className="h-2.5 w-2.5" /> {dl.label}
             </Pill>
           )}
