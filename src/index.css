@@ -15,7 +15,9 @@
     --ink: 80 11.5% 10.2%;
     --ink-soft: 77.1 10.8% 25.5%;
     --muted-foreground: 77.6 9.6% 34.7%;
-    --faint: 75 6.7% 53.3%;
+    /* WCAG AA fix: was 53.3% L (2.9-3.3:1 on canvas/surface — fails the 4.5:1
+       body-text minimum). 41% clears 4.5:1 against every surface tone. */
+    --faint: 75 6.7% 41%;
 
     /* brand */
     --forest: 85 36.7% 19.2%;
@@ -93,7 +95,9 @@
     --ink: 68 12% 92%;
     --ink-soft: 70 10% 72%;
     --muted-foreground: 75 8% 62%;
-    --faint: 75 7% 48%;
+    /* WCAG AA fix: was 48% L (3.6-4.2:1 — under the 4.5:1 body-text minimum
+       against surface/sunken). 55% clears 4.5:1 against every surface tone. */
+    --faint: 75 7% 55%;
 
     /* brand (lightened so it reads on charcoal) */
     --forest: 88 34% 42%;
@@ -171,6 +175,20 @@
   }
 }
 
+/* Respect the OS-level "reduce motion" preference: entrance animations play
+   instantly (no slide/fade) and looping ones (pulse-ring, flow-dash chart
+   dashes) stop outright instead of running forever in the background. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* calm scrollbars (theme-aware) */
 ::-webkit-scrollbar {
   width: 10px;
@@ -209,6 +227,18 @@
   button.card:focus-visible,
   a.card:focus-visible {
     @apply ring-2 ring-ring ring-offset-2 ring-offset-canvas;
+  }
+  /* Hero focal card — one bold, saturated accent reserved for the single most
+     important thing on a screen (the next action, the one number that
+     matters right now). Deliberately used AT MOST ONCE per view: the whole
+     point is a single unambiguous focal point rather than several
+     competing bright cards, which is friendlier for attention/ADHD-minded
+     design than "everything is highlighted" dashboards. Text is always
+     dark — lime is bright enough in both themes that dark text is the only
+     treatment that stays legible without a second themed variant. */
+  .card-hero {
+    @apply rounded-3xl shadow-card-lg text-[#16210f];
+    background: linear-gradient(135deg, hsl(var(--lime)) 0%, hsl(var(--lime-hi)) 100%);
   }
   .chip {
     @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;

@@ -127,7 +127,7 @@ export function Sheet({
     <SheetShell onClose={onClose} panelClassName={`${wide ? 'md:max-w-2xl' : 'md:max-w-lg'} md:max-h-[90dvh] max-h-[92dvh]`}>
       <div className="flex items-center gap-3 p-5 pb-3 border-b border-line shrink-0">
         <div className="flex-1 min-w-0 font-semibold text-lg leading-tight">{title}</div>
-        <button onClick={onClose} className="h-8 w-8 rounded-full bg-sunken flex items-center justify-center text-muted hover:text-ink shrink-0">
+        <button onClick={onClose} className="h-8 w-8 rounded-full bg-sunken flex items-center justify-center text-muted hover:text-ink shrink-0" aria-label="Sluiten">
           <X className="h-4 w-4" />
         </button>
       </div>

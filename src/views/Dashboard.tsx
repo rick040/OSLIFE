@@ -3,15 +3,13 @@ import { useStore } from '../store'
 import { TODAY, DOMAIN_META, fmtDate, daysBetween } from '../domains'
 import { dueLabel } from '../lib/dates'
 import { OPENING_BALANCE } from '../mockData'
-import { DomainChip, Empty, SetupHint } from '../components/ui'
+import { DomainChip, Empty, SetupHint, Ring, SegmentedProgress, Sparkline } from '../components/ui'
 import { useWeather, weatherMeta } from '../hooks/useWeather'
 import NudgeCard, { storeNudgeToDash, type DashNudge } from '../components/NudgeCard'
-import DopamineBar from '../components/DopamineBar'
 import {
   CheckCircle2,
   SkipForward,
   Clock,
-  Footprints,
   Moon,
   Zap,
   Target,
@@ -46,21 +44,25 @@ function KpiTile({
   value,
   label,
   onClick,
+  corner,
 }: {
   icon: React.ComponentType<{ className?: string }>
   iconClass: string
   value: React.ReactNode
   label: string
   onClick?: () => void
+  /** Optional small visual (sparkline, dots) anchored top-right of the tile. */
+  corner?: React.ReactNode
 }) {
   const Comp = onClick ? 'button' : 'div'
   return (
     <Comp
       onClick={onClick}
-      className={`card p-2.5 text-left ${onClick ? 'hover:border-line transition-colors' : ''}`}
+      className={`card relative p-2.5 min-h-[64px] text-left ${onClick ? 'outline-none' : ''}`}
     >
+      {corner && <span className="absolute right-2 top-2">{corner}</span>}
       <Icon className={`h-3.5 w-3.5 ${iconClass}`} />
-      <div className="text-base font-semibold mt-1 truncate leading-tight">{value}</div>
+      <div className="text-base font-semibold mt-1 truncate leading-tight pr-2">{value}</div>
       <div className="text-[10px] text-faint truncate">{label}</div>
     </Comp>
   )
@@ -106,6 +108,16 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   // money — balance is computed identically to the Money screen (opening balance
   // + every known transaction) so the two screens never disagree.
   const balance = OPENING_BALANCE + transactions.reduce((a, t) => a + t.amount, 0)
+  // 7-day running-balance trend for the saldo tile's sparkline — a glance at
+  // direction (climbing/falling), not a substitute for the real chart in Geld.
+  const daysAgo = (n: number) => {
+    const d = new Date(TODAY + 'T00:00:00')
+    d.setDate(d.getDate() - n)
+    return d.toISOString().slice(0, 10)
+  }
+  const balanceTrend = Array.from({ length: 7 }, (_, i) => daysAgo(6 - i)).map(
+    (date) => OPENING_BALANCE + transactions.filter((t) => t.date <= date).reduce((a, t) => a + t.amount, 0),
+  )
 
   // outstanding payments
   const openPayments = payments
@@ -235,10 +247,10 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               <DomainChip domain={nextBlock.domain} small />
               <span className="text-sm font-medium">{nextBlock.title}</span>
               <div className="flex gap-1.5 ml-auto">
-                <button className="btn-primary !py-1 !px-2.5 text-xs" onClick={() => completeBlock(nextBlock.id)}>
+                <button className="btn-primary min-h-[44px] !py-1.5 !px-3 text-xs" onClick={() => completeBlock(nextBlock.id)}>
                   <CheckCircle2 className="h-3.5 w-3.5" /> Klaar
                 </button>
-                <button className="btn-ghost !py-1 !px-2.5 text-xs" onClick={() => skipBlock(nextBlock.id)}>
+                <button className="btn-ghost min-h-[44px] !py-1.5 !px-3 text-xs" onClick={() => skipBlock(nextBlock.id)}>
                   <SkipForward className="h-3.5 w-3.5" /> Overslaan
                 </button>
               </div>
@@ -254,19 +266,31 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       </div>
 
       {/* ── KPI cockpit strip: everything at a glance, one tap through ──────── */}
+      {/* One bold "hero" bento tile (lime, dark text) for the single always-
+          relevant daily number — vitals — everything else stays low-key so
+          it doesn't compete for attention (one focal point, not six). */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 animate-fade-up" style={{ animationDelay: '60ms' }}>
-        <button onClick={() => onNav('vitals')} className="card p-2.5 text-left hover:border-line transition-colors col-span-2 sm:col-span-1 lg:col-span-2">
-          <Activity className="h-3.5 w-3.5 text-cross" />
+        <button
+          onClick={() => onNav('vitals')}
+          className="card-hero p-3 text-left col-span-2 sm:col-span-3 lg:col-span-2 flex items-center gap-3 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
           {today ? (
-            <div className="flex items-center gap-3 mt-1 text-sm font-semibold tabular-nums">
-              <span className="flex items-center gap-1"><Footprints className="h-3.5 w-3.5 text-buurtkaart" />{(today.steps / 1000).toFixed(1)}k</span>
-              <span className="flex items-center gap-1"><Moon className="h-3.5 w-3.5 text-parkingyou" />{today.sleepHours}u</span>
-              <span className="flex items-center gap-1"><Zap className="h-3.5 w-3.5 text-personal" />{today.energy}/5</span>
-            </div>
+            <>
+              <Ring value={today.steps / today.stepGoal} size={56} stroke={6} color="stroke-[#16210f]/70" label={(today.steps / 1000).toFixed(1) + 'k'} />
+              <div className="min-w-0">
+                <div className="text-[10px] font-semibold uppercase tracking-wide opacity-70">Vitaal vandaag</div>
+                <div className="flex items-center gap-2.5 mt-1 text-sm font-semibold">
+                  <span className="flex items-center gap-1"><Moon className="h-3.5 w-3.5" />{today.sleepHours}u</span>
+                  <span className="flex items-center gap-1"><Zap className="h-3.5 w-3.5" />{today.energy}/5</span>
+                </div>
+              </div>
+            </>
           ) : (
-            <div className="text-sm text-faint mt-1">geen data</div>
+            <>
+              <Activity className="h-6 w-6 shrink-0" />
+              <div className="text-sm font-medium">Nog geen gezondheidsdata — tik om te koppelen</div>
+            </>
           )}
-          <div className="text-[10px] text-faint truncate">vitaal vandaag</div>
         </button>
 
         <KpiTile
@@ -275,6 +299,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           value={transactions.length ? eur(balance) : '–'}
           label="saldo"
           onClick={() => onNav('money')}
+          corner={transactions.length >= 2 ? <Sparkline values={balanceTrend} className="text-buurtkaart" width={44} height={20} /> : undefined}
         />
         <KpiTile
           icon={Receipt}
@@ -297,13 +322,21 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           label="open taken"
           onClick={() => onNav('tasks')}
         />
-        <KpiTile
-          icon={Flame}
-          iconClass="text-personal"
-          value={habits.length ? `${habits.filter((h) => h.doneToday).length}/${habits.length}` : '–'}
-          label="gewoontes"
+        <button
           onClick={() => onNav('habits')}
-        />
+          className="card min-h-[64px] p-2.5 text-left outline-none"
+        >
+          <Flame className="h-3.5 w-3.5 text-personal" />
+          <div className="text-base font-semibold mt-1 leading-tight">
+            {habits.length ? `${habits.filter((h) => h.doneToday).length}/${habits.length}` : '–'}
+          </div>
+          {habits.length > 0 && (
+            <div className="mt-1">
+              <SegmentedProgress done={habits.filter((h) => h.doneToday).length} total={habits.length} color="bg-personal" />
+            </div>
+          )}
+          <div className="text-[10px] text-faint truncate mt-0.5">gewoontes</div>
+        </button>
       </div>
 
       {/* ── taken vandaag: project tasks due today, the actual to-do list ───── */}
@@ -313,7 +346,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
             <span className="text-[11px] uppercase tracking-wider text-muted font-semibold">Vandaag afmaken</span>
             <span className="text-xs text-muted tabular-nums">{doneToday.length}/{assignedToday}</span>
           </div>
-          <DopamineBar done={doneToday.length} total={assignedToday} compact />
+          <SegmentedProgress done={doneToday.length} total={assignedToday} color="bg-forest" />
           {focusTasks.length > 0 && (
             <div className="space-y-1.5 mt-2.5">
               {focusTasks.map((t) => {
@@ -323,10 +356,10 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
                   <div key={t.id} className="flex items-center gap-2.5">
                     <button
                       onClick={() => toggleProjectTask(t.id, true)}
-                      title="Afvinken"
-                      className="shrink-0 h-4.5 w-4.5 rounded-md border border-line flex items-center justify-center text-transparent hover:border-forest hover:text-forest transition-colors"
+                      aria-label={`${t.name} afvinken`}
+                      className="shrink-0 h-6 w-6 rounded-md border border-line flex items-center justify-center text-transparent hover:border-forest hover:text-forest transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                     >
-                      <Check className="h-3 w-3" strokeWidth={2.5} />
+                      <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
                     </button>
                     <span className="text-sm text-ink truncate flex-1">{t.name}</span>
                     <span className="text-[11px] text-faint truncate shrink-0 max-w-[9rem]">{p?.name ?? 'Project'}</span>
@@ -346,8 +379,9 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
             <button
               key={h.id}
               onClick={() => tickHabit(h.id)}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors ${
-                h.doneToday ? 'border-buurtkaart/50 bg-buurtkaart/10 text-buurtkaart-deep' : 'border-line hover:border-line'
+              aria-pressed={h.doneToday}
+              className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                h.doneToday ? 'border-buurtkaart/50 bg-buurtkaart/10 text-buurtkaart-deep' : 'border-line hover:border-line-strong'
               }`}
             >
               <span>{h.emoji}</span> {h.name}

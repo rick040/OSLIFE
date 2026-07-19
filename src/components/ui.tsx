@@ -257,3 +257,73 @@ export function SetupHint({
     </div>
   )
 }
+
+/**
+ * Block-segmented progress — `total` discrete pills, `done` of them filled.
+ * Reads as tangible, countable progress (today's 3rd of 5 habits, session
+ * 4/12) rather than an abstract percentage bar; small, frequent completion
+ * feedback like this is a well-established ADHD-friendly pattern (visible,
+ * chunked progress beats one big number). Caps rendered segments at 12 —
+ * beyond that a bar communicates better than a wall of dots — and always
+ * exposes the raw fraction via `aria-label` for screen readers.
+ */
+export function SegmentedProgress({
+  done,
+  total,
+  color = 'bg-forest',
+}: {
+  done: number
+  total: number
+  color?: string
+}) {
+  if (total <= 0) return null
+  const segments = Math.min(total, 12)
+  const filledSegments = Math.round((done / total) * segments)
+  return (
+    <div
+      className="flex items-center gap-1"
+      role="img"
+      aria-label={`${done} van ${total} voltooid`}
+    >
+      {Array.from({ length: segments }).map((_, i) => (
+        <span
+          key={i}
+          aria-hidden
+          className={`h-1.5 flex-1 rounded-full ${i < filledSegments ? color : 'bg-line'}`}
+        />
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Minimal inline trend line — no axes, no tooltip, just "is this going up or
+ * down". For a stat tile's corner, not for analysis (Vitals/Signalen's real
+ * charts cover that). `values` in chronological order; renders nothing
+ * below 2 points.
+ */
+export function Sparkline({
+  values,
+  className = 'text-forest',
+  height = 28,
+  width = 72,
+}: {
+  values: number[]
+  className?: string
+  height?: number
+  width?: number
+}) {
+  if (values.length < 2) return null
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min || 1
+  const step = width / (values.length - 1)
+  const points = values
+    .map((v, i) => `${(i * step).toFixed(1)},${(height - ((v - min) / range) * height).toFixed(1)}`)
+    .join(' ')
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className={className} aria-hidden>
+      <polyline points={points} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
