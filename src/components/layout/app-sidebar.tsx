@@ -1,7 +1,9 @@
 import { Play, RotateCcw, Settings, Workflow, Grid3x3 } from 'lucide-react'
 
 import { SCREENS, GROUP_ORDER, type View, type ScreenGroup } from '@/nav'
+import type { Nudge } from '@/types'
 import Orb from '@/components/Orb'
+import { storeNudgeToDash } from '@/components/NudgeCard'
 import {
   Sidebar,
   SidebarContent,
@@ -36,6 +38,7 @@ export interface AppSidebarProps {
   onResetDemo: () => void
   reflectCount: number
   dataSource: 'live' | 'mock'
+  nudge: Nudge
 }
 
 export function AppSidebar({
@@ -48,8 +51,10 @@ export function AppSidebar({
   onResetDemo,
   reflectCount,
   dataSource,
+  nudge,
 }: AppSidebarProps) {
   const { setOpenMobile, isMobile } = useSidebar()
+  const urgent = storeNudgeToDash(nudge).tone === 'urgent'
 
   const go = (v: View) => {
     onNav(v)
@@ -64,6 +69,7 @@ export function AppSidebar({
             size={32}
             onTap={() => go('heyra')}
             onLongPress={onShowGrid}
+            urgent={urgent}
           />
           <div className="grid flex-1 leading-tight group-data-[collapsible=icon]:hidden">
             <span className="font-semibold tracking-tight">OSLIFE</span>

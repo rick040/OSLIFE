@@ -3,15 +3,22 @@ import { useRef } from 'react'
 /**
  * HEYRA orb. Tap → open HEYRA. Long-press (~450ms) → open the app-grid.
  * Lightweight animated gradient sphere in the OSLIFE palette.
+ *
+ * `urgent` surfaces today's nudge tone ambiently: the orb lives in the sidebar
+ * on every screen, so it's the one place that can signal "something needs
+ * attention" without the user already being on Dashboard/Today where the
+ * NudgeCard itself renders.
  */
 export default function Orb({
   size = 40,
   onTap,
   onLongPress,
+  urgent = false,
 }: {
   size?: number
   onTap: () => void
   onLongPress: () => void
+  urgent?: boolean
 }) {
   const timer = useRef<number | null>(null)
   const fired = useRef(false)
@@ -38,7 +45,11 @@ export default function Orb({
 
   return (
     <button
-      aria-label="HEYRA · tik om te openen, houd vast voor alle apps"
+      aria-label={
+        urgent
+          ? 'HEYRA · iets vraagt om aandacht — tik om te openen, houd vast voor alle apps'
+          : 'HEYRA · tik om te openen, houd vast voor alle apps'
+      }
       onPointerDown={start}
       onPointerUp={end}
       onPointerLeave={clear}
@@ -59,6 +70,20 @@ export default function Orb({
         className="absolute rounded-full bg-white/60 blur-[1px]"
         style={{ width: size * 0.22, height: size * 0.22, left: size * 0.26, top: size * 0.2 }}
       />
+      {urgent && (
+        <span
+          aria-hidden
+          className="absolute rounded-full animate-pulse-ring"
+          style={{
+            width: size * 0.34,
+            height: size * 0.34,
+            right: -size * 0.05,
+            top: -size * 0.05,
+            background: '#C58392',
+            boxShadow: '0 0 0 2px hsl(var(--canvas))',
+          }}
+        />
+      )}
     </button>
   )
 }
