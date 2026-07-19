@@ -144,6 +144,7 @@ interface Row {
   source_kind: string;
   source_url: string | null;
   meta: Record<string, unknown>;
+  tier: string;
 }
 
 type ProcessResult = { note: Converted; thumbUrl: string | null; meta: Record<string, unknown> };
@@ -268,7 +269,7 @@ Deno.serve(async (req) => {
 
   const { data: row, error: readErr } = await sb
     .from("braindump_entries")
-    .select("id,user_id,source_kind,source_url,meta")
+    .select("id,user_id,source_kind,source_url,meta,tier")
     .eq("id", entryId)
     .single();
   if (readErr || !row) return json({ error: "Entry not found" }, 404);
@@ -341,6 +342,21 @@ Deno.serve(async (req) => {
         text: [res.note.title, res.note.summary, res.note.markdown].filter(Boolean).join("\n"),
       }),
     }).catch(() => {});
+    // Fire-and-forget: mirror as a real vault note. geheim entries are never
+    // materialised — a Storage file has no per-row tier gate the way
+    // search_memory() does, so this must be excluded here explicitly.
+    if (r.tier !== "geheim") {
+      fetch(`${SUPABASE_URL}/functions/v1/materialize-note`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: authHeader },
+        body: JSON.stringify({
+          source: "braindump",
+          id: entryId,
+          frontmatter: { kind: res.note.kind, domain: res.note.domain, tags: res.note.tags, sentiment: res.note.sentiment, source_url: url },
+          body: res.note.markdown,
+        }),
+      }).catch(() => {});
+    }
     return json({ ok: true, status: "ready" });
   };
 

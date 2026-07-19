@@ -1554,7 +1554,20 @@ function messageToRow(m: Omit<Message, 'id'>): Record<string, unknown> {
 }
 
 export async function createMessageRow(m: Omit<Message, 'id'>): Promise<string | null> {
-  return insertRow('client_messages', messageToRow(m))
+  const id = await insertRow('client_messages', messageToRow(m))
+  // Fire-and-forget: mirror as a real vault note ("chat inputs" — email/
+  // WhatsApp/Fiverr). Deliberately not wired into insertMessages() (bulk
+  // WhatsApp import) — materialising an entire historical import as
+  // individual files would flood the vault; this covers new/live messages.
+  const text = m.body ?? m.snippet
+  if (id && text) {
+    void supabase.functions
+      .invoke('materialize-note', {
+        body: { source: 'message', id, frontmatter: { channel: m.channel, direction: m.direction, contact: m.contact, client_id: m.clientId, subject: m.subject }, body: text },
+      })
+      .catch(() => {})
+  }
+  return id
 }
 
 /** Bulk insert (WhatsApp import); skips rows that already exist by external_id. */
@@ -1704,6 +1717,17 @@ export async function createInteractionRow(i: Omit<Interaction, 'id'>): Promise<
     void supabase.functions
       .invoke('embed-memory', { body: { source: 'interaction', id, text: i.summary } })
       .catch(() => {})
+    // Fire-and-forget: mirror as a real vault note (rows created here are
+    // always tier='normaal' — the app never sets tier='geheim' on insert).
+    void supabase.functions
+      .invoke('materialize-note', {
+        body: {
+          source: 'interaction', id,
+          frontmatter: { channel: i.channel, direction: i.direction, person_id: i.personId, created: i.occurredAt?.slice(0, 10) },
+          body: i.summary,
+        },
+      })
+      .catch(() => {})
   }
   return id
 }
@@ -1775,6 +1799,15 @@ export async function fetchSummaries(): Promise<MemorySummary[]> {
   }))
 }
 
+// Tables the vault mirrors (materialize-note) → their vault folder. Used only
+// to purge the matching .md file below — forget() itself has no reach into
+// Storage, and content "mag niet achterblijven" applies just as much to a
+// vault file as to the row/event-log copies it already handles.
+const VAULT_SOURCE_BY_TABLE: Record<string, string> = {
+  braindump_entries: 'braindump',
+  interaction: 'interaction',
+}
+
 /**
  * Right-to-be-forgotten (Slice 4): hard-delete a record, purge its mirrored copy
  * in the event-log, and leave a contentless tombstone. The RPC enforces ownership
@@ -1783,7 +1816,12 @@ export async function fetchSummaries(): Promise<MemorySummary[]> {
 export async function forgetRecord(table: string, id: string): Promise<boolean> {
   const { data, error } = await supabase.rpc('forget', { p_table: table, p_id: id })
   warnWrite('forget', error)
-  return data === true
+  const forgotten = data === true
+  const vaultSource = VAULT_SOURCE_BY_TABLE[table]
+  if (forgotten && vaultSource) {
+    void supabase.storage.from('vault').remove([`${vaultSource}/${id}.md`]).catch(() => {})
+  }
+  return forgotten
 }
 
 /**
