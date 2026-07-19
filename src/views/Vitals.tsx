@@ -16,7 +16,7 @@ import { CHART_TIP, AXIS_TICK_10 } from '../components/chart'
 import { useStore } from '../store'
 import { TODAY, DOMAIN_HEX } from '../domains'
 import { deriveDeadlines } from '../derive'
-import { Ring, SectionTitle } from '../components/ui'
+import { Ring, SectionTitle, Sparkline } from '../components/ui'
 import CheckinCard from '../components/CheckinCard'
 import HealthConditions from '../components/HealthConditions'
 import { Activity, Footprints, Moon, Heart, Zap, Smile, Smartphone, Hand, Brain, CalendarClock } from 'lucide-react'
@@ -62,10 +62,10 @@ export default function Vitals() {
     data.length ? data.reduce((a, x) => a + x[k], 0) / data.length : 0
 
   const stat = [
-    { icon: Footprints, label: 'Ø stappen', value: Math.round(avgH('steps')).toLocaleString('nl-NL'), color: 'text-buurtkaart' },
-    { icon: Moon, label: 'Ø slaap', value: avgH('sleep').toFixed(1) + 'u', color: 'text-parkingyou' },
-    { icon: Heart, label: 'Ø rust-HR', value: Math.round(avgH('hr')) + ' bpm', color: 'text-cross' },
-    { icon: Activity, label: 'Ø actief', value: Math.round(avgH('active')) + ' min', color: 'text-personal' },
+    { icon: Footprints, label: 'Ø stappen', value: Math.round(avgH('steps')).toLocaleString('nl-NL'), color: 'text-buurtkaart', trend: data.map((x) => x.steps) },
+    { icon: Moon, label: 'Ø slaap', value: avgH('sleep').toFixed(1) + 'u', color: 'text-parkingyou', trend: data.map((x) => x.sleep) },
+    { icon: Heart, label: 'Ø rust-HR', value: Math.round(avgH('hr')) + ' bpm', color: 'text-cross', trend: data.map((x) => x.hr) },
+    { icon: Activity, label: 'Ø actief', value: Math.round(avgH('active')) + ' min', color: 'text-personal', trend: data.map((x) => x.active) },
   ]
 
   return (
@@ -81,40 +81,43 @@ export default function Vitals() {
 
       <HealthConditions subject="rick" />
 
-      {/* today */}
-      <div className="card p-4">
-        <SectionTitle>Vandaag</SectionTitle>
+      {/* today — the one hero focal point on this screen: today's snapshot */}
+      <div className="card-hero p-4">
+        <div className="text-[10px] font-semibold uppercase tracking-wide opacity-70 mb-2">Vandaag</div>
         <div className="flex flex-wrap items-center justify-around gap-4">
           <div className="flex flex-col items-center gap-1">
-            <Ring value={today.steps / today.stepGoal} size={72} color="stroke-buurtkaart" label={today.steps.toLocaleString('nl-NL')} sub="stappen" />
-            <span className="text-[11px] text-faint">doel {today.stepGoal.toLocaleString('nl-NL')}</span>
+            <Ring value={today.steps / today.stepGoal} size={72} color="stroke-[#16210f]" label={today.steps.toLocaleString('nl-NL')} />
+            <span className="text-[11px] opacity-70 flex items-center gap-1"><Footprints className="h-3 w-3" /> doel {today.stepGoal.toLocaleString('nl-NL')}</span>
           </div>
           <div className="flex flex-col items-center gap-1">
-            <Ring value={today.sleepHours / 8} size={72} color="stroke-parkingyou" label={today.sleepHours + 'u'} sub="slaap" />
-            <span className="text-[11px] text-faint">doel 8u</span>
+            <Ring value={today.sleepHours / 8} size={72} color="stroke-[#16210f]" label={today.sleepHours + 'u'} />
+            <span className="text-[11px] opacity-70 flex items-center gap-1"><Moon className="h-3 w-3" /> doel 8u</span>
           </div>
           <div className="flex flex-col items-center gap-1">
-            <Ring value={today.energy / 5} size={72} color="stroke-personal" label={today.energy + '/5'} sub="energie" />
-            <span className="text-[11px] text-faint flex items-center gap-1"><Zap className="h-3 w-3" /> energie</span>
+            <Ring value={today.energy / 5} size={72} color="stroke-[#16210f]" label={today.energy + '/5'} />
+            <span className="text-[11px] opacity-70 flex items-center gap-1"><Zap className="h-3 w-3" /> energie</span>
           </div>
           <div className="flex flex-col items-center gap-1">
-            <Ring value={today.mood / 5} size={72} color="stroke-cross" label={today.mood + '/5'} sub="mood" />
-            <span className="text-[11px] text-faint flex items-center gap-1"><Smile className="h-3 w-3" /> stemming</span>
+            <Ring value={today.mood / 5} size={72} color="stroke-[#16210f]" label={today.mood + '/5'} />
+            <span className="text-[11px] opacity-70 flex items-center gap-1"><Smile className="h-3 w-3" /> stemming</span>
           </div>
           <div className="flex flex-col items-center justify-center">
-            <Heart className="h-5 w-5 text-cross mb-1" />
+            <Heart className="h-5 w-5 mb-1" />
             <span className="text-lg font-semibold">{today.restingHR}</span>
-            <span className="text-[11px] text-faint">bpm rust</span>
+            <span className="text-[11px] opacity-70">bpm rust</span>
           </div>
         </div>
       </div>
 
-      {/* 14-day averages */}
+      {/* 14-day averages, each with a mini trend so "Ø" isn't just a static number */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {stat.map((s) => {
           const Icon = s.icon
           return (
-            <div key={s.label} className="card p-3">
+            <div key={s.label} className="card relative p-3">
+              <span className="absolute right-3 top-3">
+                <Sparkline values={s.trend} className={s.color} width={40} height={18} />
+              </span>
               <Icon className={`h-4 w-4 ${s.color}`} />
               <div className="text-lg font-semibold mt-1">{s.value}</div>
               <div className="text-[11px] text-faint">{s.label} · 14d</div>

@@ -177,14 +177,17 @@ export function PrimaryBtn({ children, ...rest }: React.ButtonHTMLAttributes<HTM
 // Canonical definition lives in src/lib/dates.ts; re-exported for existing importers.
 export { deadlineInfo }
 
-export function Kpi({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub: string }) {
+/** `alert` gives the tile a cross-tinted border/background — reserve it for
+ *  a KPI that genuinely needs attention right now (overdue count > 0), so it
+ *  reads as the one thing to look at first rather than four equal numbers. */
+export function Kpi({ icon, label, value, sub, alert }: { icon: React.ReactNode; label: string; value: string; sub: string; alert?: boolean }) {
   return (
-    <div className="card p-4">
+    <div className={`card p-4 ${alert ? 'border-cross/40 bg-cross/5' : ''}`}>
       <div className="flex items-center gap-2 mb-1.5">
-        <span className="h-7 w-7 rounded-xl bg-sunken flex items-center justify-center">{icon}</span>
+        <span className={`h-7 w-7 rounded-xl flex items-center justify-center ${alert ? 'bg-cross/15' : 'bg-sunken'}`}>{icon}</span>
         <span className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</span>
       </div>
-      <div className="text-2xl font-semibold tabular-nums">{value}</div>
+      <div className={`text-2xl font-semibold tabular-nums ${alert ? 'text-cross-deep' : ''}`}>{value}</div>
       <div className="text-[11px] text-faint mt-0.5">{sub}</div>
     </div>
   )

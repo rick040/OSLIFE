@@ -14,7 +14,7 @@ import { useStore } from '../store'
 import { TODAY, DOMAIN_META, DOMAIN_HEX, fmtDate, daysBetween } from '../domains'
 import { dueLabel } from '../lib/dates'
 import { OPENING_BALANCE } from '../mockData'
-import { DomainChip, SectionTitle, Empty, Overlay, ConfirmDialog } from '../components/ui'
+import { DomainChip, SectionTitle, Empty, Overlay, ConfirmDialog, Sparkline } from '../components/ui'
 import type { Domain, Transaction, Cadence, Subscription, VendorTag, Payment } from '../types'
 import { TX_CATEGORIES, CATEGORY_DOMAIN, domainForCategory } from '../finance/categories'
 import { parseCsv } from '../finance/csvImport'
@@ -112,6 +112,15 @@ export default function Money() {
   const toPay = openPayments.filter((p) => p.direction === 'outgoing').reduce((a, p) => a + p.amount, 0)
 
   const balance = OPENING_BALANCE + transactions.reduce((a, t) => a + t.amount, 0)
+  // 14-day running-balance trend for the saldo hero card's sparkline.
+  const balanceTrend = useMemo(() => {
+    const days = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(TODAY + 'T00:00:00')
+      d.setDate(d.getDate() - (13 - i))
+      return d.toISOString().slice(0, 10)
+    })
+    return days.map((date) => OPENING_BALANCE + transactions.filter((t) => t.date <= date).reduce((a, t) => a + t.amount, 0))
+  }, [transactions])
   const month = TODAY.slice(0, 7)
   const monthTx = transactions.filter((t) => t.date.slice(0, 7) === month)
   const earned = monthTx.filter((t) => t.amount > 0).reduce((a, t) => a + t.amount, 0)
@@ -204,12 +213,14 @@ export default function Money() {
       </div>
 
       {/* tab nav */}
-      <div className="flex gap-1 rounded-2xl bg-sunken p-1">
+      <div className="flex gap-1 rounded-2xl bg-sunken p-1" role="tablist">
         {TABS.map((t) => (
           <button
             key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
             onClick={() => setTab(t.id)}
-            className={`flex-1 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${
+            className={`flex-1 min-h-[40px] rounded-xl px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
               tab === t.id ? 'bg-surface shadow-sm text-ink' : 'text-muted hover:text-ink'
             }`}
           >
@@ -227,10 +238,17 @@ export default function Money() {
       {tab === 'overzicht' && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="card p-4">
-              <div className="text-xs uppercase tracking-wider text-muted">Saldo</div>
+            {/* the one hero number on this screen — everything else on this
+                tab is detail you check, this is the thing you glance at */}
+            <div className="card-hero relative p-4">
+              {transactions.length >= 2 && (
+                <span className="absolute right-4 top-4">
+                  <Sparkline values={balanceTrend} className="text-[#16210f]/60" width={56} height={24} />
+                </span>
+              )}
+              <div className="text-xs uppercase tracking-wide opacity-70">Saldo</div>
               <div className="text-2xl font-semibold mt-1">{eur(balance)}</div>
-              <div className="text-[11px] text-faint mt-1">incl. {transactions.length} transacties</div>
+              <div className="text-[11px] opacity-70 mt-1">incl. {transactions.length} transacties</div>
             </div>
             <div className="card p-4">
               <div className="text-xs uppercase tracking-wider text-muted">Deze maand</div>
