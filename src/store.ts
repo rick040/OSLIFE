@@ -259,6 +259,7 @@ interface State {
   // them into the persisted set and return only the genuinely NEW facts so the
   // UI can surface "onthouden: …". Best-effort: brain failure ⇒ [] , no throw.
   learnFromExchange: (userText: string, heyraText: string) => Promise<LearnedFact[]>
+  forgetLearnedFact: (id: string) => void
 
   // INTAKE → UNDERSTAND → REMEMBER
   capture: (
@@ -803,6 +804,15 @@ export const useStore = create<State>()(
         set({ learnedFacts: merged })
         void persistLearnedFacts(merged)
         return added
+      },
+
+      // Corrects a wrong/stale learned fact from the Geheugen screen — the only
+      // way to remove one until now was implicitly (it just aged out past
+      // MAX_FACTS). persistLearnedFacts writes the whole array (heyra_memory
+      // is one JSONB row per user), so a filter + full rewrite is correct here.
+      forgetLearnedFact: (id) => {
+        set((s) => ({ learnedFacts: s.learnedFacts.filter((f) => f.id !== id) }))
+        void persistLearnedFacts(get().learnedFacts)
       },
 
       addTask: (draft) => {
