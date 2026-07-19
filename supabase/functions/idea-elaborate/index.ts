@@ -203,7 +203,12 @@ async function elaborate(apiKey: string, title: string, rawInput: string, source
     return null;
   }
   if (!res.ok) return null;
-  const data = await res.json();
+  let data: { content?: unknown };
+  try {
+    data = await res.json();
+  } catch {
+    return null;
+  }
   const parsed = parseJsonBlock(extractText(data.content));
   if (!parsed) return null;
 
@@ -269,54 +274,64 @@ Deno.serve(async (req) => {
 
   await sb.from("business_ideas").update({ elaboration_status: "processing" }).eq("id", entryId);
 
-  const result = await elaborate(apiKey, (row.title as string) ?? "", rawInput, (row.source as string) ?? "text");
-  if (!result) {
-    await sb.from("business_ideas").update({ elaboration_status: "failed", error: "Kon het idee niet uitwerken — probeer het opnieuw" }).eq("id", entryId);
+  // Defense in depth: anything unexpected past this point (a thrown exception,
+  // not just elaborate()'s own null-on-failure contract) must still flip the
+  // row to `failed` — otherwise it's stuck at `processing` forever with no way
+  // for the UI to know or offer a retry. Mirrors braindump-ingest's top-level
+  // try/catch around its own processing block.
+  try {
+    const result = await elaborate(apiKey, (row.title as string) ?? "", rawInput, (row.source as string) ?? "text");
+    if (!result) {
+      await sb.from("business_ideas").update({ elaboration_status: "failed", error: "Kon het idee niet uitwerken — probeer het opnieuw" }).eq("id", entryId);
+      return json({ ok: false, status: "failed" });
+    }
+
+    await sb.from("business_ideas").update({
+      elaboration_status: "ready",
+      title: result.title,
+      overview: result.overview,
+      domain: result.domain,
+      tags: result.tags,
+      feasibility_score: result.feasibilityScore,
+      feasibility_reasoning: result.feasibilityReasoning,
+      timeline: result.timeline,
+      milestones: result.milestones,
+      financials: result.financials,
+      risks: result.risks,
+      opportunities: result.opportunities,
+      swot: result.swot,
+      markdown: result.markdown,
+      error: null,
+    }).eq("id", entryId);
+
+    // Fire-and-forget trio, same pattern + tier gate as braindump-ingest.
+    fetch(`${SUPABASE_URL}/functions/v1/embed-memory`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: authHeader },
+      body: JSON.stringify({ source: "business_idea", id: entryId, text: [result.title, result.overview, result.markdown].filter(Boolean).join("\n") }),
+    }).catch(() => {});
+
+    if (row.tier !== "geheim") {
+      fetch(`${SUPABASE_URL}/functions/v1/materialize-note`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: authHeader },
+        body: JSON.stringify({
+          source: "business_idea",
+          id: entryId,
+          frontmatter: { domain: result.domain, tags: result.tags, feasibility_score: result.feasibilityScore },
+          body: result.markdown,
+        }),
+      }).catch(() => {});
+      fetch(`${SUPABASE_URL}/functions/v1/cognee-remember`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: authHeader },
+        body: JSON.stringify({ source: "business_idea", id: entryId, text: result.markdown }),
+      }).catch(() => {});
+    }
+
+    return json({ ok: true, status: "ready" });
+  } catch (err) {
+    await sb.from("business_ideas").update({ elaboration_status: "failed", error: `Verwerking mislukt: ${String(err)}` }).eq("id", entryId);
     return json({ ok: false, status: "failed" });
   }
-
-  await sb.from("business_ideas").update({
-    elaboration_status: "ready",
-    title: result.title,
-    overview: result.overview,
-    domain: result.domain,
-    tags: result.tags,
-    feasibility_score: result.feasibilityScore,
-    feasibility_reasoning: result.feasibilityReasoning,
-    timeline: result.timeline,
-    milestones: result.milestones,
-    financials: result.financials,
-    risks: result.risks,
-    opportunities: result.opportunities,
-    swot: result.swot,
-    markdown: result.markdown,
-    error: null,
-  }).eq("id", entryId);
-
-  // Fire-and-forget trio, same pattern + tier gate as braindump-ingest.
-  fetch(`${SUPABASE_URL}/functions/v1/embed-memory`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: authHeader },
-    body: JSON.stringify({ source: "business_idea", id: entryId, text: [result.title, result.overview, result.markdown].filter(Boolean).join("\n") }),
-  }).catch(() => {});
-
-  if (row.tier !== "geheim") {
-    fetch(`${SUPABASE_URL}/functions/v1/materialize-note`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: authHeader },
-      body: JSON.stringify({
-        source: "business_idea",
-        id: entryId,
-        frontmatter: { domain: result.domain, tags: result.tags, feasibility_score: result.feasibilityScore },
-        body: result.markdown,
-      }),
-    }).catch(() => {});
-    fetch(`${SUPABASE_URL}/functions/v1/cognee-remember`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: authHeader },
-      body: JSON.stringify({ source: "business_idea", id: entryId, text: result.markdown }),
-    }).catch(() => {});
-  }
-
-  return json({ ok: true, status: "ready" });
 });
