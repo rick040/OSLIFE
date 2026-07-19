@@ -49,7 +49,7 @@ export default function App() {
   const [confirmReset, setConfirmReset] = useState<'full' | 'short' | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [authChecked, setAuthChecked] = useState(false)
-  const { resetDemo, runNightlyReflect, reflectCount, loadLiveData, dataSource, isLoading, healthDays } = useStore()
+  const { resetDemo, runNightlyReflect, reflectCount, loadLiveData, dataSource, isLoading, healthDays, nudge } = useStore()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -120,6 +120,7 @@ export default function App() {
         onResetDemo={() => setConfirmReset('full')}
         reflectCount={reflectCount}
         dataSource={dataSource}
+        nudge={nudge}
       >
         {isLoading && healthDays.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 gap-3 text-faint">

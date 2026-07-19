@@ -8,6 +8,9 @@
 
 import { TODAY, daysBetween, fmtDate } from '../../domains'
 import { renderLearnedFacts } from '../learning'
+import { searchMemory } from '../../lib/supabase'
+import { cogneeSearch } from './cognee'
+import type { MemoryHit } from '../../types'
 import type { Store } from './types'
 
 function withinDays(date: string | null | undefined, days: number): boolean {
@@ -84,6 +87,40 @@ export function buildMemorySnapshot(store: Store, opts: { days?: number } = {}):
   if (learned) parts.push(learned)
 
   return parts.join('\n')
+}
+
+// A slow/unreachable memory-search or cognee worker must never hold up a
+// reply by more than this — whichever of the two resolved in time is used,
+// the other is silently skipped. Bounded independently of cogneeSearch()'s own
+// (much longer) internal timeout, since here it's grounding an answer the
+// user is actively waiting on, not a separate additive UI field.
+const RECALL_TIMEOUT_MS = 2500
+
+function bounded<T>(p: Promise<T>, fallback: T): Promise<T> {
+  return Promise.race([
+    p.catch(() => fallback),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), RECALL_TIMEOUT_MS)),
+  ])
+}
+
+/**
+ * Best-effort semantic (hybrid full-text + vector) and knowledge-graph recall
+ * for a specific question, meant to be appended to buildMemorySnapshot()'s
+ * always-on structural snapshot. Unlike the snapshot (a capped dump of live
+ * store slices), this actually searches — surfacing older braindumps,
+ * interactions and summaries the snapshot's short horizon would otherwise
+ * miss entirely. Empty string on no signal, no match, or any failure —
+ * grounding degrades, it never blocks or throws.
+ */
+export async function buildRecallSection(input: string): Promise<string> {
+  if (!input.trim()) return ''
+  const [hits, graphInsight] = await Promise.all([
+    bounded(searchMemory(input, 6), [] as MemoryHit[]),
+    bounded(cogneeSearch(input), null as string | null),
+  ])
+  const lines: string[] = hits.map((h) => `- [${h.source}] ${h.title}: ${h.snippet}`)
+  if (graphInsight) lines.push(`- [kennisgraaf] ${graphInsight}`)
+  return lines.length ? `Mogelijk relevant (geheugen):\n${lines.join('\n')}` : ''
 }
 
 export const MEMORY_SYSTEM_PROMPT =

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { SCREENS, type View } from '@/nav'
+import type { Nudge } from '@/types'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppHeader } from '@/components/layout/app-header'
@@ -17,6 +18,7 @@ export interface AppShellProps {
   onResetDemo: () => void
   reflectCount: number
   dataSource: 'live' | 'mock'
+  nudge: Nudge
   children: React.ReactNode
 }
 
@@ -31,6 +33,7 @@ export function AppShell({
   onResetDemo,
   reflectCount,
   dataSource,
+  nudge,
   children,
 }: AppShellProps) {
   const [commandOpen, setCommandOpen] = useState(false)
@@ -60,6 +63,7 @@ export function AppShell({
         onResetDemo={onResetDemo}
         reflectCount={reflectCount}
         dataSource={dataSource}
+        nudge={nudge}
       />
       <SidebarInset className="min-w-0">
         <AppHeader

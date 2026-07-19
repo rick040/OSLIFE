@@ -6,9 +6,10 @@
 
 import { TODAY, daysBetween } from '../../domains'
 import { askBrain } from '../brainClient'
+import { buildRecallSection } from './memoryContext'
 import type { Agent } from './types'
 
-export const runBriefingAgent: Agent = async (_input, ctx) => {
+export const runBriefingAgent: Agent = async (input, ctx) => {
   const { store } = ctx
   const open = store.threads
     .filter((t) => t.status === 'open')
@@ -20,6 +21,7 @@ export const runBriefingAgent: Agent = async (_input, ctx) => {
   const fallbackText = fallbackLines.filter(Boolean).join('\n\n') || 'Geen bijzonderheden — alles rustig vandaag.'
 
   const digest = store.lastDigest
+  const recall = await buildRecallSection(input)
   const facts = [
     store.nudge ? `Nudge: ${store.nudge.text}` : 'Nudge: geen.',
     `Open loops (${open.length}):\n${top || 'geen'}`,
@@ -27,10 +29,11 @@ export const runBriefingAgent: Agent = async (_input, ctx) => {
       ? `Laatste verbanden:\n${digest.correlations.map((c) => `- ${c.title}`).join('\n')}`
       : 'Laatste verbanden: geen.',
     digest?.anomalies.length ? `Afwijkingen:\n${digest.anomalies.map((a) => `- ${a.title}`).join('\n')}` : 'Afwijkingen: geen.',
-  ].join('\n\n')
+    recall || null,
+  ].filter(Boolean).join('\n\n')
 
   const brainText = await askBrain(
-    'Je bent HEYRA, de dagelijkse briefing-assistent van OSLIFE. Je krijgt de echte nudge, open loops en Reflect-verbanden van vandaag. Schrijf één kort Nederlands briefing-paragraaf (max 4 zinnen): wat vandaag het meest verdient, in welke volgorde, en waarom. Verzin geen feiten die niet gegeven zijn.',
+    'Je bent HEYRA, de dagelijkse briefing-assistent van OSLIFE. Je krijgt de echte nudge, open loops en Reflect-verbanden van vandaag, en soms een blok "Mogelijk relevant (geheugen)" met aanvullende herinneringen. Schrijf één kort Nederlands briefing-paragraaf (max 4 zinnen): wat vandaag het meest verdient, in welke volgorde, en waarom. Verzin geen feiten die niet gegeven zijn.',
     facts,
     { maxTokens: 260 },
   )

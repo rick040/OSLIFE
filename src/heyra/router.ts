@@ -6,7 +6,7 @@
 // classify() only kick in as the fallback when the brain call fails (offline,
 // no ANTHROPIC_API_KEY, timeout) — HEYRA must never break without a brain.
 
-import { detectSkill, SKILLS } from './skills'
+import { detectSkill, isOpenLoopQuery, SKILLS } from './skills'
 import { classify, validateClassification, type Classification } from '../understand'
 import { askBrain } from './brainClient'
 import { parseBrainJson } from './brainJson'
@@ -25,10 +25,12 @@ import type { AgentResult, Agent, Store } from './agents/types'
 import type { AgentId } from './skills'
 import type { StructuredItem } from '../types'
 
-const OPEN_LOOP_RE = /open|owe|loop|todo|to do|klant|staat/
 const BRIEFING_RE = /briefing|dagbriefing|hoe sta ik ervoor|samenvatting van (mijn )?dag|overzicht van (mijn )?dag/
 const ENERGY_RE = /moe|slaap|energie|uitgeput|tired/
-const MONEY_RE = /factuur|betaald|van dijk|geld|uitgaven|betalen/
+// No vendor/client names belong in shared routing logic — this used to hardcode
+// a specific payee ('van dijk'), which both leaked test data into the fallback
+// path and couldn't generalize to any other vendor.
+const MONEY_RE = /factuur|betaald|geld|uitgaven|betalen/
 
 const AGENTS: Record<AgentId, Agent> = {
   task: runTaskAgent,
@@ -57,7 +59,7 @@ export function detectAgentRuleBased(input: string): { agent: AgentId; trigger: 
   if (pre.skill !== 'chat') return { agent: pre.skill, trigger: pre.trigger }
 
   const t = input.toLowerCase()
-  if (OPEN_LOOP_RE.test(t)) return { agent: 'chat', trigger: null }
+  if (isOpenLoopQuery(input)) return { agent: 'chat', trigger: null }
   if (BRIEFING_RE.test(t)) return { agent: 'briefing', trigger: 'briefing' }
   if (ENERGY_RE.test(t)) return { agent: 'signal', trigger: 'energie' }
   if (MONEY_RE.test(t)) return { agent: 'finance', trigger: 'geld' }

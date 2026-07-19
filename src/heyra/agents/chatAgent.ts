@@ -9,17 +9,17 @@
 // classification confirmation if the brain is unavailable.
 
 import { DOMAIN_META, TODAY, daysBetween } from '../../domains'
-import { buildMemorySnapshot, MEMORY_SYSTEM_PROMPT } from './memoryContext'
+import { buildMemorySnapshot, buildRecallSection, MEMORY_SYSTEM_PROMPT } from './memoryContext'
 import { askBrain } from '../brainClient'
+import { isOpenLoopQuery } from '../skills'
 import type { Agent } from './types'
 
 export const runChatAgent: Agent = async (input, ctx) => {
   const { store, item } = ctx
-  const t = input.toLowerCase()
   const open = store.threads.filter((x) => x.status === 'open')
   const inDomain = open.filter((x) => x.domain === item.domain)
 
-  if (/open|owe|loop|todo|to do|klant|staat/.test(t)) {
+  if (isOpenLoopQuery(input)) {
     const sorted = open
       .slice()
       .sort((a, b) => (a.due ? daysBetween(TODAY, a.due) : 999) - (b.due ? daysBetween(TODAY, b.due) : 999))
@@ -54,8 +54,13 @@ export const runChatAgent: Agent = async (input, ctx) => {
   // memory snapshot; a plain statement/note still gets a useful answer back
   // since the snapshot is always there, and the honesty rule in the system
   // prompt keeps it from inventing anything the snapshot doesn't cover.
+  // buildRecallSection() adds actual semantic/graph search on top of the
+  // snapshot's capped, short-horizon dump — e.g. "wat was de deal met X"
+  // can now surface an older braindump/interaction the snapshot never held.
   const snapshot = buildMemorySnapshot(store)
-  const brainText = await askBrain(MEMORY_SYSTEM_PROMPT, `Momentopname van het geheugen:\n${snapshot}\n\nVraag: "${input}"`, { maxTokens: 220 })
+  const recall = await buildRecallSection(input)
+  const grounding = recall ? `${snapshot}\n\n${recall}` : snapshot
+  const brainText = await askBrain(MEMORY_SYSTEM_PROMPT, `Momentopname van het geheugen:\n${grounding}\n\nVraag: "${input}"`, { maxTokens: 220 })
 
   return { text: brainText ?? fallbackText, topic: 'domain', fromBrain: !!brainText }
 }

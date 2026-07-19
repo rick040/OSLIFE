@@ -81,6 +81,25 @@ const CLIENT_TRIGGERS = [
 // higher-priority triggers above.
 const CLIENT_MESSAGE_HINTS = ['prijs', 'budget', 'offerte', 'kost', 'wanneer', 'deadline', 'price', 'quote', 'when can']
 
+// Phrases that ask "what's still open/outstanding" — deliberately phrase-level,
+// same fix as PROJECT_TRIGGERS above: bare words like "klant" or "staat" used
+// to fire on almost any mention of a client, or any word containing "staat"
+// ("toestand", "achterstand", "contractstaat"), silently answering a
+// completely different question with the generic open-loops list.
+export const OPEN_LOOP_TRIGGERS = [
+  'open loop', 'open loops', 'nog open', 'openstaand', 'wat moet ik nog',
+  'wat staat er nog', 'wat is er nog open', 'nog te doen', 'todo list', 'to-do list',
+  'wat ligt er nog', 'mijn loops', 'mijn open',
+]
+
+/** Is this a question about outstanding open loops/to-dos? Used by chatAgent
+ *  (to decide canned list vs. brain answer) and router.ts's rule-based
+ *  fallback — kept in one place so the two can't drift apart. */
+export function isOpenLoopQuery(text: string): boolean {
+  const t = ` ${text.toLowerCase()} `
+  return OPEN_LOOP_TRIGGERS.some((w) => containsTrigger(t, w))
+}
+
 export interface SkillDetection {
   skill: SkillId
   score: number
@@ -89,8 +108,10 @@ export interface SkillDetection {
 
 /** Trigger match that requires a word boundary at the START of the phrase, so
  *  "mail " doesn't match inside "email ", "bel " inside "tabel ", etc. Triggers
- *  already encode their own trailing boundary (many end in a space). */
-function containsTrigger(t: string, w: string): boolean {
+ *  already encode their own trailing boundary (many end in a space). Exported
+ *  so other rule-based fallback logic (router.ts) can reuse the same
+ *  word-boundary-safe matching instead of a bare substring regex. */
+export function containsTrigger(t: string, w: string): boolean {
   const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   // Only guard the leading boundary when the phrase starts with a word char.
   const pattern = /^[a-z0-9]/.test(w) ? `(?:^|[^a-z0-9])${escaped}` : escaped
