@@ -849,7 +849,19 @@ export const useStore = create<State>()(
         }))
 
         const row = await insertBusinessIdeaRow(input)
-        if (!row) return null
+        if (!row) {
+          // Insert failed (offline, RLS, or the table isn't deployed yet) — flip
+          // the optimistic row to failed instead of leaving it spinning forever
+          // with no feedback and no real id to retry against.
+          set((s) => ({
+            businessIdeas: s.businessIdeas.map((x) =>
+              x.id === tempId
+                ? { ...x, elaborationStatus: 'failed', error: 'Opslaan is mislukt — controleer je verbinding en probeer opnieuw.' }
+                : x,
+            ),
+          }))
+          return null
+        }
         set((s) => ({
           businessIdeas: s.businessIdeas.map((x) => (x.id === tempId ? row : x)),
         }))
@@ -870,6 +882,17 @@ export const useStore = create<State>()(
       },
 
       retryIdeaElaboration: (id) => {
+        // A non-DB id means the original insert never landed — there's no real
+        // row for the edge function to work with, so retrying would just fail
+        // silently again. Tell the user to delete and recapture instead.
+        if (!isDbId(id)) {
+          set((s) => ({
+            businessIdeas: s.businessIdeas.map((x) =>
+              x.id === id ? { ...x, error: 'Dit idee is nooit opgeslagen — verwijder het en probeer opnieuw.' } : x,
+            ),
+          }))
+          return
+        }
         set((s) => ({
           businessIdeas: s.businessIdeas.map((x) =>
             x.id === id ? { ...x, elaborationStatus: 'pending', error: null } : x,
