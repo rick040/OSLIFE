@@ -67,3 +67,22 @@ export async function answerCallbackQuery(
     body: JSON.stringify({ callback_query_id: callbackQueryId, text }),
   });
 }
+
+/**
+ * Resolve a Telegram file_id to its bytes: getFile (returns file_path) then a
+ * plain download from the file API. Null on any failure — every caller treats
+ * that as "couldn't fetch this one", never throws.
+ */
+export async function getFileBytes(token: string, fileId: string): Promise<Uint8Array | null> {
+  try {
+    const metaRes = await fetch(endpoint(token, "getFile") + `?file_id=${encodeURIComponent(fileId)}`);
+    const meta = await metaRes.json();
+    const filePath = meta?.result?.file_path as string | undefined;
+    if (!filePath) return null;
+    const fileRes = await fetch(`${TELEGRAM_API}/file/bot${token}/${filePath}`);
+    if (!fileRes.ok) return null;
+    return new Uint8Array(await fileRes.arrayBuffer());
+  } catch {
+    return null;
+  }
+}

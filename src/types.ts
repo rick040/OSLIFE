@@ -49,7 +49,7 @@ export type BraindumpSourceKind =
   | 'audio'
   | 'file'
 
-export type BraindumpStatus = 'pending' | 'processing' | 'ready' | 'failed'
+export type BraindumpStatus = 'pending' | 'processing' | 'ready' | 'failed' | 'duplicate'
 
 /**
  * One saved braindump item. Inserted `pending` the instant it's shared, then
