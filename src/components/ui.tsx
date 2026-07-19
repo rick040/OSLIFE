@@ -21,10 +21,80 @@ export function KindChip({ kind }: { kind: string }) {
   return <span className="chip bg-line text-ink-soft">{kind}</span>
 }
 
-/** Hex-getinte badge: tekst in `hex`, achtergrond dezelfde hex op ~13% dekking (`hex + '22'`). */
-export function Pill({ hex, className, children }: { hex: string; className?: string; children: React.ReactNode }) {
+// ── WCAG contrast helpers ────────────────────────────────────────────────────
+function hexToRgb(hex: string): [number, number, number] {
+  const c = hex.replace('#', '')
+  return [parseInt(c.substring(0, 2), 16), parseInt(c.substring(2, 4), 16), parseInt(c.substring(4, 6), 16)]
+}
+
+/** WCAG relative luminance (0..1) from sRGB 0-255 channels. */
+function relativeLuminance([r, g, b]: [number, number, number]): number {
+  const f = (v: number) => {
+    const c = v / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  const [fr, fg, fb] = [f(r), f(g), f(b)]
+  return 0.2126 * fr + 0.7152 * fg + 0.0722 * fb
+}
+
+/** WCAG contrast ratio (1..21) between two sRGB colors. */
+function contrastRatio(a: [number, number, number], b: [number, number, number]): number {
+  const [l1, l2] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x)
+  return (l1 + 0.05) / (l2 + 0.05)
+}
+
+const WHITE: [number, number, number] = [255, 255, 255]
+const DARK_TEXT: [number, number, number] = [0x17, 0x17, 0x17]
+
+/**
+ * Pick whichever of white/near-black text actually contrasts better against
+ * `hex` — never a fixed luminance-threshold guess, which got 3 of OSLIFE's 4
+ * status colors wrong (picked white text at ~3:1, under the 4.5:1 AA
+ * minimum, because that heuristic's cutoff didn't match how sRGB luminance
+ * actually reads once weighted by the eye's green sensitivity). Falls back
+ * to progressively darkening the fill itself in the rare case neither
+ * candidate clears 4.5:1, so a solid badge can never ship under AA.
+ */
+function accessibleTextOn(hex: string): { color: string; background: string } {
+  const rgb = hexToRgb(hex)
+  const whiteRatio = contrastRatio(WHITE, rgb)
+  const darkRatio = contrastRatio(DARK_TEXT, rgb)
+  const useWhite = whiteRatio >= darkRatio
+  const best = useWhite ? whiteRatio : darkRatio
+  if (best >= 4.5) return { color: useWhite ? '#ffffff' : '#171717', background: hex }
+  // Neither candidate clears AA — darken the fill in steps until white text does.
+  let [r, g, b] = rgb
+  for (let i = 0; i < 8 && contrastRatio(WHITE, [r, g, b]) < 4.5; i++) {
+    r = Math.round(r * 0.85)
+    g = Math.round(g * 0.85)
+    b = Math.round(b * 0.85)
+  }
+  return { color: '#ffffff', background: `rgb(${r}, ${g}, ${b})` }
+}
+
+/**
+ * Hex-tinted badge. Two treatments:
+ *  - default (categorical/low-key): text in `hex`, background the same hex at
+ *    ~13% coverage (`hex + '22'`) — for identity tags (priority, domain, a
+ *    due-date accent) that shouldn't compete for attention.
+ *  - `solid` (status/vivid): filled `hex` background with white or dark text
+ *    (picked by contrast) — for workflow status that should read as a clear
+ *    signal, not a soft tint. Mirrors the categorical-vs-semantic badge split
+ *    from Astryx's design system: identity stays pastel, status stays vivid.
+ */
+export function Pill({
+  hex,
+  className,
+  solid,
+  children,
+}: {
+  hex: string
+  className?: string
+  solid?: boolean
+  children: React.ReactNode
+}) {
   return (
-    <span className={className} style={{ color: hex, background: `${hex}22` }}>
+    <span className={className} style={solid ? accessibleTextOn(hex) : { color: hex, background: `${hex}22` }}>
       {children}
     </span>
   )
@@ -220,5 +290,75 @@ export function SetupHint({
         </button>
       )}
     </div>
+  )
+}
+
+/**
+ * Block-segmented progress — `total` discrete pills, `done` of them filled.
+ * Reads as tangible, countable progress (today's 3rd of 5 habits, session
+ * 4/12) rather than an abstract percentage bar; small, frequent completion
+ * feedback like this is a well-established ADHD-friendly pattern (visible,
+ * chunked progress beats one big number). Caps rendered segments at 12 —
+ * beyond that a bar communicates better than a wall of dots — and always
+ * exposes the raw fraction via `aria-label` for screen readers.
+ */
+export function SegmentedProgress({
+  done,
+  total,
+  color = 'bg-forest',
+}: {
+  done: number
+  total: number
+  color?: string
+}) {
+  if (total <= 0) return null
+  const segments = Math.min(total, 12)
+  const filledSegments = Math.round((done / total) * segments)
+  return (
+    <div
+      className="flex items-center gap-1"
+      role="img"
+      aria-label={`${done} van ${total} voltooid`}
+    >
+      {Array.from({ length: segments }).map((_, i) => (
+        <span
+          key={i}
+          aria-hidden
+          className={`h-1.5 flex-1 rounded-full ${i < filledSegments ? color : 'bg-line'}`}
+        />
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Minimal inline trend line — no axes, no tooltip, just "is this going up or
+ * down". For a stat tile's corner, not for analysis (Vitals/Signalen's real
+ * charts cover that). `values` in chronological order; renders nothing
+ * below 2 points.
+ */
+export function Sparkline({
+  values,
+  className = 'text-forest',
+  height = 28,
+  width = 72,
+}: {
+  values: number[]
+  className?: string
+  height?: number
+  width?: number
+}) {
+  if (values.length < 2) return null
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min || 1
+  const step = width / (values.length - 1)
+  const points = values
+    .map((v, i) => `${(i * step).toFixed(1)},${(height - ((v - min) / range) * height).toFixed(1)}`)
+    .join(' ')
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className={className} aria-hidden>
+      <polyline points={points} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   )
 }

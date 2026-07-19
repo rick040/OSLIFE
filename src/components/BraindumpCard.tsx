@@ -122,7 +122,7 @@ export function BraindumpDetail({
         <div className="sticky top-0 bg-canvas/90 backdrop-blur border-b border-line px-4 py-3 flex items-center gap-2">
           <Icon className="h-4 w-4 text-muted shrink-0" />
           <span className="text-xs text-muted">{SOURCE_LABEL[entry.sourceKind]} · {fmtDate(entry.createdAt)}</span>
-          <button onClick={onClose} className="ml-auto text-faint hover:text-ink p-1 rounded-lg hover:bg-sunken">
+          <button onClick={onClose} className="ml-auto text-faint hover:text-ink p-1 rounded-lg hover:bg-sunken" aria-label="Sluiten">
             <X className="h-4 w-4" />
           </button>
         </div>

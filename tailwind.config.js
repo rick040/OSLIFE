@@ -78,7 +78,10 @@ export default {
         cross: { DEFAULT: '#C58392', deep: 'var(--cross-deep)' },
       },
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        // Figtree — warmer, rounder terminals than Inter; matches the app's
+        // organic "warm paper" identity better while keeping the same
+        // no-nonsense grotesque proportions for data-dense screens.
+        sans: ['Figtree', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         '4xl': '2rem',

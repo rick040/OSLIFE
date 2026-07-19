@@ -71,7 +71,7 @@ export default function Relaties() {
             {(['network', 'business', 'both'] as PersonKind[]).map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
           </select>
           <button onClick={submit} disabled={!name.trim()}
-            className="ml-auto rounded-lg bg-prjct/10 text-prjct border border-prjct/40 px-4 py-2 text-sm font-medium hover:bg-prjct/15 disabled:opacity-50">
+            className="ml-auto rounded-lg bg-prjct/10 text-prjct-deep border border-prjct/40 px-4 py-2 text-sm font-medium hover:bg-prjct/15 disabled:opacity-50">
             Toevoegen
           </button>
         </div>
@@ -93,7 +93,7 @@ export default function Relaties() {
                       <span className="font-medium">{p.displayName}</span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-line text-muted">{KIND_LABEL[p.kind]}</span>
                       {owed > 0 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cross/15 text-cross flex items-center gap-1">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cross/15 text-cross-deep flex items-center gap-1">
                           <AlertCircle className="h-3 w-3" /> {owed} openstaand
                         </span>
                       )}

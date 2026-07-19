@@ -40,6 +40,7 @@ export function AppHeader({
         <Button
           variant="outline"
           onClick={onOpenSearch}
+          aria-label="Zoeken"
           className={cn(
             'relative h-9 justify-start rounded-full text-sm text-muted-foreground sm:w-56 sm:pr-12'
           )}

@@ -99,10 +99,10 @@ export default function Projects() {
 
       {/* KPI grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Kpi icon={<FolderKanban className="h-4 w-4 text-buurtkaart-deep" />} label="Actief" value={String(activeProjects.length)} sub={`${projects.length} totaal`} />
-        <Kpi icon={<Wallet className="h-4 w-4 text-parkingyou-deep" />} label="Pipeline" value={eur(pipeline)} sub="nog te factureren" />
-        <Kpi icon={<AlertTriangle className="h-4 w-4 text-cross-deep" />} label="Achterstallig" value={String(overdue.length)} sub={overdue.length ? 'over deadline' : 'alles op schema'} />
-        <Kpi icon={<CheckCircle2 className="h-4 w-4 text-prjct-deep" />} label="Opgeleverd" value={eur(delivered)} sub={`${projects.filter((p) => p.status === 'done').length} projecten`} />
+        <Kpi icon={<FolderKanban className="h-4 w-4 text-buurtkaart-deep" />} label="Actief" value={String(activeProjects.length)} sub={`${projects.length} totaal`} tint="bg-buurtkaart/12" />
+        <Kpi icon={<Wallet className="h-4 w-4 text-parkingyou-deep" />} label="Pipeline" value={eur(pipeline)} sub="nog te factureren" tint="bg-parkingyou/12" />
+        <Kpi icon={<AlertTriangle className="h-4 w-4 text-cross-deep" />} label="Achterstallig" value={String(overdue.length)} sub={overdue.length ? 'over deadline' : 'alles op schema'} alert={overdue.length > 0} />
+        <Kpi icon={<CheckCircle2 className="h-4 w-4 text-prjct-deep" />} label="Opgeleverd" value={eur(delivered)} sub={`${projects.filter((p) => p.status === 'done').length} projecten`} tint="bg-prjct/12" />
       </div>
 
       {/* Search + client filter */}
