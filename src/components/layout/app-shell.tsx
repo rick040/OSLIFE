@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { SCREENS, type View } from '@/nav'
 import type { Nudge } from '@/types'
+import type { FetchFailure } from '@/lib/supabase'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppHeader } from '@/components/layout/app-header'
@@ -18,6 +19,7 @@ export interface AppShellProps {
   onResetDemo: () => void
   reflectCount: number
   dataSource: 'live' | 'mock'
+  syncErrors: FetchFailure[]
   nudge: Nudge
   children: React.ReactNode
 }
@@ -33,6 +35,7 @@ export function AppShell({
   onResetDemo,
   reflectCount,
   dataSource,
+  syncErrors,
   nudge,
   children,
 }: AppShellProps) {
@@ -63,6 +66,7 @@ export function AppShell({
         onResetDemo={onResetDemo}
         reflectCount={reflectCount}
         dataSource={dataSource}
+        syncErrors={syncErrors}
         nudge={nudge}
       />
       <SidebarInset className="min-w-0">

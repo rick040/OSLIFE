@@ -180,12 +180,20 @@ import {
   fetchHealthConditions,
   fetchSummaries,
   forgetRecord as forgetRecordApi,
+  drainFetchFailures,
+  noteFetchError,
+  type FetchFailure,
 } from './lib/supabase'
 
 // The single Realtime channel opened by loadLiveData(). Held at module scope so
 // a repeat loadLiveData() (e.g. on every auth TOKEN_REFRESHED) tears the previous
 // channel down instead of leaking a new 22-handler subscription each time.
 let liveChannel: ReturnType<typeof supabase.channel> | null = null
+
+// A retry already scheduled for a partial/failed loadLiveData() pass — guards
+// against stacking up retries if e.g. auth fires TOKEN_REFRESHED again while
+// one is still pending.
+let loadRetryTimer: ReturnType<typeof setTimeout> | null = null
 
 interface ActivitySignal {
   id: string
@@ -254,6 +262,10 @@ interface State {
   settings: AppSettings
   dataSource: 'mock' | 'live'
   isLoading: boolean
+  // Tables that failed to load on the most recent loadLiveData() pass.
+  // Non-empty means some slice may be showing cached data instead of the
+  // latest server state — surfaced in the UI so a failed sync isn't silent.
+  syncErrors: FetchFailure[]
 
   // HEYRA learns as we speak — distil durable facts from one exchange, merge
   // them into the persisted set and return only the genuinely NEW facts so the
@@ -310,7 +322,7 @@ interface State {
   runNightlyReflect: () => void
 
   // LIVE DATA
-  loadLiveData: () => Promise<void>
+  loadLiveData: (isRetry?: boolean) => Promise<void>
 
   // Inference engine (Slice 1): load the pending review queue and resolve one.
   loadInferences: () => Promise<void>
@@ -511,6 +523,7 @@ const seed = () => ({
   settings: { hourlyRate: 0 } as AppSettings,
   dataSource: 'mock' as const,
   isLoading: true,
+  syncErrors: [] as FetchFailure[],
 })
 
 // ── Persisted-state rehydration ──────────────────────────────────────────────
@@ -530,7 +543,7 @@ const SEED_WHEN_FALSY = ['threads', 'nudge', 'dogProfile'] as const
 const EMPTY_WHEN_FALSY = [
   'projectMilestones', 'projectTasks', 'projectHours', 'projectInvoices',
   'projectActivity', 'checkins', 'learnedFacts', 'vendorTags', 'braindumpEntries',
-  'goalProposals', 'weekPlan',
+  'goalProposals', 'weekPlan', 'syncErrors',
 ] as const
 
 /**
@@ -557,6 +570,23 @@ export function applyPersistDefaults(
   if (state.weekPlanAt === undefined) state.weekPlanAt = null
   if (state.lastGoalProposalError === undefined) state.lastGoalProposalError = null
   if (state.lastPlanError === undefined) state.lastPlanError = null
+}
+
+/**
+ * Run a fetch* call so a hard failure (e.g. no network mid-cold-start on
+ * mobile) resolves to `fallback` instead of rejecting and aborting every
+ * other slice in the same Promise.all. Logged under `table` so it lands next
+ * to that same fetch's own logical (`.error`) failures in `syncErrors` —
+ * `table` must match the table name the fetch function already uses
+ * internally (see supabase.ts) so both failure modes gate the same slice.
+ */
+async function safe<T>(table: string, fallback: T, p: Promise<T>): Promise<T> {
+  try {
+    return await p
+  } catch (err) {
+    noteFetchError(table, { message: err instanceof Error ? err.message : String(err) })
+    return fallback
+  }
 }
 
 /** Guard so overlapping auto-tag runs (load + realtime) don't double-work. */
@@ -1934,7 +1964,11 @@ export const useStore = create<State>()(
         set({ essentials, healthDays, dayLogs, threads: merged, patterns, nudge })
       },
 
-      loadLiveData: async () => {
+      loadLiveData: async (isRetry = false) => {
+        if (loadRetryTimer) {
+          clearTimeout(loadRetryTimer)
+          loadRetryTimer = null
+        }
         try {
           const [
             healthDays,
@@ -1953,44 +1987,53 @@ export const useStore = create<State>()(
             clients,
             checkins,
           ] = await Promise.all([
-            fetchHealthDays(),
-            fetchTransactions(),
-            fetchPayments(),
-            fetchEmails(),
-            fetchMeetingDays(),
-            fetchBlocks(),
-            fetchHabits(),
-            fetchSubscriptions(),
-            fetchGoals(),
-            fetchDogEntries(),
-            fetchBrainState(),
-            fetchScreenDays(),
-            fetchProjects(),
-            fetchClients(),
-            fetchCheckins(),
+            safe('healthDays', [] as HealthDay[], fetchHealthDays()),
+            safe('finance_tx', [] as Transaction[], fetchTransactions()),
+            safe('payments', [] as Payment[], fetchPayments()),
+            safe('gmail_messages', [] as EmailItem[], fetchEmails()),
+            safe('day_blocks', [] as MeetingDay[], fetchMeetingDays()),
+            safe('day_blocks', [] as Block[], fetchBlocks()),
+            safe('habits', [] as Habit[], fetchHabits()),
+            safe('subscriptions', [] as Subscription[], fetchSubscriptions()),
+            safe('goals', [] as Goal[], fetchGoals()),
+            safe('dog_log', [] as DogEntry[], fetchDogEntries()),
+            safe('brain_state', { threads: [] as Thread[], patterns: [] as Pattern[] }, fetchBrainState()),
+            safe('screentime', [] as ScreenDay[], fetchScreenDays()),
+            safe('projects', [] as Project[], fetchProjects()),
+            safe('clients', [] as Client[], fetchClients()),
+            safe('daily_checkin', [] as Checkin[], fetchCheckins()),
           ])
           // Load the native CRM slices (project template + messages) separately.
           const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, people, interactions, adminItems, healthConditions, summaries, cleaningLog] = await Promise.all([
-            fetchMilestones(),
-            fetchProjectTaskRows(),
-            fetchHours(),
-            fetchInvoices(),
-            fetchActivity(),
-            fetchClientMessages(),
-            fetchNotificationPrefs(),
-            fetchLearnedFacts(),
-            fetchVendorTags(),
-            fetchBraindumpEntries(),
-            fetchAppSettings(),
-            fetchPendingInferences(),
-            fetchPeople(),
-            fetchInteractions(),
-            fetchAdminItems(),
-            fetchHealthConditions(),
-            fetchSummaries(),
-            fetchCleaningLog(),
+            safe('project_milestones', [] as ProjectMilestone[], fetchMilestones()),
+            safe('project_tasks', [] as ProjectTask[], fetchProjectTaskRows()),
+            safe('project_hours', [] as HourEntry[], fetchHours()),
+            safe('project_invoices', [] as Invoice[], fetchInvoices()),
+            safe('project_activity', [] as ActivityEntry[], fetchActivity()),
+            safe('client_messages', [] as Message[], fetchClientMessages()),
+            safe<NotificationPrefs | null>('notification_prefs', null, fetchNotificationPrefs()),
+            safe('heyra_memory', [] as LearnedFact[], fetchLearnedFacts()),
+            safe('vendor_tags', [] as VendorTag[], fetchVendorTags()),
+            safe('braindump_entries', [] as BraindumpEntry[], fetchBraindumpEntries()),
+            safe<AppSettings | null>('app_settings', null, fetchAppSettings()),
+            safe('events', [] as InferredItem[], fetchPendingInferences()),
+            safe('person', [] as Person[], fetchPeople()),
+            safe('interaction', [] as Interaction[], fetchInteractions()),
+            safe('admin_item', [] as AdminItem[], fetchAdminItems()),
+            safe('health_condition', [] as HealthCondition[], fetchHealthConditions()),
+            safe('summaries', [] as MemorySummary[], fetchSummaries()),
+            safe('cleaning_log', {} as Record<string, boolean>, fetchCleaningLog()),
           ])
-          // only overwrite store fields that actually returned data — never replace with empty array
+          // A table that failed this pass (network hiccup or RLS error — common
+          // on flaky mobile connections) must not overwrite good local/cached
+          // data with the empty fallback `safe()` returned for it. The
+          // length>0 guards below already protect the "mock fallback" slices;
+          // failedTables additionally guards the app-owned slices further down,
+          // which otherwise always overwrite (their empty state is normally a
+          // valid "none yet", so they can't tell empty-because-failed from
+          // empty-because-really-empty on their own).
+          const failures = drainFetchFailures()
+          const failedTables = new Set(failures.map((f) => f.table))
           set({
             ...(healthDays.length > 0 && { healthDays }),
             ...(transactions.length > 0 && { transactions }),
@@ -2008,43 +2051,49 @@ export const useStore = create<State>()(
             ...(projects.length > 0 && { projects }),
             ...(clients.length > 0 && { clients }),
             ...(checkins.length > 0 && { checkins }),
-            // CRM template slices: these are app-owned (no mock fallback) so set
-            // them directly — an empty result genuinely means "none yet".
-            projectMilestones: milestones,
-            projectTasks,
-            projectHours: hours,
-            projectInvoices: reconcileInvoices(invoices),
-            projectActivity: projActivity,
+            // CRM template slices: these are app-owned (no mock fallback), so an
+            // empty result genuinely means "none yet" — set directly, UNLESS
+            // this pass's fetch for that exact table failed.
+            ...(!failedTables.has('project_milestones') && { projectMilestones: milestones }),
+            ...(!failedTables.has('project_tasks') && { projectTasks }),
+            ...(!failedTables.has('project_hours') && { projectHours: hours }),
+            ...(!failedTables.has('project_invoices') && { projectInvoices: reconcileInvoices(invoices) }),
+            ...(!failedTables.has('project_activity') && { projectActivity: projActivity }),
             ...(messages.length > 0 && { messages }),
-            notificationPrefs,
+            ...(!failedTables.has('notification_prefs') && { notificationPrefs }),
             ...(appSettings && { settings: appSettings }),
             ...(learnedFacts.length > 0 && { learnedFacts }),
             ...(vendorTags.length > 0 && { vendorTags }),
-            // Braindump is app-owned (no mock fallback) — set directly so an empty
-            // result genuinely means "nothing captured yet".
-            braindumpEntries,
-            // Inference review queue is app-owned too — set directly.
-            inferences,
-            // Slice 2 domains — app-owned, set directly (empty = none yet).
-            people,
-            interactions,
-            adminItems,
-            healthConditions,
-            summaries,
-            cleaningLog,
+            ...(!failedTables.has('braindump_entries') && { braindumpEntries }),
+            ...(!failedTables.has('events') && { inferences }),
+            ...(!failedTables.has('person') && { people }),
+            ...(!failedTables.has('interaction') && { interactions }),
+            ...(!failedTables.has('admin_item') && { adminItems }),
+            ...(!failedTables.has('health_condition') && { healthConditions }),
+            ...(!failedTables.has('summaries') && { summaries }),
+            ...(!failedTables.has('cleaning_log') && { cleaningLog }),
             dataSource: 'live',
             isLoading: false,
+            syncErrors: failures,
           })
           // REMEMBER + SURFACE run off live data: rebuild essentials, threads,
           // dayLogs, baseline patterns and today's nudge now that it has loaded.
           get().recomputeBrain()
           // Categorise any transactions still Uncategorized (cache-first, then AI).
           void get().autoTagTransactions()
+          if (failedTables.size > 0) {
+            console.warn('[OSLIFE] partial sync failure, stale data may be showing for:', [...failedTables])
+            // Most real-world failures here are a flaky mobile connection at
+            // cold start, not a real backend outage — one retry a few seconds
+            // later clears the vast majority of them without user action.
+            if (!isRetry) loadRetryTimer = setTimeout(() => { void get().loadLiveData(true) }, 4000)
+          }
         } catch (err) {
           console.warn('[OSLIFE] Supabase fetch failed', err)
-          set({ isLoading: false })
+          set({ isLoading: false, syncErrors: [{ table: 'all', message: err instanceof Error ? err.message : String(err) }] })
           // Still rebuild from whatever is loaded so REMEMBER isn't blank.
           get().recomputeBrain()
+          if (!isRetry) loadRetryTimer = setTimeout(() => { void get().loadLiveData(true) }, 4000)
         }
 
         // One Realtime channel for all passively-ingested tables. Each entry

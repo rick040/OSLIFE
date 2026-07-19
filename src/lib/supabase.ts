@@ -83,6 +83,28 @@ function warnWrite(label: string, error: unknown): void {
   if (error) console.warn(`[OSLIFE] write failed: ${label}`, error)
 }
 
+// ── Fetch failure tracking ───────────────────────────────────────────────────
+// Reads silently fall back to `[]`/`null` on error so a transient hiccup on one
+// table never wipes an unrelated slice of the UI. That used to mean a genuine
+// failure (RLS hiccup, dropped connection — common on mobile networks) was
+// indistinguishable from "this table is really empty". `noteFetchError` keeps a
+// side log of which table(s) actually failed during the in-flight load, so
+// loadLiveData() can skip overwriting a slice with an empty result that was
+// caused by an error rather than reality, and can surface it to the user.
+export type FetchFailure = { table: string; message: string }
+const fetchFailures: FetchFailure[] = []
+
+export function noteFetchError(table: string, error: { message?: string } | null): void {
+  if (!error) return
+  console.error(`[OSLIFE] fetch failed: ${table}`, error)
+  fetchFailures.push({ table, message: error.message ?? String(error) })
+}
+
+/** Drain and return every fetch failure recorded since the last drain. */
+export function drainFetchFailures(): FetchFailure[] {
+  return fetchFailures.splice(0, fetchFailures.length)
+}
+
 // ── Generic row helpers ─────────────────────────────────────────────────────────
 // Most tables share the same mechanical CRUD shape; the per-entity functions
 // below keep their names/signatures and delegate here. The per-entity column
@@ -146,7 +168,8 @@ async function fetchRows<T>(
     .select(cols)
     .order(by.column, { ascending: by.ascending, nullsFirst: by.nullsFirst })
   if (by.limit !== undefined) query = query.limit(by.limit)
-  const { data } = await query
+  const { data, error } = await query
+  noteFetchError(table, error)
   return ((data ?? []) as unknown as Record<string, unknown>[]).map(map)
 }
 
@@ -307,10 +330,11 @@ export async function fetchCleaningLog(): Promise<Record<string, boolean>> {
   const since = new Date()
   since.setDate(since.getDate() - 90)
   const sinceIso = since.toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' })
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('cleaning_log')
     .select('task_key,on_date,done')
     .gte('on_date', sinceIso)
+  noteFetchError('cleaning_log', error)
   const log: Record<string, boolean> = {}
   for (const row of data ?? []) log[`${row.on_date}__${row.task_key}`] = row.done
   return log
@@ -437,6 +461,8 @@ export async function fetchHealthDays(): Promise<HealthDay[]> {
       .order('date', { ascending: false })
       .limit(90),
   ])
+  noteFetchError('health_daily_stats', statsRes.error)
+  noteFetchError('health_sleep', sleepRes.error)
 
   // Minutes actually asleep per day = light + deep + rem (awake excluded).
   const asleepByDate = new Map<string, number>()
@@ -515,12 +541,13 @@ export async function upsertCheckin(c: Checkin): Promise<boolean> {
 // only ever reads them and writes the toggles/times.
 
 export async function fetchNotificationPrefs(): Promise<NotificationPrefs | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('notification_prefs')
     .select(
       'telegram_chat_id,telegram_username,linked_at,morning_briefing,evening_checkin,habit_reminders,urgent_alerts,morning_time,evening_time,habit_time,quiet_hours_start,quiet_hours_end',
     )
     .maybeSingle()
+  noteFetchError('notification_prefs', error)
   if (!data) return null
   return {
     telegramChatId: (data.telegram_chat_id as number) ?? null,
@@ -829,11 +856,12 @@ export async function fetchEmails(): Promise<EmailItem[]> {
 // ── Calendar / Meeting days ───────────────────────────────────────────────────
 
 export async function fetchMeetingDays(): Promise<MeetingDay[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('day_blocks')
     .select('date,start_time,end_time,title')
     .order('date', { ascending: false })
     .limit(300)
+  noteFetchError('day_blocks', error)
 
   const byDate = new Map<string, MeetingDay>()
   for (const ev of data ?? []) {
@@ -857,11 +885,12 @@ export async function fetchMeetingDays(): Promise<MeetingDay[]> {
 }
 
 export async function fetchBlocks(): Promise<Block[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('day_blocks')
     .select('id,start_time,end_time,title,description,block_type,status')
     .eq('date', today())
     .order('start_time')
+  noteFetchError('day_blocks', error)
 
   return (data ?? []).map((r) => ({
     id: r.id as string,
@@ -931,11 +960,12 @@ export async function insertDayBlock(b: {
 // ── Habits ────────────────────────────────────────────────────────────────────
 
 export async function fetchHabits(): Promise<Habit[]> {
-  const { data: habitRows } = await supabase
+  const { data: habitRows, error: habitsErr } = await supabase
     .from('habits')
     .select('id,name,icon,color')
     .eq('active', true)
     .order('order_idx')
+  noteFetchError('habits', habitsErr)
 
   if (!habitRows?.length) return []
 
@@ -943,11 +973,12 @@ export async function fetchHabits(): Promise<Habit[]> {
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
   const since = thirtyDaysAgo.toLocaleDateString('en-CA', { timeZone: 'Europe/Amsterdam' })
 
-  const { data: logRows } = await supabase
+  const { data: logRows, error: logErr } = await supabase
     .from('habit_log')
     .select('habit_id,on_date,done')
     .gte('on_date', since)
     .eq('done', true)
+  noteFetchError('habit_log', logErr)
 
   const logByHabit = new Map<string, Set<string>>()
   for (const l of logRows ?? []) {
@@ -975,10 +1006,11 @@ export async function fetchHabits(): Promise<Habit[]> {
 // ── Goals ─────────────────────────────────────────────────────────────────────
 
 export async function fetchGoals(): Promise<Goal[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('goals')
     .select('id,title,domain,target_value,unit,due_on,progress')
     .in('status', ['active'])
+  noteFetchError('goals', error)
 
   return (data ?? []).map((r) => {
     const target = (r.target_value as number) ?? 0
@@ -1057,11 +1089,12 @@ export async function fetchDogEntries(): Promise<DogEntry[]> {
 // ── Brain state (threads + patterns) ─────────────────────────────────────────
 
 export async function fetchBrainState(): Promise<{ threads: Thread[]; patterns: Pattern[] }> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('brain_state')
     .select('threads,patterns')
     .limit(1)
     .maybeSingle()
+  noteFetchError('brain_state', error)
 
   return {
     threads: (data?.threads as Thread[]) ?? [],
@@ -1074,11 +1107,12 @@ export async function fetchBrainState(): Promise<{ threads: Thread[]; patterns: 
 // as brain_state. See src/heyra/learning.ts for what gets stored.
 
 export async function fetchLearnedFacts(): Promise<LearnedFact[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('heyra_memory')
     .select('facts')
     .limit(1)
     .maybeSingle()
+  noteFetchError('heyra_memory', error)
 
   return (data?.facts as LearnedFact[]) ?? []
 }
@@ -1119,6 +1153,8 @@ export async function fetchScreenDays(): Promise<ScreenDay[]> {
       .order('usage_date', { ascending: false })
       .limit(120),
   ])
+  noteFetchError('screentime', appsRes.error)
+  noteFetchError('screentime_daily', dailyRes.error)
 
   const pickupsByDate = new Map<string, number>()
   for (const r of dailyRes.data ?? []) pickupsByDate.set(r.usage_date as string, (r.pickups as number) ?? 0)
@@ -1153,11 +1189,12 @@ export async function fetchScreenDays(): Promise<ScreenDay[]> {
 }
 
 export async function fetchProjects(): Promise<Project[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('projects')
     .select('id,external_id,name,client,client_id,domain,status,deadline,start_datum,value,progress,type,prioriteit,deliverables,scope_text,notes,archived,notion_url')
     .eq('archived', false)
     .order('deadline', { ascending: true, nullsFirst: false })
+  noteFetchError('projects', error)
 
   return (data ?? []).map((r) => ({
     id:           r.id as string,
@@ -1605,7 +1642,8 @@ export async function deleteMessageRow(id: string): Promise<void> {
 // ── App settings (one owner-scoped row) ───────────────────────────────────────
 
 export async function fetchAppSettings(): Promise<AppSettings | null> {
-  const { data } = await supabase.from('app_settings').select('hourly_rate').maybeSingle()
+  const { data, error } = await supabase.from('app_settings').select('hourly_rate').maybeSingle()
+  noteFetchError('app_settings', error)
   if (!data) return null
   return { hourlyRate: (data.hourly_rate as number) ?? 0 }
 }
@@ -1630,11 +1668,12 @@ export async function upsertAppSettings(patch: Partial<AppSettings>): Promise<bo
 // run_inference() rules. confirm_inference() resolves one (status + effect).
 
 export async function fetchPendingInferences(): Promise<InferredItem[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('events')
     .select('id,rule_id,type,domains,confidence,occurred_at,payload')
     .eq('status', 'inferred')
     .order('occurred_at', { ascending: false })
+  noteFetchError('events', error)
   return ((data ?? []) as unknown as Record<string, unknown>[]).map((r) => {
     const payload = (r.payload as Record<string, unknown>) ?? {}
     return {

@@ -2,6 +2,7 @@ import { Play, RotateCcw, Settings, Workflow, Grid3x3 } from 'lucide-react'
 
 import { SCREENS, GROUP_ORDER, type View, type ScreenGroup } from '@/nav'
 import type { Nudge } from '@/types'
+import type { FetchFailure } from '@/lib/supabase'
 import Orb from '@/components/Orb'
 import { storeNudgeToDash } from '@/components/NudgeCard'
 import {
@@ -38,6 +39,7 @@ export interface AppSidebarProps {
   onResetDemo: () => void
   reflectCount: number
   dataSource: 'live' | 'mock'
+  syncErrors: FetchFailure[]
   nudge: Nudge
 }
 
@@ -51,6 +53,7 @@ export function AppSidebar({
   onResetDemo,
   reflectCount,
   dataSource,
+  syncErrors,
   nudge,
 }: AppSidebarProps) {
   const { setOpenMobile, isMobile } = useSidebar()
@@ -76,11 +79,20 @@ export function AppSidebar({
             <span className="flex items-center gap-1 text-[10px]">
               <span
                 className={`inline-block h-1.5 w-1.5 rounded-full ${
-                  dataSource === 'live' ? 'bg-forest' : 'bg-faint'
+                  syncErrors.length > 0 ? 'bg-amber-500' : dataSource === 'live' ? 'bg-forest' : 'bg-faint'
                 }`}
               />
-              <span className="text-faint">
-                {dataSource === 'live' ? 'live data' : 'mock data'}
+              <span
+                className="text-faint"
+                title={
+                  syncErrors.length > 0
+                    ? `Sync mislukt voor: ${syncErrors.map((f) => f.table).join(', ')} — mogelijk verouderde data op dit toestel`
+                    : undefined
+                }
+              >
+                {syncErrors.length > 0
+                  ? `sync mislukt (${syncErrors.length})`
+                  : dataSource === 'live' ? 'live data' : 'mock data'}
               </span>
             </span>
           </div>
