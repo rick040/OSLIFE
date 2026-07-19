@@ -7,7 +7,7 @@
 -- key configured, or a row not embedded yet) — exactly the same
 -- "app never breaks without this key" contract ANTHROPIC_API_KEY already has.
 
-create extension if not exists vector;
+create extension if not exists vector with schema extensions;
 
 alter table braindump_entries add column if not exists embedding vector(1024);
 alter table interaction        add column if not exists embedding vector(1024);
@@ -39,7 +39,10 @@ as $$
   select h.id, h.source, h.title, h.snippet, h.ts,
          case
            when p_query_embedding is null or h.embedding is null then h.text_rank
-           else h.text_rank * 0.5 + (1 - (h.embedding <=> p_query_embedding)) * 0.5
+           -- search_path='' means the pgvector `<=>` operator (installed in the
+           -- `extensions` schema, not pg_catalog) won't resolve unqualified —
+           -- must use OPERATOR(schema.op) to keep the hardened search_path.
+           else h.text_rank * 0.5 + (1 - (h.embedding OPERATOR(extensions.<=>) p_query_embedding)) * 0.5
          end as rank
   from (
     select b.id, 'braindump'::text as source,
