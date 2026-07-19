@@ -54,6 +54,7 @@ export default {
         surface: 'hsl(var(--surface))', // cards
         sunken: 'hsl(var(--sunken))', // insets, ghost buttons, hover
         line: 'hsl(var(--line))', // hairlines, tracks, dividers
+        'line-strong': 'hsl(var(--line-strong))', // emphasized edge — hover/active affordance
         scrim: 'hsl(var(--scrim))', // modal overlay base
 
         // ── text (warm ramp, var-driven) ────────────────────────────────────
@@ -66,11 +67,15 @@ export default {
         lime: { DEFAULT: 'hsl(var(--lime))', hi: 'hsl(var(--lime-hi))' },
 
         // ── domains (muted, sophisticated; .deep = readable text) ───────────
-        parkingyou: { DEFAULT: '#6E8CA8', deep: '#3F586E' },
-        prjct: { DEFAULT: '#9385B0', deep: '#5C4F79' },
-        buurtkaart: { DEFAULT: '#6FA07C', deep: '#44694F' },
-        personal: { DEFAULT: '#C6A05B', deep: '#856325' },
-        cross: { DEFAULT: '#C58392', deep: '#8A5260' },
+        // .deep is var-driven and flips per mode: a dark, saturated stop in
+        // light mode (readable on the pastel bg-{domain}/12 tint) inverts to
+        // a light pastel of the same hue in dark mode — a dark-mode card
+        // would otherwise render dark-on-dark text if .deep stayed locked.
+        parkingyou: { DEFAULT: '#6E8CA8', deep: 'var(--parkingyou-deep)' },
+        prjct: { DEFAULT: '#9385B0', deep: 'var(--prjct-deep)' },
+        buurtkaart: { DEFAULT: '#6FA07C', deep: 'var(--buurtkaart-deep)' },
+        personal: { DEFAULT: '#C6A05B', deep: 'var(--personal-deep)' },
+        cross: { DEFAULT: '#C58392', deep: 'var(--cross-deep)' },
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
@@ -82,9 +87,12 @@ export default {
         sm: 'calc(var(--radius) - 4px)',
       },
       boxShadow: {
-        card: '0 1px 2px rgba(20,22,15,0.04), 0 10px 28px -18px rgba(20,22,15,0.16)',
-        'card-lg': '0 2px 6px rgba(20,22,15,0.05), 0 28px 56px -28px rgba(20,22,15,0.20)',
-        pop: '0 16px 40px -16px rgba(20,22,15,0.24)',
+        // theme-aware (see --shadow-* in index.css): dark mode swaps in
+        // deeper drops + an inset rim highlight so cards lift off a dark
+        // canvas instead of reading flat.
+        card: 'var(--shadow-card)',
+        'card-lg': 'var(--shadow-card-lg)',
+        pop: 'var(--shadow-pop)',
       },
       keyframes: {
         'fade-up': {
