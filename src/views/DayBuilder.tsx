@@ -117,7 +117,7 @@ function BlockRow({ b }: { b: PlanBlock }) {
 }
 
 export default function DayBuilder() {
-  const { weekPlan, weekPlanAt, planningWeek, generateWeekPlan } = useStore()
+  const { weekPlan, weekPlanAt, planningWeek, generateWeekPlan, lastPlanError } = useStore()
 
   const dates = useMemo(() => weekDates(today()), [])
   const dateSet = useMemo(() => new Set(dates), [dates])
@@ -164,6 +164,10 @@ export default function DayBuilder() {
           {planningWeek ? 'Plannen…' : hasPlan ? 'Herbereken' : 'Genereer plan'}
         </button>
       </div>
+
+      {lastPlanError && !planningWeek && (
+        <div className="card p-3 text-sm text-orange-700 bg-orange-500/10 border-orange-500/30">{lastPlanError}</div>
+      )}
 
       {/* learned-window banner */}
       <div className="card p-3 flex items-center gap-2 text-sm text-ink-soft">

@@ -38,5 +38,5 @@ export const runBriefingAgent: Agent = async (input, ctx) => {
     { maxTokens: 260 },
   )
 
-  return { text: brainText ?? fallbackText, topic: 'domain', fromBrain: !!brainText }
+  return { text: brainText ?? fallbackText, topic: 'briefing', fromBrain: !!brainText }
 }

@@ -27,6 +27,8 @@ export interface SearchCardData {
 export interface ChartPoint {
   label: string
   value: number
+  /** Same metric, one week earlier — populated only when a comparison was asked for and there's enough history to show one honestly. */
+  compareValue?: number
 }
 
 export interface ChartCardData {
@@ -34,6 +36,8 @@ export interface ChartCardData {
   unit?: string
   kind: 'bar' | 'line'
   points: ChartPoint[]
+  /** Present (and points[].compareValue populated) when the question asked for a comparison — e.g. "vorige week". */
+  compareLabel?: string
 }
 
 /** HEYRA Klant-intake draft — a parsed, editable client message before any CRM write happens. */
@@ -147,26 +151,52 @@ function isoDaysAgo(n: number): string {
 /** The last 7 Amsterdam dates ending today — recomputed per call so it can't
  *  freeze at module load and always includes the true "today". */
 const last7Days = () => Array.from({ length: 7 }, (_, i) => isoDaysAgo(6 - i))
+/** The 7 days before that — "vorige week", aligned by weekday position with last7Days(). */
+const prev7Days = () => Array.from({ length: 7 }, (_, i) => isoDaysAgo(13 - i))
 
-/** Picks the metric that best matches the question and renders it as points. */
+// Phrases that ask for a week-over-week comparison rather than just "the numbers".
+const COMPARE_RE = /vergelijk|vergelijking|versus|\bvs\.?\b|t\.o\.v\.|ten opzichte van/
+
+function spendOn(store: Store, iso: string): number {
+  return Math.round(store.transactions.filter((tx) => tx.date === iso && tx.amount < 0).reduce((a, tx) => a + Math.abs(tx.amount), 0))
+}
+
+/**
+ * Picks the metric that best matches the question and renders it as points.
+ * When the question also asks for a comparison ("vergelijk"/"versus"/"t.o.v."),
+ * spend/energy/steps get a second "vorige week" series aligned by weekday —
+ * habits and the open-loops fallback aren't week-shaped the same way, so a
+ * comparison request on those is silently ignored rather than faked (same
+ * honesty rule as everywhere else: no data, no invented series).
+ */
 export function buildChartCard(text: string, store: Store): ChartCardData {
   const t = text.toLowerCase()
+  const wantsCompare = COMPARE_RE.test(t)
 
   if (/geld|uitgaven|spend|financ|kosten/.test(t)) {
-    const points = last7Days().map((iso) => ({
-      label: iso.slice(5),
-      value: Math.round(store.transactions.filter((tx) => tx.date === iso && tx.amount < 0).reduce((a, tx) => a + Math.abs(tx.amount), 0)),
-    }))
+    const points: ChartPoint[] = last7Days().map((iso) => ({ label: iso.slice(5), value: spendOn(store, iso) }))
+    if (wantsCompare) {
+      prev7Days().forEach((iso, i) => { points[i].compareValue = spendOn(store, iso) })
+      return { title: 'Uitgaven per dag', unit: '€', kind: 'bar', points, compareLabel: 'vorige week' }
+    }
     return { title: 'Uitgaven per dag (7d)', unit: '€', kind: 'bar', points }
   }
 
   if (/energie|slaap|energy|sleep|moe/.test(t)) {
-    const points = store.dayLogs.slice(-7).map((d) => ({ label: d.date.slice(5), value: d.energy }))
+    const points: ChartPoint[] = store.dayLogs.slice(-7).map((d) => ({ label: d.date.slice(5), value: d.energy }))
+    if (wantsCompare && store.dayLogs.length >= 14) {
+      store.dayLogs.slice(-14, -7).forEach((d, i) => { if (points[i]) points[i].compareValue = d.energy })
+      return { title: 'Energie per dag', unit: '/5', kind: 'line', points, compareLabel: 'vorige week' }
+    }
     return { title: 'Energie per dag (7d)', unit: '/5', kind: 'line', points }
   }
 
   if (/stap|steps|beweg/.test(t)) {
-    const points = store.healthDays.slice(-7).map((d) => ({ label: d.date.slice(5), value: d.steps }))
+    const points: ChartPoint[] = store.healthDays.slice(-7).map((d) => ({ label: d.date.slice(5), value: d.steps }))
+    if (wantsCompare && store.healthDays.length >= 14) {
+      store.healthDays.slice(-14, -7).forEach((d, i) => { if (points[i]) points[i].compareValue = d.steps })
+      return { title: 'Stappen per dag', unit: 'stappen', kind: 'bar', points, compareLabel: 'vorige week' }
+    }
     return { title: 'Stappen per dag (7d)', unit: 'stappen', kind: 'bar', points }
   }
 

@@ -1,4 +1,4 @@
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts'
 import type { ChartCardData } from '../heyra/cards'
 import { Empty } from './ui'
 import { BarChart3 } from 'lucide-react'
@@ -21,7 +21,11 @@ export default function DataVizCard({ data }: { data: ChartCardData }) {
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={32} />
                   <Tooltip formatter={(v: number) => [`${v}${data.unit ?? ''}`, '']} />
-                  <Line type="monotone" dataKey="value" stroke="#9385B0" strokeWidth={2} dot={{ r: 3 }} />
+                  {data.compareLabel && <Legend wrapperStyle={{ fontSize: 11 }} />}
+                  <Line type="monotone" dataKey="value" name="nu" stroke="#9385B0" strokeWidth={2} dot={{ r: 3 }} />
+                  {data.compareLabel && (
+                    <Line type="monotone" dataKey="compareValue" name={data.compareLabel} stroke="#C7C2D6" strokeWidth={2} strokeDasharray="4 3" dot={{ r: 2 }} />
+                  )}
                 </LineChart>
               ) : (
                 <BarChart data={data.points}>
@@ -29,7 +33,9 @@ export default function DataVizCard({ data }: { data: ChartCardData }) {
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={32} />
                   <Tooltip formatter={(v: number) => [`${v}${data.unit ?? ''}`, '']} />
-                  <Bar dataKey="value" fill="#9385B0" radius={[6, 6, 0, 0]} />
+                  {data.compareLabel && <Legend wrapperStyle={{ fontSize: 11 }} />}
+                  <Bar dataKey="value" name="nu" fill="#9385B0" radius={[6, 6, 0, 0]} />
+                  {data.compareLabel && <Bar dataKey="compareValue" name={data.compareLabel} fill="#C7C2D6" radius={[6, 6, 0, 0]} />}
                 </BarChart>
               )}
             </ResponsiveContainer>

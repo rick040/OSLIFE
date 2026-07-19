@@ -145,7 +145,7 @@ Antwoord ALLEEN met een fenced \`\`\`json blok, geen andere tekst, exact dit sch
     text: draft.fromBrain
       ? `Klantbericht verwerkt${draft.matchedClientId ? ` — dit lijkt ${draft.clientName}, een bestaande klant` : ''}. Check de kaart, pas aan waar nodig, en zet 'm door naar de CRM.`
       : `Ik heb dit als klantbericht opgepakt (zonder brein beschikbaar — check en vul de kaart aan waar nodig).`,
-    topic: 'domain',
+    topic: 'clientIntake',
     clientIntake: draft,
     entity: draft.clientName,
   }
