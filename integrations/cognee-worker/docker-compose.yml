@@ -1,0 +1,70 @@
+# OSLIFE · cognee worker — a real knowledge-graph backend for the vault notes
+# (see docs/DATA-ARCHITECTURE.md / the plan doc "Round 4: cognee"). Runs the
+# official cognee image + its own dedicated Postgres (kept separate from
+# OSLIFE's own Supabase project — cognee gets its own small database, not a
+# raw connection into production), fronted by a Caddy reverse proxy that adds
+# the shared-secret bearer-auth cognee's own API doesn't provide.
+#
+#   cognee-remember / cognee-search (edge fns) ──Bearer COGNEE_WORKER_SECRET──▶ proxy:8080
+#                                                                                  │
+#                                                                       reverse_proxy
+#                                                                                  ▼
+#                                                                            cognee:8000
+#                                                                                  │
+#                                                                     DB_PROVIDER=postgres
+#                                                                                  ▼
+#                                                                          postgres (pgvector)
+#
+# Deploy: any host that runs docker-compose (a small VPS, or Railway's Docker
+# Compose project import). `docker-compose up -d`, then point the
+# cognee-remember/cognee-search Edge Function secrets at this host's public
+# address for the `proxy` service (port 8080) — never expose `cognee` (8000)
+# directly, it has no auth of its own.
+
+services:
+  cognee:
+    image: cognee/cognee:main
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_PROVIDER: postgres
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USERNAME: cognee
+      DB_PASSWORD: cognee
+      DB_NAME: cognee_db
+      VECTOR_DB_PROVIDER: pgvector
+      # GRAPH_DATABASE_PROVIDER left at cognee's default (kuzu — embedded,
+      # file-based, no separate service needed); persisted via the volume below.
+    depends_on:
+      - postgres
+    expose:
+      - "8000"
+    volumes:
+      - cognee_system:/app/.cognee_system
+
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cognee
+      POSTGRES_PASSWORD: cognee
+      POSTGRES_DB: cognee_db
+    volumes:
+      - cognee_postgres:/var/lib/postgresql/data
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      COGNEE_WORKER_SECRET: ${COGNEE_WORKER_SECRET:?set COGNEE_WORKER_SECRET in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - cognee
+
+volumes:
+  cognee_system:
+  cognee_postgres:

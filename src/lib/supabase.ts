@@ -1566,6 +1566,11 @@ export async function createMessageRow(m: Omit<Message, 'id'>): Promise<string |
         body: { source: 'message', id, frontmatter: { channel: m.channel, direction: m.direction, contact: m.contact, client_id: m.clientId, subject: m.subject }, body: text },
       })
       .catch(() => {})
+    // Fire-and-forget: feed the cognee knowledge-graph worker (no-op without
+    // COGNEE_WORKER_URL/COGNEE_WORKER_SECRET configured server-side).
+    void supabase.functions
+      .invoke('cognee-remember', { body: { source: 'message', id, text } })
+      .catch(() => {})
   }
   return id
 }
@@ -1727,6 +1732,11 @@ export async function createInteractionRow(i: Omit<Interaction, 'id'>): Promise<
           body: i.summary,
         },
       })
+      .catch(() => {})
+    // Fire-and-forget: feed the cognee knowledge-graph worker (no-op without
+    // COGNEE_WORKER_URL/COGNEE_WORKER_SECRET configured server-side).
+    void supabase.functions
+      .invoke('cognee-remember', { body: { source: 'interaction', id, text: i.summary } })
       .catch(() => {})
   }
   return id

@@ -356,6 +356,14 @@ Deno.serve(async (req) => {
           body: res.note.markdown,
         }),
       }).catch(() => {});
+      // Fire-and-forget: feed the cognee knowledge-graph worker, same tier
+      // gate as materialize-note (a real service with no per-row tier
+      // enforcement of its own).
+      fetch(`${SUPABASE_URL}/functions/v1/cognee-remember`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: authHeader },
+        body: JSON.stringify({ source: "braindump", id: entryId, text: res.note.markdown }),
+      }).catch(() => {});
     }
     return json({ ok: true, status: "ready" });
   };

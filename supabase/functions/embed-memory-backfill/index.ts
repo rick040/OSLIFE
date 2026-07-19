@@ -22,10 +22,12 @@
  *   supabase functions deploy embed-memory-backfill --project-ref nhyunnnmdcmojvkxrbpl
  * Then in the Dashboard: Edge Functions -> embed-memory-backfill -> Settings ->
  * turn "Enforce JWT verification" OFF (pg_cron cannot send a Supabase JWT).
- * Secrets: CRON_SECRET, VOYAGE_API_KEY, OSLIFE_USER_ID.
+ * Secrets: CRON_SECRET, VOYAGE_API_KEY, OSLIFE_USER_ID, COGNEE_WORKER_URL/
+ * COGNEE_WORKER_SECRET (both optional — a no-op without them).
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { cogneeRemember } from "../_shared/cognee.ts";
 import { embed } from "../_shared/embeddings.ts";
 import { renderNote, type Frontmatter } from "../_shared/frontmatter.ts";
 import { CORS, SUPABASE_SERVICE_KEY, SUPABASE_URL, USER_ID, corsPreflight, jsonResponder } from "../_shared/http.ts";
@@ -121,6 +123,11 @@ Deno.serve(async (req) => {
             upsert: true,
           })
           .catch(() => {});
+        // Same ride-along for the cognee knowledge-graph worker — called
+        // in-process (not over HTTP to the cognee-remember Edge Function)
+        // since this function has no per-request user JWT to send through
+        // Supabase's gateway, same reasoning as the direct Storage write above.
+        await cogneeRemember(text).catch(() => {});
       }
     }
   }

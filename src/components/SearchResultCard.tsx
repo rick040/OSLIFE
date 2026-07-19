@@ -1,6 +1,6 @@
 import type { SearchCardData } from '../heyra/cards'
 import { DomainChip } from './ui'
-import { Search, ArrowRight } from 'lucide-react'
+import { Search, ArrowRight, Network } from 'lucide-react'
 
 /** The Zoeken reply: whatever matched the query, pulled live from the one memory. */
 export default function SearchResultCard({ data, onNav }: { data: SearchCardData; onNav?: (v: string) => void }) {
@@ -12,6 +12,12 @@ export default function SearchResultCard({ data, onNav }: { data: SearchCardData
           Gevonden voor “{data.query}”
         </span>
       </div>
+      {data.graphInsight && (
+        <div className="mx-3 mt-3 flex items-start gap-2 rounded-xl bg-sunken px-2.5 py-2">
+          <Network className="h-3.5 w-3.5 text-muted mt-0.5 shrink-0" />
+          <p className="text-xs text-ink-soft">{data.graphInsight}</p>
+        </div>
+      )}
       <div className="p-3">
         {data.results.length ? (
           <div className="space-y-1.5">

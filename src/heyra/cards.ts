@@ -20,6 +20,8 @@ export interface SearchResultItem {
 export interface SearchCardData {
   query: string
   results: SearchResultItem[]
+  /** Best-effort graph-aware insight from the cognee worker — absent when it isn't configured/reachable. */
+  graphInsight?: string | null
 }
 
 export interface ChartPoint {

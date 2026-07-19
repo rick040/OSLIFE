@@ -33,6 +33,10 @@ Publiek/veilig (RLS beschermt de data).
 | `GBK_BASE_URL` *(optioneel)* | gbk-overview | `https://www.geldropbuurtkaart.nl` (default) |
 | `ANTHROPIC_API_KEY` | heyra-brain | console.anthropic.com → API keys. HEYRA's agents (src/heyra/agents/) en de nachtelijke Reflect-narrative vallen terug op de bestaande rule-based tekst als deze niet gezet is — de app breekt nooit zonder deze key. |
 | `VOYAGE_API_KEY` *(optioneel)* | embed-memory, embed-memory-backfill, memory-search | dash.voyageai.com → API keys. Voedt search_memory()'s vector-recall (naast de bestaande full-text). Zonder deze key blijft alles zoals nu: puur full-text zoeken, geen embeddings. |
+| `BRAINDUMP_WORKER_URL` *(optioneel)* | braindump-ingest | Publieke URL van de braindump media-worker (`integrations/braindump-worker/`). Zonder deze URL valt media (video/audio) terug op metadata-only (oEmbed/OpenGraph) — de app breekt nooit zonder. |
+| `WORKER_SECRET` *(optioneel, samen met bovenstaande)* | braindump-ingest | **zelf verzinnen** (random) — zelfde waarde als in de worker's eigen `.env`. |
+| `COGNEE_WORKER_URL` *(optioneel)* | cognee-remember, cognee-search, embed-memory-backfill | Publieke URL van de cognee-worker's Caddy-proxy (`integrations/cognee-worker/`), poort 8080. Zonder deze URL zijn cognee-remember/cognee-search stille no-ops — HEYRA's Zoeken en alle ingest-paden werken exact zoals nu, zonder kennisgraaf. |
+| `COGNEE_WORKER_SECRET` *(optioneel, samen met bovenstaande)* | cognee-remember, cognee-search, embed-memory-backfill | **zelf verzinnen** (random) — zelfde waarde als `COGNEE_WORKER_SECRET` in de worker's `.env`. |
 | `TELEGRAM_BOT_TOKEN` | notify-tick, telegram-webhook | @BotFather → `/newbot` → token |
 | `TELEGRAM_WEBHOOK_SECRET` | telegram-webhook | **zelf verzinnen** (random) — meegegeven aan `setWebhook` als `secret_token`; Telegram stuurt 'm terug als header `X-Telegram-Bot-Api-Secret-Token` |
 | `CRON_SECRET` | notify-tick | **zelf verzinnen** (random) — ook letterlijk gebruikt in de eenmalige `cron.schedule()`-SQL (niet elders opgeslagen, nooit ingevuld committen) |
@@ -145,7 +149,7 @@ shared-secret patroon als notify-tick.
 
 ## Zelf verzinnen vs. opzoeken
 
-- **Verzinnen** (`openssl rand -base64 32`): `INGEST_SECRET`, `WALLET_WEBHOOK_SECRET`, `SYNC_SECRET`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`.
+- **Verzinnen** (`openssl rand -base64 32`): `INGEST_SECRET`, `WALLET_WEBHOOK_SECRET`, `SYNC_SECRET`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, `WORKER_SECRET`, `COGNEE_WORKER_SECRET`.
 - **Opzoeken**: `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `OSLIFE_USER_ID`, `NOTION_TOKEN`, `GBK_API_KEY`, `TELEGRAM_BOT_TOKEN`, `VOYAGE_API_KEY`.
 
 ## Per databron: welke secrets heb je nodig
@@ -164,3 +168,5 @@ shared-secret patroon als notify-tick.
 | Telegram-meldingen | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, `OSLIFE_USER_ID`, `VITE_TELEGRAM_BOT_USERNAME` |
 | Vector memory (search_memory hybrid recall) | `VOYAGE_API_KEY` (optioneel — zonder deze key blijft alles full-text zoals nu), `CRON_SECRET`, `OSLIFE_USER_ID` (voor de backfill) |
 | Vault-notes (Markdown-spiegel van braindump/interaction/summary/message) | geen eigen secret — materialize-note schrijft alleen naar Storage |
+| Braindump media-worker (video/audio transcriptie) | `BRAINDUMP_WORKER_URL`, `WORKER_SECRET` (beide optioneel — zonder valt media terug op metadata-only) |
+| cognee kennisgraaf (integrations/cognee-worker/) | `COGNEE_WORKER_URL`, `COGNEE_WORKER_SECRET` (beide optioneel — zonder blijven ingest/zoeken exact zoals nu, zonder graaf) |

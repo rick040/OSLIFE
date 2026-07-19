@@ -1,0 +1,15 @@
+{
+	auto_https off
+}
+
+:8080 {
+	@authorized {
+		header Authorization "Bearer {$COGNEE_WORKER_SECRET}"
+	}
+	handle @authorized {
+		reverse_proxy cognee:8000
+	}
+	handle {
+		respond 401
+	}
+}
