@@ -16,7 +16,7 @@
  * createInteractionRow, createMessageRow) plus embed-memory-backfill's
  * catch-all sweep for summaries (built by the non-HTTP build_summaries()).
  *
- *   request:  { "source": "braindump"|"interaction"|"summary"|"message",
+ *   request:  { "source": "braindump"|"interaction"|"summary"|"message"|"business_idea",
  *               "id": "<uuid>", "frontmatter": {...}, "body": "..." }
  *   response: { "ok": true } | { "ok": false, "error": "<message>" }
  *
@@ -31,7 +31,7 @@ import { CORS, SUPABASE_URL, bearerToken, corsPreflight, jsonResponder } from ".
 
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-const VALID_SOURCES = new Set(["braindump", "interaction", "summary", "message"]);
+const VALID_SOURCES = new Set(["braindump", "interaction", "summary", "message", "business_idea"]);
 
 const json = jsonResponder(CORS);
 

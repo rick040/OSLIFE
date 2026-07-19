@@ -29,6 +29,7 @@ const SOURCE_LABEL: Record<string, string> = {
   interaction: "contactmoment",
   summary: "periode-samenvatting",
   message: "bericht",
+  business_idea: "business-idee",
 };
 
 const json = jsonResponder(CORS);

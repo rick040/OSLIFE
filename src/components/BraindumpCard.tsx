@@ -195,7 +195,7 @@ export function BraindumpDetail({
  * ingest pipeline actually emits: #/##/### headings, - bullets, [links](url),
  * **bold**, and paragraphs. Everything else renders as plain text.
  */
-function Markdown({ text }: { text: string }) {
+export function Markdown({ text }: { text: string }) {
   const lines = text.split('\n')
   const out: JSX.Element[] = []
   let list: string[] = []

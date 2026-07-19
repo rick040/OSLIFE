@@ -49,6 +49,8 @@ import type {
   AdminItem,
   HealthCondition,
   MemorySummary,
+  BusinessIdea,
+  IdeaSource,
 } from './types'
 import { vendorKey, isUntagged } from './finance/categories'
 import { categorizeVendor } from './heyra/agents/vendorAgent'
@@ -180,6 +182,11 @@ import {
   fetchHealthConditions,
   fetchSummaries,
   forgetRecord as forgetRecordApi,
+  fetchBusinessIdeas,
+  insertBusinessIdeaRow,
+  updateBusinessIdeaRow,
+  deleteBusinessIdeaRow,
+  invokeIdeaElaborate,
 } from './lib/supabase'
 
 // The single Realtime channel opened by loadLiveData(). Held at module scope so
@@ -251,6 +258,7 @@ interface State {
   adminItems: AdminItem[]
   healthConditions: HealthCondition[]
   summaries: MemorySummary[]
+  businessIdeas: BusinessIdea[]
   settings: AppSettings
   dataSource: 'mock' | 'live'
   isLoading: boolean
@@ -280,6 +288,14 @@ interface State {
   // (matched on meta.conversationId) so re-uploading the same export is safe.
   importClaudeConversations: (records: ClaudeImportRecord[]) => Promise<{ imported: number; skipped: number }>
 
+  // Strategie HQ — business ideas. A voice note or typed text becomes a
+  // `pending` row (optimistic temp id → real id), then idea-elaborate fills
+  // in the full analysis server-side. Best-effort, same shape as braindump.
+  captureBusinessIdea: (input: { title: string; source: IdeaSource; rawInput: string; domain?: BusinessIdea['domain'] }) => Promise<BusinessIdea | null>
+  updateBusinessIdea: (id: string, patch: Partial<BusinessIdea>) => void
+  deleteBusinessIdea: (id: string) => void
+  retryIdeaElaboration: (id: string) => void
+  toggleIdeaMilestone: (id: string, index: number) => void
 
   // HEYRA Taakmaker — commit a parsed task draft as an open loop (thread)
   addTask: (draft: TaskDraft) => string
@@ -508,6 +524,7 @@ const seed = () => ({
   adminItems: [] as AdminItem[],
   healthConditions: [] as HealthCondition[],
   summaries: [] as MemorySummary[],
+  businessIdeas: [] as BusinessIdea[],
   settings: { hourlyRate: 0 } as AppSettings,
   dataSource: 'mock' as const,
   isLoading: true,
@@ -530,7 +547,7 @@ const SEED_WHEN_FALSY = ['threads', 'nudge', 'dogProfile'] as const
 const EMPTY_WHEN_FALSY = [
   'projectMilestones', 'projectTasks', 'projectHours', 'projectInvoices',
   'projectActivity', 'checkins', 'learnedFacts', 'vendorTags', 'braindumpEntries',
-  'goalProposals', 'weekPlan',
+  'goalProposals', 'weekPlan', 'businessIdeas',
 ] as const
 
 /**
@@ -793,6 +810,82 @@ export const useStore = create<State>()(
           }))
         }
         return { imported, skipped: records.length - fresh.length }
+      },
+
+      captureBusinessIdea: async (input) => {
+        const now = new Date().toISOString()
+        const tempId = uid('idea')
+        const optimistic: BusinessIdea = {
+          id: tempId,
+          createdAt: now,
+          updatedAt: now,
+          source: input.source,
+          rawInput: input.rawInput,
+          elaborationStatus: 'pending',
+          error: null,
+          status: 'idea',
+          title: input.title,
+          overview: null,
+          domain: input.domain ?? 'cross',
+          tags: [],
+          feasibilityScore: null,
+          feasibilityReasoning: null,
+          timeline: null,
+          milestones: [],
+          financials: { investmentNeeded: null, revenueProjection: [], costs: [], breakEven: null, notes: null },
+          risks: [],
+          opportunities: [],
+          swot: { strengths: [], weaknesses: [], opportunities: [], threats: [] },
+          markdown: null,
+          tier: 'normaal',
+        }
+        set((s) => ({
+          businessIdeas: [optimistic, ...s.businessIdeas],
+          activity: pushSignal(s.activity, {
+            text: `Nieuw idee vastgelegd → ${input.title}`,
+            domain: input.domain ?? 'cross',
+            loop: 'fast',
+          }),
+        }))
+
+        const row = await insertBusinessIdeaRow(input)
+        if (!row) return null
+        set((s) => ({
+          businessIdeas: s.businessIdeas.map((x) => (x.id === tempId ? row : x)),
+        }))
+        void invokeIdeaElaborate(row.id)
+        return row
+      },
+
+      updateBusinessIdea: (id, patch) => {
+        set((s) => ({
+          businessIdeas: s.businessIdeas.map((x) => (x.id === id ? { ...x, ...patch } : x)),
+        }))
+        void updateBusinessIdeaRow(id, patch)
+      },
+
+      deleteBusinessIdea: (id) => {
+        set((s) => ({ businessIdeas: s.businessIdeas.filter((x) => x.id !== id) }))
+        void deleteBusinessIdeaRow(id)
+      },
+
+      retryIdeaElaboration: (id) => {
+        set((s) => ({
+          businessIdeas: s.businessIdeas.map((x) =>
+            x.id === id ? { ...x, elaborationStatus: 'pending', error: null } : x,
+          ),
+        }))
+        void invokeIdeaElaborate(id)
+      },
+
+      toggleIdeaMilestone: (id, index) => {
+        const idea = get().businessIdeas.find((x) => x.id === id)
+        if (!idea) return
+        const milestones = idea.milestones.map((m, i) => (i === index ? { ...m, done: !m.done } : m))
+        set((s) => ({
+          businessIdeas: s.businessIdeas.map((x) => (x.id === id ? { ...x, milestones } : x)),
+        }))
+        void updateBusinessIdeaRow(id, { milestones })
       },
 
       learnFromExchange: async (userText, heyraText) => {
@@ -1970,7 +2063,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, people, interactions, adminItems, healthConditions, summaries, cleaningLog] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, people, interactions, adminItems, healthConditions, summaries, cleaningLog, businessIdeas] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -1989,6 +2082,7 @@ export const useStore = create<State>()(
             fetchHealthConditions(),
             fetchSummaries(),
             fetchCleaningLog(),
+            fetchBusinessIdeas(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -2032,6 +2126,7 @@ export const useStore = create<State>()(
             healthConditions,
             summaries,
             cleaningLog,
+            businessIdeas,
             dataSource: 'live',
             isLoading: false,
           })
@@ -2085,6 +2180,7 @@ export const useStore = create<State>()(
           { table: 'interaction', onChange: () => fetchInteractions().then((d) => set({ interactions: d })) },
           { table: 'admin_item', onChange: () => fetchAdminItems().then((d) => set({ adminItems: d })) },
           { table: 'health_condition', onChange: () => fetchHealthConditions().then((d) => set({ healthConditions: d })) },
+          { table: 'business_ideas', onChange: () => fetchBusinessIdeas().then((d) => set({ businessIdeas: d })) },
         ]
         // Tear down any channel from a previous loadLiveData() before opening a
         // new one — otherwise each auth event leaks another full subscription.

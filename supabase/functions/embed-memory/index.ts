@@ -7,7 +7,7 @@
  * search_memory()'s hybrid recall has something to match against. Silently a
  * no-op when VOYAGE_API_KEY isn't set — the caller never has to care.
  *
- *   request:  { "source": "braindump"|"interaction"|"summary", "id": "<uuid>", "text": "..." }
+ *   request:  { "source": "braindump"|"interaction"|"summary"|"business_idea", "id": "<uuid>", "text": "..." }
  *   response: { "ok": true } | { "ok": false, "error": "<message>" }
  *
  * Deploy:
@@ -25,6 +25,7 @@ const TABLE_BY_SOURCE: Record<string, string> = {
   braindump: "braindump_entries",
   interaction: "interaction",
   summary: "summaries",
+  business_idea: "business_ideas",
 };
 
 const json = jsonResponder(CORS);

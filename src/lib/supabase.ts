@@ -40,6 +40,8 @@ import type {
   HealthCondition,
   MemorySummary,
   MemoryHit,
+  BusinessIdea,
+  IdeaSource,
 } from '../types'
 import { today, habitStreak } from '../domains'
 import type { LearnedFact } from '../heyra/learning'
@@ -1852,4 +1854,147 @@ export async function searchMemory(query: string, limit = 8): Promise<MemoryHit[
     ts: (r.ts as string) ?? '',
     rank: Number(r.rank ?? 0),
   }))
+}
+
+// ── Strategie HQ: business ideas ─────────────────────────────────────────────
+// A voice note or typed text becomes one row, then idea-elaborate (an edge
+// function, invoked fire-and-forget like braindump-ingest) fills in every
+// analysis field. jsonb columns default to '[]'/'{}' server-side, but a idea
+// stuck in 'pending'/'processing' has them null — the mapper below always
+// returns array/object shapes so the UI never has to null-check.
+
+const BUSINESS_IDEA_COLS =
+  'id,created_at,updated_at,source,raw_input,elaboration_status,error,status,title,overview,domain,tags,feasibility_score,feasibility_reasoning,timeline,milestones,financials,risks,opportunities,swot,markdown,tier'
+
+function mapBusinessIdeaRow(r: Record<string, unknown>): BusinessIdea {
+  const financials = (r.financials as Record<string, unknown>) ?? {}
+  const swot = (r.swot as Record<string, unknown>) ?? {}
+  return {
+    id: r.id as string,
+    createdAt: (r.created_at as string) ?? new Date().toISOString(),
+    updatedAt: (r.updated_at as string) ?? (r.created_at as string) ?? new Date().toISOString(),
+    source: ((r.source as BusinessIdea['source']) ?? 'text'),
+    rawInput: (r.raw_input as string) ?? null,
+    elaborationStatus: ((r.elaboration_status as BusinessIdea['elaborationStatus']) ?? 'pending'),
+    error: (r.error as string) ?? null,
+    status: ((r.status as BusinessIdea['status']) ?? 'idea'),
+    title: (r.title as string) ?? 'Nieuw idee',
+    overview: (r.overview as string) ?? null,
+    domain: (r.domain as BusinessIdea['domain']) ?? 'cross',
+    tags: (r.tags as string[]) ?? [],
+    feasibilityScore: (r.feasibility_score as number) ?? null,
+    feasibilityReasoning: (r.feasibility_reasoning as string) ?? null,
+    timeline: (r.timeline as string) ?? null,
+    milestones: (r.milestones as BusinessIdea['milestones']) ?? [],
+    financials: {
+      investmentNeeded: (financials.investmentNeeded as number) ?? null,
+      revenueProjection: (financials.revenueProjection as BusinessIdea['financials']['revenueProjection']) ?? [],
+      costs: (financials.costs as BusinessIdea['financials']['costs']) ?? [],
+      breakEven: (financials.breakEven as string) ?? null,
+      notes: (financials.notes as string) ?? null,
+    },
+    risks: (r.risks as BusinessIdea['risks']) ?? [],
+    opportunities: (r.opportunities as BusinessIdea['opportunities']) ?? [],
+    swot: {
+      strengths: (swot.strengths as string[]) ?? [],
+      weaknesses: (swot.weaknesses as string[]) ?? [],
+      opportunities: (swot.opportunities as string[]) ?? [],
+      threats: (swot.threats as string[]) ?? [],
+    },
+    markdown: (r.markdown as string) ?? null,
+    tier: (r.tier as BusinessIdea['tier']) ?? 'normaal',
+  }
+}
+
+export async function fetchBusinessIdeas(): Promise<BusinessIdea[]> {
+  return fetchRows('business_ideas', BUSINESS_IDEA_COLS, { column: 'created_at', ascending: false, limit: 300 }, mapBusinessIdeaRow)
+}
+
+/** Insert a fresh idea row (elaboration_status/status default server-side) and return it. */
+export async function insertBusinessIdeaRow(input: {
+  title: string
+  source: IdeaSource
+  rawInput: string
+  domain?: BusinessIdea['domain']
+}): Promise<BusinessIdea | null> {
+  const user_id = await currentUserId()
+  if (!user_id) return null
+  const { data, error } = await supabase
+    .from('business_ideas')
+    .insert({
+      user_id,
+      title: input.title,
+      source: input.source,
+      raw_input: input.rawInput,
+      domain: input.domain ?? 'cross',
+    })
+    .select(BUSINESS_IDEA_COLS)
+    .single()
+  warnWrite('business_ideas.insert', error)
+  return data ? mapBusinessIdeaRow(data) : null
+}
+
+const BUSINESS_IDEA_COL_MAP: Record<string, string> = {
+  title: 'title',
+  overview: 'overview',
+  domain: 'domain',
+  tags: 'tags',
+  status: 'status',
+  feasibilityScore: 'feasibility_score',
+  feasibilityReasoning: 'feasibility_reasoning',
+  timeline: 'timeline',
+  milestones: 'milestones',
+  financials: 'financials',
+  risks: 'risks',
+  opportunities: 'opportunities',
+  swot: 'swot',
+  markdown: 'markdown',
+  tier: 'tier',
+}
+
+/** Manual edit from the detail/edit form — only the fields users can actually change. */
+export async function updateBusinessIdeaRow(
+  id: string,
+  patch: Partial<
+    Pick<
+      BusinessIdea,
+      | 'title'
+      | 'overview'
+      | 'domain'
+      | 'tags'
+      | 'status'
+      | 'feasibilityScore'
+      | 'feasibilityReasoning'
+      | 'timeline'
+      | 'milestones'
+      | 'financials'
+      | 'risks'
+      | 'opportunities'
+      | 'swot'
+      | 'markdown'
+      | 'tier'
+    >
+  >,
+): Promise<void> {
+  await updateRow('business_ideas', id, patch, BUSINESS_IDEA_COL_MAP, { updated_at: new Date().toISOString() })
+}
+
+export async function deleteBusinessIdeaRow(id: string): Promise<void> {
+  await deleteRow('business_ideas', id)
+  if (isDbId(id)) {
+    void supabase.storage.from('vault').remove([`business_idea/${id}.md`]).catch(() => {})
+  }
+}
+
+/**
+ * Fire the idea-elaborate pipeline for an entry. Best-effort, same resilience
+ * contract as invokeBraindumpIngest(): on failure the row simply stays
+ * 'pending'/'processing' and the UI offers a retry.
+ */
+export async function invokeIdeaElaborate(ideaId: string): Promise<void> {
+  try {
+    await supabase.functions.invoke('idea-elaborate', { body: { entryId: ideaId } })
+  } catch (err) {
+    console.warn('[OSLIFE] idea-elaborate invoke failed', err)
+  }
 }

@@ -1,79 +1,64 @@
-import { useEffect, useState } from 'react'
-import { ExternalLink, RefreshCw } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+} from 'recharts'
+import {
+  Plus, Mic, MicOff, Loader2, AlertTriangle, RotateCcw, Trash2, X, Pencil, Check,
+  Sparkles, TrendingUp, Target, ShieldAlert, Lightbulb, Grid2x2,
+} from 'lucide-react'
 import type { View } from '../nav'
-import { supabase } from '../lib/supabase'
-
-const PY_SALARY  = 2200
-const TARGET_5K  = 5000
-const TARGET_10K = 10000
-
-const WEEK_FOCUS = [
-  { day: 'Di', blocks: ['Buurtkaart dag — bel 5-7 lokale bedrijven', 'Doel: spots 2-8 verkopen voor 15 jul'] },
-  { day: 'Wo', blocks: ['The Eyes + Dakmeester dag — deals, leads, content'] },
-  { day: 'Ma/Do/Vr avonden', blocks: ['Follow-ups, Notion updaten, content batchen'] },
-]
-
-const ROADMAP = [
-  { label: 'Maand 1 — Juli 2026', income: 3900, detail: 'PY €2.200 + GBK €1.200 + Dakmeester €500' },
-  { label: 'Maand 3 — Sep 2026',  income: 6500, detail: 'PY + GBK €2.100 + Dakmeester €1.200 + Eyes €1.000' },
-  { label: 'Maand 6 — Dec 2026',  income: 9200, detail: 'PY + alle projecten op stoom' },
-]
-
-// Fallback static project data used when the edge function is unavailable
-const FALLBACK_PROJECTS = [
-  { key: 'buurtkaart' as View, name: 'Geldrop Buurtkaart', emoji: '🗺️', phase: 'EDITIE 1 - SALES FASE',  alert: '1 / 12 spots gevuld. Doel: 12/12 voor 15 jul.', focus: 'Bel 5-7 lokale bedrijven per dinsdag.', notionUrl: 'https://app.notion.com/p/Geldrop-Buurtkaart-268ddc8e920880a987a0ff40d2c19a7c' },
-  { key: 'eyes'       as View, name: 'The Eyes',           emoji: '👁️', phase: 'INVESTMENT FASE',          alert: 'Deal nog niet getekend. Brandon vrij na 27 jun.',  focus: 'WhatsApp Brandon nu. Deal vóór 5 juli.',          notionUrl: 'https://app.notion.com/p/THE-EYES-MANAGEMENT-386ddc8e920880538271f85f881577ac' },
-  { key: 'dakmeester' as View, name: 'Dakmeester',         emoji: '🏠', phase: 'DEAL FASE',                alert: 'Website live. Deal nog niet getekend.',             focus: 'Meeting plannen met dakdekker.',                  notionUrl: 'https://app.notion.com/p/Dakmeester-386ddc8e920880cf8cc7d39b4cd07e7a' },
-]
-
-interface HqProject {
-  key:       string
-  name:      string
-  emoji:     string
-  phase:     string
-  alert:     string
-  focus:     string
-  notionUrl: string
-}
-
-const PHASE_TONE: Record<string, { bg: string; fg: string }> = {
-  'EDITIE 1':  { bg: '#D1FAE5', fg: '#065F46' },
-  'SALES FASE':{ bg: '#D1FAE5', fg: '#065F46' },
-  INVESTMENT:  { bg: '#FEF3C7', fg: '#92400E' },
-}
-function phaseTone(p: string) {
-  for (const [k, t] of Object.entries(PHASE_TONE)) if (p.toUpperCase().includes(k)) return t
-  return { bg: '#F4F5EE', fg: '#5C6150' }
-}
-
+import type { BusinessIdea, IdeaLifecycleStatus, ImpactLevel, Domain } from '../types'
+import { useStore } from '../store'
+import { DOMAIN_META, DOMAIN_HEX, fmtDate } from '../domains'
 import { eur0 as eur } from '../lib/format'
+import { DomainChip, Ring, Overlay, ConfirmDialog, Empty, SetupHint } from '../components/ui'
+import { CHART_TIP, AXIS_TICK_10 } from '../components/chart'
+import { Markdown } from '../components/BraindumpCard'
 
-export default function StrategieHQ({ onNav }: { onNav?: (v: View) => void }) {
-  const [projects, setProjects] = useState<HqProject[]>(FALLBACK_PROJECTS)
-  const [loading, setLoading]   = useState(false)
-  const [lastSync, setLastSync] = useState<string | null>(null)
+const STATUS_LABEL: Record<IdeaLifecycleStatus, string> = {
+  idea: 'Idee', active: 'Actief', parked: 'Geparkeerd', archived: 'Gearchiveerd',
+}
+const STATUS_HEX: Record<IdeaLifecycleStatus, string> = {
+  idea: '#8C9080', active: '#3F7E52', parked: '#B98A2E', archived: '#5C6150',
+}
+const IMPACT_LABEL: Record<ImpactLevel, string> = { low: 'laag', medium: 'gemiddeld', high: 'hoog' }
+/** Risk impact: high = bad (red). Opportunity potential: high = good (green). */
+const RISK_HEX: Record<ImpactLevel, string> = { low: '#3F7E52', medium: '#B98A2E', high: '#B94A3F' }
+const POTENTIAL_HEX: Record<ImpactLevel, string> = { low: '#8C9080', medium: '#B98A2E', high: '#3F7E52' }
 
-  const loadHq = async () => {
-    setLoading(true)
-    try {
-      const { data, error } = await supabase.functions.invoke('notion-hq')
-      if (!error && data?.projects?.length) {
-        setProjects(data.projects)
-        setLastSync(new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }))
-      }
-    } catch {
-      // keep fallback data
-    } finally {
-      setLoading(false)
-    }
-  }
+function feasibilityStroke(score: number | null): string {
+  if (score === null) return 'stroke-line'
+  if (score >= 70) return 'stroke-buurtkaart'
+  if (score >= 40) return 'stroke-personal'
+  return 'stroke-cross'
+}
 
-  useEffect(() => { loadHq() }, [])
+type SpeechRec = { start: () => void; stop: () => void; onresult: ((e: any) => void) | null; onend: (() => void) | null; lang: string; interimResults: boolean; continuous: boolean }
 
-  const projectIncome = 0
-  const total = PY_SALARY + projectIncome
-  const pct5  = Math.min(100, Math.round((total / TARGET_5K) * 100))
-  const pct10 = Math.min(100, Math.round((total / TARGET_10K) * 100))
+export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) {
+  const businessIdeas = useStore((s) => s.businessIdeas)
+  const captureBusinessIdea = useStore((s) => s.captureBusinessIdea)
+  const updateBusinessIdea = useStore((s) => s.updateBusinessIdea)
+  const deleteBusinessIdea = useStore((s) => s.deleteBusinessIdea)
+  const retryIdeaElaboration = useStore((s) => s.retryIdeaElaboration)
+  const toggleIdeaMilestone = useStore((s) => s.toggleIdeaMilestone)
+
+  const [statusFilter, setStatusFilter] = useState<IdeaLifecycleStatus | 'all'>('all')
+  const [newOpen, setNewOpen] = useState(false)
+  const [detailId, setDetailId] = useState<string | null>(null)
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: businessIdeas.length }
+    for (const i of businessIdeas) c[i.status] = (c[i.status] ?? 0) + 1
+    return c
+  }, [businessIdeas])
+
+  const filtered = useMemo(
+    () => (statusFilter === 'all' ? businessIdeas : businessIdeas.filter((i) => i.status === statusFilter)),
+    [businessIdeas, statusFilter],
+  )
+
+  const detail = detailId ? businessIdeas.find((i) => i.id === detailId) ?? null : null
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
@@ -82,154 +67,558 @@ export default function StrategieHQ({ onNav }: { onNav?: (v: View) => void }) {
           <div className="text-xs font-semibold uppercase tracking-wider text-faint">Strategie</div>
           <h1 className="text-3xl font-bold tracking-tight leading-none">HQ.</h1>
           <p className="text-sm text-muted mt-1.5">
-            Strategie overzicht
-            {lastSync && <span className="text-faint"> · gesynchroniseerd {lastSync}</span>}
+            Al je business ideeën — uitgewerkt door HEYRA tot een volledige analyse.
           </p>
         </div>
-        <button
-          onClick={loadHq}
-          disabled={loading}
-          className="btn-ghost !p-2 mt-1 text-faint"
-          title="Ververs Notion data"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+        <button onClick={() => setNewOpen(true)} className="btn-primary !py-2 text-sm shrink-0">
+          <Plus className="h-4 w-4" /> Nieuw idee
         </button>
       </div>
 
-      {/* income tracker */}
-      <div className="card p-5">
-        <div className="text-xs font-semibold uppercase tracking-wider text-faint mb-3">Inkomen tracker</div>
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-3xl font-bold tracking-tight">{eur(total)}</span>
-          <span className="text-sm text-faint">/maand</span>
-        </div>
-        <div className="flex flex-wrap gap-2 mt-3 mb-4">
-          <span className="chip bg-sunken text-muted">ParkingYou €2.200</span>
-          {projectIncome > 0 && <span className="chip bg-sunken text-muted">Projecten {eur(projectIncome)}</span>}
-        </div>
-        <Bar label="Doel €5.000"  pct={pct5}  sub={`Nog ${eur(TARGET_5K - total)} nodig uit projecten`} />
-        <div className="h-3" />
-        <Bar label="Doel €10.000" pct={pct10} />
+      {/* status filter */}
+      <div className="flex flex-wrap gap-1.5">
+        {(['all', 'idea', 'active', 'parked', 'archived'] as const).map((s) => (
+          <button
+            key={s}
+            onClick={() => setStatusFilter(s)}
+            className={`chip transition-colors ${statusFilter === s ? 'bg-ink text-canvas' : 'bg-sunken text-muted hover:bg-line'}`}
+          >
+            {s === 'all' ? 'Alle' : STATUS_LABEL[s]}
+            {counts[s] ? <span className="ml-1 opacity-70">{counts[s]}</span> : null}
+          </button>
+        ))}
       </div>
 
-      {/* week focus */}
-      <div>
-        <div className="text-xs font-semibold uppercase tracking-wider text-faint mb-2.5">Focus deze week</div>
-        <div className="space-y-2">
-          {WEEK_FOCUS.map((f) => (
-            <div key={f.day} className="card p-3.5 flex gap-3 items-start">
-              <div className="min-w-[60px] text-sm font-bold text-personal-deep">{f.day}</div>
-              <div className="flex-1 space-y-1">
-                {f.blocks.map((b, i) => (
-                  <div key={i} className="text-sm text-muted leading-snug">{b}</div>
-                ))}
-              </div>
-            </div>
+      {/* list */}
+      {filtered.length === 0 ? (
+        businessIdeas.length === 0 ? (
+          <SetupHint icon={Sparkles} title="Nog geen ideeën vastgelegd" cta="Nieuw idee" onCta={() => setNewOpen(true)}>
+            Spreek een idee in of typ het uit — HEYRA werkt het meteen uit tot een volledige strategische analyse
+            met haalbaarheid, financiën, risico's en SWOT.
+          </SetupHint>
+        ) : (
+          <Empty>Geen ideeën in deze status.</Empty>
+        )
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((idea) => (
+            <IdeaCard key={idea.id} idea={idea} onOpen={() => setDetailId(idea.id)} />
           ))}
         </div>
-      </div>
+      )}
 
-      {/* live project cards */}
-      <div>
-        <div className="text-xs font-semibold uppercase tracking-wider text-faint mb-2.5">
-          Actieve projecten
-          {loading && <span className="ml-2 text-faint font-normal normal-case">laden uit Notion…</span>}
-        </div>
-        <div className="space-y-3.5">
-          {projects.map((p) => {
-            const tone = phaseTone(p.phase)
-            return (
-              <div key={p.key} className="card p-4 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="text-xl">{p.emoji}</span>
-                      <span className="font-bold">{p.name}</span>
-                    </div>
-                    <span
-                      className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold"
-                      style={{ background: tone.bg, color: tone.fg }}
-                    >
-                      {p.phase || '–'}
-                    </span>
-                  </div>
-                </div>
+      {newOpen && (
+        <NewIdeaModal
+          onClose={() => setNewOpen(false)}
+          onSubmit={async (input) => {
+            const row = await captureBusinessIdea(input)
+            setNewOpen(false)
+            if (row) setDetailId(row.id)
+          }}
+        />
+      )}
 
-                {p.alert && (
-                  <div className="bg-sunken rounded-xl px-3 py-2.5 text-[13px] text-ink-soft leading-relaxed border-l-[3px] border-cross">
-                    {p.alert}
-                  </div>
-                )}
-
-                {p.focus && p.focus !== p.alert && (
-                  <div className="bg-sunken rounded-xl px-3 py-2.5 text-[13px] text-muted leading-relaxed border-l-[3px] border-personal">
-                    {p.focus}
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => onNav?.(p.key as View)}
-                    className="flex-1 btn-ghost !py-2 text-xs"
-                  >
-                    Open in app
-                  </button>
-                  <a
-                    href={p.notionUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 btn-primary !py-2 text-xs flex items-center justify-center gap-1"
-                  >
-                    Notion <ExternalLink className="h-3 w-3" />
-                  </a>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
-      {/* roadmap */}
-      <div>
-        <div className="text-xs font-semibold uppercase tracking-wider text-faint mb-2.5">Inkomen roadmap</div>
-        <div className="card divide-y divide-line">
-          {ROADMAP.map((m) => (
-            <div key={m.label} className="flex items-center justify-between gap-3 p-4">
-              <div>
-                <div className="text-sm font-semibold">{m.label}</div>
-                <div className="text-xs text-faint">{m.detail}</div>
-              </div>
-              <div className="text-xl font-bold tracking-tight shrink-0">{eur(m.income)}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* never again */}
-      <div className="rounded-3xl p-4" style={{ background: '#F5ECD4', border: '1px solid #C6A05B' }}>
-        <div className="text-sm font-bold text-personal-deep mb-1.5">Wat je nooit meer doet</div>
-        <div className="text-[13px] text-ink-soft leading-relaxed">
-          Geen losse freelance klussen · Geen eBooks of kleine grafische opdrachten · Geen klanten waarbij je al irritatie voelt bij eerste contact · Geen projecten die je niet volledig zelf controleert.
-        </div>
-      </div>
+      {detail && (
+        <IdeaDetailModal
+          idea={detail}
+          onClose={() => setDetailId(null)}
+          onUpdate={(patch) => updateBusinessIdea(detail.id, patch)}
+          onDelete={() => { deleteBusinessIdea(detail.id); setDetailId(null) }}
+          onRetry={() => retryIdeaElaboration(detail.id)}
+          onToggleMilestone={(idx) => toggleIdeaMilestone(detail.id, idx)}
+        />
+      )}
     </div>
   )
 }
 
-function Bar({ label, pct, sub }: { label: string; pct: number; sub?: string }) {
+// ── list card ────────────────────────────────────────────────────────────────
+
+function IdeaCard({ idea, onOpen }: { idea: BusinessIdea; onOpen: () => void }) {
+  const busy = idea.elaborationStatus === 'pending' || idea.elaborationStatus === 'processing'
   return (
-    <div>
-      <div className="flex justify-between mb-1.5">
-        <span className="text-xs text-muted font-medium">{label}</span>
-        <span className="text-xs text-faint tabular-nums">{pct}%</span>
-      </div>
-      <div className="h-2 rounded-full bg-sunken overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-500"
-          style={{ width: `${pct}%`, background: 'linear-gradient(90deg,#C6A05B,#C58392)' }}
+    <button onClick={onOpen} className="card p-4 w-full text-left flex items-center gap-3.5 hover:border-buurtkaart/40 transition-colors">
+      {idea.elaborationStatus === 'ready' ? (
+        <Ring
+          value={(idea.feasibilityScore ?? 0) / 100}
+          size={48}
+          stroke={5}
+          color={feasibilityStroke(idea.feasibilityScore)}
+          label={idea.feasibilityScore ?? '–'}
         />
+      ) : (
+        <div className="h-12 w-12 rounded-full bg-sunken flex items-center justify-center shrink-0">
+          {busy ? (
+            <Loader2 className="h-5 w-5 animate-spin text-buurtkaart" />
+          ) : (
+            <AlertTriangle className="h-5 w-5 text-orange-600" />
+          )}
+        </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-ink truncate">{idea.title}</div>
+        <p className="text-xs text-muted line-clamp-1 mt-0.5">
+          {idea.overview ?? idea.rawInput ?? (busy ? 'HEYRA werkt dit idee uit…' : idea.error ?? '')}
+        </p>
+        <div className="flex items-center gap-1.5 mt-1.5">
+          <DomainChip domain={idea.domain} small />
+          <span className="chip text-[10px] px-2 py-0" style={{ color: STATUS_HEX[idea.status], background: `${STATUS_HEX[idea.status]}1f` }}>
+            {STATUS_LABEL[idea.status]}
+          </span>
+          <span className="text-[11px] text-faint ml-auto shrink-0">{fmtDate(idea.createdAt)}</span>
+        </div>
       </div>
-      {sub && <div className="text-[11px] text-faint mt-1">{sub}</div>}
+    </button>
+  )
+}
+
+// ── new idea modal (voice or text → HEYRA elaborates) ─────────────────────────
+
+function NewIdeaModal({
+  onClose,
+  onSubmit,
+}: {
+  onClose: () => void
+  onSubmit: (input: { title: string; source: 'voice' | 'text'; rawInput: string; domain?: Domain }) => Promise<void>
+}) {
+  const [title, setTitle] = useState('')
+  const [text, setText] = useState('')
+  const [domain, setDomain] = useState<Domain>('cross')
+  const [listening, setListening] = useState(false)
+  const [usedVoice, setUsedVoice] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const recRef = useRef<SpeechRec | null>(null)
+
+  const speechSupported =
+    typeof window !== 'undefined' && ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
+
+  function toggleMic() {
+    if (!speechSupported) return
+    if (listening) {
+      recRef.current?.stop()
+      return
+    }
+    const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    const rec: SpeechRec = new Ctor()
+    rec.lang = 'nl-NL'
+    rec.interimResults = true
+    rec.continuous = true
+    rec.onresult = (e: any) => {
+      const transcript = Array.from(e.results).map((r: any) => r[0].transcript).join('')
+      setText(transcript)
+    }
+    rec.onend = () => setListening(false)
+    recRef.current = rec
+    setUsedVoice(true)
+    setListening(true)
+    rec.start()
+  }
+
+  async function submit() {
+    const rawInput = text.trim()
+    if (!rawInput || saving) return
+    setSaving(true)
+    const finalTitle = title.trim() || rawInput.slice(0, 60)
+    await onSubmit({ title: finalTitle, source: usedVoice ? 'voice' : 'text', rawInput, domain })
+  }
+
+  return (
+    <Overlay
+      tone="black"
+      onClose={onClose}
+      className="flex items-end md:items-center justify-center p-0 md:p-4"
+      panelClassName="bg-canvas w-full md:max-w-lg md:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-y-auto shadow-xl"
+    >
+      <div className="sticky top-0 bg-canvas/90 backdrop-blur border-b border-line px-4 py-3 flex items-center gap-2">
+        <Sparkles className="h-4 w-4 text-buurtkaart shrink-0" />
+        <span className="text-sm font-semibold">Nieuw idee</span>
+        <button onClick={onClose} className="ml-auto text-faint hover:text-ink p-1 rounded-lg hover:bg-sunken">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="p-4 space-y-3">
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Korte titel (optioneel — HEYRA verzint er anders zelf één)"
+          className="w-full rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none focus:border-buurtkaart/50"
+        />
+
+        <div className="relative">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={6}
+            placeholder="Vertel je idee — spreek het in of typ het uit. Hoe meer context, hoe scherper de analyse."
+            className="w-full rounded-xl bg-sunken border border-line px-3 py-2.5 pr-11 text-sm outline-none focus:border-buurtkaart/50 resize-none"
+          />
+          {speechSupported && (
+            <button
+              onClick={toggleMic}
+              type="button"
+              className={`absolute top-2 right-2 p-1.5 rounded-lg ${listening ? 'bg-cross text-white animate-pulse-ring' : 'bg-canvas text-muted hover:bg-line'}`}
+              aria-label={listening ? 'Stop opname' : 'Spraakinvoer'}
+            >
+              {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            </button>
+          )}
+        </div>
+
+        <select
+          value={domain}
+          onChange={(e) => setDomain(e.target.value as Domain)}
+          className="w-full rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none"
+        >
+          {(Object.keys(DOMAIN_META) as Domain[]).map((d) => (
+            <option key={d} value={d}>{DOMAIN_META[d].label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="sticky bottom-0 bg-canvas/90 backdrop-blur border-t border-line px-4 py-3 flex justify-end">
+        <button onClick={submit} disabled={!text.trim() || saving} className="btn-primary !py-2 text-sm">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          Laat HEYRA uitwerken
+        </button>
+      </div>
+    </Overlay>
+  )
+}
+
+// ── detail modal: full analysis + edit + delete ───────────────────────────────
+
+type EditableIdea = Pick<
+  BusinessIdea,
+  'title' | 'overview' | 'domain' | 'tags' | 'status' | 'feasibilityScore' | 'timeline' | 'markdown'
+>
+
+function IdeaDetailModal({
+  idea,
+  onClose,
+  onUpdate,
+  onDelete,
+  onRetry,
+  onToggleMilestone,
+}: {
+  idea: BusinessIdea
+  onClose: () => void
+  onUpdate: (patch: Partial<BusinessIdea>) => void
+  onDelete: () => void
+  onRetry: () => void
+  onToggleMilestone: (index: number) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [showFullDoc, setShowFullDoc] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [form, setForm] = useState<EditableIdea>(() => ({
+    title: idea.title, overview: idea.overview, domain: idea.domain, tags: idea.tags,
+    status: idea.status, feasibilityScore: idea.feasibilityScore, timeline: idea.timeline, markdown: idea.markdown,
+  }))
+
+  const busy = idea.elaborationStatus === 'pending' || idea.elaborationStatus === 'processing'
+  const financeData = useMemo(
+    () => idea.financials.revenueProjection.map((r) => ({ name: r.period, omzet: r.amount })),
+    [idea.financials.revenueProjection],
+  )
+  const totalCosts = idea.financials.costs.reduce((sum, c) => sum + c.amount, 0)
+
+  function save() {
+    onUpdate({
+      ...form,
+      tags: typeof form.tags === 'string' ? (form.tags as unknown as string).split(',').map((t) => t.trim()).filter(Boolean) : form.tags,
+    })
+    setEditing(false)
+  }
+
+  return (
+    <Overlay
+      tone="black"
+      onClose={onClose}
+      className="flex items-end md:items-center justify-center p-0 md:p-4"
+      panelClassName="bg-canvas w-full md:max-w-2xl md:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-y-auto shadow-xl"
+    >
+      <div className="sticky top-0 bg-canvas/90 backdrop-blur border-b border-line px-4 py-3 flex items-center gap-2">
+        <DomainChip domain={idea.domain} small />
+        <span className="chip text-[10px] px-2 py-0" style={{ color: STATUS_HEX[idea.status], background: `${STATUS_HEX[idea.status]}1f` }}>
+          {STATUS_LABEL[idea.status]}
+        </span>
+        <div className="ml-auto flex items-center gap-1">
+          {!editing && (
+            <button onClick={() => setEditing(true)} className="text-faint hover:text-ink p-1.5 rounded-lg hover:bg-sunken" title="Bewerken">
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button onClick={onClose} className="text-faint hover:text-ink p-1.5 rounded-lg hover:bg-sunken">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-4">
+        {editing ? (
+          <div className="space-y-2.5">
+            <input
+              value={form.title}
+              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+              className="w-full rounded-xl bg-sunken border border-line px-3 py-2 text-sm font-semibold outline-none focus:border-buurtkaart/50"
+              placeholder="Titel"
+            />
+            <textarea
+              value={form.overview ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, overview: e.target.value }))}
+              rows={3}
+              placeholder="Overzicht"
+              className="w-full rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none focus:border-buurtkaart/50 resize-none"
+            />
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={form.domain}
+                onChange={(e) => setForm((f) => ({ ...f, domain: e.target.value as Domain }))}
+                className="flex-1 rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none"
+              >
+                {(Object.keys(DOMAIN_META) as Domain[]).map((d) => (
+                  <option key={d} value={d}>{DOMAIN_META[d].label}</option>
+                ))}
+              </select>
+              <select
+                value={form.status}
+                onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as IdeaLifecycleStatus }))}
+                className="flex-1 rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none"
+              >
+                {(Object.keys(STATUS_LABEL) as IdeaLifecycleStatus[]).map((s) => (
+                  <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="number" min={0} max={100}
+                value={form.feasibilityScore ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, feasibilityScore: e.target.value === '' ? null : Number(e.target.value) }))}
+                placeholder="Haalbaarheidsscore (0-100)"
+                className="flex-1 rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none focus:border-buurtkaart/50"
+              />
+              <input
+                value={form.timeline ?? ''}
+                onChange={(e) => setForm((f) => ({ ...f, timeline: e.target.value }))}
+                placeholder="Tijdlijn"
+                className="flex-1 rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none focus:border-buurtkaart/50"
+              />
+            </div>
+            <input
+              value={Array.isArray(form.tags) ? form.tags.join(', ') : form.tags}
+              onChange={(e) => setForm((f) => ({ ...f, tags: e.target.value as unknown as string[] }))}
+              placeholder="Tags, komma-gescheiden"
+              className="w-full rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none focus:border-buurtkaart/50"
+            />
+            <textarea
+              value={form.markdown ?? ''}
+              onChange={(e) => setForm((f) => ({ ...f, markdown: e.target.value }))}
+              rows={8}
+              placeholder="Volledig document (markdown)"
+              className="w-full rounded-xl bg-sunken border border-line px-3 py-2 text-xs font-mono outline-none focus:border-buurtkaart/50 resize-none"
+            />
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setEditing(false)} className="flex-1 btn-ghost !py-2 text-sm">Annuleer</button>
+              <button onClick={save} className="flex-1 btn-primary !py-2 text-sm"><Check className="h-4 w-4" /> Opslaan</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <h2 className="text-xl font-bold tracking-tight leading-snug">{idea.title}</h2>
+
+            {idea.elaborationStatus === 'failed' && (
+              <div className="rounded-xl bg-orange-500/10 border border-orange-500/30 p-3 text-sm text-orange-700 flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="font-medium">Uitwerken mislukt</p>
+                  {idea.error && <p className="text-xs mt-0.5 opacity-80">{idea.error}</p>}
+                </div>
+                <button onClick={onRetry} className="btn-ghost !py-1 text-xs shrink-0">
+                  <RotateCcw className="h-3.5 w-3.5" /> Opnieuw
+                </button>
+              </div>
+            )}
+
+            {idea.elaborationStatus === 'pending' && (
+              <div className="rounded-xl bg-sunken border border-line p-3 text-sm text-muted flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin text-buurtkaart" /> Wacht op HEYRA…</span>
+                <button onClick={onRetry} className="btn-ghost !py-1 text-xs shrink-0">Uitwerken</button>
+              </div>
+            )}
+
+            {idea.elaborationStatus === 'processing' && (
+              <div className="flex items-center gap-2 text-sm text-muted">
+                <Loader2 className="h-4 w-4 animate-spin text-buurtkaart" /> HEYRA werkt dit idee uit tot een volledige analyse…
+              </div>
+            )}
+
+            {(busy || idea.elaborationStatus === 'failed') && idea.rawInput && (
+              <div className="text-sm text-ink-soft leading-relaxed italic">"{idea.rawInput}"</div>
+            )}
+
+            {idea.elaborationStatus === 'ready' && (
+              <>
+                {idea.overview && <p className="text-sm text-ink-soft leading-relaxed">{idea.overview}</p>}
+
+                <div className="flex items-center gap-4 card p-3.5">
+                  <Ring value={(idea.feasibilityScore ?? 0) / 100} size={64} stroke={6} color={feasibilityStroke(idea.feasibilityScore)} label={idea.feasibilityScore ?? '–'} sub="/ 100" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold uppercase tracking-wider text-faint mb-1 flex items-center gap-1"><Target className="h-3 w-3" /> Haalbaarheid</div>
+                    {idea.feasibilityReasoning && <p className="text-xs text-muted leading-relaxed">{idea.feasibilityReasoning}</p>}
+                    {idea.timeline && <p className="text-[11px] text-faint mt-1.5">Tijdlijn: {idea.timeline}</p>}
+                  </div>
+                </div>
+
+                {idea.milestones.length > 0 && (
+                  <div>
+                    <SectionLabel icon={TrendingUp}>Mijlpalen</SectionLabel>
+                    <div className="space-y-1.5">
+                      {idea.milestones.map((m, i) => (
+                        <label key={i} className="flex items-center gap-2.5 card p-2.5 cursor-pointer">
+                          <input type="checkbox" checked={m.done} onChange={() => onToggleMilestone(i)} className="h-4 w-4 rounded accent-forest shrink-0" />
+                          <span className={`text-sm flex-1 ${m.done ? 'line-through text-faint' : 'text-ink-soft'}`}>{m.title}</span>
+                          {m.due && <span className="text-[11px] text-faint shrink-0">{m.due}</span>}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(idea.financials.investmentNeeded !== null || financeData.length > 0 || idea.financials.costs.length > 0) && (
+                  <div>
+                    <SectionLabel icon={TrendingUp}>Financiën</SectionLabel>
+                    <div className="card p-3.5 space-y-3">
+                      <div className="flex flex-wrap gap-4 text-sm">
+                        {idea.financials.investmentNeeded !== null && (
+                          <div><div className="text-[11px] text-faint">Investering nodig</div><div className="font-semibold">{eur(idea.financials.investmentNeeded)}</div></div>
+                        )}
+                        {totalCosts > 0 && (
+                          <div><div className="text-[11px] text-faint">Kosten (totaal)</div><div className="font-semibold">{eur(totalCosts)}</div></div>
+                        )}
+                        {idea.financials.breakEven && (
+                          <div><div className="text-[11px] text-faint">Break-even</div><div className="font-semibold">{idea.financials.breakEven}</div></div>
+                        )}
+                      </div>
+                      {financeData.length > 0 && (
+                        <ResponsiveContainer width="100%" height={Math.max(120, financeData.length * 32)}>
+                          <BarChart data={financeData} layout="vertical" margin={{ top: 0, right: 16, left: 8, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} className="stroke-line" />
+                            <XAxis type="number" tick={AXIS_TICK_10} tickFormatter={(v) => eur(v)} />
+                            <YAxis type="category" dataKey="name" width={70} tick={{ fill: '#5C6150', fontSize: 11 }} />
+                            <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => eur(v)} />
+                            <Bar dataKey="omzet" radius={[0, 4, 4, 0]} fill={DOMAIN_HEX[idea.domain]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      )}
+                      {idea.financials.notes && <p className="text-xs text-faint leading-relaxed">{idea.financials.notes}</p>}
+                    </div>
+                  </div>
+                )}
+
+                {idea.risks.length > 0 && (
+                  <div>
+                    <SectionLabel icon={ShieldAlert}>Risico's</SectionLabel>
+                    <div className="space-y-1.5">
+                      {idea.risks.map((r, i) => (
+                        <div key={i} className="card p-3 text-sm">
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-ink-soft flex-1">{r.risk}</span>
+                            <span className="chip text-[10px] px-2 py-0 shrink-0" style={{ color: RISK_HEX[r.impact], background: `${RISK_HEX[r.impact]}1f` }}>{IMPACT_LABEL[r.impact]}</span>
+                          </div>
+                          {r.mitigation && <p className="text-xs text-faint mt-1">Mitigatie: {r.mitigation}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {idea.opportunities.length > 0 && (
+                  <div>
+                    <SectionLabel icon={Lightbulb}>Kansen</SectionLabel>
+                    <div className="space-y-1.5">
+                      {idea.opportunities.map((o, i) => (
+                        <div key={i} className="card p-3 text-sm flex items-start justify-between gap-2">
+                          <span className="text-ink-soft flex-1">{o.opportunity}</span>
+                          <span className="chip text-[10px] px-2 py-0 shrink-0" style={{ color: POTENTIAL_HEX[o.potential], background: `${POTENTIAL_HEX[o.potential]}1f` }}>{IMPACT_LABEL[o.potential]}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {(idea.swot.strengths.length > 0 || idea.swot.weaknesses.length > 0 || idea.swot.opportunities.length > 0 || idea.swot.threats.length > 0) && (
+                  <div>
+                    <SectionLabel icon={Grid2x2}>SWOT</SectionLabel>
+                    <div className="grid grid-cols-2 gap-2">
+                      <SwotQuadrant title="Sterktes" items={idea.swot.strengths} hex="#3F7E52" />
+                      <SwotQuadrant title="Zwaktes" items={idea.swot.weaknesses} hex="#B94A3F" />
+                      <SwotQuadrant title="Kansen" items={idea.swot.opportunities} hex="#6E8CA8" />
+                      <SwotQuadrant title="Bedreigingen" items={idea.swot.threats} hex="#B98A2E" />
+                    </div>
+                  </div>
+                )}
+
+                {idea.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {idea.tags.map((t) => <span key={t} className="chip bg-line text-muted text-[11px]">#{t}</span>)}
+                  </div>
+                )}
+
+                {idea.markdown && (
+                  <div>
+                    <button onClick={() => setShowFullDoc((v) => !v)} className="btn-ghost !py-1.5 text-xs w-full justify-center">
+                      {showFullDoc ? 'Verberg volledig document' : 'Toon volledig document'}
+                    </button>
+                    {showFullDoc && <div className="card p-3.5 mt-2"><Markdown text={idea.markdown} /></div>}
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </div>
+
+      {!editing && (
+        <div className="sticky bottom-0 bg-canvas/90 backdrop-blur border-t border-line px-4 py-3 flex justify-end">
+          <button onClick={() => setConfirmDelete(true)} className="btn-ghost !py-1.5 text-xs text-orange-600">
+            <Trash2 className="h-3.5 w-3.5" /> Verwijderen
+          </button>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Idee verwijderen?"
+          message={`"${idea.title}" wordt definitief verwijderd, inclusief de opgeslagen analyse.`}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={onDelete}
+        />
+      )}
+    </Overlay>
+  )
+}
+
+function SectionLabel({ icon: Icon, children }: { icon: typeof TrendingUp; children: React.ReactNode }) {
+  return (
+    <div className="text-xs font-semibold uppercase tracking-wider text-faint mb-1.5 flex items-center gap-1.5">
+      <Icon className="h-3 w-3" /> {children}
+    </div>
+  )
+}
+
+function SwotQuadrant({ title, items, hex }: { title: string; items: string[]; hex: string }) {
+  return (
+    <div className="rounded-xl p-3 space-y-1" style={{ background: `${hex}12` }}>
+      <div className="text-[11px] font-semibold" style={{ color: hex }}>{title}</div>
+      {items.length > 0 ? (
+        <ul className="space-y-0.5">
+          {items.map((it, i) => <li key={i} className="text-xs text-ink-soft leading-snug">· {it}</li>)}
+        </ul>
+      ) : (
+        <div className="text-xs text-faint italic">geen</div>
+      )}
     </div>
   )
 }
