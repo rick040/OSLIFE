@@ -6,6 +6,7 @@ import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppHeader } from '@/components/layout/app-header'
 import { CommandMenu } from '@/components/layout/command-menu'
+import { MobileBottomNav } from '@/components/layout/mobile-bottom-nav'
 
 export interface AppShellProps {
   view: View
@@ -73,11 +74,12 @@ export function AppShell({
           onOpenSearch={() => setCommandOpen(true)}
           onShowSettings={onShowSettings}
         />
-        <main className="flex-1 overflow-x-hidden p-4 md:p-6 lg:p-8">
+        <main className="flex-1 overflow-x-hidden p-4 pb-24 md:p-6 md:pb-6 lg:p-8">
           <div className="mx-auto max-w-5xl">{children}</div>
         </main>
       </SidebarInset>
 
+      <MobileBottomNav view={view} onNav={onNav} onShowGrid={onShowGrid} />
       <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} onNav={onNav} />
     </SidebarProvider>
   )

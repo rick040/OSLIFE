@@ -15,13 +15,39 @@
     --ink: 80 11.5% 10.2%;
     --ink-soft: 77.1 10.8% 25.5%;
     --muted-foreground: 77.6 9.6% 34.7%;
-    --faint: 75 6.7% 53.3%;
+    /* WCAG AA fix: was 53.3% L (2.9-3.3:1 on canvas/surface — fails the 4.5:1
+       body-text minimum). 41% clears 4.5:1 against every surface tone. */
+    --faint: 75 6.7% 41%;
 
     /* brand */
     --forest: 85 36.7% 19.2%;
     --forest-hi: 85.7 37.4% 25.7%;
     --lime: 70.3 70% 59.4%;
     --lime-hi: 70.5 73.3% 66.3%;
+
+    /* emphasized border — one step up from --line, for hover states and
+       anything that needs to read as a defined edge rather than a hairline. */
+    --line-strong: 70.9 14% 78%;
+
+    /* ── domain "deep" (text-safe) stops ──────────────────────────────────
+       Light mode: dark, saturated text that reads on a light/tinted pastel
+       surface (bg-{domain}/12). Dark mode inverts to a LIGHT pastel of the
+       same hue — reusing the light-mode dark stop as text on a dark card
+       would fail contrast (dark-on-dark). See Astryx's categorical token
+       rubric: bg/border/icon/text each pick the tone that stays legible on
+       every surface they actually sit on, inverting per mode rather than
+       locking one pastel across both. */
+    --parkingyou-deep: #3f586e;
+    --prjct-deep: #5c4f79;
+    --buurtkaart-deep: #44694f;
+    --personal-deep: #856325;
+    --cross-deep: #8a5260;
+
+    /* elevation — two stacked drops (tight + soft) tuned for a light canvas;
+       light surfaces don't need a rim highlight to read as "lifted". */
+    --shadow-card: 0 1px 2px rgba(20, 22, 15, 0.04), 0 10px 28px -18px rgba(20, 22, 15, 0.16);
+    --shadow-card-lg: 0 2px 6px rgba(20, 22, 15, 0.05), 0 28px 56px -28px rgba(20, 22, 15, 0.2);
+    --shadow-pop: 0 16px 40px -16px rgba(20, 22, 15, 0.24);
 
     /* ── shadcn semantic tokens ───────────────────────────────── */
     --background: var(--canvas);
@@ -69,13 +95,34 @@
     --ink: 68 12% 92%;
     --ink-soft: 70 10% 72%;
     --muted-foreground: 75 8% 62%;
-    --faint: 75 7% 48%;
+    /* WCAG AA fix: was 48% L (3.6-4.2:1 — under the 4.5:1 body-text minimum
+       against surface/sunken). 55% clears 4.5:1 against every surface tone. */
+    --faint: 75 7% 55%;
 
     /* brand (lightened so it reads on charcoal) */
     --forest: 88 34% 42%;
     --forest-hi: 88 36% 50%;
     --lime: 70.3 65% 60%;
     --lime-hi: 70.5 68% 66%;
+
+    --line-strong: 84 8% 30%;
+
+    /* domain "deep" text — inverted to light pastels so they stay legible
+       on a dark card (see the :root comment for the reasoning). */
+    --parkingyou-deep: #b7cce0;
+    --prjct-deep: #d2c9e3;
+    --buurtkaart-deep: #b8d9be;
+    --personal-deep: #ead1a0;
+    --cross-deep: #e9c0c8;
+
+    /* elevation — deeper drops + an all-around 1px light inset that catches
+       ambient light on every edge, so cards lift off the dark canvas instead
+       of reading flat (drop shadows alone barely show against a dark body). */
+    --shadow-card: 0 2px 4px rgba(0, 0, 0, 0.3), 0 10px 24px -14px rgba(0, 0, 0, 0.55),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    --shadow-card-lg: 0 4px 8px rgba(0, 0, 0, 0.35), 0 28px 56px -28px rgba(0, 0, 0, 0.6),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    --shadow-pop: 0 16px 40px -12px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 
     /* ── shadcn semantic tokens ───────────────────────────────── */
     --background: var(--canvas);
@@ -128,6 +175,20 @@
   }
 }
 
+/* Respect the OS-level "reduce motion" preference: entrance animations play
+   instantly (no slide/fade) and looping ones (pulse-ring, flow-dash chart
+   dashes) stop outright instead of running forever in the background. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* calm scrollbars (theme-aware) */
 ::-webkit-scrollbar {
   width: 10px;
@@ -146,23 +207,60 @@
   .card {
     @apply bg-surface border border-line rounded-3xl shadow-card;
   }
+  /* Clickable cards (rendered as <button>/<a class="card">) get a real
+     press affordance — emphasized border, a soft tint, deeper elevation on
+     hover, and a clean focus ring — instead of relying on ad hoc per-call
+     hover classes that often re-apply the same default border color. */
+  button.card,
+  a.card {
+    @apply transition-[border-color,box-shadow,background-color] duration-150 outline-none;
+  }
+  button.card:hover,
+  a.card:hover {
+    @apply border-line-strong shadow-card-lg;
+    background-color: color-mix(in srgb, currentColor 3%, hsl(var(--surface)));
+  }
+  button.card:active,
+  a.card:active {
+    background-color: color-mix(in srgb, currentColor 6%, hsl(var(--surface)));
+  }
+  button.card:focus-visible,
+  a.card:focus-visible {
+    @apply ring-2 ring-ring ring-offset-2 ring-offset-canvas;
+  }
+  /* Hero focal card — one bold, saturated accent reserved for the single most
+     important thing on a screen (the next action, the one number that
+     matters right now). Deliberately used AT MOST ONCE per view: the whole
+     point is a single unambiguous focal point rather than several
+     competing bright cards, which is friendlier for attention/ADHD-minded
+     design than "everything is highlighted" dashboards. Text is always
+     dark — lime is bright enough in both themes that dark text is the only
+     treatment that stays legible without a second themed variant. */
+  .card-hero {
+    @apply rounded-3xl shadow-card-lg text-[#16210f];
+    background: linear-gradient(135deg, hsl(var(--lime)) 0%, hsl(var(--lime-hi)) 100%);
+  }
   .chip {
     @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
   }
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium
-           transition-colors disabled:opacity-40 disabled:cursor-not-allowed;
+           transition-[background-color,transform,box-shadow] duration-150 outline-none
+           active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100
+           focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas;
   }
   .btn-primary {
-    @apply btn bg-forest hover:bg-forest-hi text-white shadow-sm;
+    @apply btn bg-forest hover:bg-forest-hi active:bg-forest text-white shadow-sm;
   }
   .btn-ghost {
-    @apply btn bg-sunken hover:bg-line text-ink;
+    @apply btn bg-sunken hover:bg-line active:bg-line/70 text-ink;
   }
   .btn-lime {
-    @apply btn bg-lime hover:bg-lime-hi text-forest;
+    @apply btn bg-lime hover:bg-lime-hi active:bg-lime text-forest;
   }
   .input {
-    @apply rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none focus:border-personal/60;
+    @apply rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none
+           transition-[border-color,box-shadow] duration-150
+           focus:border-personal/60 focus:ring-2 focus:ring-personal/20;
   }
 }

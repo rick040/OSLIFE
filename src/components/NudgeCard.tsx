@@ -1,6 +1,5 @@
-import { AlertTriangle, Bell, Sparkles, ArrowRight, type LucideIcon } from 'lucide-react'
+import { AlertTriangle, Bell, Sparkles, ChevronRight, type LucideIcon } from 'lucide-react'
 import type { Domain, Nudge } from '../types'
-import { DOMAIN_META, DOMAIN_HEX } from '../domains'
 
 export type NudgeTone = 'urgent' | 'attention' | 'calm'
 
@@ -14,10 +13,10 @@ export interface DashNudge {
   cta?: { label: string; view: string }
 }
 
-const TONE: Record<NudgeTone, { hex: string; label: string; icon: LucideIcon }> = {
-  urgent: { hex: '#C58392', label: 'Urgent', icon: AlertTriangle },
-  attention: { hex: '#C6A05B', label: 'Aandacht', icon: Bell },
-  calm: { hex: '#6FA07C', label: 'Rustig', icon: Sparkles },
+const TONE: Record<NudgeTone, { hex: string; icon: LucideIcon }> = {
+  urgent: { hex: '#C58392', icon: AlertTriangle },
+  attention: { hex: '#C6A05B', icon: Bell },
+  calm: { hex: '#6FA07C', icon: Sparkles },
 }
 
 /**
@@ -49,77 +48,62 @@ export function storeNudgeToDash(nudge: Nudge): DashNudge {
 }
 
 /**
- * The daily nudge, redesigned from a plain paragraph into a scannable, actionable
- * card: a tone-colored accent + icon, a "why this surfaced" source tag, the
- * message itself, and a one-tap jump to the screen where you can act on it.
+ * One ranked row: tone-colored icon, the nudge text, an optional one-tap
+ * jump. Shared by the single-nudge banner and the multi-item Prioriteiten
+ * list so both stay visually identical.
  */
-export default function NudgeCard({ nudge, onNav }: { nudge: DashNudge; onNav: (v: string) => void }) {
+function NudgeRow({ nudge, onNav }: { nudge: DashNudge; onNav: (v: string) => void }) {
   const tone = TONE[nudge.tone]
   const Icon = tone.icon
-  const domain = DOMAIN_META[nudge.domain]
-  const domainHex = DOMAIN_HEX[nudge.domain]
 
   return (
     <div
-      className="card relative overflow-hidden p-4 sm:p-5 animate-fade-up"
-      style={{
-        animationDelay: '40ms',
-        borderColor: `${tone.hex}55`,
-        background: `linear-gradient(135deg, ${tone.hex}14, ${tone.hex}05 55%, transparent)`,
-      }}
+      className="flex items-start gap-2.5 py-2.5 px-3.5"
+      style={{ borderLeft: `3px solid ${tone.hex}` }}
+      title={nudge.reason}
     >
-      {/* left accent bar */}
-      <div aria-hidden className="absolute inset-y-0 left-0 w-1" style={{ background: tone.hex }} />
-
-      <div className="flex items-start gap-3 sm:gap-4 pl-1.5">
-        {/* icon tile */}
-        <div
-          className={`shrink-0 rounded-xl p-2.5 ${nudge.tone === 'urgent' ? 'animate-pulse-ring' : ''}`}
-          style={{ background: `${tone.hex}22`, color: tone.hex }}
+      <Icon className="h-4 w-4 shrink-0 mt-0.5" style={{ color: tone.hex }} aria-hidden />
+      {/* line-clamp-2, not a single-line truncate: real nudge text (an overdue
+          loop's title, a correlation's detail) is often longer than one line
+          and used to get chopped into an unreadable fragment like
+          "Leverage …" — two lines keeps it compact but still legible. */}
+      <p className="text-sm text-ink line-clamp-2 flex-1 min-w-0">{nudge.text}</p>
+      {nudge.cta && (
+        <button
+          onClick={() => onNav(nudge.cta!.view)}
+          className="shrink-0 inline-flex items-center gap-0.5 text-xs font-semibold rounded-lg px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 hover:bg-sunken transition-colors"
+          style={{ color: tone.hex }}
         >
-          <Icon className="h-5 w-5" />
-        </div>
+          {nudge.cta.label}
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  )
+}
 
-        <div className="min-w-0 flex-1">
-          {/* label row */}
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs uppercase tracking-wider font-semibold" style={{ color: tone.hex }}>
-              Nudge van vandaag
-            </span>
-            <span
-              className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-              style={{ background: `${tone.hex}22`, color: tone.hex }}
-            >
-              {tone.label}
-            </span>
-            <span
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
-              style={{ background: `${domainHex}1f`, color: domainHex }}
-            >
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: domainHex }} />
-              {domain.label}
-            </span>
-          </div>
+/**
+ * The daily nudge — genuinely a nudge now, not a headline: one line, a tone-
+ * colored icon, an optional one-tap jump. It used to be a full card with
+ * three badge rows, a 15px paragraph and a separate source line, which read
+ * as a headline event rather than a passing prompt. Kept to a single ~44px
+ * row on purpose so it can never dominate the screen it sits on top of.
+ */
+export default function NudgeCard({ nudge, onNav }: { nudge: DashNudge; onNav: (v: string) => void }) {
+  return <NudgeRow nudge={nudge} onNav={onNav} />
+}
 
-          {/* message */}
-          <p className="text-[15px] leading-relaxed text-ink mt-2 font-medium">{nudge.text}</p>
-
-          {/* source + action */}
-          <div className="flex flex-wrap items-center justify-between gap-2 mt-2.5">
-            <span className="text-xs text-faint italic">{nudge.reason}</span>
-            {nudge.cta && (
-              <button
-                onClick={() => onNav(nudge.cta!.view)}
-                className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors hover:brightness-95"
-                style={{ background: `${tone.hex}22`, color: tone.hex }}
-              >
-                {nudge.cta.label}
-                <ArrowRight className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+/**
+ * Ranked "Prioriteiten" list — up to a handful of real, currently-true
+ * things that need attention today, most urgent first, instead of a single
+ * nudge that can only ever surface one of them at a time.
+ */
+export function PriorityList({ items, onNav }: { items: DashNudge[]; onNav: (v: string) => void }) {
+  return (
+    <div className="divide-y divide-line">
+      {items.map((item, i) => (
+        <NudgeRow key={`${item.domain}-${i}`} nudge={item} onNav={onNav} />
+      ))}
     </div>
   )
 }

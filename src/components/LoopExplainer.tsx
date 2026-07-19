@@ -24,7 +24,7 @@ export default function LoopExplainer({ onClose }: { onClose: () => void }) {
               Same spine, two speeds. The fast loop runs your day; the slow loop makes it smarter.
             </p>
           </div>
-          <button className="text-muted hover:text-ink" onClick={onClose}>
+          <button className="text-muted hover:text-ink" onClick={onClose} aria-label="Sluiten">
             <X className="h-5 w-5" />
           </button>
         </div>

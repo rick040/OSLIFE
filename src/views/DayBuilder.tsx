@@ -71,19 +71,19 @@ function BlockRow({ b }: { b: PlanBlock }) {
             <Icon className="h-3 w-3" /> {kind.label}
           </span>
           <DomainChip domain={b.domain} small />
-          {inPeak && b.kind === 'focus' && <span className="chip bg-personal/15 text-personal">focuspiek</span>}
+          {inPeak && b.kind === 'focus' && <span className="chip bg-personal/15 text-personal-deep">focuspiek</span>}
           {isCalendar && (
             <span className="chip bg-sunken text-muted flex items-center gap-1">
               <Lock className="h-3 w-3" /> agenda
             </span>
           )}
           {isLocked && (
-            <span className="chip bg-buurtkaart/15 text-buurtkaart flex items-center gap-1">
+            <span className="chip bg-buurtkaart/15 text-buurtkaart-deep flex items-center gap-1">
               <Lock className="h-3 w-3" /> vergrendeld
             </span>
           )}
           {isProposal && (
-            <span className="chip bg-cross/15 text-cross flex items-center gap-1">
+            <span className="chip bg-cross/15 text-cross-deep flex items-center gap-1">
               <Sparkles className="h-3 w-3" /> voorstel
             </span>
           )}
@@ -181,9 +181,9 @@ export default function DayBuilder() {
 
       {hasPlan && (
         <div className="flex items-center gap-2 text-xs flex-wrap">
-          <span className="chip bg-buurtkaart/15 text-buurtkaart">{events} afspraken</span>
-          <span className="chip bg-cross/15 text-cross">{proposed} voorgesteld</span>
-          <span className="chip bg-personal/15 text-personal">{locked} vergrendeld</span>
+          <span className="chip bg-buurtkaart/15 text-buurtkaart-deep">{events} afspraken</span>
+          <span className="chip bg-cross/15 text-cross-deep">{proposed} voorgesteld</span>
+          <span className="chip bg-personal/15 text-personal-deep">{locked} vergrendeld</span>
           {weekPlanAt && (
             <span className="text-faint">
               bijgewerkt{' '}

@@ -1,25 +1,9 @@
 import type { Project } from '../types'
 import { DomainChip } from './ui'
+import { StatusBadge } from './crm'
 import { fmtDate } from '../domains'
 import { FolderKanban, Calendar, Euro, ArrowRight } from 'lucide-react'
 import { eur0 } from '../lib/format'
-
-const STATUS_LABEL: Record<Project['status'], string> = {
-  lead: 'Lead',
-  active: 'Actief',
-  review: 'Review',
-  blocked: 'Geblokkeerd',
-  done: 'Klaar',
-}
-
-const STATUS_STYLE: Record<Project['status'], string> = {
-  lead: 'bg-personal/15 text-personal-deep',
-  active: 'bg-parkingyou/15 text-parkingyou-deep',
-  review: 'bg-prjct/15 text-prjct-deep',
-  blocked: 'bg-cross/15 text-cross-deep',
-  done: 'bg-buurtkaart/15 text-buurtkaart-deep',
-}
-
 
 /** The Projectkaart reply: a live snapshot of one project, pulled from the CRM/projects store. */
 export default function ProjectCard({ project, onNav }: { project: Project; onNav?: (v: string) => void }) {
@@ -29,7 +13,7 @@ export default function ProjectCard({ project, onNav }: { project: Project; onNa
       <div className="flex items-center gap-2 px-4 py-2 bg-sunken">
         <FolderKanban className="h-4 w-4 text-muted" />
         <span className="text-xs font-semibold uppercase tracking-wider text-muted">Projectkaart</span>
-        <span className={`chip ml-auto ${STATUS_STYLE[project.status]}`}>{STATUS_LABEL[project.status]}</span>
+        <span className="ml-auto"><StatusBadge status={project.status} /></span>
       </div>
       <div className="p-4 space-y-3">
         <div>
@@ -55,7 +39,7 @@ export default function ProjectCard({ project, onNav }: { project: Project; onNa
             <span>{pct}%</span>
           </div>
           <div className="h-1.5 w-full rounded-full bg-line overflow-hidden">
-            <div className="h-full rounded-full bg-prjct transition-all duration-700" style={{ width: `${pct}%` }} />
+            <div className="h-full rounded-full bg-forest transition-all duration-700" style={{ width: `${pct}%` }} />
           </div>
         </div>
 

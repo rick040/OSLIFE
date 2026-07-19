@@ -82,7 +82,7 @@ export default function HuisAdmin() {
           </label>
         </div>
         <button onClick={submit} disabled={!title.trim()}
-          className="rounded-lg bg-buurtkaart/10 text-buurtkaart border border-buurtkaart/40 px-4 py-2 text-sm font-medium hover:bg-buurtkaart/15 disabled:opacity-50">
+          className="rounded-lg bg-buurtkaart/10 text-buurtkaart-deep border border-buurtkaart/40 px-4 py-2 text-sm font-medium hover:bg-buurtkaart/15 disabled:opacity-50">
           Toevoegen
         </button>
       </div>

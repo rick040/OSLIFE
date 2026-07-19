@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   LineChart,
   Line,
@@ -18,7 +18,66 @@ import { computeCorrelations, computeAnomalies } from '../reflect'
 import { deriveDeadlines, hasSleepSignal, hasEnergySignal } from '../derive'
 import { fmtDate } from '../domains'
 import { DomainChip, SectionTitle, Empty } from '../components/ui'
-import { Brain, Moon, Wallet, AlertTriangle, ArrowUpRight, ArrowDownRight, Play, Smartphone, CalendarClock, Database } from 'lucide-react'
+import { fetchSyncStatus, humanizeAge, HEALTH_META, type SyncSourceStatus } from '../lib/syncStatus'
+import { Brain, Moon, Wallet, AlertTriangle, ArrowUpRight, ArrowDownRight, Play, Smartphone, CalendarClock, Database, RefreshCw } from 'lucide-react'
+
+function SourceStatusStrip() {
+  const [sources, setSources] = useState<SyncSourceStatus[] | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    setSources(await fetchSyncStatus())
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { void refresh() }, [refresh])
+
+  const counts = (sources ?? []).reduce(
+    (acc, s) => {
+      if (s.health === 'up') acc.up++
+      else if (s.health === 'down' || s.health === 'error') acc.down++
+      return acc
+    },
+    { up: 0, down: 0 },
+  )
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <SectionTitle hint="Live verbindingsstatus per bron — wanneer er voor het laatst data binnenkwam.">
+          Databronnen & verbindingen
+        </SectionTitle>
+        <button onClick={() => void refresh()} disabled={loading} className="btn-ghost !py-1.5 !px-2.5 text-xs shrink-0 -mt-6">
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Ververs
+        </button>
+      </div>
+      {!sources ? (
+        <div className="text-sm text-faint py-2">Verbindingen controleren…</div>
+      ) : (
+        <>
+          <p className="text-xs text-faint -mt-2 mb-2">{counts.up} actief · {counts.down} offline van de {sources.length} verbindingen</p>
+          <div className="flex flex-wrap gap-1.5">
+            {sources.map((s) => {
+              const meta = HEALTH_META[s.health]
+              return (
+                <span
+                  key={s.key}
+                  title={`${s.pipeline} · laatste data ${humanizeAge(s.lastAt)}`}
+                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
+                  style={{ background: `${meta.hex}18`, color: meta.hex }}
+                >
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: meta.hex }} />
+                  {s.label} · {humanizeAge(s.lastAt)}
+                </span>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
 export default function Reflect() {
   const { dayLogs, transactions, threads, patterns, lastDigest, reflectCount, runNightlyReflect, screenDays, meetingDays, projects, healthDays, emails, habits } = useStore()
@@ -111,7 +170,7 @@ export default function Reflect() {
       {/* DATA COVERAGE — what REFLECT actually has to work with */}
       <div>
         <SectionTitle hint="Reflectie kan alleen verbanden vinden tussen databronnen die binnenkomen.">
-          Databronnen & dekking
+          Correlatie-dekking
         </SectionTitle>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {coverage.map((c) => (
@@ -125,6 +184,9 @@ export default function Reflect() {
           ))}
         </div>
       </div>
+
+      {/* SYNC STATUS — per-source live connection health (voorheen Databronnen-scherm) */}
+      <SourceStatusStrip />
 
       {/* CROSS-DOMAIN CORRELATIONS */}
       <div>

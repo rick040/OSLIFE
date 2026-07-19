@@ -191,7 +191,6 @@ export function buildNudge(
   _anomalies: Anomaly[],
   reflectCount = 0,
 ): Nudge {
-  const prefix = reflectCount > 0 ? `Reflectie #${reflectCount}: ` : ''
   // Recompute the date at call time — this runs in a long-lived PWA, so the
   // frozen TODAY constant would misjudge "overdue" across a midnight rollover.
   const now = today()
@@ -203,7 +202,7 @@ export function buildNudge(
     return {
       id: 'nudge-overdue',
       domain: overdue.domain,
-      text: `${prefix}"${overdue.title}" is ${daysBetween(overdue.due!, now)} dag(en) over de deadline (${overdue.owedTo}). Sluit deze loop eerst — een openstaande belofte weegt het zwaarst.`,
+      text: `"${overdue.title}" is ${daysBetween(overdue.due!, now)} dag(en) over de deadline (${overdue.owedTo}). Sluit deze loop eerst — een openstaande belofte weegt het zwaarst.`,
       reason: 'oudste verlopen open loop',
     }
   }
@@ -213,7 +212,7 @@ export function buildNudge(
     return {
       id: 'nudge-blocked',
       domain: blocked[0].domain,
-      text: `${prefix}${blocked.length} project(en) staan geblokkeerd, waaronder "${blocked[0].name}". Eén bericht kan ze weer in beweging zetten.`,
+      text: `${blocked.length} project(en) staan geblokkeerd, waaronder "${blocked[0].name}". Eén bericht kan ze weer in beweging zetten.`,
       reason: 'geblokkeerd werk dat op jou wacht',
     }
   }
@@ -223,7 +222,7 @@ export function buildNudge(
     return {
       id: 'nudge-corr',
       domain: top.domains[0] ?? 'cross',
-      text: `${prefix}${top.title}. ${top.detail}`,
+      text: `${top.title}. ${top.detail}`,
       reason: 'sterkste domein-overstijgende verband',
     }
   }
@@ -235,7 +234,7 @@ export function buildNudge(
     return {
       id: 'nudge-next',
       domain: nextDue.domain,
-      text: `${prefix}Eerstvolgende deadline: "${nextDue.title}" op ${fmtDate(nextDue.due)} (${nextDue.owedTo}).`,
+      text: `Eerstvolgende deadline: "${nextDue.title}" op ${fmtDate(nextDue.due)} (${nextDue.owedTo}).`,
       reason: 'eerstvolgende open loop met datum',
     }
   }
@@ -243,7 +242,7 @@ export function buildNudge(
   return {
     id: 'nudge-calm',
     domain: 'personal',
-    text: `${prefix}Geen verlopen loops of harde deadlines vandaag. Goed moment voor diep werk of iets uit je Noordster.`,
+    text: `Geen verlopen loops of harde deadlines vandaag. Goed moment voor diep werk of iets uit je Noordster.`,
     reason: 'alles onder controle',
   }
 }

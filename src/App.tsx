@@ -4,7 +4,6 @@ import { supabase } from './lib/supabase'
 import { useStore } from './store'
 import LoginScreen from './components/LoginScreen'
 import Dashboard from './views/Dashboard'
-import Today from './views/Today'
 import Tasks from './views/Tasks'
 import Heyra from './views/Heyra'
 import Capture from './views/Capture'
@@ -13,7 +12,6 @@ import Memory from './views/Memory'
 import Reflect from './views/Reflect'
 import DayBuilder from './views/DayBuilder'
 import Vitals from './views/Vitals'
-import Signals from './views/Signals'
 import Money from './views/Money'
 import Projects from './views/Projects'
 import CRM from './views/CRM'
@@ -27,10 +25,8 @@ import Dakmeester from './views/Dakmeester'
 import InboxView from './views/Inbox'
 import NorthStar from './views/NorthStar'
 import Mindmap from './views/Mindmap'
-import Inferences from './views/Inferences'
 import Relaties from './views/Relaties'
 import HuisAdmin from './views/HuisAdmin'
-import SyncStatus from './views/SyncStatus'
 import LoopExplainer from './components/LoopExplainer'
 import SettingsModal from './components/SettingsModal'
 import AppGrid from './components/AppGrid'
@@ -68,11 +64,9 @@ export default function App() {
 
   const Current: Record<View, JSX.Element> = {
     dashboard: <Dashboard onNav={(v) => setView(v as View)} />,
-    today: <Today onNav={(v) => setView(v as View)} />,
     tasks: <Tasks />,
     daybuilder: <DayBuilder />,
     vitals: <Vitals />,
-    signals: <Signals />,
     money: <Money />,
     projects: <Projects />,
     inbox: <InboxView />,
@@ -82,8 +76,6 @@ export default function App() {
     memory: <Memory />,
     reflect: <Reflect />,
     mindmap: <Mindmap />,
-    inferences: <Inferences />,
-    sync: <SyncStatus />,
     // built in later phases
     habits: <Habits />,
     cleaning: <Cleaning />,
