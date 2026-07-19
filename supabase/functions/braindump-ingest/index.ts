@@ -51,10 +51,13 @@ Geef ALLEEN een fenced \`\`\`json blok terug met exact deze velden:
   "kind": één van ${VALID_KINDS.join(", ")},
   "sentiment": één van ${VALID_SENTIMENTS.join(", ")},
   "tags": ["3-6 korte trefwoorden, lowercase"],
+  "fields": { "amount": number, "currency": "EUR", "dueDate": "YYYY-MM-DD", "sender": "naam" } of null,
   "markdown": "de notitie in Markdown"
 }
 
-De "markdown" is lichtgewicht maar volledig: begin met een # titel, dan een korte samenvatting, dan de kernpunten als bullets. Bij een afbeelding: beschrijf wat te zien is en neem gelezen tekst (OCR) op. Bij een artikel/PDF: vat de belangrijkste punten samen. Neem de bronlink onderaan op als die er is. domain: parkingyou/prjct/buurtkaart zijn de bedrijven van de gebruiker, personal = privé, cross = meerdere.`;
+De "markdown" is lichtgewicht maar volledig: begin met een # titel, dan een korte samenvatting, dan de kernpunten als bullets. Bij een afbeelding: beschrijf wat te zien is en neem gelezen tekst (OCR) op. Bij een artikel/PDF: vat de belangrijkste punten samen. Neem de bronlink onderaan op als die er is. domain: parkingyou/prjct/buurtkaart zijn de bedrijven van de gebruiker, personal = privé, cross = meerdere.
+
+"fields" is alleen voor een rekening/bon/factuur: vul 'm met wat je letterlijk ziet (bedrag, valuta, vervaldatum, afzender/leverancier). Verzin nooit een bedrag of datum die je niet ziet — laat het veld dan gewoon weg. Bij alles wat geen rekening is: "fields": null.`;
 
 interface ContentBlock {
   type: string;
@@ -69,7 +72,25 @@ interface Converted {
   kind: string;
   sentiment: string;
   tags: string[];
+  fields: Record<string, unknown> | null;
   markdown: string;
+}
+
+/** Keep only the known, well-typed keys a bill/receipt capture can carry. */
+function sanitizeFields(raw: Record<string, unknown>): Record<string, unknown> | null {
+  const out: Record<string, unknown> = {};
+  if (typeof raw.amount === "number" && Number.isFinite(raw.amount)) out.amount = raw.amount;
+  if (typeof raw.currency === "string" && raw.currency.trim()) out.currency = raw.currency.trim().slice(0, 8);
+  if (typeof raw.dueDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw.dueDate)) out.dueDate = raw.dueDate;
+  if (typeof raw.sender === "string" && raw.sender.trim()) out.sender = raw.sender.trim().slice(0, 120);
+  return Object.keys(out).length ? out : null;
+}
+
+/** SHA-256 hex digest, used for dedup — same input always yields the same hash. */
+async function sha256Hex(input: string | Uint8Array): Promise<string> {
+  const bytes = typeof input === "string" ? new TextEncoder().encode(input) : input;
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** Ask Claude to convert content blocks into the uniform note shape. Null on failure. */
@@ -99,6 +120,9 @@ async function convert(apiKey: string, blocks: ContentBlock[]): Promise<Converte
   const markdown = typeof parsed.markdown === "string" && parsed.markdown.trim() ? parsed.markdown.trim() : "";
   if (!markdown) return null;
   const tags = Array.isArray(parsed.tags) ? parsed.tags.map((t) => String(t)).slice(0, 8) : [];
+  const fields = parsed.fields && typeof parsed.fields === "object" && !Array.isArray(parsed.fields)
+    ? sanitizeFields(parsed.fields as Record<string, unknown>)
+    : null;
   return {
     title: typeof parsed.title === "string" ? parsed.title.trim() : null,
     summary: typeof parsed.summary === "string" ? parsed.summary.trim() : null,
@@ -106,6 +130,7 @@ async function convert(apiKey: string, blocks: ContentBlock[]): Promise<Converte
     kind,
     sentiment,
     tags,
+    fields,
     markdown,
   };
 }
@@ -115,6 +140,7 @@ async function convert(apiKey: string, blocks: ContentBlock[]): Promise<Converte
 
 interface Row {
   id: string;
+  user_id: string;
   source_kind: string;
   source_url: string | null;
   meta: Record<string, unknown>;
@@ -242,7 +268,7 @@ Deno.serve(async (req) => {
 
   const { data: row, error: readErr } = await sb
     .from("braindump_entries")
-    .select("id,source_kind,source_url,meta")
+    .select("id,user_id,source_kind,source_url,meta")
     .eq("id", entryId)
     .single();
   if (readErr || !row) return json({ error: "Entry not found" }, 404);
@@ -258,7 +284,37 @@ Deno.serve(async (req) => {
     await sb.from("braindump_entries").update({ status: "failed", error: msg.slice(0, 500) }).eq("id", entryId);
     return json({ ok: false, status: "failed" });
   };
-  const finish = async (res: ProcessResult) => {
+  const DEDUP_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+  const finish = async (res: ProcessResult, contentHash: string | null = null) => {
+    // Duplicate check: same user + same content hash, seen ready within the
+    // lookback window. Marks the new row `duplicate` instead of `ready` —
+    // still visible/recoverable in the Capture grid, but excluded from
+    // search_memory() (see 20260715020000_braindump_dedup.sql) so re-shares
+    // never pollute recall.
+    if (contentHash) {
+      const cutoff = new Date(Date.now() - DEDUP_LOOKBACK_MS).toISOString();
+      const { data: dup } = await sb
+        .from("braindump_entries")
+        .select("id")
+        .eq("user_id", r.user_id)
+        .eq("content_hash", contentHash)
+        .eq("status", "ready")
+        .neq("id", entryId)
+        .gte("created_at", cutoff)
+        .limit(1)
+        .maybeSingle();
+      if (dup) {
+        await sb.from("braindump_entries").update({
+          status: "duplicate",
+          content_hash: contentHash,
+          meta: { ...meta, ...res.meta, duplicateOf: dup.id },
+          error: null,
+        }).eq("id", entryId);
+        return json({ ok: true, status: "duplicate" });
+      }
+    }
+
     await sb.from("braindump_entries").update({
       status: "ready",
       title: res.note.title,
@@ -269,7 +325,8 @@ Deno.serve(async (req) => {
       sentiment: res.note.sentiment,
       tags: res.note.tags,
       thumb_url: res.thumbUrl,
-      meta: { ...meta, ...res.meta },
+      content_hash: contentHash,
+      meta: { ...meta, ...res.meta, ...(res.note.fields ? { fields: res.note.fields } : {}) },
       error: null,
     }).eq("id", entryId);
     // Fire-and-forget: feed search_memory()'s hybrid recall. A missing
@@ -297,7 +354,7 @@ Deno.serve(async (req) => {
     if ((kind === "instagram" || kind === "pinterest") && url) {
       const social = await processSocial(apiKey, url);
       if (social.delegate) kind = "video"; // fall through to media handling below
-      else return social.result ? await finish(social.result) : await fail("Kon de social post niet verwerken");
+      else return social.result ? await finish(social.result, await sha256Hex(url.trim().toLowerCase())) : await fail("Kon de social post niet verwerken");
     }
 
     // ── Media: hand off to the worker, or metadata-only fallback ──
@@ -318,7 +375,7 @@ Deno.serve(async (req) => {
       }
       if (url) {
         const link = await processLink(apiKey, url);
-        return link ? await finish(link) : await fail("Media-worker niet beschikbaar en geen metadata");
+        return link ? await finish(link, await sha256Hex(url.trim().toLowerCase())) : await fail("Media-worker niet beschikbaar en geen metadata");
       }
       return await fail("Media-worker niet geconfigureerd voor dit bestand");
     }
@@ -329,6 +386,7 @@ Deno.serve(async (req) => {
       if (dlErr || !file) return await fail("Kon het bestand niet downloaden");
       const bytes = new Uint8Array(await file.arrayBuffer());
       const mime = file.type || (kind === "pdf" ? "application/pdf" : "image/jpeg");
+      const contentHash = await sha256Hex(bytes);
 
       let result: ProcessResult | null;
       let thumbUrl: string | null = null;
@@ -349,23 +407,23 @@ Deno.serve(async (req) => {
       }
       if (!result) return await fail("Kon het bestand niet verwerken");
       if (thumbUrl) result.thumbUrl = thumbUrl;
-      return await finish(result);
+      return await finish(result, contentHash);
     }
 
     // ── Link ──
     if (kind === "link" && url) {
       const link = await processLink(apiKey, url);
-      return link ? await finish(link) : await fail("Kon de link niet verwerken");
+      return link ? await finish(link, await sha256Hex(url.trim().toLowerCase())) : await fail("Kon de link niet verwerken");
     }
 
     // ── Plain text (default) ──
     if (rawText) {
       const t = await processText(apiKey, rawText, url);
-      return t ? await finish(t) : await fail("Kon de tekst niet verwerken");
+      return t ? await finish(t, await sha256Hex(rawText.trim().toLowerCase())) : await fail("Kon de tekst niet verwerken");
     }
     if (url) {
       const link = await processLink(apiKey, url);
-      return link ? await finish(link) : await fail("Kon de link niet verwerken");
+      return link ? await finish(link, await sha256Hex(url.trim().toLowerCase())) : await fail("Kon de link niet verwerken");
     }
     return await fail("Geen inhoud om te verwerken");
   } catch (err) {

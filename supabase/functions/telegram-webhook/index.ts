@@ -22,6 +22,14 @@
  * src/store.ts isDerivedThreadId). They surface live in-app (brain_state
  * realtime) and in the morning briefing, exactly like an in-app capture.
  *
+ * Anything else (a photo, a voice note, a document, or plain free text with
+ * no leading "/") becomes a Braindump capture instead — a "send me anything"
+ * inbox that lands in braindump_entries and runs through the same
+ * braindump-ingest pipeline as an in-app capture (OCR via vision, Whisper
+ * transcription via braindump-worker, Markdown + tagging). Deliberately
+ * separate from /note's open-loop capture above, which stays a distinct,
+ * intentional "quick task" tool.
+ *
  * Auth: Telegram's secret_token mechanism, not a Supabase JWT (Telegram can't
  * send one). setWebhook is called once with a secret_token; Telegram echoes
  * it back on every request as the X-Telegram-Bot-Api-Secret-Token header.
@@ -37,7 +45,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { editMessageText, answerCallbackQuery, sendMessage, type InlineKeyboard } from "../_shared/telegram.ts";
+import { editMessageText, answerCallbackQuery, getFileBytes, sendMessage, type InlineKeyboard } from "../_shared/telegram.ts";
 import { amsterdamToday, daysBetween, fmtDateNL, type Thread } from "../_shared/dates.ts";
 import { SUPABASE_SERVICE_KEY, SUPABASE_URL, USER_ID } from "../_shared/http.ts";
 
@@ -224,6 +232,116 @@ async function cmdStart(sb: any, message: Record<string, unknown>, chatId: numbe
   return "Gekoppeld! ✅ Je krijgt hier voortaan je ochtendbriefing, avond-check-in en gewoonte-herinneringen. Typ /menu om te zien wat ik nog meer kan.";
 }
 
+// ── Braindump capture: photos / voice / documents / free text ───────────────
+// Everything non-command lands in braindump_entries via the same pipeline the
+// app itself uses (see src/store.ts braindumpCapture / src/lib/supabase.ts
+// insertBraindumpEntry) — meta.rawText for plain text, meta.storagePath for
+// anything uploaded to the `braindump` storage bucket.
+
+type CaptureKind = "image" | "audio" | "pdf" | "file" | "text" | "link";
+
+function telegramDocumentKind(mime: string | undefined): CaptureKind {
+  if (mime === "application/pdf") return "pdf";
+  if (mime?.startsWith("image/")) return "image";
+  return "file"; // braindump-ingest has no processor for this yet — stored, not summarised
+}
+
+// deno-lint-ignore no-explicit-any
+async function storeTelegramFile(sb: any, bytes: Uint8Array, ext: string, mime: string): Promise<string | null> {
+  const path = `${USER_ID}/${Date.now()}_telegram${ext}`;
+  const { error } = await sb.storage.from("braindump").upload(path, bytes, { contentType: mime, upsert: false });
+  return error ? null : path;
+}
+
+// deno-lint-ignore no-explicit-any
+async function insertBraindumpRow(
+  sb: any,
+  sourceKind: CaptureKind,
+  meta: Record<string, unknown>,
+  sourceUrl: string | null = null,
+): Promise<string | null> {
+  const { data, error } = await sb
+    .from("braindump_entries")
+    .insert({ user_id: USER_ID, source_kind: sourceKind, status: "pending", source_url: sourceUrl, meta })
+    .select("id")
+    .single();
+  return error || !data ? null : (data.id as string);
+}
+
+/** Fire-and-forget, same contract as the app's own invokeBraindumpIngest(). */
+function triggerBraindumpIngest(entryId: string): void {
+  fetch(`${SUPABASE_URL}/functions/v1/braindump-ingest`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+    body: JSON.stringify({ entryId }),
+  }).catch(() => {});
+}
+
+/**
+ * Route a non-command Telegram message into a Braindump capture. Returns the
+ * confirmation to send back, or null when there's nothing to capture (e.g. a
+ * sticker or location message) — mirrors today's silent-drop behaviour for
+ * message types this bot doesn't understand.
+ */
+// deno-lint-ignore no-explicit-any
+async function captureTelegramMessage(sb: any, message: Record<string, unknown>, text: string): Promise<string | null> {
+  const photos = message.photo as Array<{ file_id: string }> | undefined;
+  const voice = message.voice as { file_id: string } | undefined;
+  const doc = message.document as { file_id: string; mime_type?: string } | undefined;
+
+  if (photos?.length) {
+    const bytes = await getFileBytes(BOT_TOKEN, photos[photos.length - 1].file_id); // largest resolution
+    if (!bytes) return null;
+    const path = await storeTelegramFile(sb, bytes, ".jpg", "image/jpeg");
+    if (!path) return "Kon de foto niet opslaan — probeer het later opnieuw.";
+    const entryId = await insertBraindumpRow(sb, "image", { storagePath: path, source: "telegram" });
+    if (!entryId) return "Kon de foto niet vastleggen — probeer het later opnieuw.";
+    triggerBraindumpIngest(entryId);
+    return "📥 Foto opgeslagen, wordt verwerkt…";
+  }
+
+  if (voice) {
+    const bytes = await getFileBytes(BOT_TOKEN, voice.file_id);
+    if (!bytes) return null;
+    const path = await storeTelegramFile(sb, bytes, ".ogg", "audio/ogg");
+    if (!path) return "Kon het spraakbericht niet opslaan — probeer het later opnieuw.";
+    const entryId = await insertBraindumpRow(sb, "audio", { storagePath: path, source: "telegram" });
+    if (!entryId) return "Kon het spraakbericht niet vastleggen — probeer het later opnieuw.";
+    triggerBraindumpIngest(entryId);
+    return "📥 Spraakbericht opgeslagen, wordt getranscribeerd…";
+  }
+
+  if (doc) {
+    const kind = telegramDocumentKind(doc.mime_type);
+    const bytes = await getFileBytes(BOT_TOKEN, doc.file_id);
+    if (!bytes) return null;
+    const ext = kind === "pdf" ? ".pdf" : kind === "image" ? ".jpg" : "";
+    const path = await storeTelegramFile(sb, bytes, ext, doc.mime_type || "application/octet-stream");
+    if (!path) return "Kon het bestand niet opslaan — probeer het later opnieuw.";
+    const entryId = await insertBraindumpRow(sb, kind, { storagePath: path, source: "telegram" });
+    if (!entryId) return "Kon het bestand niet vastleggen — probeer het later opnieuw.";
+    triggerBraindumpIngest(entryId);
+    return kind === "file"
+      ? "📥 Bestand bewaard — dit bestandstype kan ik nog niet automatisch samenvatten, maar het staat klaar in Braindump."
+      : "📥 Bestand opgeslagen, wordt verwerkt…";
+  }
+
+  if (text) {
+    const isBareUrl = /^https?:\/\/\S+$/i.test(text);
+    const entryId = await insertBraindumpRow(
+      sb,
+      isBareUrl ? "link" : "text",
+      isBareUrl ? { source: "telegram" } : { rawText: text, source: "telegram" },
+      isBareUrl ? text : null,
+    );
+    if (!entryId) return "Kon dit niet vastleggen — probeer het later opnieuw.";
+    triggerBraindumpIngest(entryId);
+    return "📥 Opgeslagen, wordt verwerkt…";
+  }
+
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return new Response("ok");
 
@@ -279,6 +397,14 @@ Deno.serve(async (req) => {
         reply = "Onbekend commando. Typ /menu voor de opties.";
     }
     await sendMessage(BOT_TOKEN, chatId, reply);
+    return new Response("ok");
+  }
+
+  // ── Everything else: photo / voice / document / free text → Braindump ─────
+  if (message) {
+    const chatId = (message.chat as Record<string, unknown>).id as number;
+    const reply = await captureTelegramMessage(sb, message, text);
+    if (reply) await sendMessage(BOT_TOKEN, chatId, reply);
     return new Response("ok");
   }
 

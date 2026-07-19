@@ -5,7 +5,7 @@ import { fmtDate } from '../domains'
 import { braindumpThumbUrl } from '../lib/braindump'
 import {
   Type, Link2, Image as ImageIcon, FileText, Youtube, Instagram, Video, Mic, File as FileIcon,
-  Loader2, AlertTriangle, X, ExternalLink, Trash2, RotateCcw,
+  Loader2, AlertTriangle, Copy, X, ExternalLink, Trash2, RotateCcw,
 } from 'lucide-react'
 
 const KIND_ICON: Record<BraindumpSourceKind, typeof Type> = {
@@ -75,10 +75,15 @@ export function BraindumpCard({ entry, onOpen }: { entry: BraindumpEntry; onOpen
             <AlertTriangle className="h-3.5 w-3.5 text-orange-600" />
           </span>
         )}
+        {entry.status === 'duplicate' && (
+          <span className="absolute top-2 right-2 rounded-lg bg-canvas/85 backdrop-blur p-1" title="Dit zat er al in — dubbele capture">
+            <Copy className="h-3.5 w-3.5 text-muted" />
+          </span>
+        )}
       </div>
       <div className="p-3 flex-1 flex flex-col gap-1.5">
         <div className="text-sm font-medium text-ink line-clamp-2 leading-snug">
-          {entry.title || entry.summary || (busy ? 'Verwerken…' : 'Zonder titel')}
+          {entry.title || entry.summary || (busy ? 'Verwerken…' : entry.status === 'duplicate' ? 'Dubbele capture' : 'Zonder titel')}
         </div>
         {entry.summary && entry.title && (
           <p className="text-xs text-muted line-clamp-2">{entry.summary}</p>
@@ -137,6 +142,13 @@ export function BraindumpDetail({
               <button onClick={() => onRetry(entry.id)} className="btn-ghost !py-1 text-xs shrink-0">
                 <RotateCcw className="h-3.5 w-3.5" /> Opnieuw
               </button>
+            </div>
+          )}
+
+          {entry.status === 'duplicate' && (
+            <div className="rounded-xl bg-sunken border border-line p-3 text-sm text-muted flex items-start gap-2">
+              <Copy className="h-4 w-4 mt-0.5 shrink-0" />
+              <p>Dit zat er al in — herkend als dubbele capture, dus niet opnieuw verwerkt of meegenomen in zoekresultaten.</p>
             </div>
           )}
 
