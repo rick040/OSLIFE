@@ -15,10 +15,11 @@
  *     as a virtual `.txt` file since text/markdown are supported input types.
  *   - search:   POST /api/v1/search, JSON body — replaces the older
  *     /api/v1/recall this file used to call against the self-hosted worker.
- *   - auth: both `Authorization: Bearer <token>` and `X-Api-Key: <key>` are
- *     accepted per cognee's own API reference — sent together so the same
- *     COGNEE_WORKER_SECRET value works whichever backend is configured,
- *     without needing to know which one it is.
+ *   - auth: `X-Api-Key: <key>` only. Cognee's docs list `Authorization:
+ *     Bearer <JWT_TOKEN>` as an alternative, but that's for an actual JWT —
+ *     sending a plain API-key string as a Bearer token gets rejected with
+ *     401 "Invalid header" (confirmed against a live Cognee Cloud tenant)
+ *     before X-Api-Key is even checked, so send X-Api-Key alone.
  */
 
 const TIMEOUT_MS = 15000; // entity/relationship extraction is slower than a plain completion
@@ -32,7 +33,7 @@ function workerConfig(): { url: string; secret: string } | null {
 }
 
 function authHeaders(secret: string): Record<string, string> {
-  return { authorization: `Bearer ${secret}`, "x-api-key": secret };
+  return { "x-api-key": secret };
 }
 
 /** Feed one note's text into the knowledge graph. Fire-and-forget by callers — never throws. */
