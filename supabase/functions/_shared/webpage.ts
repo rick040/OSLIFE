@@ -61,7 +61,8 @@ export function decodeEntities(s: string): string {
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&#x27;/gi, "'");
 }
 
-/** Strip tags → readable-ish text (lightweight; no full readability lib). */
+/** Strip tags → readable-ish text (lightweight; no full readability lib). Used
+ * as the fallback when extractArticle() below can't run. */
 export function htmlToText(html: string, max = 8000): string {
   const body = html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -70,4 +71,61 @@ export function htmlToText(html: string, max = 8000): string {
     .replace(/\s+/g, " ")
     .trim();
   return decodeEntities(body).slice(0, max);
+}
+
+export interface Article {
+  title: string | null;
+  author: string | null;
+  markdown: string;
+}
+
+/**
+ * Extract the main article content as Markdown via Defuddle (readability-style
+ * boilerplate/nav/ad removal), parsed server-side with linkedom's lightweight
+ * DOM. Best-effort: returns null on any failure (malformed HTML, esm.sh import
+ * hiccup, no article-shaped content) so the caller falls back to the cruder
+ * htmlToText() above — a link must still produce *something*.
+ *
+ * Two Deno-specific gotchas baked in here, found by actually running this
+ * (not just type-checking it):
+ *  - `defuddle/node` and plain `linkedom` transitively pull in the `canvas`
+ *    native binding, which esm.sh can't resolve under Deno → import throws.
+ *    `defuddle/full` (self-contained, bundles turndown) + `linkedom/worker`
+ *    (canvas-free) sidestep that entirely.
+ *  - Defuddle's bundled turndown calls `new DOMParser()` internally assuming
+ *    a browser global that Deno doesn't have — borrow linkedom's DOMParser
+ *    onto `globalThis` before parsing, or markdown conversion silently
+ *    degrades to an error string instead of throwing.
+ */
+export async function extractArticle(html: string, url: string, max = 12000): Promise<Article | null> {
+  try {
+    // Order matters: defuddle/full's bundle reads globalThis.DOMParser at
+    // module-evaluation time, so linkedom must be imported (and the global
+    // set) *before* defuddle/full is imported — a Promise.all race loses this.
+    const linkedom: any = await import("https://esm.sh/linkedom@0.18/worker");
+    (globalThis as unknown as { DOMParser?: unknown }).DOMParser = linkedom.DOMParser;
+    const { default: Defuddle }: any = await import("https://esm.sh/defuddle@0.19.1/full");
+    const { document } = linkedom.parseHTML(html);
+    const result = new Defuddle(document, { url, markdown: true }).parse();
+    const markdown = typeof result?.content === "string" ? result.content.trim() : "";
+    if (!markdown || /^partial conversion completed with errors/i.test(markdown)) return null;
+    return {
+      title: typeof result.title === "string" && result.title.trim() ? result.title.trim() : null,
+      author: typeof result.author === "string" && result.author.trim() ? result.author.trim() : null,
+      markdown: markdown.slice(0, max),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Instagram/Facebook's og:description is boilerplate like
+ * `12K Likes, 340 Comments - user on Instagram: "the actual caption"` — pull
+ * out just the quoted caption. Falls back to the raw string when it doesn't
+ * match that shape (Pinterest and plain pages don't use it).
+ */
+export function extractSocialCaption(description: string): string {
+  const m = description.match(/on (?:Instagram|Facebook)[^:]*:\s*"([\s\S]*)"\s*$/i);
+  return m ? m[1].trim() : description;
 }

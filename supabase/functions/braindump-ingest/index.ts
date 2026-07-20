@@ -9,12 +9,16 @@
  * throwing, so an entry is never stuck — mirroring the askBrain() null-fallback
  * contract on the frontend.
  *
- * Handled inline: text, link, image, pdf, and image-type instagram/pinterest
- * posts (Claude vision / document blocks).
+ * Handled inline: text, link (Defuddle-extracted article Markdown, falling
+ * back to a regex tag-strip), image, pdf, office documents (docx/xlsx/pptx/
+ * csv/txt), and image-type instagram/pinterest posts (Claude vision / document
+ * blocks).
  * Delegated to braindump-worker (yt-dlp + ffmpeg + Groq Whisper): youtube, video,
- * audio, and video-type instagram/pinterest. When BRAINDUMP_WORKER_URL is not
- * configured, media falls back to metadata-only (oEmbed / OpenGraph) so the app
- * still works before the worker is deployed.
+ * audio, and video-type instagram/pinterest. The worker tries YouTube's own
+ * caption tracks first (fast, free) and only falls back to audio+Whisper when
+ * a video has no captions. When BRAINDUMP_WORKER_URL is not configured, media
+ * falls back to metadata-only (oEmbed / OpenGraph) so the app still works
+ * before the worker is deployed.
  *
  *   request:  { "entryId": "<uuid>" }
  *   response: { "ok": true, "status": "ready" | "processing" | "failed" }
@@ -29,7 +33,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 import { ANTHROPIC_API, MODEL, anthropicHeaders, extractText, parseJsonBlock } from "../_shared/anthropic.ts";
 import { CORS, SUPABASE_URL, corsPreflight, jsonResponder } from "../_shared/http.ts";
-import { fetchText, htmlToText, parseOG } from "../_shared/webpage.ts";
+import { extractArticle, extractSocialCaption, fetchText, htmlToText, parseOG } from "../_shared/webpage.ts";
 
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
@@ -161,14 +165,19 @@ async function processText(apiKey: string, text: string, url: string | null): Pr
 async function processLink(apiKey: string, url: string): Promise<ProcessResult | null> {
   const html = await fetchText(url);
   const og = html ? parseOG(html) : { title: null, description: null, image: null, video: null };
-  const article = html ? htmlToText(html) : "";
+  // Defuddle strips nav/ads/boilerplate and gives us clean article Markdown;
+  // fall back to the crude tag-stripper when it can't make sense of the page.
+  const article = html ? await extractArticle(html, url) : null;
+  const body = article?.markdown || (html ? htmlToText(html) : "");
+  const title = article?.title ?? og.title;
   const blocks: ContentBlock[] = [{
     type: "text",
     text: [
       `Gedeelde link: ${url}`,
-      og.title ? `Titel: ${og.title}` : "",
-      og.description ? `Omschrijving: ${og.description}` : "",
-      article ? `Pagina-inhoud:\n"""\n${article}\n"""` : "",
+      title ? `Titel: ${title}` : "",
+      article?.author ? `Auteur: ${article.author}` : "",
+      !article && og.description ? `Omschrijving: ${og.description}` : "",
+      body ? `Pagina-inhoud:\n"""\n${body}\n"""` : "",
     ].filter(Boolean).join("\n"),
   }];
   const note = await convert(apiKey, blocks);
@@ -187,7 +196,7 @@ async function processSocial(apiKey: string, url: string): Promise<{ delegate: b
     text: [
       `Gedeelde social post: ${url}`,
       og.title ? `Titel: ${og.title}` : "",
-      og.description ? `Bijschrift: ${og.description}` : "",
+      og.description ? `Bijschrift: ${extractSocialCaption(og.description)}` : "",
       og.image ? "Hieronder de afbeelding van de post — beschrijf wat te zien is en neem eventuele tekst (OCR) op." : "",
     ].filter(Boolean).join("\n"),
   }];
@@ -212,6 +221,80 @@ async function processPdf(apiKey: string, bytes: Uint8Array): Promise<ProcessRes
   ];
   const note = await convert(apiKey, blocks);
   return note ? { note, thumbUrl: null, meta: {} } : null;
+}
+
+/**
+ * Office documents / plain text (docx, xlsx/xls/csv, pptx, txt/md) — no
+ * catch-all Claude document block for these like PDF gets, so we extract text
+ * ourselves and feed it through the same convert() pipeline. Each format's
+ * parser is loaded lazily via esm.sh; any failure (corrupt file, unsupported
+ * subtype) returns null rather than throwing.
+ */
+async function processOfficeDoc(
+  apiKey: string,
+  bytes: Uint8Array,
+  mime: string,
+  filename: string | null,
+): Promise<ProcessResult | null> {
+  const ext = (filename ?? "").split(".").pop()?.toLowerCase() ?? "";
+  let text = "";
+  let label = "bestand";
+  try {
+    if (mime.includes("wordprocessingml") || ext === "docx") {
+      const mammoth: any = await import("https://esm.sh/mammoth@1.8.0");
+      // esm.sh resolves mammoth to its Node-oriented bundle here, which wants
+      // {buffer: Uint8Array} — the browser-only {arrayBuffer} shape throws
+      // "Could not find file in options" (verified by actually running it).
+      const result = await mammoth.extractRawText({ buffer: bytes });
+      text = typeof result?.value === "string" ? result.value : "";
+      label = "Word-document";
+    } else if (
+      mime.includes("spreadsheetml") || ext === "xlsx" || ext === "xls" || mime === "text/csv" || ext === "csv"
+    ) {
+      const XLSX: any = await import("https://esm.sh/xlsx@0.18.5");
+      const wb = XLSX.read(bytes, { type: "array" });
+      text = wb.SheetNames
+        .map((name: string) => `## ${name}\n${XLSX.utils.sheet_to_csv(wb.Sheets[name])}`)
+        .join("\n\n");
+      label = "spreadsheet";
+    } else if (mime.includes("presentationml") || ext === "pptx") {
+      text = await extractPptxText(bytes);
+      label = "presentatie";
+    } else if (mime.startsWith("text/") || ext === "txt" || ext === "md") {
+      text = new TextDecoder().decode(bytes);
+      label = "tekstbestand";
+    } else {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  text = text.trim();
+  if (!text) return null;
+  const blocks: ContentBlock[] = [{
+    type: "text",
+    text: `Gedeeld ${label}${filename ? ` (${filename})` : ""} — vat de belangrijkste punten samen als Markdown.\n"""\n${
+      text.slice(0, 20000)
+    }\n"""`,
+  }];
+  const note = await convert(apiKey, blocks);
+  return note ? { note, thumbUrl: null, meta: { filename } } : null;
+}
+
+/** pptx is a zip of slide XML — pull the literal text runs out of each slide. */
+async function extractPptxText(bytes: Uint8Array): Promise<string> {
+  const { default: JSZip }: any = await import("https://esm.sh/jszip@3.10.1");
+  const zip = await JSZip.loadAsync(bytes);
+  const slideFiles = Object.keys(zip.files)
+    .filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f))
+    .sort((a, b) => Number(a.match(/(\d+)/)?.[1] ?? 0) - Number(b.match(/(\d+)/)?.[1] ?? 0));
+  const parts: string[] = [];
+  for (const f of slideFiles) {
+    const xml: string = await zip.files[f].async("text");
+    const texts = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => m[1]);
+    if (texts.length) parts.push(`### Slide ${parts.length + 1}\n${texts.join(" ")}`);
+  }
+  return parts.join("\n\n");
 }
 
 /** YouTube metadata-only fallback via oEmbed (used when the worker isn't configured). */
@@ -374,11 +457,19 @@ Deno.serve(async (req) => {
   const workerSecret = Deno.env.get("WORKER_SECRET");
 
   try {
-    // ── Social: decide image (inline) vs video (delegate) ──
+    // ── Social: when the worker is configured, always hand Instagram/Pinterest
+    // to it and let yt-dlp decide video-vs-not — a plain server-side fetch()
+    // of the post (used by processSocial's og:video check) routinely gets
+    // blocked/redirected to a login wall by Instagram, which would otherwise
+    // silently misroute a real video post into the image-only path below.
+    // Only fall back to the og-scrape decision when there's no worker to ask.
     if ((kind === "instagram" || kind === "pinterest") && url) {
-      const social = await processSocial(apiKey, url);
-      if (social.delegate) kind = "video"; // fall through to media handling below
-      else return social.result ? await finish(social.result, await sha256Hex(url.trim().toLowerCase())) : await fail("Kon de social post niet verwerken");
+      if (workerUrl && workerSecret) {
+        kind = "video"; // fall through to media handling below
+      } else {
+        const social = await processSocial(apiKey, url);
+        return social.result ? await finish(social.result, await sha256Hex(url.trim().toLowerCase())) : await fail("Kon de social post niet verwerken");
+      }
     }
 
     // ── Media: hand off to the worker, or metadata-only fallback ──
@@ -389,13 +480,20 @@ Deno.serve(async (req) => {
           headers: { "content-type": "application/json", authorization: `Bearer ${workerSecret}` },
           body: JSON.stringify({ entryId, sourceUrl: url, storagePath, sourceKind: r.source_kind }),
         }).catch(() => null);
-        // Worker finishes the row itself (status → ready) via the service role.
+        // Worker finishes the row itself (status → ready) via the service role
+        // — it downloads the video, transcribes it, and deletes the temp
+        // file/audio regardless of outcome (or, if yt-dlp says it isn't a
+        // downloadable video at all, falls back to describing the og:image).
         if (res && res.ok) return json({ ok: true, status: "processing" });
         // Worker unreachable → graceful metadata fallback below.
       }
       if (kind === "youtube" && url) {
         const yt = await processYoutubeFallback(apiKey, url);
         return yt ? await finish(yt) : await fail("Kon de YouTube-metadata niet ophalen");
+      }
+      if (url && (r.source_kind === "instagram" || r.source_kind === "pinterest")) {
+        const social = await processSocial(apiKey, url);
+        return social.result ? await finish(social.result, await sha256Hex(url.trim().toLowerCase())) : await fail("Kon de social post niet verwerken (worker onbereikbaar)");
       }
       if (url) {
         const link = await processLink(apiKey, url);
@@ -431,6 +529,21 @@ Deno.serve(async (req) => {
       }
       if (!result) return await fail("Kon het bestand niet verwerken");
       if (thumbUrl) result.thumbUrl = thumbUrl;
+      return await finish(result, contentHash);
+    }
+
+    // ── Files in storage: office documents (docx/xlsx/pptx/csv/txt) ──
+    if (kind === "file" && storagePath) {
+      const { data: file, error: dlErr } = await sb.storage.from("braindump").download(storagePath);
+      if (dlErr || !file) return await fail("Kon het bestand niet downloaden");
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const mime = file.type || "application/octet-stream";
+      const filename = storagePath.split("/").pop()?.replace(/^\d+_/, "") ?? null;
+      const contentHash = await sha256Hex(bytes);
+      const result = await processOfficeDoc(apiKey, bytes, mime, filename);
+      // No full-size originals: drop the file once summarised, same as PDFs.
+      await sb.storage.from("braindump").remove([storagePath]).catch(() => {});
+      if (!result) return await fail("Bestandstype niet ondersteund of kon niet worden gelezen");
       return await finish(result, contentHash);
     }
 
