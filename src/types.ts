@@ -422,7 +422,7 @@ export interface MeetingDay {
   fragmented: boolean // many short meetings broke up the day
 }
 
-// ── Projects (mirrors a Notion projects database) ────────────────────────────
+// ── Projects (native CRM — full in-app CRUD, no external sync) ───────────────
 
 export type ProjectStatus = 'lead' | 'active' | 'review' | 'blocked' | 'done'
 
@@ -455,8 +455,8 @@ export interface Project {
   scope?: string | null // free-text project scope
   notes?: string | null
   archived?: boolean
-  notionUrl?: string
-  notionId?: string // Notion page id (= projects.external_id) — legacy write-back
+  notionUrl?: string // legacy — external link kept for projects created back when this synced from Notion
+  notionId?: string // legacy id (= projects.external_id); local-<uuid> for projects created in-app
 }
 
 // ── Project template: milestones / tasks / hours / invoices / activity ────────
@@ -525,7 +525,7 @@ export interface ActivityEntry {
   action?: 'completed' | 'progress' | 'linked' | null
 }
 
-// ── CRM: clients (mirrors Notion Clients DB) ─────────────────────────────────
+// ── CRM: clients (native — full in-app CRUD, no external sync) ───────────────
 export type ClientStatus = 'Active' | 'Lead' | 'Prospect' | 'Planned' | 'Inactive' | 'Past'
 
 export interface Client {

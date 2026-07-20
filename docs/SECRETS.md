@@ -24,12 +24,10 @@ Publiek/veilig (RLS beschermt de data).
 
 | Secret | Gebruikt door | Waar vandaan |
 |---|---|---|
-| `OSLIFE_USER_ID` | notion-sync, *-sheet-ingest, wallet-ingest, notify-tick, telegram-webhook | Supabase → Authentication → Users → jouw UUID |
-| `NOTION_TOKEN` | notion-sync, notion-hq, notion-mutate | notion.so → Settings → Integrations |
+| `OSLIFE_USER_ID` | *-sheet-ingest, wallet-ingest, notify-tick, telegram-webhook | Supabase → Authentication → Users → jouw UUID |
 | `INGEST_SECRET` | health/payments/screentime-sheet-ingest | **zelf verzinnen** (random) |
 | `WALLET_WEBHOOK_SECRET` | wallet-ingest | **zelf verzinnen** (random) |
 | `GBK_API_KEY` | gbk-overview | Geldrop Buurtkaart admin → API key (`X-GBK-Key`) |
-| `SYNC_SECRET` *(optioneel)* | notion-sync / notion-mutate | **zelf verzinnen** (random) |
 | `GBK_BASE_URL` *(optioneel)* | gbk-overview | `https://www.geldropbuurtkaart.nl` (default) |
 | `ANTHROPIC_API_KEY` | heyra-brain | console.anthropic.com → API keys. HEYRA's agents (src/heyra/agents/) en de nachtelijke Reflect-narrative vallen terug op de bestaande rule-based tekst als deze niet gezet is — de app breekt nooit zonder deze key. |
 | `VOYAGE_API_KEY` *(optioneel)* | embed-memory, embed-memory-backfill, memory-search | dash.voyageai.com → API keys. Voedt search_memory()'s vector-recall (naast de bestaande full-text). Zonder deze key blijft alles zoals nu: puur full-text zoeken, geen embeddings. |
@@ -55,9 +53,6 @@ Er zijn geen GitHub Actions meer (de Spotify-workflow is verwijderd). Oude repo-
 | `SUPABASE_URL` | `https://nhyunnnmdcmojvkxrbpl.supabase.co` |
 | `SUPABASE_SERVICE_KEY` | service_role key (Supabase → Settings → API) — **geheim** |
 | `OSLIFE_USER_ID` | jouw auth-UUID (zelfde als in Supabase) |
-| `NOTION_TOKEN` | zelfde als in Supabase |
-| `NOTION_DB_ID` | `239ddc8e-9208-8186-b452-cc35f89677ff` (Projects) |
-| `NOTION_CLIENTS_DB_ID` | `239ddc8e-9208-8102-86b9-eda32f63e815` (Clients) |
 | `PAYMENTS_CAL_ID` | id van je betalingen-Google Calendar |
 | `INGEST_SECRET` | **exact dezelfde** waarde als in Supabase |
 | `HEALTH_SYNC_URL` | `https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/health-sheets-ingest` |
@@ -144,20 +139,19 @@ shared-secret patroon als notify-tick.
 
 - `INGEST_SECRET` → Supabase **én** Apps Script (zelfde random string).
 - `OSLIFE_USER_ID` → Supabase **én** Apps Script.
-- `NOTION_TOKEN` → Supabase **én** Apps Script.
 - `SUPABASE_SERVICE_KEY` (Apps Script) = de service_role key uit Supabase.
 
 ## Zelf verzinnen vs. opzoeken
 
-- **Verzinnen** (`openssl rand -base64 32`): `INGEST_SECRET`, `WALLET_WEBHOOK_SECRET`, `SYNC_SECRET`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, `WORKER_SECRET`, `COGNEE_WORKER_SECRET`.
-- **Opzoeken**: `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `OSLIFE_USER_ID`, `NOTION_TOKEN`, `GBK_API_KEY`, `TELEGRAM_BOT_TOKEN`, `VOYAGE_API_KEY`.
+- **Verzinnen** (`openssl rand -base64 32`): `INGEST_SECRET`, `WALLET_WEBHOOK_SECRET`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, `WORKER_SECRET`, `COGNEE_WORKER_SECRET`.
+- **Opzoeken**: `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `OSLIFE_USER_ID`, `GBK_API_KEY`, `TELEGRAM_BOT_TOKEN`, `VOYAGE_API_KEY`.
 
 ## Per databron: welke secrets heb je nodig
 
 | Databron | Nodig |
 |---|---|
-| Projecten / CRM (Notion, lezen+schrijven) | `NOTION_TOKEN` (+ `OSLIFE_USER_ID`) |
-| Strategie HQ callouts | `NOTION_TOKEN` |
+| Projecten / CRM (native, in-app) | geen — geen externe sync |
+| Strategie HQ (business ideas) | `ANTHROPIC_API_KEY` (voor `idea-elaborate`) |
 | Buurtkaart (WordPress API) | `GBK_API_KEY` |
 | Geld · Betalingen-sheet | `INGEST_SECRET`, `OSLIFE_USER_ID` (+ Apps Script props) |
 | Geld · Wallet | `WALLET_WEBHOOK_SECRET`, `OSLIFE_USER_ID` |

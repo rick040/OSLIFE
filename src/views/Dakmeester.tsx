@@ -1,7 +1,7 @@
 import { ExternalLink } from 'lucide-react'
 import SideBusiness, { Section } from './SideBusiness'
 
-// Dakmeester — side-business scherm. Live HQ-callouts komen uit Notion via notion-hq.
+// Dakmeester — side-business scherm.
 const ROADMAP0 = [
   { label: 'Website gebouwd + live (dakdekker-iota.vercel.app)', done: true },
   { label: '7 email templates klaar (aanvraag, afspraak, offerte, opvolging, betaling)', done: true },
@@ -117,10 +117,7 @@ export default function Dakmeester() {
         </div>
       }
       footer={
-        <div className="flex gap-2.5">
-          <a href="https://dakdekker-iota.vercel.app/" target="_blank" rel="noopener noreferrer" className="flex-1 btn-ghost">Bekijk website <ExternalLink className="h-4 w-4" /></a>
-          <a href="https://app.notion.com/p/Dakmeester-386ddc8e920880cf8cc7d39b4cd07e7a" target="_blank" rel="noopener noreferrer" className="flex-1 btn-primary">Open in Notion <ExternalLink className="h-4 w-4" /></a>
-        </div>
+        <a href="https://dakdekker-iota.vercel.app/" target="_blank" rel="noopener noreferrer" className="btn-ghost w-full">Bekijk website <ExternalLink className="h-4 w-4" /></a>
       }
     />
   )

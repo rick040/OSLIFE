@@ -704,7 +704,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               cta="Open Projecten"
               onCta={() => onNav('projects')}
             >
-              Projecten synchroniseren automatisch uit Notion.
+              Maak je eerste project aan om te beginnen.
             </SetupHint>
           )}
         </div>

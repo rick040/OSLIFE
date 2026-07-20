@@ -5,7 +5,7 @@ accumulating memory and surfaces the cross-domain connections (sleep↔energy, f
 no single tracker could show.
 
 A working single-user app on a real backend: Supabase (Postgres + Auth + Realtime + Edge
-Functions), live ingestion pipelines (Google Apps Script + Google Sheets + Notion + the Geldrop
+Functions), live ingestion pipelines (Google Apps Script + Google Sheets + the Geldrop
 Buurtkaart WordPress API), and a React/Vite frontend that reads live data with realtime updates.
 When a data source has no rows yet, the matching screen falls back to seeded demo data so the UI
 is never empty.
@@ -35,16 +35,14 @@ npm run preview   # serve the production build
 Ingestion                                  Supabase (nhyunnnmdcmojvkxrbpl)         Frontend
 ─────────                                  ──────────────────────────────         ────────
 Apps Script hub (Code.gs)                                                       ┌ React + Vite
-  Notion → projects/clients      ┐                                              │ Zustand store
-  Gmail  → gmail_messages        │                                              │ live reads
-  Calendar → day_blocks          ├──▶ PostgREST ─▶ Postgres (RLS, per-user) ───▶│ + realtime
-  payments-calendar → payments   │                  + Realtime channel ─────────▶│
-Sheet-bound Apps Script          │                                              └ Notion write-back
-  Health  → health-sheets-ingest │                                                 (notion-mutate)
+  Gmail  → gmail_messages        ┐                                              │ Zustand store
+  Calendar → day_blocks          ├──▶ PostgREST ─▶ Postgres (RLS, per-user) ───▶│ live reads
+  payments-calendar → payments   │                  + Realtime channel ─────────▶│ + realtime
+Sheet-bound Apps Script          │
+  Health  → health-sheets-ingest │
   Betalingen → payments-sheet-ingest ─▶ Edge Functions ─▶ finance_tx
   Schermtijd → screentime-sheet-ingest                 ─▶ screentime
-Notion (read)  → notion-sync / notion-hq
-Notion (write) ◀── notion-mutate  (app edits a project/client → Notion)
+Projecten/Klanten (native CRM, in-app only — no external sync)
 Geldrop Buurtkaart WordPress API ─▶ gbk-overview ─▶ Buurtkaart screen
 Google Wallet (MacroDroid)       ─▶ wallet-ingest ─▶ finance_tx
 Phone unlock/screen-off (MacroDroid) ─▶ phone-events-ingest ─▶ phone_events ─▶ health_sleep
@@ -56,7 +54,7 @@ ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betaling
 - **Store**: `src/store.ts` (Zustand + localStorage). `loadLiveData()` fetches all slices on login
   and subscribes to one Realtime channel; it only overwrites a slice when the query returns rows.
 - **Data access**: `src/lib/supabase.ts` — one typed fetcher per slice, plus the write-back helpers
-  (`persistProjectPatch` → Notion via `mutateNotion`, `insertFinanceTx` for the CSV import).
+  (`updateProjectRow`/`updateClientRow` for the native CRM, `insertFinanceTx` for the CSV import).
 
 ## Data sources — one per module
 
@@ -64,7 +62,8 @@ ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betaling
 |--------|--------|----------|----------|
 | Projecten | **In-app (native CRM)** — full CRUD | app write-back (Supabase) | `projects`, `project_tasks`, `project_milestones`, `project_hours`, `project_invoices`, `project_activity` |
 | CRM / Klanten | **In-app (native CRM)** — full CRUD | app write-back (Supabase) | `clients`, `client_messages` |
-| Strategie HQ · Buurtkaart/Eyes/Dakmeester callouts | **Notion** | `notion-hq` (live) | — |
+| Strategie HQ (business ideas) | **In-app** — capture + HEYRA elaboration | `idea-elaborate` edge function | `business_ideas` |
+| Buurtkaart/Eyes/Dakmeester side-business screens | in-app (static config) | — | — |
 | Buurtkaart beheer | **Geldrop Buurtkaart WordPress API** | `gbk-overview` (header `X-GBK-Key`) | — (live read) |
 | Geld · transacties | **Betalingen Google Sheet** + **ABN AMRO CSV** (in-app) + Google Wallet | `payments-sheet-ingest` · in-app import · `wallet-ingest` | `finance_tx` |
 | Geld · Te betalen | **Payments Google Calendar** | Code.gs `syncPayments` | `payments` |
@@ -76,17 +75,16 @@ ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betaling
 | Geheugen / Reflectie | afgeleid in-app | reflect engine | `brain_state` |
 
 ### Native CRM (Projecten / Klanten)
-The CRM is no longer a read-only Notion mirror — it's a full project-manager built
-on Supabase. You can add/edit/remove **clients** and **projects** in-app, and every
-client is connected to its projects (`projects.client_id → clients.id`). Each project
-carries a template: a **uren-tracker** (`project_hours`), **mijlpalen** with due dates
-and progress (`project_milestones`), one-time **and recurring tasks** (`project_tasks`),
-**facturen** (`project_invoices`), and an **activiteiten-log** (`project_activity`). The
-activity logger (`src/lib/crm/activityAnalyzer.ts`) reads a free-text note, matches it to
-an open task or milestone and takes the action — ticking the task or bumping the milestone's
-progress. The **berichten-inbox** (`client_messages`) unifies e-mail / Fiverr / WhatsApp;
-WhatsApp exports import via `src/lib/crm/whatsapp.ts`. Existing Notion-synced rows keep
-working; in-app rows get a `local-<uuid>` external id.
+The CRM is a full project-manager built on Supabase — no external sync of any kind.
+You add/edit/remove **clients** and **projects** entirely in-app, and every client is
+connected to its projects (`projects.client_id → clients.id`). Each project carries a
+template: a **uren-tracker** (`project_hours`), **mijlpalen** with due dates and progress
+(`project_milestones`), one-time **and recurring tasks** (`project_tasks`), **facturen**
+(`project_invoices`), and an **activiteiten-log** (`project_activity`). The activity logger
+(`src/lib/crm/activityAnalyzer.ts`) reads a free-text note, matches it to an open task or
+milestone and takes the action — ticking the task or bumping the milestone's progress. The
+**berichten-inbox** (`client_messages`) unifies e-mail / Fiverr / WhatsApp; WhatsApp exports
+import via `src/lib/crm/whatsapp.ts`. New rows get a `local-<uuid>` external id.
 
 ### Auto-categorisation (vendor cache)
 New transactions tag themselves. When a merchant HEYRA has never seen shows up
@@ -132,11 +130,10 @@ All code is deployed. To turn a source on, set its secret(s) and triggers — se
 the full contract. Summary:
 
 1. **Edge-function secrets** (Supabase → Edge Functions → Manage secrets): `OSLIFE_USER_ID`,
-   `NOTION_TOKEN`, `INGEST_SECRET`, `GBK_API_KEY`, `WALLET_WEBHOOK_SECRET`, `SYNC_SECRET`.
+   `INGEST_SECRET`, `GBK_API_KEY`, `WALLET_WEBHOOK_SECRET`.
 2. **Apps Script** (`integrations/apps-script/`): paste `Code.gs` into the account-level project and
    `health-sheets.gs` / `payments-sheet.gs` / `screentime-sheet.gs` each into their own
    Sheet-bound project; fill Script Properties; run `installTrigger()` / add time-driven triggers.
-3. **Notion**: share the Projects, Clients and the 3 side-business pages with your integration.
 
 ## Screens
 
@@ -152,5 +149,5 @@ Vite · React · TypeScript · Tailwind CSS · Zustand · lucide-react · rechar
 ## Secrets
 
 The frontend only ships the public Supabase URL + anon key (RLS protects the data). Service-role
-keys, the Notion token, the GBK API key and ingestion secrets live in Supabase Edge Function
-secrets and Apps Script Script Properties — never in the bundle or in git. See `.env.example`.
+keys, the GBK API key and ingestion secrets live in Supabase Edge Function secrets and Apps
+Script Script Properties — never in the bundle or in git. See `.env.example`.

@@ -2,7 +2,6 @@ import { useState, type ReactNode } from 'react'
 import { Check } from 'lucide-react'
 
 // Gedeeld skelet voor de side-business schermen (The Eyes, Dakmeester).
-// Live HQ-callouts komen uit Notion via notion-hq.
 
 export type RoadmapItem = { label: string; done: boolean; deadline?: string }
 
@@ -18,7 +17,7 @@ export interface SideBusinessConfig {
   roadmap0: RoadmapItem[]
   afterKpis?: ReactNode
   afterRoadmap?: ReactNode
-  footer: ReactNode
+  footer?: ReactNode
 }
 
 export default function SideBusiness({ badge, title, subtitle, intro, callout, stats, kpis, roadmap0, afterKpis, afterRoadmap, footer }: SideBusinessConfig) {

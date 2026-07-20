@@ -31,7 +31,7 @@ OSLIFE is a single-user personal life-management app for "Rick" — a "second br
 
 **Stack:** React 18 + TypeScript, Vite, Zustand (single global store, `localStorage`-persisted), Tailwind CSS + shadcn/radix UI, Recharts, Supabase (Postgres + Auth + Realtime + Storage + Edge Functions + `pg_cron`/`pg_net`), deployed as a static PWA on Vercel.
 
-**Architecture in one paragraph:** external systems (Google Sheets via Apps Script, Notion, Gmail, Calendar, MacroDroid Android automations, a WordPress plugin, a standalone transcription worker) push or are polled into Supabase via Edge Functions and direct PostgREST writes; Supabase is the single source of truth (Postgres tables + an append-only `events` log + `pg_cron` jobs that run inference/summarization/self-audit); the React SPA reads/writes Supabase directly (`src/lib/supabase.ts`) through one Zustand store (`src/store.ts`) that every screen renders from. There is no separate backend server for the frontend — Supabase (managed Postgres + Edge Functions) *is* the backend.
+**Architecture in one paragraph:** external systems (Google Sheets via Apps Script, Gmail, Calendar, MacroDroid Android automations, a WordPress plugin, a standalone transcription worker) push or are polled into Supabase via Edge Functions and direct PostgREST writes; Supabase is the single source of truth (Postgres tables + an append-only `events` log + `pg_cron` jobs that run inference/summarization/self-audit); the React SPA reads/writes Supabase directly (`src/lib/supabase.ts`) through one Zustand store (`src/store.ts`) that every screen renders from. There is no separate backend server for the frontend — Supabase (managed Postgres + Edge Functions) *is* the backend. Projects/Clients (the native CRM) are managed entirely in-app with no external sync.
 
 Routing is **not** URL-based (no react-router) — it's a single `useState<View>` in `App.tsx` driven by a central screen registry (`src/nav.ts`).
 
@@ -91,7 +91,7 @@ Routing is **not** URL-based (no react-router) — it's a single `useState<View>
 |---|---|---|---|
 | CRM | `src/views/CRM.tsx` | `crm` | Business overview: pipeline-by-status, client-status breakdown, follow-up-due list (`lib/crm/followUp.ts:clientHealth`), unified "Berichten" entry point into `Messages.tsx`. Shares `ProjectGridList`/`useProjectBrowserModals` (`components/ProjectBrowser.tsx`) and primitives from `components/crm.tsx` with Projects. |
 | Projects (Projecten) | `src/views/Projects.tsx` | `projects` | Full project list with search/sort/status+client filters, grid/list toggle. KPI row (active/pipeline/overdue/delivered). |
-| StrategieHQ | `src/views/StrategieHQ.tsx` | `strategiehq` | Side-business strategy dashboard. Pulls live project cards from the `notion-hq` edge function with static fallback data; income tracker toward €5k/€10k targets. |
+| StrategieHQ | `src/views/StrategieHQ.tsx` | `strategiehq` | Business-ideas hub: capture (voice/text) → `idea-elaborate` edge function produces a full strategic write-up (feasibility, milestones, financials, SWOT). No external source — fully native (`business_ideas` table). |
 | Buurtkaart | `src/views/Buurtkaart.tsx` | `buurtkaart` | Local advertising business admin (Geldrop Buurtkaart). Live data from a WordPress plugin via the `gbk-overview` edge function; tabs for Edities/Klanten/Facturen; defensive payload normalizers since the WP API shape isn't fixed. |
 | Eyes (The Eyes) | `src/views/Eyes.tsx` | `eyes` | Thin config object rendered through the shared `SideBusiness` template. |
 | Dakmeester | `src/views/Dakmeester.tsx` | `dakmeester` | Thin config object rendered through the shared `SideBusiness` template. |
@@ -432,13 +432,10 @@ For the design rationale behind Slices 0-4 (event-sourcing principles, the R1-R9
 
 ## 12. Edge functions
 
-`supabase/functions/` — 15 functions + `_shared/` (`anthropic.ts`, `dates.ts`, `http.ts`, `notion.ts`, `telegram.ts`).
+`supabase/functions/` — 20 functions + `_shared/` (`anthropic.ts`, `dates.ts`, `http.ts`, `telegram.ts`, `webpage.ts`, `cognee.ts`, `embeddings.ts`, `frontmatter.ts`).
 
 | Function | Trigger | Purpose |
 |---|---|---|
-| `notion-sync` | cron (bearer `SYNC_SECRET`) | Reads Notion Projects+Clients → `projects`/`clients` (read half of the two-way sync). |
-| `notion-mutate` | client-invoked (`[verify_jwt]`) | Writes app edits back to Notion. |
-| `notion-hq` | client-invoked | Live callouts from 3 side-business Notion pages, consumed by StrategieHQ. |
 | `gbk-overview` | client-invoked (`[verify_jwt]`) | Proxies the Geldrop Buurtkaart WordPress API with server-side `GBK_API_KEY`, consumed by Buurtkaart. |
 | `health-sheets-ingest` | webhook (Apps Script) | Upserts Google Sheets health payloads into `health_*` tables. |
 | `payments-sheet-ingest` | webhook (Apps Script) | Upserts payments-sheet rows into `payments`/`finance_tx`. |
@@ -456,9 +453,9 @@ For the design rationale behind Slices 0-4 (event-sourcing principles, the R1-R9
 
 ## 13. Integrations
 
-Architecture per `integrations/README.md`: **Apps Script + Sheets + Notion + Geldrop Buurtkaart WordPress API (ingestion) → Supabase (Postgres/Realtime/Edge Functions) → React app.** Everything writes only to the one Supabase project.
+Architecture per `integrations/README.md`: **Apps Script + Sheets + Geldrop Buurtkaart WordPress API (ingestion) → Supabase (Postgres/Realtime/Edge Functions) → React app.** Everything writes only to the one Supabase project. Projects/Clients (native CRM) have no external sync.
 
-- **`integrations/apps-script/`** — one standalone Apps Script project ("OSLIFE ingest"): `Code.gs` (hub — Notion→projects/clients, Gmail→gmail_messages, Calendar→day_blocks, payments calendar→payments via direct PostgREST; still runs `syncNotion()`/`syncClients()` on a 15-min trigger, see the staleness note in [§14](#14-related-documentation)), `health-sheets.gs`, `payments-sheet.gs`, `screentime-sheet.gs` (sheet readers), `setup-health-sheet.gs`, `appsscript.json`.
+- **`integrations/apps-script/`** — one standalone Apps Script project ("OSLIFE ingest"): `Code.gs` (hub — Gmail→gmail_messages, Calendar→day_blocks, payments calendar→payments via direct PostgREST), `health-sheets.gs`, `payments-sheet.gs`, `screentime-sheet.gs` (sheet readers), `setup-health-sheet.gs`, `appsscript.json`.
 - **`integrations/braindump-worker/`** — a small standalone Node service (Dockerfile + `server.mjs`) that does what an Edge Function can't: `yt-dlp` download + `ffmpeg` transcode + Groq Whisper transcription + Claude Haiku → Markdown. Called by `braindump-ingest` via `POST /transcribe` (bearer `WORKER_SECRET`); updates `braindump_entries` via service role.
 - **`integrations/macrodroid/`** — setup docs + one exported macro (`oslife-app-timer.macro`) for Android automations: `bank-notifications.md` (→ `wallet-ingest`), `phone-sleep.md` (→ `phone-events-ingest`), `app-timer.md` (per-app stopwatch → `phone-events-ingest`), `weight-notifications.md` (→ `weight-ingest`, experimental).
 
@@ -473,7 +470,7 @@ Finance dedup note: `payments-sheet-ingest` and the in-app ABN AMRO CSV import s
 | [`README.md`](../README.md) | Top-level product description, run instructions, architecture diagram, per-module data-source table, native CRM/vendor-categorization/phone-derived-sleep/screen-time prose. | Up to date with latest features; does **not** mention the event-spine/inference/memory/learning-loop system (see `DATA-ARCHITECTURE.md`) — it documents only the current-state projection tables. |
 | [`docs/DATA-ARCHITECTURE.md`](./DATA-ARCHITECTURE.md) | The canonical design doc for the PM-201 event-sourcing upgrade (Slices 0-4): event spine, inference engine, new life domains, memory/retrieval, learning loop — principles, the R1-R9 derivation rules, P1-P5 promotion rules, `pg_cron` job schedule. | Current, matches the latest migrations. |
 | [`docs/CODEBASE_AUDIT.md`](./CODEBASE_AUDIT.md) | A technical-debt/bloat audit (128 files, ~23,200 LOC at the time) — copy-paste CRUD, dead code, duplicated modal/formatter/deadline logic, the dual live Notion-sync writer as the one live correctness hazard. | **Predates the entire PM-201 event-spine/inference/memory/learning-loop work** (migrations dated 2026-07-14/15) — stale for anything added since 2026-07-03. Not modified as part of this doc. |
-| [`docs/RUNBOOK-phase4-cutover.md`](./RUNBOOK-phase4-cutover.md) | Operator checklist: relocate `wallet-ingest`, apply the finance-category-normalization migration, schedule `notion-sync` via `pg_cron`, retire the duplicate `Code.gs` sync once the cron is confirmed live. | Live, still-pending action item — `Code.gs` still registers `syncNotion()`/`syncClients()` triggers. |
+| [`docs/RUNBOOK-phase4-cutover.md`](./RUNBOOK-phase4-cutover.md) | Operator checklist: relocate `wallet-ingest`, apply the finance-category-normalization migration, cut over `notion-sync`. | **Superseded** — Notion integration was removed entirely (no cutover; `notion-sync`/`notion-mutate`/`notion-hq` deleted, `Code.gs`'s `syncNotion`/`syncClients` removed) rather than migrated. Kept for history only. |
 | [`docs/SECRETS.md`](./SECRETS.md) | Every secret/env-var mapped to its platform (Vercel, Supabase Edge Function secrets, Apps Script Script Properties), plus one-time Telegram bot setup. | Consistent with `.env.example`. |
 | [`Google_DataPortability_API_Onderzoek.md`](../Google_DataPortability_API_Onderzoek.md) | Research report evaluating Google's Data Portability API as an ingestion source — concludes Gmail/Calendar/Photos/Drive/Google Fit (the most valuable sources) aren't available through it. | Standalone research artifact, not implemented. |
 | **This document** (`docs/CODEBASE_MAP.md`) | Every screen, component, hook, domain module, data structure, database table, edge function, and integration, plus how they relate. | New — keep in sync as screens/modules/schema evolve. |

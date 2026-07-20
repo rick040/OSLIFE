@@ -1,7 +1,6 @@
-import { ExternalLink } from 'lucide-react'
 import SideBusiness, { Section } from './SideBusiness'
 
-// The Eyes — side-business scherm. Live HQ-callouts komen uit Notion via notion-hq.
+// The Eyes — side-business scherm.
 const ROADMAP0 = [
   { label: 'Business plan compleet', done: true },
   { label: 'Afspraak inplannen met Brandon', done: false, deadline: 'nu' },
@@ -66,11 +65,6 @@ export default function Eyes() {
             ))}
           </div>
         </Section>
-      }
-      footer={
-        <a href="https://app.notion.com/p/THE-EYES-MANAGEMENT-386ddc8e920880538271f85f881577ac" target="_blank" rel="noopener noreferrer" className="btn-primary w-full">
-          Open in Notion <ExternalLink className="h-4 w-4" />
-        </a>
       }
     />
   )

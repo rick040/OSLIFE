@@ -6,7 +6,7 @@
  * to the OSLIFE project (nhyunnnmdcmojvkxrbpl) — no Vercel / rick-os middleman.
  *
  * Add these files to this one project:
- *   Code.gs              (this file) — Notion, Gmail, Calendar, payments-calendar
+ *   Code.gs              (this file) — Gmail, Calendar, payments-calendar
  *   health-sheets.gs     — reads your Health sheet  (by id)  → health-sheets-ingest
  *   payments-sheet.gs    — reads your Betalingen sheet (by id) → payments-sheet-ingest
  *   screentime-sheet.gs  — reads your Schermtijd sheet (by id) → screentime-sheet-ingest
@@ -14,14 +14,14 @@
  * The sheet readers open your sheets BY ID (SpreadsheetApp.openById), so you do
  * NOT touch the existing Apps Script that fills each sheet — leave those as-is.
  *
+ * Projects/Clients are managed natively in the app (no external sync) — this
+ * project no longer touches Notion.
+ *
  * SETUP
  * 1. Project Settings → Script Properties, add:
  *      SUPABASE_URL          https://nhyunnnmdcmojvkxrbpl.supabase.co
  *      SUPABASE_SERVICE_KEY  <service_role key from Supabase dashboard>
  *      OSLIFE_USER_ID        <auth.users uuid of your account>
- *      NOTION_TOKEN          secret_xxx
- *      NOTION_DB_ID          239ddc8e-9208-8186-b452-cc35f89677ff   (Projects)
- *      NOTION_CLIENTS_DB_ID  239ddc8e-9208-8102-86b9-eda32f63e815   (Clients)
  *      PAYMENTS_CAL_ID       <your payments Google Calendar id>
  *      INGEST_SECRET         <same secret as the edge-function secret>
  *      HEALTH_SYNC_URL       https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/health-sheets-ingest
@@ -42,7 +42,7 @@
 /** One-click: install every time-driven trigger this project needs. */
 function installAllTriggers() {
   var wanted = {
-    syncNotion: 15, syncClients: 15, syncGmail: 15, syncPayments: 15,   // every N minutes
+    syncGmail: 15, syncPayments: 15,                                    // every N minutes
     syncCalendarBlocks: 60,                                             // hourly (minutes)
     syncHealthSheet: 30, syncPaymentsSheet: 30, syncScreentimeSheet: 30,
   };
@@ -114,10 +114,9 @@ function backoffMs_(attempt) {
  */
 /**
  * @param {boolean} [ignoreDuplicates] When true, rows that already exist (by
- *   `conflict`) are left untouched instead of overwritten. Use this for tables
- *   the native CRM lets the user edit (projects, clients) so a Notion re-sync
- *   never clobbers an in-app edit — it only inserts pages Supabase doesn't
- *   have yet.
+ *   `conflict`) are left untouched instead of overwritten. Unused now that
+ *   projects/clients are native-only, kept generic for any future upsert that
+ *   must never clobber an in-app edit.
  */
 function supabaseUpsert(table, rows, conflict, ignoreDuplicates) {
   if (!rows.length) {
@@ -339,140 +338,7 @@ function domainFor(text) {
   return 'personal';
 }
 
-// ── 1. NOTION → projects + clients ───────────────────────────────────────────
-
-var NOTION_STATUS_MAP = {
-  'In uitvoering': 'active',
-  'Gepland':       'lead',
-  'Gepauzeerd':    'blocked',
-  'Opgeleverd':    'done',
-};
-
-function notionFetch_(path, payload) {
-  var res = UrlFetchApp.fetch('https://api.notion.com/v1' + path, {
-    method: payload ? 'post' : 'get',
-    contentType: 'application/json',
-    headers: { Authorization: 'Bearer ' + prop('NOTION_TOKEN'), 'Notion-Version': '2022-06-28' },
-    payload: payload ? JSON.stringify(payload) : undefined,
-    muteHttpExceptions: true,
-  });
-  var code = res.getResponseCode();
-  if (code >= 300) throw new Error('Notion ' + path + ' HTTP ' + code + ': ' + res.getContentText().slice(0, 200));
-  return JSON.parse(res.getContentText());
-}
-
-function queryAllPages_(dbId) {
-  var pages = [], cursor;
-  do {
-    var body = { page_size: 100 };
-    if (cursor) body.start_cursor = cursor;
-    var data = notionFetch_('/databases/' + dbId + '/query', body);
-    pages = pages.concat(data.results || []);
-    cursor = data.has_more ? data.next_cursor : null;
-  } while (cursor);
-  return pages;
-}
-
-function notionText_(prop) {
-  if (!prop) return '';
-  var arr = prop.title || prop.rich_text || [];
-  return arr.map(function(t) { return t.plain_text; }).join('');
-}
-function notionSelect_(prop) { return prop && (prop.select || prop.status) ? (prop.select || prop.status).name : null; }
-function notionMultiSelect_(prop) { return prop && prop.multi_select ? prop.multi_select.map(function(o){return o.name;}) : []; }
-function notionDate_(prop) { return prop && prop.date ? prop.date.start : null; }
-function notionNumber_(prop) { return prop && typeof prop.number === 'number' ? prop.number : 0; }
-function notionEmail_(prop) { return prop && prop.email ? prop.email : null; }
-function notionUrl_(prop) { return prop && prop.url ? prop.url : null; }
-
-function syncNotion() {
-  var lock = acquireLock_();
-  if (!lock) { log('syncNotion: another run in progress — skipping'); return; }
-  try {
-    log('syncNotion: start');
-    var dbId = prop('NOTION_DB_ID');
-    if (!dbId) { log('syncNotion: NOTION_DB_ID not set — aborting'); return; }
-
-    var pages = queryAllPages_(dbId);
-    log('syncNotion: fetched ' + pages.length + ' pages');
-
-    var rows = pages
-      .map(function (pg) {
-        var p = pg.properties;
-        var name = notionText_(p['Name']) || 'Untitled';
-        if (name.charAt(0) === '{') return null; // skip template rows
-
-        var notionStatus = notionSelect_(p['Status']);
-        var appStatus    = NOTION_STATUS_MAP[notionStatus] || 'lead';
-        var client       = notionText_(p['Client']);
-        var types        = notionMultiSelect_(p['Type']);
-
-        return {
-          external_id: pg.id,
-          notion_url:  pg.url,
-          name:        name,
-          client:      client,
-          domain:      domainFor(name + ' ' + client),
-          status:      appStatus,
-          type:        types,
-          prioriteit:  notionSelect_(p['Prioriteit']),
-          start_datum: notionDate_(p['Start Datum']),
-          deadline:    notionDate_(p['Deadline']),
-          value:       notionNumber_(p['Budget']),
-          progress:    notionNumber_(p['Progress']),
-          source:      'notion',
-        };
-      })
-      .filter(function(r) { return r !== null; });
-
-    supabaseUpsert('projects', rows, 'user_id,external_id', true);
-    log('syncNotion: done — ' + rows.length + ' rows');
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-// ── 1b. NOTION Clients DB → clients table ────────────────────────────────────
-function syncClients() {
-  var lock = acquireLock_();
-  if (!lock) { log('syncClients: another run in progress — skipping'); return; }
-  try {
-    log('syncClients: start');
-    var dbId = prop('NOTION_CLIENTS_DB_ID');  // set in Script Properties: 239ddc8e-9208-8102-86b9-eda32f63e815
-    if (!dbId) { log('syncClients: NOTION_CLIENTS_DB_ID not set — skipping'); return; }
-
-    var pages = queryAllPages_(dbId);
-    log('syncClients: fetched ' + pages.length + ' pages');
-
-    var rows = pages
-      .map(function (pg) {
-        var p = pg.properties;
-        var name = notionText_(p['Name']);
-        if (!name) return null;
-        return {
-          external_id:   pg.id,
-          notion_url:    pg.url,
-          name:          name,
-          client_status: notionSelect_(p['Client Status']),
-          crm_status:    notionSelect_(p['CRM Status']),
-          first_contact: notionDate_(p['First Contact']),
-          email:         notionEmail_(p['Email']),
-          website_url:   notionUrl_(p['Website URL']),
-          potentie:      notionSelect_(p['Potentie']),
-          scope:         notionNumber_(p['Scope']),
-          domain:        domainFor(name),
-        };
-      })
-      .filter(function(r) { return r !== null; });
-
-    supabaseUpsert('clients', rows, 'user_id,external_id', true);
-    log('syncClients: done — ' + rows.length + ' rows');
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-// ── 2. GMAIL → gmail_messages ────────────────────────────────────────────────
+// ── 1. GMAIL → gmail_messages ────────────────────────────────────────────────
 // Uses an incremental cursor (last successful run stored in Script Properties)
 // so each run only scans messages since then, plus a small overlap to avoid gaps.
 // Falls back to GMAIL_LOOKBACK_HOURS on first run.
@@ -545,7 +411,7 @@ function syncGmail() {
   }
 }
 
-// ── 3. CALENDAR → day_blocks ──────────────────────────────────────────────────
+// ── 2. CALENDAR → day_blocks ──────────────────────────────────────────────────
 // Syncs all calendars in CALENDAR_IDS from LOOKBACK_DAYS ago to LOOKAHEAD_DAYS ahead.
 // Recurring-event instances get a unique external_id (base id + start time) so each
 // instance keeps its own row instead of overwriting the others.
@@ -619,7 +485,7 @@ function resolveCalendars_() {
   return cals;
 }
 
-// ── 4. PAYMENTS CALENDAR → payments ──────────────────────────────────────────
+// ── 3. PAYMENTS CALENDAR → payments ──────────────────────────────────────────
 function syncPayments() {
   var lock = acquireLock_();
   if (!lock) { log('syncPayments: another run in progress — skipping'); return; }

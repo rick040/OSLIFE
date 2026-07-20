@@ -1,7 +1,7 @@
 // ── Data-source sync status ───────────────────────────────────────────────────
 // Health check for every live ingestion pipeline. Each table is written by an
-// external connection (Apps Script sheet ingest, Edge Function, Notion sync,
-// Gmail/Calendar sync, …). Purely-ingested tables carry an `ingested_at` column
+// external connection (Apps Script sheet ingest, Edge Function, Gmail/Calendar
+// sync, …). Purely-ingested tables carry an `ingested_at` column
 // stamped server-side on every write (see migration 20260711120000), so their
 // newest value is a TRUE last-synced time. projects/clients are also edited
 // in-app, so they fall back to their own updated_at / synced_at columns. We
@@ -60,9 +60,9 @@ export const SYNC_SOURCES: SyncSource[] = [
   // ── Communicatie / agenda ──
   { key: 'gmail', label: 'Inbox / mail', pipeline: 'Gmail → syncGmail', table: 'gmail_messages', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 12, downH: 48 },
   { key: 'calendar', label: 'Agenda', pipeline: 'Google Calendar → syncCalendarBlocks', table: 'day_blocks', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 24 * 7, downH: 24 * 21 },
-  // ── Notion (CRM) ── (edited in-app too → own update/sync columns)
-  { key: 'projects', label: 'Projecten', pipeline: 'Notion → notion-sync (of in-app)', table: 'projects', tsColumn: 'updated_at', tsKind: 'ts', warnH: 24 * 7, downH: 24 * 30 },
-  { key: 'clients', label: 'Klanten', pipeline: 'Notion → notion-sync', table: 'clients', tsColumn: 'synced_at', tsKind: 'ts', warnH: 24 * 7, downH: 24 * 30 },
+  // ── CRM (native, in-app only — no external sync) ──
+  { key: 'projects', label: 'Projecten', pipeline: 'In-app (native CRM)', table: 'projects', tsColumn: 'updated_at', tsKind: 'ts', warnH: 24 * 7, downH: 24 * 30 },
+  { key: 'clients', label: 'Klanten', pipeline: 'In-app (native CRM)', table: 'clients', tsColumn: 'synced_at', tsKind: 'ts', warnH: 24 * 7, downH: 24 * 30 },
 ]
 
 /** Turn a date-only string into an ISO timestamp at local end-of-day so a

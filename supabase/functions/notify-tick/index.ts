@@ -3,8 +3,7 @@
  * ------------------------------------
  * The scheduled "brain" behind OSLIFE's proactive Telegram notifications.
  * Invoked every 5 minutes by a pg_cron job (see the one-time SQL in
- * docs/SECRETS.md) via net.http_post with a bearer CRON_SECRET — the same
- * shared-secret pattern notion-sync uses for its cron trigger.
+ * docs/SECRETS.md) via net.http_post with a bearer CRON_SECRET.
  *
  * On every tick it:
  *   1. Loads notification_prefs for OSLIFE_USER_ID; does nothing if no

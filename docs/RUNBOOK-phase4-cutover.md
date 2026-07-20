@@ -1,9 +1,9 @@
 # Phase 4 cutover runbook (operator steps)
 
-The Phase 4 code changes are committed, but three items require actions **outside
-the repo** (deploys, a pg_cron schedule with a secret, and Apps Script trigger
-edits). They are ordered so sync is never interrupted. Nothing here is destructive
-to data except where noted; each step is reversible.
+Historical record of the Phase 4 rollout. Steps 1–2 (wallet-ingest relocation,
+finance category normalization) were completed and are kept for reference. Steps
+3–4 (the Notion cutover) were superseded — see below — since Notion was removed
+entirely rather than migrated to a pg_cron-scheduled sync.
 
 Prerequisites: Supabase CLI logged in, project ref `nhyunnnmdcmojvkxrbpl`, and the
 secrets already listed in `docs/SECRETS.md`.
@@ -44,48 +44,21 @@ select category, count(*) from public.finance_tx group by 1 order by 2 desc;
 -- expect only capitalized categories (+ 'Uncategorized'); no 'groceries'/'fuel'/'other'
 ```
 
-## 3. Schedule `notion-sync` via pg_cron (replaces the Apps Script sync)
+## 3–4. Notion cutover — superseded by full removal
 
-`notion-sync` already accepts a `SYNC_SECRET` bearer (see the file header). Set the
-secret and schedule it, mirroring how `notify-tick` is scheduled (per
-`docs/SECRETS.md` §7). The `cron.schedule` call embeds the secret, so — like the
-notify-tick job — it is **run once by hand in the SQL Editor, never committed**:
+Steps 3–4 originally scheduled `notion-sync` via `pg_cron` and then retired the
+duplicate `Code.gs` writer once that cron was confirmed. That plan is moot: the
+Notion integration was removed entirely instead of migrated.
 
-```sql
--- run in the Supabase SQL Editor
-select cron.schedule(
-  'notion-sync',
-  '*/15 * * * *',                       -- same cadence the Apps Script trigger used
-  $$ select net.http_post(
-       url    := 'https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/notion-sync',
-       headers:= jsonb_build_object('Authorization', 'Bearer <SYNC_SECRET>'),
-       body   := '{}'::jsonb
-     ) $$
-);
-```
+- `notion-sync`, `notion-mutate`, `notion-hq` edge functions deleted from the repo
+  and the live Supabase project.
+- `Code.gs`'s `syncNotion()`/`syncClients()` (plus their Notion mini-client and
+  15-minute triggers) removed — the CRM (`projects`/`clients`) is now in-app only.
+- `NOTION_TOKEN` / `NOTION_DB_ID` / `NOTION_CLIENTS_DB_ID` / `SYNC_SECRET` are no
+  longer used anywhere; safe to delete from Supabase secrets and Apps Script
+  Script Properties whenever convenient.
+- If you still have the old `syncNotion`/`syncClients` time-based triggers
+  registered in the Apps Script project, delete them from the Triggers panel —
+  the functions they pointed to no longer exist in the re-pasted `Code.gs`.
 
-Set the function secret first: `supabase secrets set SYNC_SECRET=<random> --project-ref nhyunnnmdcmojvkxrbpl`.
-
-Confirm one scheduled run writes rows (check `projects`/`clients` updated_at, or the
-function logs) **before** proceeding to step 4.
-
-## 4. Retire the duplicate sync in `Code.gs` (only after step 3 is confirmed)
-
-`integrations/apps-script/Code.gs` still contains `syncNotion()` / `syncClients()`
-plus their Notion mini-client and 15-minute trigger — a second, independent writer
-to the same `projects`/`clients` tables. This is the drift hazard the audit called
-out. Once the pg_cron job in step 3 is confirmed running:
-
-1. In the Apps Script project, delete the time-based triggers for `syncNotion` and
-   `syncClients` (Triggers panel).
-2. Remove those functions (and the Notion helpers they use) from `Code.gs`, keeping
-   the sheet-reader half (health/payments/screentime) which is **not** duplicated.
-3. Re-paste the trimmed `Code.gs`.
-
-> This step is intentionally **not** applied to the repo's `Code.gs` yet: deleting
-> the sync code there before the cron job is live would let a re-paste silently stop
-> Notion sync. Do the deletion as part of this cutover, or ask for it as a follow-up
-> commit once step 3 is verified.
-
-Rollback for the whole cutover: `select cron.unschedule('notion-sync');` and
-re-enable the Apps Script triggers.
+Rollback isn't applicable — there's nothing left running to unschedule.

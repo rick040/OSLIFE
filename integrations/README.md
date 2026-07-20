@@ -1,9 +1,9 @@
 # OSLIFE · connecties & datastromen
 
-Architectuur: **Google Apps Script + Google Sheets + Notion + de Geldrop Buurtkaart WordPress
-API** (ingestie) → **Supabase** (Postgres + Realtime + Edge Functions) → **React app** (live
+Architectuur: **Google Apps Script + Google Sheets + de Geldrop Buurtkaart WordPress API**
+(ingestie) → **Supabase** (Postgres + Realtime + Edge Functions) → **React app** (live
 reads). Alles schrijft uitsluitend naar het OSLIFE-project `nhyunnnmdcmojvkxrbpl` — geen Vercel /
-rick-os tussenlaag.
+rick-os tussenlaag. Projecten/Klanten (CRM) worden volledig in-app beheerd, zonder externe sync.
 
 ## Apps Script — één los project (`apps-script/`)
 
@@ -13,7 +13,7 @@ de sheets vullen dus niet aan. Voeg alle bestanden toe aan dit ene project en ru
 
 | Bestand | Doet | Schrijft naar |
 |---------|------|---------------|
-| `Code.gs` | hub + gedeelde helpers + `installAllTriggers()` | Notion→`projects`/`clients`, Gmail→`gmail_messages`, Calendar→`day_blocks`, betalingen-agenda→`payments` (direct via PostgREST) |
+| `Code.gs` | hub + gedeelde helpers + `installAllTriggers()` | Gmail→`gmail_messages`, Calendar→`day_blocks`, betalingen-agenda→`payments` (direct via PostgREST) |
 | `health-sheets.gs` | leest Health-sheet (id) | `health-sheets-ingest` → `health_*` |
 | `payments-sheet.gs` | leest Betalingen-sheet (id) | `payments-sheet-ingest` → `finance_tx` |
 | `screentime-sheet.gs` | leest Schermtijd-sheet (id) | `screentime-sheet-ingest` → `screentime` |
@@ -26,10 +26,6 @@ maken niet uit. De verwachte tabs/kolommen + sheet-id properties staan boven in 
 
 ## Edge Functions (`../supabase/functions/`)
 
-- `notion-sync` — leest Projects + Clients uit Notion → `projects` / `clients`.
-- `notion-mutate` — schrijft app-wijzigingen **terug** naar Notion (status, prioriteit, deadline,
-  budget, …). Detecteert per property het type (select vs status) zodat de payload altijd klopt.
-- `notion-hq` — live callouts van de 3 side-business pagina's (Buurtkaart, The Eyes, Dakmeester).
 - `gbk-overview` — proxyt de Geldrop Buurtkaart WordPress API (`/wp-json/gbk/v1/overview`) met de
   `X-GBK-Key` header; de key blijft server-side (secret `GBK_API_KEY`).
 - `health-sheets-ingest`, `payments-sheet-ingest`, `screentime-sheet-ingest` — ontvangen de

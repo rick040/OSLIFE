@@ -13,17 +13,6 @@ export const CORS = {
   "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
 };
 
-/** Narrower preflight variant kept for notion-sync / notion-hq (pre-dates CORS above). */
-export const CORS_BASIC = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
-};
-
-/** Origin-only variant notion-sync / notion-hq send on their actual responses. */
-export const CORS_ORIGIN = {
-  "Access-Control-Allow-Origin": "*",
-};
-
 /**
  * Build the per-function `json(body, status)` helper. Pass the function's CORS
  * headers (or nothing for cron/webhook functions that never serve a browser).

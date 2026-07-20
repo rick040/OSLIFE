@@ -1259,7 +1259,10 @@ export async function createClientRow(c: Omit<Client, 'id'>): Promise<Client | n
 }
 
 export async function updateClientRow(id: string, patch: Partial<Client>): Promise<void> {
-  await updateRow('clients', id, patch, CLIENT_COLS)
+  // synced_at used to mark "last synced from Notion"; now that clients are
+  // in-app only, repurpose it as "last updated" so Sync Status reflects real
+  // edit activity instead of reading every existing client as permanently stale.
+  await updateRow('clients', id, patch, CLIENT_COLS, { synced_at: new Date().toISOString() })
 }
 
 export async function deleteClientRow(id: string): Promise<void> {
