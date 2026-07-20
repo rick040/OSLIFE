@@ -1,6 +1,18 @@
+import * as DialogPrimitive from '@radix-ui/react-dialog'
 import type { Domain, Sentiment } from '../types'
 import { DOMAIN_META, SENTIMENT_META } from '../domains'
 import { ArrowRight } from 'lucide-react'
+import { cn } from '../lib/utils'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from './ui/alert-dialog'
 
 export function DomainChip({ domain, small }: { domain: Domain; small?: boolean }) {
   const m = DOMAIN_META[domain]
@@ -187,6 +199,15 @@ const OVERLAY_TONE = {
   'scrim-blur': 'bg-scrim/40 backdrop-blur-sm',
 } as const
 
+/**
+ * Built on @radix-ui/react-dialog directly (not shadcn's pre-styled
+ * DialogContent, which hardcodes a centered max-w-lg layout) so every existing
+ * caller's `className`/`panelClassName` — several of which are a mobile-
+ * bottom-sheet/desktop-centered responsive layout — keeps working unchanged.
+ * `open` is always true: this component only ever exists in the tree while
+ * its caller wants it shown, so Escape/outside-click/close just need to
+ * reach `onClose` — the caller unmounts it for real.
+ */
 export function Overlay({
   onClose,
   tone = 'black',
@@ -203,17 +224,37 @@ export function Overlay({
   children: React.ReactNode
 }) {
   return (
-    <div className={`fixed inset-0 z-50 ${OVERLAY_TONE[tone]} ${className}`} onClick={onClose}>
-      <div className={`relative ${panelClassName}`} onClick={(e) => e.stopPropagation()}>
-        {children}
-      </div>
-    </div>
+    <DialogPrimitive.Root open onOpenChange={(o) => !o && onClose()}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay
+          className={cn(
+            'fixed inset-0 z-50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+            OVERLAY_TONE[tone],
+          )}
+        />
+        <div className={cn('fixed inset-0 z-50', className)}>
+          <DialogPrimitive.Content
+            className={cn(
+              'relative data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+              panelClassName,
+            )}
+          >
+            {children}
+          </DialogPrimitive.Content>
+        </div>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   )
 }
 
 // ── in-app confirm dialog ──────────────────────────────────────────────────────
 // Styled replacement for window.confirm(): title + optional message + cancel/
 // confirm buttons. `danger` renders the confirm button red (destructive actions).
+// Built on shadcn's AlertDialog (real focus trap + Escape-to-close) — same
+// always-open trick as Overlay above. Unlike the old raw-div version, this does
+// NOT close on backdrop click (AlertDialog's deliberate behavior, to avoid an
+// accidental miss-click silently dismissing a destructive confirmation) — only
+// Escape, Cancel, or Confirm dismiss it now.
 export function ConfirmDialog({
   title,
   message,
@@ -232,17 +273,28 @@ export function ConfirmDialog({
   onConfirm: () => void
 }) {
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
-      <div className="absolute inset-0 bg-scrim/60" onClick={onCancel} />
-      <div className="relative w-full max-w-sm bg-canvas rounded-3xl border border-line shadow-pop p-5">
-        <div className="font-semibold text-base">{title}</div>
-        {message && <p className="text-sm text-muted mt-1.5">{message}</p>}
-        <div className="flex gap-2 mt-4">
-          <button onClick={onCancel} className="flex-1 py-2 rounded-xl bg-sunken text-muted text-sm font-semibold border border-line">{cancelLabel}</button>
-          <button onClick={onConfirm} className={`flex-1 py-2 rounded-xl text-white text-sm font-semibold ${danger ? 'bg-red-500' : 'bg-forest'}`}>{confirmLabel}</button>
-        </div>
-      </div>
-    </div>
+    <AlertDialog open onOpenChange={(o) => !o && onCancel()}>
+      <AlertDialogContent className="max-w-sm rounded-3xl border-line shadow-pop p-5">
+        <AlertDialogHeader className="text-left space-y-1.5">
+          <AlertDialogTitle className="text-base font-semibold">{title}</AlertDialogTitle>
+          {message && <AlertDialogDescription className="text-sm text-muted">{message}</AlertDialogDescription>}
+        </AlertDialogHeader>
+        <AlertDialogFooter className="flex-row gap-2 sm:justify-stretch sm:space-x-0 mt-2">
+          <AlertDialogCancel className="flex-1 mt-0 rounded-xl bg-sunken text-muted text-sm font-semibold border-line">
+            {cancelLabel}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            className={cn(
+              'flex-1 rounded-xl text-white text-sm font-semibold',
+              danger ? 'bg-red-500 hover:bg-red-600' : 'bg-forest hover:bg-forest-hi',
+            )}
+          >
+            {confirmLabel}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }
 
