@@ -36,6 +36,11 @@ const INGEST_SECRET = Deno.env.get("INGEST_SECRET") ?? "";
 // and src/lib/supabase.ts.
 const PENDING_MERCHANT = "Onbekend (bank-melding)";
 
+// Counterparties known to be the user's own accounts — money moving between
+// wallets, not real income/spend. MUST match isTransferCounterparty() in
+// src/finance/categories.ts.
+const TRANSFER_COUNTERPARTIES = [/r\.?\s*van\s*mierlo/i, /prjct agency/i];
+
 interface InTx {
   date: string;
   amount: number;
@@ -69,18 +74,22 @@ Deno.serve(async (req) => {
   const txns = (payload.transactions ?? []).filter((t) => t && t.date && Number.isFinite(t.amount));
   if (!txns.length) return json({ ok: true, upserted: 0 });
 
-  const rows = txns.map((t) => ({
-    user_id: USER_ID,
-    occurred_on: t.date,
-    amount: t.amount,
-    counterparty: (t.merchant ?? "").slice(0, 200),
-    description: (t.description ?? "").slice(0, 200),
-    category: t.category ?? "Other",
-    domain: t.domain ?? "personal",
-    source: "card_log",
-    payment_method: "card",
-    dedup_key: dedupKey(t.date, t.amount),
-  }));
+  const rows = txns.map((t) => {
+    const merchant = (t.merchant ?? "").slice(0, 200);
+    const isTransfer = TRANSFER_COUNTERPARTIES.some((re) => re.test(merchant));
+    return {
+      user_id: USER_ID,
+      occurred_on: t.date,
+      amount: t.amount,
+      counterparty: merchant,
+      description: (t.description ?? "").slice(0, 200),
+      category: isTransfer ? "Internal transfer" : (t.category ?? "Other"),
+      domain: t.domain ?? "personal",
+      source: "card_log",
+      payment_method: "card",
+      dedup_key: dedupKey(t.date, t.amount),
+    };
+  });
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 

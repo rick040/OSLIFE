@@ -86,7 +86,13 @@ const CATEGORY_MAP: Record<string, string> = {
   'adobe': 'Software',
 }
 
+// Counterparties known to be the user's own accounts — money moving between
+// wallets, not real income/spend. MUST match isTransferCounterparty() in
+// src/finance/categories.ts.
+const TRANSFER_COUNTERPARTIES = [/r\.?\s*van\s*mierlo/i, /prjct agency/i]
+
 function inferCategory(merchant: string): string {
+  if (TRANSFER_COUNTERPARTIES.some((re) => re.test(merchant))) return 'Internal transfer'
   const m = merchant.toLowerCase()
   for (const [key, cat] of Object.entries(CATEGORY_MAP)) {
     if (m.includes(key)) return cat

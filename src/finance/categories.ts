@@ -10,6 +10,7 @@ export const TX_CATEGORIES = [
   'Groceries', 'Takeout', 'Convenience', 'Transport', 'Dog', 'Health',
   'Subscriptions', 'Software', 'Gear', 'Utilities', 'Housing', 'Shopping',
   'Entertainment', 'Cash', 'Fees', 'Taxes', 'Client income', 'Stock media', 'Other',
+  'Internal transfer',
 ] as const
 
 export type TxCategory = (typeof TX_CATEGORIES)[number]
@@ -35,6 +36,7 @@ export const CATEGORY_DOMAIN: Record<string, Domain> = {
   'Client income': 'prjct',
   'Stock media': 'parkingyou',
   Other: 'personal',
+  'Internal transfer': 'personal',
 }
 
 /** Best-guess domain for a category + amount (income always leans business). */
@@ -48,6 +50,25 @@ const UNTAGGED = new Set(['', 'other', 'uncategorized', 'uncategorised', 'onbeke
 
 export function isUntagged(category: string | null | undefined): boolean {
   return UNTAGGED.has((category ?? '').trim().toLowerCase())
+}
+
+/** Money moving between the user's own accounts — excluded from every
+ *  income/spend total (balance, monthly sums, category charts, HEYRA
+ *  insights), but still visible in the transaction list. */
+const TRANSFER = new Set(['internal transfer'])
+
+export function isTransfer(category: string | null | undefined): boolean {
+  return TRANSFER.has((category ?? '').trim().toLowerCase())
+}
+
+/** Counterparties known to be the user's own accounts, matched regardless of
+ *  case/spacing ("R VAN MIERLO", "R van Mierlo", "PRJCT Agency", ...). Used to
+ *  auto-tag new transactions as 'Internal transfer' at ingest/import time. */
+const TRANSFER_COUNTERPARTIES = [/r\.?\s*van\s*mierlo/i, /prjct agency/i]
+
+export function isTransferCounterparty(name: string | null | undefined): boolean {
+  const s = (name ?? '').trim()
+  return s !== '' && TRANSFER_COUNTERPARTIES.some((re) => re.test(s))
 }
 
 /**

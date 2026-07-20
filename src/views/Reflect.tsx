@@ -16,6 +16,7 @@ import { CHART_TIP, AXIS_TICK_10 } from '../components/chart'
 import { useStore } from '../store'
 import { computeCorrelations, computeAnomalies } from '../reflect'
 import { deriveDeadlines, hasSleepSignal, hasEnergySignal } from '../derive'
+import { isTransfer } from '../finance/categories'
 import { fmtDate } from '../domains'
 import { DomainChip, SectionTitle, Empty } from '../components/ui'
 import { fetchSyncStatus, humanizeAge, HEALTH_META, type SyncSourceStatus } from '../lib/syncStatus'
@@ -83,19 +84,22 @@ export default function Reflect() {
   const { dayLogs, transactions, threads, patterns, lastDigest, reflectCount, runNightlyReflect, screenDays, meetingDays, projects, healthDays, emails, habits } = useStore()
 
   const deadlines = useMemo(() => deriveDeadlines(projects), [projects])
+  // Internal transfers between the user's own accounts aren't real spend —
+  // exclude them from every correlation/anomaly/coverage calc below.
+  const realTx = useMemo(() => transactions.filter((t) => !isTransfer(t.category)), [transactions])
 
   const correlations = useMemo(
-    () => computeCorrelations(dayLogs, transactions, screenDays, meetingDays, deadlines, habits),
-    [dayLogs, transactions, screenDays, meetingDays, deadlines, habits],
+    () => computeCorrelations(dayLogs, realTx, screenDays, meetingDays, deadlines, habits),
+    [dayLogs, realTx, screenDays, meetingDays, deadlines, habits],
   )
   const anomalies = useMemo(
-    () => computeAnomalies(dayLogs, transactions, threads),
-    [dayLogs, transactions, threads],
+    () => computeAnomalies(dayLogs, realTx, threads),
+    [dayLogs, realTx, threads],
   )
 
   // Honest data coverage — REFLECT can only correlate what's actually flowing.
   const coverage = useMemo(() => {
-    const spend = transactions.filter((t) => t.amount < 0).length
+    const spend = realTx.filter((t) => t.amount < 0).length
     return [
       { key: 'Slaap', ok: hasSleepSignal(dayLogs), detail: hasSleepSignal(dayLogs) ? `${dayLogs.filter((l) => l.sleepHours > 0).length} dagen` : 'geen ingest' },
       { key: 'Energie', ok: hasEnergySignal(dayLogs), detail: hasEnergySignal(dayLogs) ? 'gevarieerd' : 'niet gemeten' },
@@ -106,7 +110,7 @@ export default function Reflect() {
       { key: 'Projecten', ok: deadlines.length > 0, detail: `${deadlines.length} deadlines` },
       { key: 'Mail', ok: emails.length > 0, detail: `${emails.length} berichten` },
     ]
-  }, [dayLogs, healthDays, screenDays, transactions, meetingDays, deadlines, emails])
+  }, [dayLogs, healthDays, screenDays, realTx, meetingDays, deadlines, emails])
 
   const noSleep = !hasSleepSignal(dayLogs)
 
@@ -119,7 +123,7 @@ export default function Reflect() {
 
   const spendByDay = useMemo(() => {
     const map = new Map<string, number>()
-    transactions.forEach((t) => {
+    realTx.forEach((t) => {
       if (t.amount < 0) map.set(t.date, (map.get(t.date) || 0) + Math.abs(t.amount))
     })
     return dayLogs.map((l) => ({
@@ -128,7 +132,7 @@ export default function Reflect() {
       spend: Math.round(map.get(l.date) || 0),
       deadline: deadlines.includes(l.date),
     }))
-  }, [transactions, dayLogs, deadlines])
+  }, [realTx, dayLogs, deadlines])
 
   const corrIcon: Record<string, typeof Brain> = {
     c1: Moon,

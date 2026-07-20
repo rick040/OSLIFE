@@ -17,7 +17,7 @@ import { OPENING_BALANCE } from '../mockData'
 import { DomainChip, SectionTitle, Empty, Overlay, ConfirmDialog, Sparkline } from '../components/ui'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import type { Domain, Transaction, Cadence, Subscription, VendorTag, Payment } from '../types'
-import { TX_CATEGORIES, CATEGORY_DOMAIN, domainForCategory } from '../finance/categories'
+import { TX_CATEGORIES, CATEGORY_DOMAIN, domainForCategory, isTransfer } from '../finance/categories'
 import { parseCsv } from '../finance/csvImport'
 import {
   Wallet,
@@ -112,7 +112,12 @@ export default function Money() {
   const toReceive = openPayments.filter((p) => p.direction === 'incoming').reduce((a, p) => a + p.amount, 0)
   const toPay = openPayments.filter((p) => p.direction === 'outgoing').reduce((a, p) => a + p.amount, 0)
 
-  const balance = OPENING_BALANCE + transactions.reduce((a, t) => a + t.amount, 0)
+  // Money moving between the user's own accounts (e.g. R van Mierlo, PRJCT
+  // Agency transfers) isn't real income/spend — excluded from every sum below,
+  // but still shown in the transaction list further down.
+  const realTx = useMemo(() => transactions.filter((t) => !isTransfer(t.category)), [transactions])
+
+  const balance = OPENING_BALANCE + realTx.reduce((a, t) => a + t.amount, 0)
   // 14-day running-balance trend for the saldo hero card's sparkline.
   const balanceTrend = useMemo(() => {
     const days = Array.from({ length: 14 }, (_, i) => {
@@ -120,10 +125,10 @@ export default function Money() {
       d.setDate(d.getDate() - (13 - i))
       return d.toISOString().slice(0, 10)
     })
-    return days.map((date) => OPENING_BALANCE + transactions.filter((t) => t.date <= date).reduce((a, t) => a + t.amount, 0))
-  }, [transactions])
+    return days.map((date) => OPENING_BALANCE + realTx.filter((t) => t.date <= date).reduce((a, t) => a + t.amount, 0))
+  }, [realTx])
   const month = TODAY.slice(0, 7)
-  const monthTx = transactions.filter((t) => t.date.slice(0, 7) === month)
+  const monthTx = realTx.filter((t) => t.date.slice(0, 7) === month)
   const earned = monthTx.filter((t) => t.amount > 0).reduce((a, t) => a + t.amount, 0)
   const spent = monthTx.filter((t) => t.amount < 0).reduce((a, t) => a + t.amount, 0)
   // seeded revenue goal if present, otherwise the first live goal in EUR (live ids are generated)

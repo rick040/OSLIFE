@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { TODAY, DOMAIN_META, fmtDate, daysBetween } from '../domains'
+import { isTransfer } from '../finance/categories'
 import { dueLabel } from '../lib/dates'
 import { OPENING_BALANCE } from '../mockData'
 import { DomainChip, Empty, SetupHint, Ring, SegmentedProgress, Sparkline } from '../components/ui'
@@ -133,8 +134,10 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const importantMail = allImportantMail.slice(0, 3)
 
   // money — balance is computed identically to the Money screen (opening balance
-  // + every known transaction) so the two screens never disagree.
-  const balance = OPENING_BALANCE + transactions.reduce((a, t) => a + t.amount, 0)
+  // + every known real transaction, excluding internal transfers between the
+  // user's own accounts) so the two screens never disagree.
+  const realTx = transactions.filter((t) => !isTransfer(t.category))
+  const balance = OPENING_BALANCE + realTx.reduce((a, t) => a + t.amount, 0)
   // 7-day running-balance trend for the saldo tile's sparkline — a glance at
   // direction (climbing/falling), not a substitute for the real chart in Geld.
   const daysAgo = (n: number) => {
@@ -143,7 +146,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     return d.toISOString().slice(0, 10)
   }
   const balanceTrend = Array.from({ length: 7 }, (_, i) => daysAgo(6 - i)).map(
-    (date) => OPENING_BALANCE + transactions.filter((t) => t.date <= date).reduce((a, t) => a + t.amount, 0),
+    (date) => OPENING_BALANCE + realTx.filter((t) => t.date <= date).reduce((a, t) => a + t.amount, 0),
   )
 
   // Tap-to-expand: a quick trend chart for a stat tile, without leaving the
@@ -159,7 +162,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   }
   const saldoTrend: MetricPoint[] = Array.from({ length: 14 }, (_, i) => daysAgo(13 - i)).map((date) => ({
     date: date.slice(8),
-    value: OPENING_BALANCE + transactions.filter((t) => t.date <= date).reduce((a, t) => a + t.amount, 0),
+    value: OPENING_BALANCE + realTx.filter((t) => t.date <= date).reduce((a, t) => a + t.amount, 0),
   }))
 
   // outstanding payments
