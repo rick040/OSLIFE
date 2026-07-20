@@ -1,6 +1,6 @@
 # OSLIFE braindump media worker
 # node + ffmpeg + yt-dlp. Deploy to Fly.io / Railway / Render / a small VPS.
-FROM node:20-slim
+FROM node:22-slim
 
 # ffmpeg for audio extraction/transcode; python3 + pip for yt-dlp.
 RUN apt-get update \
