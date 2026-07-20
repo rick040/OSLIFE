@@ -9,8 +9,12 @@
  * The in-app ABN AMRO CSV import uses the EXACT same key, so a purchase that is
  * both logged on your phone (this sheet) and present in the monthly ABN export
  * collapses to a single row via the UNIQUE (user_id, dedup_key) constraint —
- * no duplicates. Sheet rows are written with ignoreDuplicates so a later CSV
- * import never overwrites them, and vice-versa.
+ * no duplicates. A row wallet-ingest wrote as a PENDING_MERCHANT placeholder
+ * (real-time bank notification with no merchant name) gets enriched with this
+ * sheet's real merchant/category/domain instead of being dedup-blocked by it —
+ * mirrors insertFinanceTx's enrichment in src/lib/supabase.ts. Any other
+ * existing row (already has a real merchant, or was manually edited) wins,
+ * via ignoreDuplicates, as before.
  *
  * Request body:
  *   { "transactions": [
@@ -27,6 +31,10 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_SERVICE_KEY, SUPABASE_URL, USER_ID, jsonResponder } from "../_shared/http.ts";
 
 const INGEST_SECRET = Deno.env.get("INGEST_SECRET") ?? "";
+
+// MUST match PENDING_MERCHANT in supabase/functions/wallet-ingest/index.ts
+// and src/lib/supabase.ts.
+const PENDING_MERCHANT = "Onbekend (bank-melding)";
 
 interface InTx {
   date: string;
@@ -75,11 +83,50 @@ Deno.serve(async (req) => {
   }));
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-  // ignoreDuplicates: a row already present (e.g. from the ABN CSV import) wins.
-  const { error, count } = await supabase
-    .from("finance_tx")
-    .upsert(rows, { onConflict: "user_id,dedup_key", ignoreDuplicates: true, count: "exact" });
 
-  if (error) return json({ ok: false, error: error.message }, 500);
-  return json({ ok: true, received: rows.length, upserted: count ?? rows.length });
+  const dedupKeys = rows.map((r) => r.dedup_key);
+  const { data: pendingRows, error: selectError } = await supabase
+    .from("finance_tx")
+    .select("dedup_key")
+    .eq("user_id", USER_ID)
+    .eq("counterparty", PENDING_MERCHANT)
+    .in("dedup_key", dedupKeys);
+  if (selectError) return json({ ok: false, error: selectError.message }, 500);
+  const pendingKeys = new Set((pendingRows ?? []).map((r) => r.dedup_key as string));
+
+  const toEnrich = rows.filter((r) => pendingKeys.has(r.dedup_key));
+  const toInsert = rows.filter((r) => !pendingKeys.has(r.dedup_key));
+
+  let upserted = 0;
+  if (toEnrich.length) {
+    const results = await Promise.all(
+      toEnrich.map((r) =>
+        supabase
+          .from("finance_tx")
+          .update(
+            { counterparty: r.counterparty, description: r.description, category: r.category, domain: r.domain, source: r.source, payment_method: r.payment_method },
+            { count: "exact" },
+          )
+          .eq("user_id", USER_ID)
+          .eq("dedup_key", r.dedup_key)
+          // Re-check counterparty at write time: don't clobber a manual edit
+          // or a CSV-import enrichment that landed between select and update.
+          .eq("counterparty", PENDING_MERCHANT),
+      ),
+    );
+    const enrichError = results.find((r) => r.error)?.error;
+    if (enrichError) return json({ ok: false, error: enrichError.message }, 500);
+    upserted += results.reduce((n, r) => n + (r.count ?? 0), 0);
+  }
+
+  if (toInsert.length) {
+    // ignoreDuplicates: a row already present (e.g. from the ABN CSV import) wins.
+    const { error, count } = await supabase
+      .from("finance_tx")
+      .upsert(toInsert, { onConflict: "user_id,dedup_key", ignoreDuplicates: true, count: "exact" });
+    if (error) return json({ ok: false, error: error.message }, 500);
+    upserted += count ?? toInsert.length;
+  }
+
+  return json({ ok: true, received: rows.length, upserted });
 });
