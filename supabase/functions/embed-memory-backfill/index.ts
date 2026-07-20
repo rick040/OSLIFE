@@ -33,7 +33,20 @@ import { renderNote, type Frontmatter } from "../_shared/frontmatter.ts";
 import { CORS, SUPABASE_SERVICE_KEY, SUPABASE_URL, USER_ID, corsPreflight, jsonResponder } from "../_shared/http.ts";
 
 const CRON_SECRET = Deno.env.get("CRON_SECRET") ?? "";
-const BATCH_PER_TABLE = 25; // keep a single tick well under the function's time limit
+const BATCH_PER_TABLE = 25; // an upper bound per table; TIME_BUDGET_MS is the real gate below
+
+// Voyage AI applies a reduced rate limit (3 requests/minute) to accounts with
+// no payment method on file (docs.voyageai.com/docs/pricing) — confirmed live
+// against this project's key via a burst test: calls 1-3 returned 200, calls
+// 4-6 returned 429 immediately. Pacing every embed() call at this interval
+// keeps a nightly run from wasting most of its calls on 429s; once a payment
+// method is added on the Voyage dashboard the standard (much higher) limit
+// applies and this can be lowered or removed.
+const MIN_EMBED_INTERVAL_MS = 21_000;
+// Stay well clear of the edge function's own execution ceiling — at the pace
+// above, a full BATCH_PER_TABLE*3 sweep would take ~26 minutes, so bail out
+// cleanly partway through and let tomorrow's cron tick pick up the rest.
+const TIME_BUDGET_MS = 100_000;
 
 const json = jsonResponder(CORS);
 
@@ -86,8 +99,10 @@ Deno.serve(async (req) => {
 
   let embedded = 0;
   let failed = 0;
+  let lastEmbedAt = 0;
+  const startedAt = Date.now();
 
-  for (const job of JOBS) {
+  outer: for (const job of JOBS) {
     const { data: rows, error } = await sb
       .from(job.table)
       .select(job.select)
@@ -97,8 +112,15 @@ Deno.serve(async (req) => {
     if (error || !rows) continue;
 
     for (const row of rows as Record<string, unknown>[]) {
+      if (Date.now() - startedAt > TIME_BUDGET_MS) break outer;
+
       const text = job.text(row).trim();
       if (!text) continue;
+
+      const wait = lastEmbedAt + MIN_EMBED_INTERVAL_MS - Date.now();
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      lastEmbedAt = Date.now();
+
       const vector = await embed(text, "document");
       if (!vector) {
         failed++;
@@ -116,18 +138,32 @@ Deno.serve(async (req) => {
       // so geheim rows must be excluded here explicitly.
       if (row.tier !== "geheim") {
         const note = renderNote(job.frontmatter(row), text);
-        await sb.storage
+        const vaultUpload = sb.storage
           .from("vault")
           .upload(`${job.vaultSource}/${row.id}.md`, new Blob([note], { type: "text/markdown" }), {
             contentType: "text/markdown",
             upsert: true,
           })
+          .then(() => {})
           .catch(() => {});
         // Same ride-along for the cognee knowledge-graph worker — called
         // in-process (not over HTTP to the cognee-remember Edge Function)
         // since this function has no per-request user JWT to send through
         // Supabase's gateway, same reasoning as the direct Storage write above.
-        await cogneeRemember(text).catch(() => {});
+        // cognee's entity-extraction pipeline genuinely takes seconds per note
+        // (unlike the near-instant auth-error path this used to hit before
+        // the client's header bug was fixed), so a batch of BATCH_PER_TABLE
+        // rows run sequentially here can now approach the function's own
+        // execution-time ceiling. EdgeRuntime.waitUntil() lets both calls
+        // keep running in the background instead of blocking the next row's
+        // Voyage embed on them — falls back to a plain await if that API
+        // isn't present (e.g. local dev outside the Supabase runtime).
+        const cogneeCall = cogneeRemember(text).catch(() => {});
+        const background = Promise.all([vaultUpload, cogneeCall]);
+        const waitUntil = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime
+          ?.waitUntil;
+        if (waitUntil) waitUntil(background);
+        else await background;
       }
     }
   }
