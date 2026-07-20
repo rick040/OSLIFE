@@ -457,11 +457,19 @@ Deno.serve(async (req) => {
   const workerSecret = Deno.env.get("WORKER_SECRET");
 
   try {
-    // ── Social: decide image (inline) vs video (delegate) ──
+    // ── Social: when the worker is configured, always hand Instagram/Pinterest
+    // to it and let yt-dlp decide video-vs-not — a plain server-side fetch()
+    // of the post (used by processSocial's og:video check) routinely gets
+    // blocked/redirected to a login wall by Instagram, which would otherwise
+    // silently misroute a real video post into the image-only path below.
+    // Only fall back to the og-scrape decision when there's no worker to ask.
     if ((kind === "instagram" || kind === "pinterest") && url) {
-      const social = await processSocial(apiKey, url);
-      if (social.delegate) kind = "video"; // fall through to media handling below
-      else return social.result ? await finish(social.result, await sha256Hex(url.trim().toLowerCase())) : await fail("Kon de social post niet verwerken");
+      if (workerUrl && workerSecret) {
+        kind = "video"; // fall through to media handling below
+      } else {
+        const social = await processSocial(apiKey, url);
+        return social.result ? await finish(social.result, await sha256Hex(url.trim().toLowerCase())) : await fail("Kon de social post niet verwerken");
+      }
     }
 
     // ── Media: hand off to the worker, or metadata-only fallback ──
@@ -472,13 +480,20 @@ Deno.serve(async (req) => {
           headers: { "content-type": "application/json", authorization: `Bearer ${workerSecret}` },
           body: JSON.stringify({ entryId, sourceUrl: url, storagePath, sourceKind: r.source_kind }),
         }).catch(() => null);
-        // Worker finishes the row itself (status → ready) via the service role.
+        // Worker finishes the row itself (status → ready) via the service role
+        // — it downloads the video, transcribes it, and deletes the temp
+        // file/audio regardless of outcome (or, if yt-dlp says it isn't a
+        // downloadable video at all, falls back to describing the og:image).
         if (res && res.ok) return json({ ok: true, status: "processing" });
         // Worker unreachable → graceful metadata fallback below.
       }
       if (kind === "youtube" && url) {
         const yt = await processYoutubeFallback(apiKey, url);
         return yt ? await finish(yt) : await fail("Kon de YouTube-metadata niet ophalen");
+      }
+      if (url && (r.source_kind === "instagram" || r.source_kind === "pinterest")) {
+        const social = await processSocial(apiKey, url);
+        return social.result ? await finish(social.result, await sha256Hex(url.trim().toLowerCase())) : await fail("Kon de social post niet verwerken (worker onbereikbaar)");
       }
       if (url) {
         const link = await processLink(apiKey, url);

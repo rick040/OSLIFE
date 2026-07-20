@@ -11,6 +11,13 @@
 // no Whisper cost) and only falls back to the audio+Whisper pipeline when the
 // video has no captions at all.
 //
+// For Instagram/Pinterest, braindump-ingest delegates here unconditionally
+// (it can't reliably tell video-vs-photo posts apart itself — see that file's
+// comment on why). yt-dlp attempts a download first; if the post turns out to
+// be a plain photo (no downloadable video), noteFromImagePost() below falls
+// back to describing the og:image with Claude vision instead of failing the
+// entry outright.
+//
 // Env (see .env.example): PORT, WORKER_SECRET, GROQ_API_KEY, ANTHROPIC_API_KEY,
 // SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
 
@@ -40,6 +47,73 @@ const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 const VALID_DOMAINS = ['parkingyou', 'prjct', 'buurtkaart', 'personal', 'cross']
 const VALID_KINDS = ['task', 'note', 'vent', 'link', 'voice', 'transaction', 'event', 'health', 'email', 'idea']
 const VALID_SENTIMENTS = ['positive', 'neutral', 'negative', 'stressed']
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36'
+
+// ── image-post fallback (Instagram/Pinterest posts with no downloadable video) ──
+
+function ogTag(html, prop) {
+  const re = new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`, 'i')
+  const m = html.match(re) ?? html.match(new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${prop}["']`, 'i'))
+  return m ? decodeEntities(m[1]) : null
+}
+function decodeEntities(s) {
+  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+}
+// Instagram/Facebook og:description is "N Likes, M Comments - user on
+// Instagram: "the actual caption"" boilerplate — pull out just the caption.
+function extractCaption(desc) {
+  const m = desc.match(/on (?:Instagram|Facebook)[^:]*:\s*"([\s\S]*)"\s*$/i)
+  return m ? m[1].trim() : desc
+}
+
+const IMAGE_SYSTEM = `Je bent de "Braindump"-verwerker van OSLIFE. Je krijgt een social media post (afbeelding + bijschrift) en zet dit om in een compacte Markdown-notitie voor een persoonlijk kennissysteem. Wees feitelijk en beknopt.
+
+Geef ALLEEN een fenced \`\`\`json blok terug:
+{
+  "title": "korte titel (max ~8 woorden)",
+  "summary": "één zin die de kern vat",
+  "domain": één van ${VALID_DOMAINS.join(', ')},
+  "kind": één van ${VALID_KINDS.join(', ')},
+  "sentiment": één van ${VALID_SENTIMENTS.join(', ')},
+  "tags": ["3-6 lowercase trefwoorden"],
+  "markdown": "de notitie: # titel, korte samenvatting van wat te zien is + bijschrift, bronlink onderaan"
+}`
+
+/** Describe a social post's og:image with Claude vision when it isn't a video at all. */
+async function noteFromImagePost(url) {
+  const res = await fetch(url, { headers: { 'user-agent': BROWSER_UA, 'accept-language': 'nl,en;q=0.8' } })
+  if (!res.ok) throw new Error(`fetch ${res.status}`)
+  const html = await res.text()
+  const title = ogTag(html, 'og:title')
+  const descRaw = ogTag(html, 'og:description')
+  const image = ogTag(html, 'og:image')
+  if (!image) throw new Error('no og:image found')
+  const description = descRaw ? extractCaption(descRaw) : null
+
+  const content = [
+    {
+      type: 'text',
+      text: [
+        `Gedeelde social post: ${url}`,
+        title ? `Titel: ${title}` : '',
+        description ? `Bijschrift: ${description}` : '',
+        'Hieronder de afbeelding van de post — beschrijf wat te zien is en neem eventuele tekst (OCR) op.',
+      ].filter(Boolean).join('\n'),
+    },
+    { type: 'image', source: { type: 'url', url: image } },
+  ]
+  const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 1500, system: IMAGE_SYSTEM, messages: [{ role: 'user', content }] }),
+  })
+  if (!apiRes.ok) throw new Error(`anthropic ${apiRes.status}: ${await apiRes.text()}`)
+  const data = await apiRes.json()
+  const text = (Array.isArray(data.content) ? data.content : []).filter((b) => b.type === 'text').map((b) => b.text).join('\n')
+  const note = parseNote(text)
+  if (!note) throw new Error('convert failed')
+  return { note, thumbUrl: image }
+}
 
 // ── media acquisition ──────────────────────────────────────────────────────────
 
@@ -224,11 +298,35 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
     }
 
     if (!transcript) {
-      const fetched = sourceUrl
-        ? await fetchFromUrl(sourceUrl, dir)
-        : await fetchFromStorage(storagePath, dir)
-      meta = { ...fetched.meta, ...meta } // youtube meta (if already fetched) wins
-      transcript = await transcribeFile(fetched.audioPath)
+      try {
+        const fetched = sourceUrl
+          ? await fetchFromUrl(sourceUrl, dir)
+          : await fetchFromStorage(storagePath, dir)
+        meta = { ...fetched.meta, ...meta } // youtube meta (if already fetched) wins
+        transcript = await transcribeFile(fetched.audioPath)
+      } catch (err) {
+        // Instagram/Pinterest often isn't a video at all (a plain photo
+        // post) — yt-dlp fails to find a downloadable stream, so describe
+        // the og:image instead of failing the whole entry.
+        if ((sourceKind === 'instagram' || sourceKind === 'pinterest') && sourceUrl) {
+          const fallback = await noteFromImagePost(sourceUrl)
+          await sb.from('braindump_entries').update({
+            status: 'ready',
+            title: fallback.note.title,
+            summary: fallback.note.summary,
+            markdown: fallback.note.markdown,
+            domain: fallback.note.domain,
+            kind: fallback.note.kind,
+            sentiment: fallback.note.sentiment,
+            tags: fallback.note.tags,
+            thumb_url: fallback.thumbUrl,
+            meta: { transcript: false, url: sourceUrl },
+            error: null,
+          }).eq('id', entryId)
+          return
+        }
+        throw err
+      }
     }
     if (!transcript) throw new Error('empty transcript')
 
