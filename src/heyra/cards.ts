@@ -6,6 +6,7 @@
 import type { useStore } from '../store'
 import type { Domain, Channel } from '../types'
 import { DOMAIN_META, today } from '../domains'
+import { isTransfer } from '../finance/categories'
 
 type Store = ReturnType<typeof useStore.getState>
 
@@ -158,7 +159,11 @@ const prev7Days = () => Array.from({ length: 7 }, (_, i) => isoDaysAgo(13 - i))
 const COMPARE_RE = /vergelijk|vergelijking|versus|\bvs\.?\b|t\.o\.v\.|ten opzichte van/
 
 function spendOn(store: Store, iso: string): number {
-  return Math.round(store.transactions.filter((tx) => tx.date === iso && tx.amount < 0).reduce((a, tx) => a + Math.abs(tx.amount), 0))
+  return Math.round(
+    store.transactions
+      .filter((tx) => tx.date === iso && tx.amount < 0 && !isTransfer(tx.category))
+      .reduce((a, tx) => a + Math.abs(tx.amount), 0),
+  )
 }
 
 /**

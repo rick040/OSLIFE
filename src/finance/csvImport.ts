@@ -5,10 +5,13 @@
 // Valt terug op een vergevingsgezinde generieke parse per regel.
 import type { Transaction } from '../types'
 import { TODAY } from '../domains'
-import { domainForCategory } from './categories'
+import { domainForCategory, isTransferCounterparty } from './categories'
 
 export function guessCategory(desc: string, amount: number): string {
   const d = desc.toLowerCase()
+  // Money moving between the user's own accounts (checked before the
+  // amount>0 → 'Client income' fallback, since transfers go both ways).
+  if (isTransferCounterparty(desc)) return 'Internal transfer'
   if (amount > 0) return 'Client income'
   // Word boundaries throughout: unbounded substrings caused false positives like
   // "shell" matching "Michelle", "bp" matching "ABP", "plus" matching "OnePlus".

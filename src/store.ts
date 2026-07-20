@@ -52,7 +52,7 @@ import type {
   BusinessIdea,
   IdeaSource,
 } from './types'
-import { vendorKey, isUntagged } from './finance/categories'
+import { vendorKey, isUntagged, isTransfer } from './finance/categories'
 import { categorizeVendor } from './heyra/agents/vendorAgent'
 import { analyzeActivity } from './lib/crm/activityAnalyzer'
 import type { ActivityAnalysis } from './lib/crm/activityAnalyzer'
@@ -1146,17 +1146,20 @@ export const useStore = create<State>()(
       runNightlyReflect: () => {
         set((s) => {
           const deadlines = deriveDeadlines(s.projects)
+          // Internal transfers between the user's own accounts aren't real
+          // income/spend — excluded from every pattern/correlation below.
+          const realTx = s.transactions.filter((t) => !isTransfer(t.category))
           // Live baseline observations are the evidence re-checked each pass.
           const evidenced = deriveBaselinePatterns(
             s.healthDays,
             s.screenDays,
-            s.transactions,
+            realTx,
             s.projects,
             s.clients,
           )
           const { digest, patterns } = runReflect(
             s.dayLogs,
-            s.transactions,
+            realTx,
             s.threads,
             s.patterns,
             evidenced,
@@ -2017,10 +2020,12 @@ export const useStore = create<State>()(
         const healthDays = applyCheckins(s.healthDays, s.checkins)
         const dayLogs = deriveDayLogs(healthDays, s.checkins)
         const deadlines = deriveDeadlines(s.projects)
+        // Internal transfers between the user's own accounts aren't real
+        // income/spend — excluded from the baseline pattern's spend observation.
         const baseline = deriveBaselinePatterns(
           s.healthDays,
           s.screenDays,
-          s.transactions,
+          s.transactions.filter((t) => !isTransfer(t.category)),
           s.projects,
           s.clients,
         )
