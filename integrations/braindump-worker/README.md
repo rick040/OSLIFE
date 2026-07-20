@@ -47,6 +47,27 @@ worker:
 Without those, `braindump-ingest` falls back to metadata-only for media (YouTube
 oEmbed / OpenGraph), so the app still works before the worker is deployed.
 
+## YouTube cookies (optional — works around "Sign in to confirm you're not a bot")
+
+yt-dlp running from any cloud host's IP routinely gets blocked by YouTube's
+bot-check, independent of the video itself. Fix: give yt-dlp a real browser's
+session cookies.
+
+1. While logged into YouTube in your own browser, export cookies in Netscape
+   format — e.g. the "Get cookies.txt LOCALLY" extension (Chrome/Firefox).
+   Must be the `cookies.txt` format (`# Netscape HTTP Cookie File` header),
+   not raw JSON.
+2. Upload that file as a **Secret File** on your host (Render: service →
+   Environment → Secret Files → filename `youtube-cookies.txt`, content =
+   the file). It's mounted at `/etc/secrets/youtube-cookies.txt`.
+3. That's it — every yt-dlp call in `server.mjs` checks for that path and adds
+   `--cookies` automatically when it exists (`YT_COOKIES_PATH` env var to
+   override the path). No cookies file present → falls back to today's
+   unauthenticated behaviour, so this is entirely opt-in.
+
+The cookies are your real YouTube session — treat the file like a password
+(don't commit it) and expect to re-export occasionally as sessions expire.
+
 ## Notes
 
 - Audio is transcoded to 16 kHz mono opus, which keeps most content under Groq's

@@ -18,12 +18,19 @@
 // back to describing the og:image with Claude vision instead of failing the
 // entry outright.
 //
+// yt-dlp running from a datacenter IP (any cloud host) routinely gets
+// "Sign in to confirm you're not a bot" from YouTube — a bot-check on the IP,
+// unrelated to the video itself. If a cookies file is present (see
+// YT_COOKIES_PATH below), every yt-dlp call passes --cookies to authenticate
+// as a real browser session, which avoids it.
+//
 // Env (see .env.example): PORT, WORKER_SECRET, GROQ_API_KEY, ANTHROPIC_API_KEY,
-// SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
+// SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, YT_COOKIES_PATH (optional).
 
 import http from 'node:http'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, writeFile, rm, stat, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -37,6 +44,11 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY || ''
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || ''
 const SUPABASE_URL = process.env.SUPABASE_URL || ''
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+// Netscape-format cookies.txt (e.g. Render's "Secret Files", mounted under
+// /etc/secrets/<name>). Absent by default — every call below degrades to an
+// unauthenticated request, same as today, when this path doesn't exist.
+const YT_COOKIES_PATH = process.env.YT_COOKIES_PATH || '/etc/secrets/youtube-cookies.txt'
+const cookieArgs = () => (existsSync(YT_COOKIES_PATH) ? ['--cookies', YT_COOKIES_PATH] : [])
 
 const GROQ_MODEL = 'whisper-large-v3-turbo'
 const ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001'
@@ -120,7 +132,7 @@ async function noteFromImagePost(url) {
 /** Video/channel metadata via yt-dlp's own JSON dump. Best-effort — {} on failure. */
 async function fetchYoutubeMeta(url) {
   try {
-    const { stdout } = await execFileP('yt-dlp', ['--no-playlist', '--dump-single-json', '--no-warnings', url],
+    const { stdout } = await execFileP('yt-dlp', ['--no-playlist', '--dump-single-json', '--no-warnings', ...cookieArgs(), url],
       { maxBuffer: 1024 * 1024 * 64, timeout: 1000 * 60 * 5 })
     const j = JSON.parse(stdout)
     return { title: j.title ?? null, channel: j.uploader ?? j.channel ?? null, duration: j.duration ?? null, thumbnail: j.thumbnail ?? null }
@@ -141,6 +153,7 @@ async function fetchYoutubeCaptions(url, dir) {
     '--write-subs', '--write-auto-sub',
     '--sub-langs', 'nl,en,nl.*,en.*',
     '--convert-subs', 'srt',
+    ...cookieArgs(),
     '-o', out, url,
   ], { maxBuffer: 1024 * 1024 * 64, timeout: 1000 * 60 * 5 })
   const files = (await readdir(dir)).filter((f) => f.startsWith('subs.') && f.endsWith('.srt'))
@@ -174,6 +187,7 @@ async function fetchFromUrl(url, dir) {
     '-f', 'bestaudio/best',
     '--extract-audio', '--audio-format', 'opus',
     '--postprocessor-args', 'ffmpeg:-ac 1 -ar 16000 -b:a 16k',
+    ...cookieArgs(),
     '-o', out, url,
   ], { maxBuffer: 1024 * 1024 * 64, timeout: 1000 * 60 * 20 })
 
