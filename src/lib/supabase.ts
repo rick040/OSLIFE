@@ -153,7 +153,12 @@ async function fetchRows<T>(
   // limit, returning a different 300 depending on which device/request asked).
   if (by.tiebreaker) query = query.order(by.tiebreaker, { ascending: false })
   if (by.limit !== undefined) query = query.limit(by.limit)
-  const { data } = await query
+  const { data, error } = await query
+  // A failed fetch (expired session, RLS denial, network error) must NOT look
+  // identical to "genuinely no rows" — loadLiveData() never overwrites a slice
+  // with an empty array, so a silent failure here would leave the app frozen
+  // on stale/persisted data forever, with no way to tell why.
+  warnWrite(`${table}.fetch`, error)
   return ((data ?? []) as unknown as Record<string, unknown>[]).map(map)
 }
 
