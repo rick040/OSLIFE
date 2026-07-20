@@ -140,13 +140,18 @@ async function deleteRow(table: string, id: string): Promise<void> {
 async function fetchRows<T>(
   table: string,
   cols: string,
-  by: { column: string; ascending?: boolean; nullsFirst?: boolean; limit?: number },
+  by: { column: string; ascending?: boolean; nullsFirst?: boolean; limit?: number; tiebreaker?: string },
   map: (r: Record<string, unknown>) => T,
 ): Promise<T[]> {
   let query = supabase
     .from(table)
     .select(cols)
     .order(by.column, { ascending: by.ascending, nullsFirst: by.nullsFirst })
+  // A date/low-cardinality order column alone doesn't guarantee a stable row
+  // set under limit() — ties at the cutoff can resolve differently between
+  // requests (seen in practice: finance_tx rows sharing a date straddling the
+  // limit, returning a different 300 depending on which device/request asked).
+  if (by.tiebreaker) query = query.order(by.tiebreaker, { ascending: false })
   if (by.limit !== undefined) query = query.limit(by.limit)
   const { data } = await query
   return ((data ?? []) as unknown as Record<string, unknown>[]).map(map)
@@ -567,7 +572,7 @@ export async function upsertNotificationPrefs(p: Partial<NotificationPrefs>): Pr
 // ── Finance ───────────────────────────────────────────────────────────────────
 
 export async function fetchTransactions(): Promise<Transaction[]> {
-  return fetchRows('finance_tx', 'id,occurred_on,amount,counterparty,description,category,domain,note', { column: 'occurred_on', ascending: false, limit: 300 }, (r) => ({
+  return fetchRows('finance_tx', 'id,occurred_on,amount,counterparty,description,category,domain,note', { column: 'occurred_on', ascending: false, limit: 300, tiebreaker: 'ingested_at' }, (r) => ({
     id: r.id as string,
     date: r.occurred_on as string,
     amount: (r.amount as number) ?? 0,
