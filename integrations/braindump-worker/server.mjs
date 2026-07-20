@@ -6,6 +6,11 @@
 // Markdown note with Claude Haiku, and writes the finished row back with the
 // service role. Called only by the braindump-ingest edge function.
 //
+// For YouTube specifically, it tries the video's own caption track first
+// (yt-dlp --write-subs/--write-auto-sub — free, seconds instead of minutes,
+// no Whisper cost) and only falls back to the audio+Whisper pipeline when the
+// video has no captions at all.
+//
 // Env (see .env.example): PORT, WORKER_SECRET, GROQ_API_KEY, ANTHROPIC_API_KEY,
 // SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY.
 
@@ -38,6 +43,54 @@ const VALID_SENTIMENTS = ['positive', 'neutral', 'negative', 'stressed']
 
 // ── media acquisition ──────────────────────────────────────────────────────────
 
+/** Video/channel metadata via yt-dlp's own JSON dump. Best-effort — {} on failure. */
+async function fetchYoutubeMeta(url) {
+  try {
+    const { stdout } = await execFileP('yt-dlp', ['--no-playlist', '--dump-single-json', '--no-warnings', url],
+      { maxBuffer: 1024 * 1024 * 64, timeout: 1000 * 60 * 5 })
+    const j = JSON.parse(stdout)
+    return { title: j.title ?? null, channel: j.uploader ?? j.channel ?? null, duration: j.duration ?? null, thumbnail: j.thumbnail ?? null }
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Try to grab YouTube's own subtitle track (manual or auto-generated) with
+ * --skip-download — no audio/video transfer, no Whisper call. Returns plain
+ * text, or null if the video has no captions in a language we asked for.
+ */
+async function fetchYoutubeCaptions(url, dir) {
+  const out = join(dir, 'subs.%(ext)s')
+  await execFileP('yt-dlp', [
+    '--no-playlist', '--no-warnings', '--quiet', '--skip-download',
+    '--write-subs', '--write-auto-sub',
+    '--sub-langs', 'nl,en,nl.*,en.*',
+    '--convert-subs', 'srt',
+    '-o', out, url,
+  ], { maxBuffer: 1024 * 1024 * 64, timeout: 1000 * 60 * 5 })
+  const files = (await readdir(dir)).filter((f) => f.startsWith('subs.') && f.endsWith('.srt'))
+  if (!files.length) return null
+  const pick = files.find((f) => f.includes('.nl.')) ?? files.find((f) => f.includes('.en.')) ?? files[0]
+  const raw = await readFile(join(dir, pick), 'utf8')
+  const text = srtToText(raw)
+  return text || null
+}
+
+/** Strip SRT sequence numbers + timestamps, dedupe the rolling-caption repeats. */
+function srtToText(srt) {
+  const lines = []
+  for (const block of srt.replace(/\r/g, '').split(/\n\n+/)) {
+    for (const line of block.split('\n')) {
+      if (!line || /^\d+$/.test(line) || line.includes('-->')) continue
+      lines.push(line.replace(/<[^>]+>/g, '').trim())
+    }
+  }
+  const out = []
+  for (const l of lines) if (l && l !== out[out.length - 1]) out.push(l)
+  return out.join(' ').replace(/\s+/g, ' ').trim()
+}
+
 /** Download a URL's audio via yt-dlp into `dir`, return { audioPath, meta }. */
 async function fetchFromUrl(url, dir) {
   const out = join(dir, 'audio.%(ext)s')
@@ -50,14 +103,7 @@ async function fetchFromUrl(url, dir) {
     '-o', out, url,
   ], { maxBuffer: 1024 * 1024 * 64, timeout: 1000 * 60 * 20 })
 
-  let meta = {}
-  try {
-    const { stdout } = await execFileP('yt-dlp', ['--no-playlist', '--dump-single-json', '--no-warnings', url],
-      { maxBuffer: 1024 * 1024 * 64, timeout: 1000 * 60 * 5 })
-    const j = JSON.parse(stdout)
-    meta = { title: j.title ?? null, channel: j.uploader ?? j.channel ?? null, duration: j.duration ?? null, thumbnail: j.thumbnail ?? null }
-  } catch { /* metadata is best-effort */ }
-
+  const meta = await fetchYoutubeMeta(url)
   const files = await readdir(dir)
   const audio = files.find((f) => f.startsWith('audio.'))
   if (!audio) throw new Error('yt-dlp produced no audio')
@@ -162,16 +208,28 @@ function parseNote(text) {
 
 // ── job ──────────────────────────────────────────────────────────────────────────
 
-async function runJob({ entryId, sourceUrl, storagePath }) {
+async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
   const dir = await mkdtemp(join(tmpdir(), 'bd-'))
   try {
     await sb.from('braindump_entries').update({ status: 'processing' }).eq('id', entryId)
 
-    const { audioPath, meta } = sourceUrl
-      ? await fetchFromUrl(sourceUrl, dir)
-      : await fetchFromStorage(storagePath, dir)
+    let transcript = null
+    let meta = {}
+    let captionSource = 'whisper'
 
-    const transcript = await transcribeFile(audioPath)
+    if (sourceKind === 'youtube' && sourceUrl) {
+      meta = await fetchYoutubeMeta(sourceUrl)
+      transcript = await fetchYoutubeCaptions(sourceUrl, dir).catch(() => null)
+      if (transcript) captionSource = 'youtube'
+    }
+
+    if (!transcript) {
+      const fetched = sourceUrl
+        ? await fetchFromUrl(sourceUrl, dir)
+        : await fetchFromStorage(storagePath, dir)
+      meta = { ...fetched.meta, ...meta } // youtube meta (if already fetched) wins
+      transcript = await transcribeFile(fetched.audioPath)
+    }
     if (!transcript) throw new Error('empty transcript')
 
     const note = (await summarise(transcript, meta, sourceUrl)) ?? {
@@ -191,7 +249,7 @@ async function runJob({ entryId, sourceUrl, storagePath }) {
       sentiment: note.sentiment,
       tags: note.tags,
       thumb_url: meta.thumbnail ?? null,
-      meta: { transcript: true, channel: meta.channel ?? null, duration: meta.duration ?? null, url: sourceUrl ?? null },
+      meta: { transcript: true, captionSource, channel: meta.channel ?? null, duration: meta.duration ?? null, url: sourceUrl ?? null },
       error: null,
     }).eq('id', entryId)
 
