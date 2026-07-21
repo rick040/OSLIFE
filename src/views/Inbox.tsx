@@ -6,7 +6,7 @@ import {
   Mail, MailOpen, CheckCheck, ExternalLink, ChevronDown, ChevronRight,
   Sparkles, CalendarClock, Reply, Loader2,
 } from 'lucide-react'
-import type { EmailItem } from '../types'
+import type { EmailItem, EmailReminder } from '../types'
 import { classifyImportance, emailTags, ALL_EMAIL_TAGS } from '../lib/crm/emailClassify'
 import { usePersistedState } from '../lib/usePersistedState'
 import { summarizeEmail, draftEmailReply, saveGmailDraft } from '../lib/supabase'
@@ -119,7 +119,7 @@ function HighlightsPanel({ emails, onFocus }: { emails: EmailItem[]; onFocus: (i
           )}
           {reminders.length > 0 && (
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1.5">Reminders &amp; data</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1.5">Reminders &amp; taken</div>
               <ul className="space-y-1.5">
                 {reminders.map((h, i) => (
                   <li key={i}>
@@ -129,7 +129,9 @@ function HighlightsPanel({ emails, onFocus }: { emails: EmailItem[]; onFocus: (i
                         <span className="text-sm text-ink-soft">
                           {h.text}{h.date && <span className="text-[11px] text-faint ml-1">({fmtDate(h.date)})</span>}
                         </span>
-                        <span className="block text-[11px] text-faint">{extractName(h.email.from)}</span>
+                        <span className="block text-[11px] text-faint">
+                          {extractName(h.email.from)} <span className="text-forest">· staat in Taken</span>
+                        </span>
                       </span>
                     </button>
                   </li>
@@ -169,7 +171,7 @@ function CollapsedGroup({
 // ── Row (+ inline detail expansion) ──────────────────────────────────────────
 
 function EmailRow({
-  e, count, dense, expanded, onToggleExpand, onMarkRead, onDomainClick, applyEmailSummary,
+  e, count, dense, expanded, onToggleExpand, onMarkRead, onDomainClick, applyEmailSummary, addTasksFromEmailReminders,
 }: {
   e: EmailItem
   count: number
@@ -179,6 +181,7 @@ function EmailRow({
   onMarkRead: () => void
   onDomainClick: (key: string) => void
   applyEmailSummary: (id: string, patch: Partial<EmailItem>) => void
+  addTasksFromEmailReminders: (email: EmailItem, reminders: EmailReminder[]) => void
 }) {
   const [summarizing, setSummarizing] = useState(false)
   const [showDraft, setShowDraft] = useState(false)
@@ -207,6 +210,7 @@ function EmailRow({
           aiReminders: result.reminders,
           aiSummarizedAt: new Date().toISOString(),
         })
+        if (result.reminders.length > 0) addTasksFromEmailReminders(e, result.reminders)
       }
     })
     return () => { cancelled = true }
@@ -317,7 +321,10 @@ function EmailRow({
                   {e.aiReminders!.map((r, i) => (
                     <li key={i} className="flex items-center gap-1.5 text-buurtkaart-deep">
                       <CalendarClock className="h-3.5 w-3.5 shrink-0" />
-                      <span>{r.text}{r.date ? ` — ${fmtDate(r.date)}` : ''}</span>
+                      <span>
+                        {r.text}{r.date ? ` — ${fmtDate(r.date)}` : ''}
+                        <span className="text-[11px] text-forest ml-1.5">· staat in Taken</span>
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -369,7 +376,7 @@ function EmailRow({
 // ── component ─────────────────────────────────────────────────────────────────
 
 export default function Inbox() {
-  const { emails, markEmailRead, markAllEmailsRead, dataSource, applyEmailSummary } = useStore()
+  const { emails, markEmailRead, markAllEmailsRead, dataSource, applyEmailSummary, addTasksFromEmailReminders } = useStore()
   // null = all domains; otherwise a tag key ('prjct' | 'parkingyou' | …)
   const [domain, setDomain] = usePersistedState<string | null>('oslife.inbox.domain', null)
   // Optimistic local read-hide: only the explicit "mark all read" / envelope
@@ -480,6 +487,7 @@ export default function Inbox() {
               onMarkRead={() => doMarkRead(e)}
               onDomainClick={(key) => setDomain((d) => (d === key ? null : key))}
               applyEmailSummary={applyEmailSummary}
+              addTasksFromEmailReminders={addTasksFromEmailReminders}
             />
           ))
         )}
@@ -499,6 +507,7 @@ export default function Inbox() {
               onMarkRead={() => doMarkRead(e)}
               onDomainClick={(key) => setDomain((d) => (d === key ? null : key))}
               applyEmailSummary={applyEmailSummary}
+              addTasksFromEmailReminders={addTasksFromEmailReminders}
             />
           ))}
         </CollapsedGroup>
@@ -514,6 +523,7 @@ export default function Inbox() {
               onMarkRead={() => doMarkRead(e)}
               onDomainClick={(key) => setDomain((d) => (d === key ? null : key))}
               applyEmailSummary={applyEmailSummary}
+              addTasksFromEmailReminders={addTasksFromEmailReminders}
             />
           ))}
         </CollapsedGroup>

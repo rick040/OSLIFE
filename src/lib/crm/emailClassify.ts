@@ -7,7 +7,7 @@
 //   - IMPORTANCE comes from sender + subject heuristics — social/marketing bulk
 //     senders are Ruis; real people, replies, invoices/orders and Fiverr client
 //     messages are Belangrijk.
-import type { EmailItem } from '../../types'
+import type { Domain, EmailItem } from '../../types'
 
 export type Importance = 'high' | 'med' | 'low'
 
@@ -39,6 +39,24 @@ export function emailTags(email: EmailItem): EmailTag[] {
   if (has(/betalen|factuur|finance/i)) out.push(TAGS.finance)
   if (out.length === 0) out.push(TAGS.personal)
   return out
+}
+
+/** Domain-tag key → app-wide Domain, for turning an AI-detected email reminder into a
+ * Taken-screen task (store.addTasksFromEmailReminders). Fiverr client work bills to
+ * PRJCT; a "Betalen" tag alone doesn't say which business it's for, so it falls back
+ * to personal rather than guessing. */
+const TASK_DOMAIN: Record<string, Domain> = {
+  fiverr: 'prjct',
+  prjct: 'prjct',
+  parkingyou: 'parkingyou',
+  finance: 'personal',
+  personal: 'personal',
+}
+
+/** Best-effort Domain for a task created from this email's highest-priority tag. */
+export function emailTaskDomain(email: EmailItem): Domain {
+  const tag = emailTags(email)[0]
+  return TASK_DOMAIN[tag?.key ?? 'personal'] ?? 'personal'
 }
 
 // ── Importance heuristics ─────────────────────────────────────────────────────
