@@ -4,7 +4,10 @@
 // media (yt-dlp for URLs, Supabase Storage for shared files), extracts compact
 // audio, transcribes it with Groq Whisper, summarises the transcript into a
 // Markdown note with Claude Haiku, and writes the finished row back with the
-// service role. Called only by the braindump-ingest edge function.
+// service role — then fires the same embed-memory / materialize-note /
+// cognee-remember follow-ups braindump-ingest's finish() runs for every other
+// source type, so a transcribed video is just as searchable/materialised as a
+// captured link or text note. Called only by the braindump-ingest edge function.
 //
 // For YouTube specifically, it tries the video's own caption track first
 // (yt-dlp --write-subs/--write-auto-sub — free, seconds instead of minutes,
@@ -296,10 +299,76 @@ function parseNote(text) {
 
 // ── job ──────────────────────────────────────────────────────────────────────────
 
+/** SHA-256 hex digest — same convention as braindump-ingest's dedup hash. */
+async function sha256Hex(input) {
+  const bytes = typeof input === 'string' ? new TextEncoder().encode(input) : input
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+const DEDUP_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000 // 30 days, same window as braindump-ingest
+
+/**
+ * Mark the row ready (or duplicate) and fire the same follow-ups
+ * braindump-ingest's finish() runs for every other source type. The worker
+ * writes with the service role (no user JWT to forward), so these downstream
+ * calls authenticate as service role too — consistent with the trust this
+ * worker already has to write the row directly.
+ */
+async function finishReady(entryId, userId, tier, note, { thumbUrl = null, meta = {}, contentHash = null, url = null }) {
+  if (contentHash && userId) {
+    const cutoff = new Date(Date.now() - DEDUP_LOOKBACK_MS).toISOString()
+    const { data: dup } = await sb.from('braindump_entries').select('id')
+      .eq('user_id', userId).eq('content_hash', contentHash).eq('status', 'ready')
+      .neq('id', entryId).gte('created_at', cutoff).limit(1).maybeSingle()
+    if (dup) {
+      await sb.from('braindump_entries').update({
+        status: 'duplicate', content_hash: contentHash, meta: { ...meta, duplicateOf: dup.id }, error: null,
+      }).eq('id', entryId)
+      return
+    }
+  }
+
+  await sb.from('braindump_entries').update({
+    status: 'ready',
+    title: note.title, summary: note.summary, markdown: note.markdown,
+    domain: note.domain, kind: note.kind, sentiment: note.sentiment, tags: note.tags,
+    thumb_url: thumbUrl, content_hash: contentHash, meta, error: null,
+  }).eq('id', entryId)
+
+  const authHeader = `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+  const text = [note.title, note.summary, note.markdown].filter(Boolean).join('\n')
+  fetch(`${SUPABASE_URL}/functions/v1/embed-memory`, {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: authHeader },
+    body: JSON.stringify({ source: 'braindump', id: entryId, text }),
+  }).catch(() => {})
+
+  // geheim entries never get materialised/graphed — no per-row tier gate on
+  // Storage/the cognee worker the way search_memory() has, so it's enforced here.
+  if (tier !== 'geheim') {
+    fetch(`${SUPABASE_URL}/functions/v1/materialize-note`, {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: authHeader },
+      body: JSON.stringify({
+        source: 'braindump', id: entryId,
+        frontmatter: { kind: note.kind, domain: note.domain, tags: note.tags, sentiment: note.sentiment, source_url: url },
+        body: note.markdown,
+      }),
+    }).catch(() => {})
+    fetch(`${SUPABASE_URL}/functions/v1/cognee-remember`, {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: authHeader },
+      body: JSON.stringify({ source: 'braindump', id: entryId, text: note.markdown }),
+    }).catch(() => {})
+  }
+}
+
 async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
   const dir = await mkdtemp(join(tmpdir(), 'bd-'))
   try {
     await sb.from('braindump_entries').update({ status: 'processing' }).eq('id', entryId)
+    const { data: row } = await sb.from('braindump_entries').select('user_id,tier').eq('id', entryId).single()
+    const userId = row?.user_id ?? null
+    const tier = row?.tier ?? 'normaal'
+    const contentHash = sourceUrl ? await sha256Hex(sourceUrl.trim().toLowerCase()) : null
 
     let transcript = null
     let meta = {}
@@ -324,19 +393,9 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
         // the og:image instead of failing the whole entry.
         if ((sourceKind === 'instagram' || sourceKind === 'pinterest') && sourceUrl) {
           const fallback = await noteFromImagePost(sourceUrl)
-          await sb.from('braindump_entries').update({
-            status: 'ready',
-            title: fallback.note.title,
-            summary: fallback.note.summary,
-            markdown: fallback.note.markdown,
-            domain: fallback.note.domain,
-            kind: fallback.note.kind,
-            sentiment: fallback.note.sentiment,
-            tags: fallback.note.tags,
-            thumb_url: fallback.thumbUrl,
-            meta: { transcript: false, url: sourceUrl },
-            error: null,
-          }).eq('id', entryId)
+          await finishReady(entryId, userId, tier, fallback.note, {
+            thumbUrl: fallback.thumbUrl, meta: { transcript: false, url: sourceUrl }, contentHash, url: sourceUrl,
+          })
           return
         }
         throw err
@@ -351,19 +410,12 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
       markdown: `# ${meta.title ?? 'Transcript'}\n\n${transcript}\n\n${sourceUrl ? `[bron](${sourceUrl})` : ''}`,
     }
 
-    await sb.from('braindump_entries').update({
-      status: 'ready',
-      title: note.title,
-      summary: note.summary,
-      markdown: note.markdown,
-      domain: note.domain,
-      kind: note.kind,
-      sentiment: note.sentiment,
-      tags: note.tags,
-      thumb_url: meta.thumbnail ?? null,
+    await finishReady(entryId, userId, tier, note, {
+      thumbUrl: meta.thumbnail ?? null,
       meta: { transcript: true, captionSource, channel: meta.channel ?? null, duration: meta.duration ?? null, url: sourceUrl ?? null },
-      error: null,
-    }).eq('id', entryId)
+      contentHash,
+      url: sourceUrl ?? null,
+    })
 
     // No full-size originals: drop the shared media file once transcribed.
     if (storagePath) await sb.storage.from('braindump').remove([storagePath]).catch(() => {})

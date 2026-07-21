@@ -12,6 +12,10 @@ braindump-ingest (edge fn)  ──POST /transcribe──▶  this worker
                                                      │ Claude Haiku → Markdown note
                                                      ▼
                                        updates braindump_entries (service role) → status=ready
+                                                     │
+                                                     ├─▶ embed-memory        (searchable via HEYRA)
+                                                     ├─▶ materialize-note    (.md mirror in the `vault` bucket)
+                                                     └─▶ cognee-remember     (knowledge graph)
 ```
 
 ## Endpoints
@@ -77,4 +81,9 @@ The cookies are your real YouTube session — treat the file like a password
 - `yt-dlp` breaks when platforms change — keep the image updated (`pip install -U
   yt-dlp`, i.e. rebuild). A download failure sets the row to `failed` with an
   error; the grid offers a retry.
-```
+- Sharing the same URL twice is deduped (30-day lookback, same content-hash
+  convention as `braindump-ingest`): the second entry is marked `duplicate`
+  instead of `ready` and never re-embedded/re-materialised.
+- A `geheim`-tier entry is transcribed and stored like any other, but never
+  reaches `materialize-note` or `cognee-remember` (same gate `braindump-ingest`
+  applies).
