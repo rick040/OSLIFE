@@ -72,7 +72,41 @@ De "markdown" is lichtgewicht maar volledig: begin met een # titel, dan een kort
 "wiki" is alleen voor content die een concreet, herbruikbaar idee of inzicht bevat dat Rick mogelijk wil implementeren — bijvoorbeeld een interessante Instagram-post over een aanpak/tool/groeistrategie, een slim stukje workflow, een businessmodel-truc. Dit is bewust selectief: de meeste braindumps (persoonlijke notities, taken, venten, routine-linkjes, transacties) krijgen GEEN wiki-veld — laat het dan gewoon "wiki": null. Alleen als het item duidelijk het karakter heeft van "dit is een idee/inzicht om te bewaren en ooit toe te passen", vul je 'm:
   - "takeaway": één tot twee zinnen, de kern van het idee/inzicht (niet de hele inhoud herhalen).
   - "application": concreet en specifiek hoe dit zou kunnen toepassen op Rick — zijn eigen bedrijven (ParkingYou, PRJCT Agency, Geldrop Buurtkaart), lopende projecten, of een nieuw soort project dat dit idee zou kunnen inspireren. Geen vage algemeenheden ("dit kun je toepassen op je bedrijf") — noem een concreet aanknopingspunt.
-Bij twijfel: "wiki": null. Beter een goede suggestie missen dan de kennisbank vervuilen met ruis.`;
+Bij twijfel: "wiki": null. Beter een goede suggestie missen dan de kennisbank vervuilen met ruis.
+
+Belangrijk tegen verzinsels: als de gedeelde content aangeeft dat er GEEN echte inhoud beschikbaar is (bijvoorbeeld een video zonder transcript, of een pagina die niet kon worden opgehaald) — verzin dan nooit een inhoudelijke samenvatting of kernpunten die er niet zijn. Schrijf in dat geval alleen een minimale notitie met wat je wél zeker weet (titel, kanaal/auteur, bron) en zeg er expliciet bij dat er geen inhoud beschikbaar was. Een korte eerlijke notitie is altijd beter dan een overtuigend klinkende, verzonnen samenvatting.`;
+
+/**
+ * YouTube videos with a real transcript get their own, richer system prompt —
+ * a genuine breakdown of the video's content (named frameworks get their own
+ * heading, concrete details/numbers/examples preserved), not the compact
+ * 3-bullet note CONVERT_SYSTEM produces for a quick text capture. Same JSON
+ * envelope as convert() so finish()/wiki/search all keep working unchanged.
+ */
+const YOUTUBE_SYSTEM = `Je bent de "Braindump"-verwerker van OSLIFE. Je krijgt het transcript van een YouTube-video (plus titel/kanaal/bron) en zet dit om in een grondige, inhoudelijke Markdown-notitie — dit moet een echte samenvatting van wat er in de video wordt gezegd zijn, waarmee Rick de video niet meer hoeft terug te kijken. Geen oppervlakkige 3-bullet-samenvatting van het onderwerp in het algemeen; wees specifiek en trouw aan het transcript. Verzin niets dat niet in het transcript staat.
+
+Geef ALLEEN een fenced \`\`\`json blok terug met exact deze velden:
+{
+  "title": "korte titel (max ~8 woorden)",
+  "summary": "één zin die de kern vat (max ~20 woorden)",
+  "domain": één van ${VALID_DOMAINS.join(", ")},
+  "kind": één van ${VALID_KINDS.join(", ")},
+  "sentiment": één van ${VALID_SENTIMENTS.join(", ")},
+  "tags": ["3-6 korte trefwoorden, lowercase"],
+  "fields": null,
+  "markdown": "de volledige notitie in Markdown",
+  "wiki": { "takeaway": "...", "application": "..." } of null
+}
+
+Structuur van "markdown" (pas toe waar relevant, sla over wat niet van toepassing is):
+- Begin met een # titel en, als de video een duidelijke kernboodschap/haak heeft, één losse openingsregel die 'm vat (met concrete cijfers/feiten als die genoemd worden).
+- Herken genoemde modellen/frameworks/concepten uit het transcript en geef elk zijn eigen ## kop met de naam zoals in de video genoemd (bijv. "The Evening Bank Account", "3C Framework"), gevolgd door de onderdelen als bullets — met sub-bullets voor detail waar nodig.
+- Neem concrete details over: cijfers, genoemde namen/voorbeelden/personen, quotes. Laat niets belangrijks weg, maar verzin ook niets.
+- Sluit af met een "## Kerninzichten" sectie: 3-5 bullets met de belangrijkste take-aways.
+- Sluit af met een bronregel: "Bron: [kanaal] (YouTube) | <url>".
+Bij twijfel over lengte: liever te grondig dan te oppervlakkig — dit mag een lange notitie zijn, in tegenstelling tot andere braindump-types.
+
+"wiki": zelfde selectiecriterium als anders — alleen bij een concreet, herbruikbaar idee/inzicht dat Rick zou kunnen toepassen op zijn bedrijven (ParkingYou, PRJCT Agency, Geldrop Buurtkaart) of projecten; anders null.`;
 
 interface ContentBlock {
   type: string;
@@ -124,7 +158,12 @@ async function sha256Hex(input: string | Uint8Array): Promise<string> {
 }
 
 /** Ask Claude to convert content blocks into the uniform note shape. Null on failure. */
-async function convert(apiKey: string, blocks: ContentBlock[]): Promise<Converted | null> {
+async function convert(
+  apiKey: string,
+  blocks: ContentBlock[],
+  system: string = CONVERT_SYSTEM,
+  maxTokens = 1500,
+): Promise<Converted | null> {
   let res: Response;
   try {
     res = await fetch(ANTHROPIC_API, {
@@ -132,8 +171,8 @@ async function convert(apiKey: string, blocks: ContentBlock[]): Promise<Converte
       headers: anthropicHeaders(apiKey),
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 1500,
-        system: CONVERT_SYSTEM,
+        max_tokens: maxTokens,
+        system,
         messages: [{ role: "user", content: blocks }],
       }),
     });
@@ -340,19 +379,34 @@ async function processYoutube(apiKey: string, url: string): Promise<ProcessResul
     fetchYoutubeMeta(url),
     videoId ? fetchYoutubeTranscript(videoId) : Promise.resolve(null),
   ]);
+
+  if (transcript) {
+    const blocks: ContentBlock[] = [{
+      type: "text",
+      text: [
+        title ? `Titel: ${title}` : "",
+        author ? `Kanaal: ${author}` : "",
+        `Bron: ${url}`,
+        `Transcript:\n"""\n${transcript.slice(0, 20000)}\n"""`,
+      ].filter(Boolean).join("\n"),
+    }];
+    // Richer prompt + bigger budget than the default convert() call — this is
+    // meant to replace actually watching the video, not a quick capture note.
+    const note = await convert(apiKey, blocks, YOUTUBE_SYSTEM, 3000);
+    return note ? { note, thumbUrl: thumb, meta: { url, transcript: true } } : null;
+  }
+
   const blocks: ContentBlock[] = [{
     type: "text",
     text: [
-      `Gedeelde YouTube-video: ${url}`,
+      `Gedeelde YouTube-video zonder transcript: ${url}`,
       title ? `Titel: ${title}` : "",
       author ? `Kanaal: ${author}` : "",
-      transcript
-        ? `Transcript:\n"""\n${transcript.slice(0, 15000)}\n"""`
-        : "Er is geen transcript beschikbaar voor deze video — maak een korte notitie met titel, kanaal en link.",
+      "Er is geen transcript beschikbaar. Schrijf ALLEEN een minimale notitie met titel, kanaal en link — je hebt de video niet gezien, dus verzin geen kernpunten of inhoudelijke duiding.",
     ].filter(Boolean).join("\n"),
   }];
   const note = await convert(apiKey, blocks);
-  return note ? { note, thumbUrl: thumb, meta: { url, transcript: !!transcript } } : null;
+  return note ? { note, thumbUrl: thumb, meta: { url, transcript: false } } : null;
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────────

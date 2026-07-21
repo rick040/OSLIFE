@@ -18,6 +18,37 @@
 
 import { decodeEntities, fetchText } from "./webpage.ts";
 
+const BROWSER_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36";
+
+/**
+ * Fetch the watch page HTML. A plain fetch() from an EU IP (this edge
+ * function runs in eu-west-1) gets served YouTube's cookie-consent
+ * interstitial ("Before you continue to YouTube") instead of the real page —
+ * no ytInitialPlayerResponse, so caption detection silently finds nothing.
+ * The CONSENT cookie is the standard, widely-used bypass for that wall.
+ */
+async function fetchYoutubeWatchPage(videoId: string, ms: number): Promise<string | null> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}&hl=en`, {
+      signal: ctrl.signal,
+      headers: {
+        "user-agent": BROWSER_UA,
+        "accept-language": "en-US,en;q=0.9",
+        cookie: "CONSENT=YES+1",
+      },
+    });
+    if (!res.ok) return null;
+    return await res.text();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 export interface YoutubeMeta {
   title: string | null;
   author: string | null;
@@ -64,7 +95,7 @@ function pickCaptionTrack(tracks: CaptionTrack[]): CaptionTrack | null {
  * caption track list), then the track itself (small XML file).
  */
 export async function fetchYoutubeTranscript(videoId: string): Promise<string | null> {
-  const html = await fetchText(`https://www.youtube.com/watch?v=${videoId}&hl=en`, 9000);
+  const html = await fetchYoutubeWatchPage(videoId, 9000);
   if (!html) return null;
 
   // ytInitialPlayerResponse is one giant object; rather than balance braces

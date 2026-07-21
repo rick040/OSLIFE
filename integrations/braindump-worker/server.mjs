@@ -160,7 +160,7 @@ async function noteFromYoutubeMetaOnly(url) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 800, system: SUMMARY_SYSTEM, messages: [{ role: 'user', content: prompt }] }),
+    body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 500, system: METADATA_ONLY_SYSTEM, messages: [{ role: 'user', content: prompt }] }),
   })
   if (!res.ok) throw new Error(`anthropic ${res.status}`)
   const data = await res.json()
@@ -285,7 +285,10 @@ async function groqTranscribe(path) {
 
 // ── summary (Claude Haiku) → the Markdown note ───────────────────────────────────
 
-const SUMMARY_SYSTEM = `Je bent de "Braindump"-verwerker van OSLIFE. Je krijgt een transcript van een video/audio (plus wat metadata) en zet dit om in een compacte, bruikbare Markdown-notitie voor een persoonlijk kennissysteem. Wees feitelijk en beknopt — verzin niets dat niet in het transcript staat.
+// Genuine breakdown of the video/audio content — named frameworks get their
+// own heading, concrete details preserved — not a compact 3-bullet note.
+// Same JSON envelope regardless, so finishReady()/downstream stays unchanged.
+const SUMMARY_SYSTEM = `Je bent de "Braindump"-verwerker van OSLIFE. Je krijgt het transcript van een video/audio (plus wat metadata) en zet dit om in een grondige, inhoudelijke Markdown-notitie — een echte samenvatting van wat er gezegd wordt, waarmee Rick het niet meer hoeft terug te kijken/luisteren. Geen oppervlakkige 3-bullet-samenvatting van het onderwerp in het algemeen; wees specifiek en trouw aan het transcript. Verzin niets dat er niet in staat.
 
 Geef ALLEEN een fenced \`\`\`json blok terug:
 {
@@ -295,7 +298,30 @@ Geef ALLEEN een fenced \`\`\`json blok terug:
   "kind": één van ${VALID_KINDS.join(', ')},
   "sentiment": één van ${VALID_SENTIMENTS.join(', ')},
   "tags": ["3-6 lowercase trefwoorden"],
-  "markdown": "de notitie: # titel, korte samenvatting, dan de kernpunten als bullets; bronlink onderaan"
+  "markdown": "de volledige notitie in Markdown"
+}
+
+Structuur van "markdown" (pas toe waar relevant, sla over wat niet van toepassing is):
+- Begin met een # titel en, als er een duidelijke kernboodschap/haak is, één losse openingsregel die 'm vat (met concrete cijfers/feiten als die genoemd worden).
+- Herken genoemde modellen/frameworks/concepten uit het transcript en geef elk zijn eigen ## kop met de naam zoals genoemd, gevolgd door de onderdelen als bullets — met sub-bullets voor detail waar nodig.
+- Neem concrete details over: cijfers, genoemde namen/voorbeelden/personen, quotes. Laat niets belangrijks weg, maar verzin ook niets.
+- Sluit af met een "## Kerninzichten" sectie: 3-5 bullets met de belangrijkste take-aways, en daarna de bronlink.
+Bij twijfel over lengte: liever te grondig dan te oppervlakkig — dit mag een lange notitie zijn.`
+
+// For a video/audio source with NO usable transcript (no captions, audio
+// fetch also failed) — deliberately minimal, since Claude never saw the
+// actual content and must not invent one.
+const METADATA_ONLY_SYSTEM = `Je bent de "Braindump"-verwerker van OSLIFE. Je krijgt alleen titel/kanaal/link van een video — geen transcript. Schrijf ALLEEN een minimale Markdown-notitie met titel, kanaal en link, en zeg er expliciet bij dat er geen transcript beschikbaar was. Verzin geen kernpunten of inhoudelijke duiding — je hebt de video niet gezien.
+
+Geef ALLEEN een fenced \`\`\`json blok terug:
+{
+  "title": "korte titel (max ~8 woorden)",
+  "summary": "één zin, bijv. 'Video zonder beschikbaar transcript'",
+  "domain": één van ${VALID_DOMAINS.join(', ')},
+  "kind": één van ${VALID_KINDS.join(', ')},
+  "sentiment": één van ${VALID_SENTIMENTS.join(', ')},
+  "tags": ["3-6 lowercase trefwoorden"],
+  "markdown": "# titel\\n\\nGeen transcript beschikbaar.\\n\\n[titel/kanaal/bronlink]"
 }`
 
 async function summarise(transcript, meta, url) {
@@ -309,7 +335,7 @@ async function summarise(transcript, meta, url) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 1500, system: SUMMARY_SYSTEM, messages: [{ role: 'user', content: prompt }] }),
+    body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 3000, system: SUMMARY_SYSTEM, messages: [{ role: 'user', content: prompt }] }),
   })
   if (!res.ok) return null
   const data = await res.json()
