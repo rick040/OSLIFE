@@ -900,7 +900,7 @@ export async function createPaymentRow(payment: Omit<Payment, 'id' | 'status' | 
 // ── Investment holdings ───────────────────────────────────────────────────────
 
 export async function fetchHoldings(): Promise<Holding[]> {
-  return fetchRows('investment_holdings', 'id,ticker,name,shares,cost_basis,currency,purchase_date,notes', { column: 'purchase_date', ascending: false }, (r) => ({
+  return fetchRows('investment_holdings', 'id,ticker,name,shares,cost_basis,currency,purchase_date,notes,manual_price,manual_price_at', { column: 'purchase_date', ascending: false }, (r) => ({
     id: r.id as string,
     ticker: (r.ticker as string) ?? '',
     name: (r.name as string) ?? null,
@@ -909,6 +909,8 @@ export async function fetchHoldings(): Promise<Holding[]> {
     currency: ((r.currency as Holding['currency']) ?? 'EUR'),
     purchaseDate: (r.purchase_date as string) ?? '',
     notes: (r.notes as string) ?? null,
+    manualPrice: (r.manual_price as number) ?? null,
+    manualPriceAt: (r.manual_price_at as string) ?? null,
   }))
 }
 
@@ -921,7 +923,24 @@ export async function createHoldingRow(holding: Omit<Holding, 'id'>): Promise<st
     currency: holding.currency,
     purchase_date: holding.purchaseDate,
     notes: holding.notes,
+    manual_price: holding.manualPrice,
+    manual_price_at: holding.manualPriceAt,
   })
+}
+
+const HOLDING_COLS: Record<string, string> = {
+  name: 'name',
+  shares: 'shares',
+  costBasis: 'cost_basis',
+  currency: 'currency',
+  purchaseDate: 'purchase_date',
+  notes: 'notes',
+  manualPrice: 'manual_price',
+  manualPriceAt: 'manual_price_at',
+}
+
+export async function updateHoldingRow(id: string, patch: Partial<Omit<Holding, 'id'>>): Promise<void> {
+  await updateRow('investment_holdings', id, patch, HOLDING_COLS)
 }
 
 export async function deleteHoldingRow(id: string): Promise<void> {

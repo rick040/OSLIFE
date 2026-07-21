@@ -693,6 +693,11 @@ export interface Holding {
   currency: 'EUR' | 'USD' | 'GBP'
   purchaseDate: string // ISO date
   notes: string | null
+  // Fallback for tickers Stooq doesn't carry (e.g. some European ETPs/ETNs) —
+  // a price you type in yourself, in `currency`. Live quotes always win when
+  // available; this only fills the gap when stock-quote comes back empty.
+  manualPrice: number | null
+  manualPriceAt: string | null // ISO date it was last set
 }
 
 export interface HoldingQuote {

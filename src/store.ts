@@ -143,6 +143,7 @@ import {
   createPaymentRow,
   fetchHoldings,
   createHoldingRow,
+  updateHoldingRow,
   deleteHoldingRow,
   fetchStockQuotes,
   fetchBalanceCheckpoints,
@@ -482,6 +483,7 @@ interface State {
   // Investments — a scoped tracker for stocks/ETFs actually owned, never a
   // general market feed. Prices are fetched only for held tickers.
   addHolding: (holding: Omit<Holding, 'id'>) => void
+  updateHolding: (id: string, patch: Partial<Omit<Holding, 'id'>>) => void
   deleteHolding: (id: string) => void
   refreshStockQuotes: () => Promise<void>
 
@@ -2149,6 +2151,11 @@ export const useStore = create<State>()(
         set((s) => ({ holdings: [{ ...holding, id: tempId }, ...s.holdings] }))
         void createHoldingRow(holding).then(swapTempId(set, 'holdings', tempId))
         void get().refreshStockQuotes()
+      },
+
+      updateHolding: (id, patch) => {
+        patchSlice(set, 'holdings', id, patch)
+        void updateHoldingRow(id, patch)
       },
 
       deleteHolding: (id) => {

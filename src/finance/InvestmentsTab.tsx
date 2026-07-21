@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Empty, SectionTitle } from '../components/ui'
 import { eur, eur0 } from '../lib/format'
-import { fmtDate } from '../domains'
+import { fmtDate, TODAY } from '../domains'
 import type { Holding, HoldingQuote } from '../types'
-import { Plus, Trash2, RefreshCw, TrendingUp, TrendingDown, LineChart } from 'lucide-react'
+import { Plus, Trash2, RefreshCw, TrendingUp, TrendingDown, LineChart, Pencil } from 'lucide-react'
 
 type Currency = 'EUR' | 'USD' | 'GBP'
 type Fx = { EURUSD: number | null; EURGBP: number | null }
@@ -20,6 +20,7 @@ export function InvestmentsTab({
   fx,
   loading,
   onAdd,
+  onUpdate,
   onDelete,
   onRefresh,
 }: {
@@ -28,6 +29,7 @@ export function InvestmentsTab({
   fx: Fx
   loading: boolean
   onAdd: (h: Omit<Holding, 'id'>) => void
+  onUpdate: (id: string, patch: Partial<Omit<Holding, 'id'>>) => void
   onDelete: (id: string) => void
   onRefresh: () => void
 }) {
@@ -37,11 +39,18 @@ export function InvestmentsTab({
     () =>
       holdings.map((h) => {
         const quote = quotes[h.ticker]
+        // Live quote wins; Stooq doesn't carry every ticker (some European
+        // ETPs/ETNs aren't in its free feed) so a manually-entered price fills
+        // the gap instead of the position just showing no value.
+        const live = quote?.price != null
+        const price = live ? quote!.price : h.manualPrice
+        const priceCurrency = live ? quote!.currency : h.currency
+        const priceAsOf = live ? quote!.asOf : h.manualPriceAt
         const costTotalEur = toEur(h.shares * h.costBasis, h.currency, fx)
-        const currentValueEur = quote?.price != null ? toEur(h.shares * quote.price, quote.currency, fx) : null
+        const currentValueEur = price != null ? toEur(h.shares * price, priceCurrency, fx) : null
         const pl = costTotalEur != null && currentValueEur != null ? currentValueEur - costTotalEur : null
         const plPct = pl != null && costTotalEur ? (pl / costTotalEur) * 100 : null
-        return { h, quote, costTotalEur, currentValueEur, pl, plPct }
+        return { h, price, priceCurrency, priceAsOf, live, costTotalEur, currentValueEur, pl, plPct }
       }),
     [holdings, quotes, fx],
   )
@@ -84,31 +93,102 @@ export function InvestmentsTab({
         <Empty>Nog geen posities. Voeg een aandeel of ETF toe dat je bezit.</Empty>
       ) : (
         <div className="card divide-y divide-line">
-          {rows.map(({ h, quote, currentValueEur, pl, plPct }) => (
-            <div key={h.id} className="flex items-center gap-3 p-3">
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-ink truncate">{h.name || h.ticker}</div>
-                <div className="text-xs text-faint truncate">
-                  {h.shares}× {h.ticker} · inleg {eur(h.costBasis)}/{h.currency}
-                  {quote?.price != null && ` · nu ${quote.price.toFixed(2)} ${quote.currency}`}
-                  {quote?.asOf && ` (${fmtDate(quote.asOf)})`}
-                </div>
-              </div>
-              <div className="text-right shrink-0">
-                <div className="text-sm font-semibold tabular-nums">{currentValueEur != null ? eur(currentValueEur) : '—'}</div>
-                {pl != null && plPct != null && (
-                  <div className={`text-xs tabular-nums ${pl >= 0 ? 'text-buurtkaart-deep' : 'text-cross'}`}>
-                    {pl >= 0 ? '+' : ''}{eur0(pl)} ({plPct >= 0 ? '+' : ''}{plPct.toFixed(1)}%)
-                  </div>
-                )}
-              </div>
-              <button onClick={() => onDelete(h.id)} className="text-faint hover:text-cross shrink-0 p-1" aria-label="Verwijder">
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </div>
+          {rows.map(({ h, price, priceCurrency, priceAsOf, live, currentValueEur, pl, plPct }) => (
+            <HoldingRow
+              key={h.id}
+              holding={h}
+              price={price}
+              priceCurrency={priceCurrency}
+              priceAsOf={priceAsOf}
+              live={live}
+              currentValueEur={currentValueEur}
+              pl={pl}
+              plPct={plPct}
+              onUpdate={(patch) => onUpdate(h.id, patch)}
+              onDelete={() => onDelete(h.id)}
+            />
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function HoldingRow({
+  holding: h,
+  price,
+  priceCurrency,
+  priceAsOf,
+  live,
+  currentValueEur,
+  pl,
+  plPct,
+  onUpdate,
+  onDelete,
+}: {
+  holding: Holding
+  price: number | null
+  priceCurrency: Currency
+  priceAsOf: string | null
+  live: boolean
+  currentValueEur: number | null
+  pl: number | null
+  plPct: number | null
+  onUpdate: (patch: Partial<Omit<Holding, 'id'>>) => void
+  onDelete: () => void
+}) {
+  const [editingPrice, setEditingPrice] = useState(false)
+  const [manualInput, setManualInput] = useState(String(h.manualPrice ?? ''))
+
+  const saveManualPrice = () => {
+    const val = parseFloat(manualInput.replace(',', '.'))
+    if (!isNaN(val)) onUpdate({ manualPrice: val, manualPriceAt: TODAY })
+    setEditingPrice(false)
+  }
+
+  return (
+    <div className="flex items-center gap-3 p-3">
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-ink truncate">{h.name || h.ticker}</div>
+        <div className="text-xs text-faint truncate">
+          {h.shares}× {h.ticker} · inleg {eur(h.costBasis)}/{h.currency}
+          {price != null && ` · nu ${price.toFixed(2)} ${priceCurrency}${live ? '' : ' (handmatig)'}`}
+          {priceAsOf && ` (${fmtDate(priceAsOf)})`}
+        </div>
+        {editingPrice ? (
+          <div className="flex items-center gap-1.5 mt-1">
+            <input
+              value={manualInput}
+              onChange={(e) => setManualInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && saveManualPrice()}
+              autoFocus
+              inputMode="decimal"
+              placeholder={`prijs per stuk (${h.currency})`}
+              className="w-32 rounded-lg bg-sunken border border-line px-2 py-1 text-xs outline-none"
+            />
+            <button onClick={saveManualPrice} className="text-xs text-forest font-medium">Opslaan</button>
+            <button onClick={() => setEditingPrice(false)} className="text-xs text-faint">annuleer</button>
+          </div>
+        ) : price == null ? (
+          <button onClick={() => setEditingPrice(true)} className="text-[11px] text-prjct hover:underline inline-flex items-center gap-1 mt-0.5">
+            <Pencil className="h-3 w-3" /> geen koers gevonden — prijs handmatig instellen
+          </button>
+        ) : null}
+      </div>
+      <div className="text-right shrink-0">
+        <div className="text-sm font-semibold tabular-nums">{currentValueEur != null ? eur(currentValueEur) : '—'}</div>
+        {pl != null && plPct != null && (
+          <div className={`text-xs tabular-nums ${pl >= 0 ? 'text-buurtkaart-deep' : 'text-cross'}`}>
+            {pl >= 0 ? '+' : ''}{eur0(pl)} ({plPct >= 0 ? '+' : ''}{plPct.toFixed(1)}%)
+          </div>
+        )}
+        {price != null && !live && !editingPrice && (
+          <button onClick={() => setEditingPrice(true)} className="text-[10px] text-faint hover:text-ink">bijwerken</button>
+        )}
+      </div>
+      <button onClick={onDelete} className="text-faint hover:text-cross shrink-0 p-1" aria-label="Verwijder">
+        <Trash2 className="h-4 w-4" />
+      </button>
     </div>
   )
 }
@@ -140,6 +220,8 @@ function NewHoldingForm({
       currency,
       purchaseDate,
       notes: null,
+      manualPrice: null,
+      manualPriceAt: null,
     })
   }
 
