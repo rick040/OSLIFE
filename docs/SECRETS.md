@@ -133,6 +133,68 @@ shared-secret patroon als notify-tick.
    );
    ```
 
+## 7. Obsidian: vault lezen + vault-inbox schrijven
+
+Twee losse, allebei optionele integraties — geen van beide is nodig voor de rest van de
+app. `vault` blijft een gegenereerde spiegel (OSLIFE schrijft, niemand bewerkt 'm met de
+hand); `vault-inbox` is de omgekeerde richting (Rick schrijft, OSLIFE leest 'm leeg).
+
+### 7a. Lezen: de `vault`-bucket als Obsidian-vault (read-only)
+
+Supabase Storage praat het S3-protocol. Een S3 access key geeft **volledige toegang tot
+alle buckets in dit project** (bypassed RLS) — behandel 'm dus als een brede sleutel, niet
+als iets dat automatisch tot één bucket beperkt is.
+
+1. **Supabase → Project Settings → Storage → S3 Connection**: noteer endpoint + region
+   precies zoals het dashboard ze toont, en genereer een nieuw access-key-paar (Access Key
+   ID + Secret Access Key — **geheim**, alleen server-/device-side gebruiken).
+2. **Obsidian**: installeer de community plugin **Remotely Save**, voeg een S3-remote toe:
+   endpoint/region/bucket (`vault`) + de key van stap 1, "S3 URL style" = Path-style. Test
+   met "Check Connectivity".
+3. Sync-richting: **remote → local** (dit is een gegenereerde spiegel — niet bewerken en
+   terug-syncen). Eenmaal gesynchroniseerd zie je elke braindump/interaction/summary/
+   business-idea als los `.md`-bestand met frontmatter, doorzoekbaar en met graph-view.
+4. Rotate/verwijder de key meteen als het device met de Obsidian-config kwijtraakt of
+   gecompromitteerd is (Supabase → S3 Connection → key verwijderen).
+
+### 7b. Schrijven: `vault-inbox` → braindump-ingest (vault-inbox-sync)
+
+Een los "inbox"-mapje in dezelfde Obsidian-vault, gesynchroniseerd naar de `vault-inbox`
+bucket (tweede Remotely Save-remote, ditmaal **local → remote**, of bidirectioneel — een
+verwerkt bestand verhuist toch naar `processed/`, dus een dubbele sync levert geen dubbele
+verwerking op dankzij braindump-ingest's eigen content-hash dedup).
+
+1. **Migratie toepassen**: `supabase/migrations/20260721000000_vault_inbox.sql` (maakt de
+   `vault-inbox` bucket + owner-only policies).
+2. **Tweede S3-remote in Remotely Save**: zelfde endpoint/region/key als 7a, bucket
+   `vault-inbox`, richting local → remote (of bidirectioneel).
+3. **Functie deployen**: `supabase functions deploy vault-inbox-sync --project-ref nhyunnnmdcmojvkxrbpl`,
+   daarna in het dashboard **"Enforce JWT verification"** uitzetten (pg_cron kan geen
+   Supabase-JWT sturen) — zelfde stap als notify-tick/embed-memory-backfill.
+4. **Secret**: hergebruikt `CRON_SECRET` (zelfde waarde als notify-tick) — niets nieuws te
+   verzinnen.
+5. **Cron inplannen** (eenmalig in de SQL Editor, `<CRON_SECRET>` invullen met de echte
+   waarde; dit ingevulde statement nooit committen):
+   ```sql
+   select cron.schedule(
+     'oslife-vault-inbox-sync',
+     '*/10 * * * *',
+     $cron$
+     select net.http_post(
+       url     := 'https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/vault-inbox-sync',
+       headers := jsonb_build_object('Content-Type', 'application/json', 'Authorization', 'Bearer <CRON_SECRET>'),
+       body    := '{}'::jsonb
+     );
+     $cron$
+   );
+   ```
+6. Test: schrijf een `.md`-bestand in de Obsidian inbox-map, wacht op de eerstvolgende sync
+   + cron-tick (max ~10 min), en check dat 'm als nieuwe kaart in Braindump verschijnt en
+   het bronbestand naar `vault-inbox/processed/` is verhuisd.
+
+> Wil je een notitie meteen privé houden? Zet `tier: geheim` in de frontmatter — die ene
+> waarde wordt gelezen; verder classificeert braindump-ingest domain/kind/tags zoals altijd.
+
 ---
 
 ## Waarden die op meerdere plekken **gelijk** moeten zijn
@@ -162,5 +224,6 @@ shared-secret patroon als notify-tick.
 | Telegram-meldingen | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, `OSLIFE_USER_ID`, `VITE_TELEGRAM_BOT_USERNAME` |
 | Vector memory (search_memory hybrid recall) | `VOYAGE_API_KEY` (optioneel — zonder deze key blijft alles full-text zoals nu), `CRON_SECRET`, `OSLIFE_USER_ID` (voor de backfill) |
 | Vault-notes (Markdown-spiegel van braindump/interaction/summary/message) | geen eigen secret — materialize-note schrijft alleen naar Storage |
+| Obsidian vault-inbox (vault-inbox-sync) | `CRON_SECRET` (hergebruikt), `OSLIFE_USER_ID` — plus een S3 access key aan de Obsidian-kant (geen Supabase-secret, zie §7) |
 | Braindump media-worker (video/audio transcriptie) | `BRAINDUMP_WORKER_URL`, `WORKER_SECRET` (beide optioneel — zonder valt media terug op metadata-only) |
 | cognee kennisgraaf (integrations/cognee-worker/) | `COGNEE_WORKER_URL`, `COGNEE_WORKER_SECRET` (beide optioneel — zonder blijven ingest/zoeken exact zoals nu, zonder graaf) |

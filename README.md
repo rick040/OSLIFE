@@ -134,6 +134,17 @@ recomputed from `phone_events`. This fills the one gap the Sheet used to own —
 `screentime-sheet-ingest` path still works as a fallback. Setup:
 `integrations/macrodroid/app-timer.md`.
 
+### Obsidian integration: read the vault, write via an inbox
+Two independent, optional directions over Supabase Storage's S3 protocol — full setup in
+`docs/SECRETS.md` §7. **Reading**: the `vault` bucket (materialize-note's generated
+Markdown mirror) synced read-only into an Obsidian vault via the Remotely Save plugin —
+browse/search/graph-view every braindump/interaction/summary/business-idea as a real
+`.md` file, without touching the one source of truth (Postgres). **Writing**: a second,
+separate `vault-inbox` bucket that a synced Obsidian "inbox" folder feeds — `vault-inbox-sync`
+(pg_cron, same shared-secret shape as `notify-tick`) turns each new note into a
+`braindump_entries` row and fires `braindump-ingest` on it, exactly like pasting the note
+into HEYRA chat, then moves the file under `processed/` so it's never re-ingested.
+
 ### Finance dedup
 The Betalingen sheet and the in-app ABN AMRO CSV import both write `finance_tx` with the same
 `dedup_key = "YYYY-MM-DD|amount"`. The `UNIQUE (user_id, dedup_key)` constraint plus
