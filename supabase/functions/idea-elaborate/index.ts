@@ -22,6 +22,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { ANTHROPIC_API, MODEL, anthropicHeaders, extractText, parseJsonBlock } from "../_shared/anthropic.ts";
 import { CORS, SUPABASE_URL, corsPreflight, jsonResponder } from "../_shared/http.ts";
+import { cogneeInsight } from "../_shared/cognee.ts";
 
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
@@ -59,7 +60,8 @@ Regels:
 - 4-8 milestones, 2-6 revenueProjection-punten, 2-6 costs, 2-5 risks, 2-5 opportunities, 2-5 items per SWOT-kwadrant.
 - Bedragen zijn realistische schattingen in euro's — rond ze af, verzin geen valse precisie.
 - Verzin geen concrete deadlines of bedragen die je niet kunt onderbouwen vanuit de input — als iets echt onbekend is, wees daar eerlijk over in de tekst (bv. "afhankelijk van...") in plaats van een willekeurig getal te noemen.
-- Schrijf in het Nederlands, informeel en direct, zoals de rest van OSLIFE.`;
+- Schrijf in het Nederlands, informeel en direct, zoals de rest van OSLIFE.
+- Krijg je een blok "Context uit Ricks geheugen" mee, gebruik dat om scherper te zijn: signaleer overlap of raakvlak met een eerder vastgelegd idee/project/klant met naam, en laat bestaande patronen (wat al wel/niet werkte) meewegen in de haalbaarheidsscore en aannames. Gebruik die context nooit om iets te verzinnen dat er niet in staat — ontbreekt relevante context, val terug op de ruwe input alleen.`;
 
 interface Milestone { title: string; due: string | null; done: boolean }
 interface RevenuePoint { period: string; amount: number }
@@ -188,9 +190,56 @@ function sanitizeSwot(v: unknown): Swot {
   };
 }
 
+// A slow memory/graph lookup must never hold up the elaboration by more than
+// this — grounding degrades to "none" rather than delaying (or failing) the
+// one thing Rick is actually waiting on.
+const GROUNDING_TIMEOUT_MS = 6000;
+
+function bounded<T>(p: Promise<T>, fallback: T): Promise<T> {
+  return Promise.race([
+    p.catch(() => fallback),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), GROUNDING_TIMEOUT_MS)),
+  ]);
+}
+
+interface MemoryHit { source: string; title: string; snippet: string }
+
+/**
+ * Best-effort recall so the elaboration is grounded in what's already known
+ * instead of reasoning in a vacuum: hybrid full-text/vector search over
+ * search_memory() (braindumps, past interactions, summaries — and other
+ * business_ideas rows, so a near-duplicate idea gets flagged) via the
+ * memory-search function (keeps the Voyage key server-side-only, same as
+ * heyra/agents/memoryContext.ts's buildRecallSection on the frontend), plus a
+ * knowledge-graph insight straight from cognee — reachable in-process here,
+ * unlike the frontend which has to go through the cognee-search function.
+ * Empty string on no signal or any failure; elaboration proceeds unchanged.
+ */
+async function buildGrounding(authHeader: string, query: string): Promise<string> {
+  if (!query.trim()) return "";
+
+  const [hits, graphInsight] = await Promise.all([
+    bounded(
+      fetch(`${SUPABASE_URL}/functions/v1/memory-search`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: authHeader },
+        body: JSON.stringify({ query, limit: 6 }),
+      })
+        .then((r) => (r.ok ? r.json() : []))
+        .catch(() => []) as Promise<MemoryHit[]>,
+      [] as MemoryHit[],
+    ),
+    bounded(cogneeInsight(query).catch(() => null), null as string | null),
+  ]);
+
+  const lines = (Array.isArray(hits) ? hits : []).map((h) => `- [${h.source}] ${h.title}: ${h.snippet}`);
+  if (graphInsight) lines.push(`- [kennisgraaf] ${graphInsight}`);
+  return lines.length ? `Context uit Ricks geheugen:\n${lines.join("\n")}` : "";
+}
+
 /** Ask Claude to elaborate the raw capture. Null on any failure. */
-async function elaborate(apiKey: string, title: string, rawInput: string, source: string): Promise<Elaboration | null> {
-  const prompt = `Bron: ${source === "voice" ? "voice note (getranscribeerd)" : "getypte tekst"}${title ? `\nWerktitel: ${title}` : ""}\n\nRuwe input:\n"""\n${rawInput}\n"""`;
+async function elaborate(apiKey: string, title: string, rawInput: string, source: string, grounding: string): Promise<Elaboration | null> {
+  const prompt = `Bron: ${source === "voice" ? "voice note (getranscribeerd)" : "getypte tekst"}${title ? `\nWerktitel: ${title}` : ""}\n\nRuwe input:\n"""\n${rawInput}\n"""${grounding ? `\n\n${grounding}` : ""}`;
 
   let res: Response;
   try {
@@ -280,7 +329,8 @@ Deno.serve(async (req) => {
   // for the UI to know or offer a retry. Mirrors braindump-ingest's top-level
   // try/catch around its own processing block.
   try {
-    const result = await elaborate(apiKey, (row.title as string) ?? "", rawInput, (row.source as string) ?? "text");
+    const grounding = await buildGrounding(authHeader, [(row.title as string) ?? "", rawInput].filter(Boolean).join("\n"));
+    const result = await elaborate(apiKey, (row.title as string) ?? "", rawInput, (row.source as string) ?? "text", grounding);
     if (!result) {
       await sb.from("business_ideas").update({ elaboration_status: "failed", error: "Kon het idee niet uitwerken — probeer het opnieuw" }).eq("id", entryId);
       return json({ ok: false, status: "failed" });

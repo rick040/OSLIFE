@@ -16,6 +16,7 @@ import { runProjectAgent } from './agents/projectAgent'
 import { runChartAgent } from './agents/chartAgent'
 import { runSearchAgent } from './agents/searchAgent'
 import { runClientIntakeAgent } from './agents/clientIntakeAgent'
+import { runIdeaAgent } from './agents/ideaAgent'
 import { runFinanceAgent } from './agents/financeAgent'
 import { runSignalAgent } from './agents/signalAgent'
 import { runBriefingAgent } from './agents/briefingAgent'
@@ -38,6 +39,7 @@ const AGENTS: Record<AgentId, Agent> = {
   chart: runChartAgent,
   search: runSearchAgent,
   clientIntake: runClientIntakeAgent,
+  idea: runIdeaAgent,
   finance: runFinanceAgent,
   signal: runSignalAgent,
   briefing: runBriefingAgent,
@@ -50,8 +52,9 @@ const AGENTS: Record<AgentId, Agent> = {
 // under the old "chat bucket" that detectSkill() used to gate openThread on.
 // `assistant` joins them: a general/creative question ("leg X uit", "schrijf een
 // skill") is not a life-loop and must never pollute Rick's open loops — it's
-// still captured, just without opening a thread.
-const CAPTURE_ONLY_AGENTS: AgentId[] = ['task', 'project', 'chart', 'search', 'clientIntake', 'assistant']
+// still captured, just without opening a thread. `idea` gets its own lifecycle
+// entirely in Strategie HQ (business_ideas), so it doesn't open one either.
+const CAPTURE_ONLY_AGENTS: AgentId[] = ['task', 'project', 'chart', 'search', 'clientIntake', 'idea', 'assistant']
 
 /** The old keyword-scored router — now used only as the fallback when the brain is unavailable. */
 export function detectAgentRuleBased(input: string): { agent: AgentId; trigger: string | null } {

@@ -5,7 +5,7 @@
 
 import type { useStore } from '../../store'
 import type { TaskDraft, Project, StructuredItem } from '../../types'
-import type { SearchCardData, ChartCardData, ClientIntakeDraft } from '../cards'
+import type { SearchCardData, ChartCardData, ClientIntakeDraft, IdeaCaptureDraft } from '../cards'
 import type { Topic } from '../suggestions'
 import type { ConversationMemory } from '../memory'
 import type { AgentId } from '../skills'
@@ -28,6 +28,7 @@ export interface AgentResult {
   chart?: ChartCardData
   project?: Project
   clientIntake?: ClientIntakeDraft
+  ideaDraft?: IdeaCaptureDraft
   /** Updates memory.lastEntity when this exchange settled on a named project/client. */
   entity?: string | null
   /** True when the reply text came from the brain rather than the rule-based fallback. */

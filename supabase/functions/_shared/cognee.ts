@@ -65,6 +65,38 @@ export async function cogneeRemember(text: string): Promise<boolean> {
   }
 }
 
+/**
+ * cognee's /api/v1/search returns an array of `{ search_result, dataset_id,
+ * dataset_name }` objects (per docs.cognee.ai) rather than a single object —
+ * read defensively since the exact inner shape of search_result isn't fully
+ * pinned down for every search type.
+ */
+export function extractInsight(payload: unknown): string | null {
+  if (!payload) return null;
+
+  const fromOne = (r: Record<string, unknown>): string | null => {
+    const candidate = r.search_result ?? r.answer ?? r.result ?? r.text;
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+    if (Array.isArray(candidate) && candidate.length) return candidate.map(String).join("\n");
+    return null;
+  };
+
+  if (Array.isArray(payload)) {
+    const parts = payload
+      .filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
+      .map(fromOne)
+      .filter((s): s is string => !!s);
+    return parts.length ? parts.join("\n\n") : null;
+  }
+  if (typeof payload === "object") return fromOne(payload as Record<string, unknown>);
+  return null;
+}
+
+/** cogneeRecall() + extractInsight() in one call — the shape every caller actually wants. */
+export async function cogneeInsight(query: string): Promise<string | null> {
+  return extractInsight(await cogneeRecall(query));
+}
+
 /** Query the knowledge graph. Returns the raw search payload, or null if unavailable. */
 export async function cogneeRecall(query: string): Promise<unknown | null> {
   const trimmed = query.trim();

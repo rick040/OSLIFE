@@ -9,7 +9,7 @@ import type { Domain, Priority, TaskDraft } from '../types'
 import { classify } from '../understand'
 import { parseWhen } from './datetime'
 
-export type SkillId = 'task' | 'project' | 'chart' | 'search' | 'clientIntake' | 'chat'
+export type SkillId = 'task' | 'project' | 'chart' | 'search' | 'clientIntake' | 'idea' | 'chat'
 
 // Agent ids the router (heyra/router.ts) can dispatch to — a superset of the
 // rule-based SkillId pre-filter above, plus the brain-assisted agents that
@@ -29,6 +29,7 @@ export const SKILLS: Record<AgentId, SkillMeta> = {
   chart: { id: 'chart', label: 'Visualisatie', blurb: 'Zet cijfers uit je geheugen om in een grafiek' },
   search: { id: 'search', label: 'Zoeken', blurb: 'Doorzoekt je ene geheugen op een steekwoord' },
   clientIntake: { id: 'clientIntake', label: 'Klant-intake', blurb: 'Verwerkt een klantbericht tot een reply + CRM-record' },
+  idea: { id: 'idea', label: 'Strategie HQ', blurb: 'Legt een business-idee vast en laat HEYRA het uitwerken tot een volledige analyse' },
   finance: { id: 'finance', label: 'Financiën', blurb: 'Beantwoordt geld-vragen uit je facturen en transacties' },
   signal: { id: 'signal', label: 'Signalen', blurb: 'Legt patronen en verbanden uit je Reflect-brein uit' },
   briefing: { id: 'briefing', label: 'Briefing', blurb: 'Vat je dag samen uit nudge, loops en patronen' },
@@ -80,6 +81,18 @@ const CLIENT_TRIGGERS = [
 // used only as a last-resort heuristic below, never to steal intent from the
 // higher-priority triggers above.
 const CLIENT_MESSAGE_HINTS = ['prijs', 'budget', 'offerte', 'kost', 'wanneer', 'deadline', 'price', 'quote', 'when can']
+
+// Phrases that pitch a new business/side-hustle concept rather than describe
+// an existing project/client — routes straight into Strategie HQ instead of
+// landing as a generic captured note. Deliberately explicit ("nieuw idee",
+// "business idee") plus the "wat als we"/"stel dat we" brainstorm openers,
+// so an ordinary "ik moet nog X" doesn't get mistaken for a pitch.
+const IDEA_TRIGGERS = [
+  'business idee', 'business-idee', 'businessidee', 'nieuw idee', 'idee voor een bedrijf',
+  'idee voor een business', 'nieuwe onderneming', 'nieuw bedrijfje', 'nieuwe inkomstenbron',
+  'side hustle', 'side-hustle', 'wat als we', 'stel dat we', 'stel we beginnen',
+  'idea for a business', 'new business idea', 'business idea', 'startup idee', 'startup idea',
+]
 
 // Phrases that ask "what's still open/outstanding" — deliberately phrase-level,
 // same fix as PROJECT_TRIGGERS above: bare words like "klant" or "staat" used
@@ -156,6 +169,7 @@ export function detectSkill(text: string): SkillDetection {
     toDetection('project', scoreTriggers(scoredText, PROJECT_TRIGGERS)),
     toDetection('chart', scoreTriggers(scoredText, CHART_TRIGGERS)),
     toDetection('clientIntake', scoreTriggers(scoredText, CLIENT_TRIGGERS)),
+    toDetection('idea', scoreTriggers(scoredText, IDEA_TRIGGERS)),
   ]
 
   // On a tie, the more specific (longer) matched phrase wins rather than

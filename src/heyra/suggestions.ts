@@ -36,6 +36,7 @@ export type Topic =
   | 'search'
   | 'chart'
   | 'clientIntake'
+  | 'idea'
   | 'briefing'
 
 /** The slice of store state suggestions read from. Store satisfies this shape. */
@@ -236,6 +237,11 @@ export function followUpSuggestions(
         push(c, `Staat ${name} al in het CRM?`, 80)
         push(c, `Wat is de status van ${name}?`, 65)
       }
+      break
+    }
+    case 'idea': {
+      push(c, 'Welke ideeën staan er nog als "idee" in Strategie HQ?', 80)
+      push(c, 'Wat is de haalbaarheidsscore van mijn laatste idee?', 65)
       break
     }
     case 'briefing': {
