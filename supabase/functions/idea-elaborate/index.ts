@@ -246,23 +246,37 @@ async function elaborate(apiKey: string, title: string, rawInput: string, source
     res = await fetch(ANTHROPIC_API, {
       method: "POST",
       headers: anthropicHeaders(apiKey),
-      body: JSON.stringify({ model: MODEL, max_tokens: 4000, system: ELABORATE_SYSTEM, messages: [{ role: "user", content: prompt }] }),
+      body: JSON.stringify({ model: MODEL, max_tokens: 8000, system: ELABORATE_SYSTEM, messages: [{ role: "user", content: prompt }] }),
     });
-  } catch {
+  } catch (e) {
+    console.error(`idea-elaborate: fetch to Anthropic failed: ${String(e)}`);
     return null;
   }
-  if (!res.ok) return null;
-  let data: { content?: unknown };
+  if (!res.ok) {
+    console.error(`idea-elaborate: Anthropic API ${res.status}: ${(await res.text()).slice(0, 500)}`);
+    return null;
+  }
+  let data: { content?: unknown; stop_reason?: string };
   try {
     data = await res.json();
-  } catch {
+  } catch (e) {
+    console.error(`idea-elaborate: could not parse Anthropic response JSON: ${String(e)}`);
     return null;
   }
-  const parsed = parseJsonBlock(extractText(data.content));
-  if (!parsed) return null;
+  const rawText = extractText(data.content);
+  const parsed = parseJsonBlock(rawText);
+  if (!parsed) {
+    // stop_reason "max_tokens" means the model ran out of budget mid-JSON — the
+    // most likely reason parseJsonBlock can't find a complete, valid object.
+    console.error(`idea-elaborate: no valid JSON block in response (stop_reason=${data.stop_reason}): ${rawText.slice(0, 1000)}`);
+    return null;
+  }
 
   const markdown = str(parsed.markdown, 20000);
-  if (!markdown) return null; // the one field we can't degrade without — no markdown, no elaboration
+  if (!markdown) {
+    console.error(`idea-elaborate: response had no usable "markdown" field: ${JSON.stringify(parsed).slice(0, 1000)}`);
+    return null; // the one field we can't degrade without — no markdown, no elaboration
+  }
 
   const domain = VALID_DOMAINS.includes(String(parsed.domain)) ? String(parsed.domain) : "cross";
   return {
