@@ -375,14 +375,17 @@ function syncGmail() {
         try {
           // Thread can match `after:` on a recent message but still carry older ones.
           if (m.getDate().getTime() < sinceMs) continue;
+          var plainBody = m.getPlainBody() || '';
           rows.push({
             from_addr:   m.getFrom(),
             subject:     (m.getSubject() || '').slice(0, 240),
-            snippet:     (m.getPlainBody() || '').replace(/\s+/g, ' ').trim().slice(0, 280),
+            snippet:     plainBody.replace(/\s+/g, ' ').trim().slice(0, 280),
+            body:        plainBody.slice(0, 20000),
             received_at: m.getDate().toISOString(),
             read:        !th.isUnread(),
             importance:  'normal',
             labels:      labels,
+            thread_id:   th.getId(),
             external_id: m.getId()
           });
         } catch (e) {
