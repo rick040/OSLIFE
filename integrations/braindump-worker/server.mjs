@@ -132,6 +132,44 @@ async function noteFromImagePost(url) {
 
 // ── media acquisition ──────────────────────────────────────────────────────────
 
+/** Title/channel/thumbnail via YouTube's public oEmbed endpoint — a plain fetch,
+ * not yt-dlp, so it isn't subject to the same bot-check as the calls below. */
+async function fetchYoutubeOEmbed(url) {
+  try {
+    const res = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url)}`)
+    if (res.ok) {
+      const d = await res.json()
+      return { title: d.title ?? null, author: d.author_name ?? null, thumbnail: d.thumbnail_url ?? null }
+    }
+  } catch { /* ignore */ }
+  return { title: null, author: null, thumbnail: null }
+}
+
+/** Metadata-only note (title/channel/link, no transcript) for a YouTube video
+ * that has no captions and whose audio yt-dlp couldn't fetch either — keeps
+ * the entry from dead-ending on a raw yt-dlp error, same contract as every
+ * other braindump source ("never stuck"). */
+async function noteFromYoutubeMetaOnly(url) {
+  const meta = await fetchYoutubeOEmbed(url)
+  const prompt = [
+    `Gedeelde YouTube-video: ${url}`,
+    meta.title ? `Titel: ${meta.title}` : '',
+    meta.author ? `Kanaal: ${meta.author}` : '',
+    'Er is geen transcript beschikbaar voor deze video — maak een korte notitie met titel, kanaal en link.',
+  ].filter(Boolean).join('\n')
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 800, system: SUMMARY_SYSTEM, messages: [{ role: 'user', content: prompt }] }),
+  })
+  if (!res.ok) throw new Error(`anthropic ${res.status}`)
+  const data = await res.json()
+  const text = (Array.isArray(data.content) ? data.content : []).filter((b) => b.type === 'text').map((b) => b.text).join('\n')
+  const note = parseNote(text)
+  if (!note) throw new Error('convert failed')
+  return { note, thumbUrl: meta.thumbnail }
+}
+
 /** Video/channel metadata via yt-dlp's own JSON dump. Best-effort — {} on failure. */
 async function fetchYoutubeMeta(url) {
   try {
@@ -393,6 +431,17 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
         // the og:image instead of failing the whole entry.
         if ((sourceKind === 'instagram' || sourceKind === 'pinterest') && sourceUrl) {
           const fallback = await noteFromImagePost(sourceUrl)
+          await finishReady(entryId, userId, tier, fallback.note, {
+            thumbUrl: fallback.thumbUrl, meta: { transcript: false, url: sourceUrl }, contentHash, url: sourceUrl,
+          })
+          return
+        }
+        // YouTube with no captions whose audio download also failed (most
+        // often yt-dlp's bot-check) — degrade to a metadata-only note via
+        // oEmbed (a plain fetch, unaffected by that bot-check) instead of
+        // leaving the entry stuck on a raw yt-dlp error.
+        if (sourceKind === 'youtube' && sourceUrl) {
+          const fallback = await noteFromYoutubeMetaOnly(sourceUrl)
           await finishReady(entryId, userId, tier, fallback.note, {
             thumbUrl: fallback.thumbUrl, meta: { transcript: false, url: sourceUrl }, contentHash, url: sourceUrl,
           })
