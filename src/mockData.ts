@@ -23,6 +23,8 @@ import type {
   DogMedical,
   DogReminder,
   DogProfile,
+  Holding,
+  BalanceCheckpoint,
 } from './types'
 
 export const STORAGE_KEY = 'oslife-state-v1'
@@ -48,6 +50,8 @@ export const milestones: Milestone[] = []
 export const emails: EmailItem[] = []
 export const payments: Payment[] = []
 export const subscriptions: Subscription[] = []
+export const holdings: Holding[] = []
+export const balanceCheckpoints: BalanceCheckpoint[] = []
 export const dogProfile: DogProfile = { name: '', breed: '', birthdate: '', weightKg: 0, vet: '' }
 export const dogEntries: DogEntry[] = []
 export const dogMedical: DogMedical[] = []
