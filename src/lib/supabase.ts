@@ -4,6 +4,7 @@ import type {
   Checkin,
   Transaction,
   EmailItem,
+  EmailReminder,
   MeetingDay,
   Domain,
   ScreenDay,
@@ -983,10 +984,13 @@ export async function fetchSubscriptions(): Promise<Subscription[]> {
 
 // ── Email / Inbox ─────────────────────────────────────────────────────────────
 
+const EMAIL_COLS =
+  'id,from_addr,subject,snippet,received_at,read,importance,labels,thread_id,body,ai_summary,ai_takeaways,ai_reminders,ai_summarized_at'
+
 export async function fetchEmails(): Promise<EmailItem[]> {
   // 400 (up from 50) so the label-filtered CRM inbox (deriveGmailMessages) sees
   // enough history — client/Fiverr-labelled mail is interleaved among all mail.
-  return fetchRows('gmail_messages', 'id,from_addr,subject,snippet,received_at,read,importance,labels', { column: 'received_at', ascending: false, limit: 400 }, (r) => ({
+  return fetchRows('gmail_messages', EMAIL_COLS, { column: 'received_at', ascending: false, limit: 400 }, (r) => ({
     id: r.id as string,
     from: (r.from_addr as string) ?? '',
     subject: (r.subject as string) ?? '',
@@ -995,8 +999,52 @@ export async function fetchEmails(): Promise<EmailItem[]> {
     unread: !(r.read as boolean),
     important: (r.importance as string) === 'high',
     domain: inferEmailDomain((r.labels as string[]) ?? []),
+    threadId: (r.thread_id as string) ?? null,
     labels: (r.labels as string[]) ?? [],
+    body: (r.body as string) ?? null,
+    aiSummary: (r.ai_summary as string) ?? null,
+    aiTakeaways: (r.ai_takeaways as string[]) ?? [],
+    aiReminders: (r.ai_reminders as EmailReminder[]) ?? [],
+    aiSummarizedAt: (r.ai_summarized_at as string) ?? null,
   }))
+}
+
+/** Calls summarize-email; patches nothing itself — caller applies the result to the store. */
+export async function summarizeEmail(id: string): Promise<{
+  summary: string
+  takeaways: string[]
+  reminders: EmailReminder[]
+} | null> {
+  if (!isDbId(id)) return null
+  const { data, error } = await supabase.functions.invoke('summarize-email', { body: { id } })
+  if (error || !data || data.error) {
+    console.warn('[OSLIFE] summarize-email failed', error ?? data?.error)
+    return null
+  }
+  return data
+}
+
+/** Calls draft-email-reply. Returns null (with a console warning) on failure — never persisted. */
+export async function draftEmailReply(id: string, instruction?: string): Promise<string | null> {
+  if (!isDbId(id)) return null
+  const { data, error } = await supabase.functions.invoke('draft-email-reply', { body: { id, instruction } })
+  if (error || !data || data.error) {
+    console.warn('[OSLIFE] draft-email-reply failed', error ?? data?.error)
+    return null
+  }
+  return (data.draft as string) ?? null
+}
+
+/** Calls create-gmail-draft. Returns { ok, error? } so the UI can show a failure inline. */
+export async function saveGmailDraft(id: string, body: string): Promise<{ ok: boolean; error?: string }> {
+  if (!isDbId(id)) return { ok: false, error: 'invalid id' }
+  const { data, error } = await supabase.functions.invoke('create-gmail-draft', { body: { id, body } })
+  if (error || !data || data.error) {
+    const message = (error?.message as string) ?? (data?.error as string) ?? 'unknown error'
+    console.warn('[OSLIFE] create-gmail-draft failed', message)
+    return { ok: false, error: message }
+  }
+  return { ok: true }
 }
 
 // ── Calendar / Meeting days ───────────────────────────────────────────────────

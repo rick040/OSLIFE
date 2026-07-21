@@ -62,6 +62,7 @@ import { analyzeActivity } from './lib/crm/activityAnalyzer'
 import type { ActivityAnalysis } from './lib/crm/activityAnalyzer'
 import { unbilledBillableHours, sumHours, invoiceAmountFromHours } from './lib/crm/invoicing'
 import { parseWhatsapp } from './lib/crm/whatsapp'
+import { classifyImportance } from './lib/crm/emailClassify'
 import { classifyWithBrain, type Classification } from './understand'
 import { invokeBraindumpIngest } from './lib/braindump'
 import type { ClaudeImportRecord } from './lib/claudeImport'
@@ -129,6 +130,7 @@ import {
   resetBraindumpEntryRow,
   persistEmailRead,
   persistAllEmailsRead,
+  summarizeEmail,
   createHabitRow,
   softDeleteHabitRow,
   persistHabitTick,
@@ -394,6 +396,13 @@ interface State {
   dismissPlanBlock: (id: string) => void
   markEmailRead: (id: string) => void
   markAllEmailsRead: () => void
+  // Patch an already-fetched email row with an AI summary result (on-demand
+  // callers apply the summarize-email response themselves via this).
+  applyEmailSummary: (id: string, patch: Partial<EmailItem>) => void
+  // Background pre-summarization of "Belangrijk" (high-importance) mail that
+  // hasn't been summarized yet. Best-effort & idempotent, same shape as
+  // autoTagTransactions.
+  autoSummarizeImportantEmails: () => Promise<void>
 
   // CRM — clients
   addClient: (client: Omit<Client, 'id'>) => void
@@ -640,6 +649,9 @@ export function applyPersistDefaults(
 
 /** Guard so overlapping auto-tag runs (load + realtime) don't double-work. */
 let autoTagRunning = false
+
+/** Guard so overlapping email auto-summarize runs (load + realtime) don't double-work. */
+let autoSummarizeRunning = false
 
 const uid = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1000)}`
 
@@ -1432,6 +1444,33 @@ export const useStore = create<State>()(
       markEmailRead: (id) => {
         patchSlice(set, 'emails', id, { unread: false })
         void persistEmailRead(id, true)
+      },
+
+      applyEmailSummary: (id, patch) => {
+        patchSlice(set, 'emails', id, patch)
+      },
+
+      autoSummarizeImportantEmails: async () => {
+        if (autoSummarizeRunning) return
+        autoSummarizeRunning = true
+        try {
+          const candidates = get().emails.filter(
+            (e) => isDbId(e.id) && !e.aiSummarizedAt && classifyImportance(e) === 'high',
+          )
+          // Cap per run to keep cost bounded — realtime/next load picks up the rest.
+          for (const e of candidates.slice(0, 10)) {
+            const result = await summarizeEmail(e.id)
+            if (!result) continue
+            patchSlice(set, 'emails', e.id, {
+              aiSummary: result.summary,
+              aiTakeaways: result.takeaways,
+              aiReminders: result.reminders,
+              aiSummarizedAt: new Date().toISOString(),
+            })
+          }
+        } finally {
+          autoSummarizeRunning = false
+        }
       },
 
       markPaymentPaid: (id) => {
@@ -2296,6 +2335,8 @@ export const useStore = create<State>()(
           void get().autoTagTransactions()
           // Prices for owned holdings only — never a general market feed.
           void get().refreshStockQuotes()
+          // Pre-summarize "Belangrijk" mail that hasn't been summarized yet.
+          void get().autoSummarizeImportantEmails()
         } catch (err) {
           console.warn('[OSLIFE] Supabase fetch failed', err)
           set({ isLoading: false })
@@ -2311,7 +2352,7 @@ export const useStore = create<State>()(
           { table: 'health_daily_stats', onChange: () => fetchHealthDays().then((d) => { if (d.length > 0) { set({ healthDays: d }); get().recomputeBrain() } }) },
           { table: 'finance_tx', onChange: () => fetchTransactions().then((d) => { if (d.length > 0) { set({ transactions: d }); get().recomputeBrain(); void get().autoTagTransactions() } }) },
           { table: 'vendor_tags', onChange: () => fetchVendorTags().then((d) => { set({ vendorTags: d }); void get().autoTagTransactions() }) },
-          { table: 'gmail_messages', onChange: () => fetchEmails().then((d) => d.length > 0 && set({ emails: d })) },
+          { table: 'gmail_messages', onChange: () => fetchEmails().then((d) => { if (d.length > 0) { set({ emails: d }); void get().autoSummarizeImportantEmails() } }) },
           { table: 'day_blocks', onChange: () => Promise.all([fetchBlocks(), fetchMeetingDays()]).then(([b, m]) => {
             set({ ...(b.length > 0 && { blocks: b }), ...(m.length > 0 && { meetingDays: m }) })
           }) },
