@@ -28,6 +28,7 @@ import NorthStar from './views/NorthStar'
 import Mindmap from './views/Mindmap'
 import Relaties from './views/Relaties'
 import HuisAdmin from './views/HuisAdmin'
+import RedesignDemo from './design-demo/RedesignDemo'
 import LoopExplainer from './components/LoopExplainer'
 import SettingsModal from './components/SettingsModal'
 import AppGrid from './components/AppGrid'
@@ -39,6 +40,9 @@ export default function App() {
   const [view, setView] = useState<View>('dashboard')
   // PWA Web Share Target lands on /share (see public/sw.js + manifest).
   const [isShare, setIsShare] = useState(() => window.location.pathname === '/share')
+  // Standalone redesign preview (docs/design.md Part 2) — no auth required
+  // so it's reviewable without logging in. See src/design-demo/RedesignDemo.tsx.
+  const isDesignDemo = window.location.pathname === '/design-demo'
   const [showLoops, setShowLoops] = useState(false)
   const [showGrid, setShowGrid] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -90,6 +94,8 @@ export default function App() {
     relaties: <Relaties />,
     huisadmin: <HuisAdmin />,
   }
+
+  if (isDesignDemo) return <RedesignDemo />
 
   if (!authChecked) return (
     <div className="min-h-screen flex items-center justify-center bg-canvas">

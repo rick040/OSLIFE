@@ -1,0 +1,360 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   OSLIFE redesign — demo-only stylesheet.
+
+   Everything here is scoped under `.rd-root` so it can never leak into the
+   live app's tokens/classes. This is a preview surface, not a replacement
+   for src/index.css — nothing here is imported outside the demo page.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.rd-root {
+  /* Canvas & surfaces */
+  --r-canvas: 220 18% 7%;
+  --r-surface: 220 15% 11%;
+  --r-sunken: 220 15% 15%;
+  --r-surface-hover: 220 15% 18%;
+
+  /* Borders */
+  --r-line: 220 12% 18%;
+  --r-line-strong: 220 15% 28%;
+  --r-line-focus: 215 80% 60%;
+
+  /* Ink */
+  --r-ink: 220 20% 95%;
+  --r-ink-soft: 220 10% 70%;
+  --r-muted: 220 8% 48%;
+  --r-faint: 220 6% 32%;
+
+  /* Brand */
+  --r-forest: 155 50% 45%;
+  --r-forest-hi: 155 60% 55%;
+
+  /* Hero / focal accent */
+  --r-hero-accent: 150 80% 65%;
+  --r-hero-bg: 150 30% 12%;
+
+  /* Status */
+  --r-destructive: 0 65% 55%;
+  --r-warning: 38 85% 50%;
+  --r-success: 155 60% 50%;
+
+  background: hsl(var(--r-canvas));
+  color: hsl(var(--r-ink));
+  font-family: 'Figtree', ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+  min-height: 100vh;
+}
+
+.rd-root * {
+  box-sizing: border-box;
+}
+
+/* ── Domain tokens — subtle tint fill + high-contrast text, per Part 2 §3 ── */
+.rd-root[data-domain-parkingyou],
+.rd-root {
+  --r-domain-parkingyou-bg: hsla(210, 35%, 15%, 0.6);
+  --r-domain-parkingyou-text: hsl(210, 70%, 75%);
+  --r-domain-prjct-bg: hsla(260, 30%, 15%, 0.6);
+  --r-domain-prjct-text: hsl(260, 65%, 78%);
+  --r-domain-buurtkaart-bg: hsla(150, 30%, 15%, 0.6);
+  --r-domain-buurtkaart-text: hsl(150, 55%, 72%);
+  --r-domain-personal-bg: hsla(40, 45%, 15%, 0.6);
+  --r-domain-personal-text: hsl(40, 75%, 72%);
+  --r-domain-cross-bg: hsla(340, 35%, 15%, 0.6);
+  --r-domain-cross-text: hsl(340, 70%, 78%);
+}
+
+/* ── Base card ─────────────────────────────────────────────────────────── */
+.rd-card {
+  background: hsl(var(--r-surface));
+  border: 1px solid hsl(var(--r-line));
+  border-radius: 1rem; /* rounded-2xl */
+  padding: 1rem;
+  transition: border-color 150ms ease-out, background-color 150ms ease-out, transform 150ms ease-out;
+}
+
+button.rd-card,
+a.rd-card {
+  cursor: pointer;
+  min-height: 52px;
+  text-align: left;
+  width: 100%;
+}
+button.rd-card:hover,
+a.rd-card:hover {
+  border-color: hsl(var(--r-line-strong));
+  background: hsl(var(--r-surface-hover));
+}
+button.rd-card:active,
+a.rd-card:active {
+  transform: scale(0.98);
+}
+button.rd-card:focus-visible,
+a.rd-card:focus-visible {
+  outline: 2px solid hsl(var(--r-line-focus));
+  outline-offset: 2px;
+}
+
+/* ── Hero / single-focal-point tile ───────────────────────────────────── */
+.rd-card-hero {
+  background: hsl(var(--r-hero-bg));
+  border: 1px solid hsl(var(--r-hero-accent) / 0.3);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
+  position: relative;
+  overflow: hidden;
+}
+.rd-card-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: hsl(var(--r-hero-accent));
+}
+
+/* ── Buttons — min 48px tap target ────────────────────────────────────── */
+.rd-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 3rem; /* 48px */
+  padding: 0 1.25rem;
+  border-radius: 0.75rem; /* rounded-xl */
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: transform 150ms ease-out, background-color 150ms ease-out, border-color 150ms ease-out;
+}
+.rd-btn:active {
+  transform: scale(0.97);
+}
+.rd-btn:focus-visible {
+  outline: 2px solid hsl(var(--r-line-focus));
+  outline-offset: 2px;
+}
+.rd-btn-primary {
+  background: hsl(var(--r-forest));
+  color: #fff;
+}
+.rd-btn-primary:hover {
+  background: hsl(var(--r-forest-hi));
+}
+.rd-btn-ghost {
+  background: hsl(var(--r-sunken));
+  color: hsl(var(--r-ink-soft));
+  border: 1px solid hsl(var(--r-line));
+}
+.rd-btn-ghost:hover {
+  background: hsl(var(--r-surface-hover));
+  color: hsl(var(--r-ink));
+}
+.rd-btn-hero {
+  background: hsl(var(--r-hero-accent));
+  color: #0b1410;
+  font-weight: 600;
+}
+
+/* ── Chips ─────────────────────────────────────────────────────────────── */
+.rd-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 2rem; /* 32px — chips are dense, not primary tap targets */
+  padding: 0 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.rd-chip[data-domain='parkingyou'] {
+  background: var(--r-domain-parkingyou-bg);
+  color: var(--r-domain-parkingyou-text);
+  border-color: color-mix(in srgb, var(--r-domain-parkingyou-text) 20%, transparent);
+}
+.rd-chip[data-domain='prjct'] {
+  background: var(--r-domain-prjct-bg);
+  color: var(--r-domain-prjct-text);
+  border-color: color-mix(in srgb, var(--r-domain-prjct-text) 20%, transparent);
+}
+.rd-chip[data-domain='buurtkaart'] {
+  background: var(--r-domain-buurtkaart-bg);
+  color: var(--r-domain-buurtkaart-text);
+  border-color: color-mix(in srgb, var(--r-domain-buurtkaart-text) 20%, transparent);
+}
+.rd-chip[data-domain='personal'] {
+  background: var(--r-domain-personal-bg);
+  color: var(--r-domain-personal-text);
+  border-color: color-mix(in srgb, var(--r-domain-personal-text) 20%, transparent);
+}
+.rd-chip[data-domain='cross'] {
+  background: var(--r-domain-cross-bg);
+  color: var(--r-domain-cross-text);
+  border-color: color-mix(in srgb, var(--r-domain-cross-text) 20%, transparent);
+}
+
+/* ── Nudge / priority row ─────────────────────────────────────────────── */
+.rd-nudge {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 56px;
+  background: hsl(var(--r-sunken) / 0.8);
+  border-radius: 0 0.75rem 0.75rem 0.125rem;
+  padding: 0.75rem;
+  border-left: 4px solid transparent;
+  cursor: pointer;
+  transition: transform 150ms ease-out;
+}
+.rd-nudge:active {
+  transform: scale(0.98);
+}
+.rd-nudge[data-tone='urgent'] {
+  border-left-color: hsl(var(--r-destructive));
+}
+.rd-nudge[data-tone='attention'] {
+  border-left-color: hsl(var(--r-warning));
+}
+.rd-nudge[data-tone='calm'] {
+  border-left-color: hsl(var(--r-success));
+}
+
+/* ── Daily check-in touch blocks ───────────────────────────────────────── */
+.rd-checkin-track {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.5rem;
+}
+.rd-checkin-block {
+  height: 3rem; /* 48px */
+  border-radius: 0.75rem;
+  background: hsl(var(--r-sunken));
+  border: 1px solid hsl(var(--r-line));
+  color: hsl(var(--r-ink-soft));
+  font-weight: 700;
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 150ms ease-out, background-color 150ms ease-out, border-color 150ms ease-out;
+}
+.rd-checkin-block:active {
+  transform: scale(0.97);
+}
+.rd-checkin-block[data-active='true'] {
+  background: hsl(var(--r-forest));
+  border-color: hsl(var(--r-forest));
+  color: #fff;
+  transform: scale(1.03);
+}
+
+/* ── KPI tile ──────────────────────────────────────────────────────────── */
+.rd-kpi {
+  background: hsl(var(--r-surface));
+  border: 1px solid hsl(var(--r-line));
+  border-radius: 1rem;
+  padding: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 90px;
+}
+.rd-kpi-icon {
+  height: 28px;
+  width: 28px;
+  border-radius: 0.5rem;
+  background: hsl(var(--r-sunken));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--r-ink-soft));
+}
+.rd-kpi-label {
+  font-size: 11px;
+  color: hsl(var(--r-muted));
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.rd-kpi-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: hsl(var(--r-ink));
+}
+
+/* ── Progress ──────────────────────────────────────────────────────────── */
+.rd-progress-track {
+  height: 10px;
+  border-radius: 9999px;
+  background: hsl(var(--r-sunken));
+  overflow: hidden;
+}
+.rd-progress-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, hsl(var(--r-forest)) 0%, hsl(var(--r-hero-accent)) 100%);
+}
+
+/* ── Braindump-style capture row ──────────────────────────────────────── */
+.rd-capture-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  min-height: 64px;
+  border-bottom: 1px solid hsl(var(--r-line));
+}
+.rd-capture-row:last-child {
+  border-bottom: none;
+}
+.rd-capture-icon {
+  height: 40px;
+  width: 40px;
+  border-radius: 0.625rem;
+  background: hsl(var(--r-sunken));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--r-ink-soft));
+  flex-shrink: 0;
+}
+
+/* ── Top bar ───────────────────────────────────────────────────────────── */
+.rd-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid hsl(var(--r-line));
+}
+.rd-wordmark {
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  font-size: 0.8rem;
+  color: hsl(var(--r-ink-soft));
+}
+.rd-status-dot {
+  height: 8px;
+  width: 8px;
+  border-radius: 9999px;
+  display: inline-block;
+}
+
+.rd-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: hsl(var(--r-muted));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rd-root * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
