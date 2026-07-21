@@ -29,7 +29,11 @@ Publiek/veilig (RLS beschermt de data).
 | `WALLET_WEBHOOK_SECRET` | wallet-ingest | **zelf verzinnen** (random) |
 | `GBK_API_KEY` | gbk-overview | Geldrop Buurtkaart admin → API key (`X-GBK-Key`) |
 | `GBK_BASE_URL` *(optioneel)* | gbk-overview | `https://www.geldropbuurtkaart.nl` (default) |
-| `ANTHROPIC_API_KEY` | heyra-brain | console.anthropic.com → API keys. HEYRA's agents (src/heyra/agents/) en de nachtelijke Reflect-narrative vallen terug op de bestaande rule-based tekst als deze niet gezet is — de app breekt nooit zonder deze key. |
+| `ANTHROPIC_API_KEY` | heyra-brain | console.anthropic.com → API keys. HEYRA's agents (src/heyra/agents/) en de nachtelijke Reflect-narrative vallen terug op de bestaande rule-based tekst als deze niet gezet is — de app breekt nooit zonder deze key. Ook gebruikt door summarize-email en draft-email-reply (Inbox, zie §8). |
+| `SUPABASE_ANON_KEY` | materialize-note, summarize-email, draft-email-reply, create-gmail-draft | Supabase → Settings → API → anon/public (zelfde waarde als `VITE_SUPABASE_ANON_KEY` hierboven). |
+| `GMAIL_CLIENT_ID` | create-gmail-draft | Google Cloud Console → OAuth-client (zie §8) — **geheim** |
+| `GMAIL_CLIENT_SECRET` | create-gmail-draft | Google Cloud Console → OAuth-client (zie §8) — **geheim** |
+| `GMAIL_REFRESH_TOKEN` | create-gmail-draft | eenmalige OAuth-autorisatie (zie §8) — **geheim** |
 | `VOYAGE_API_KEY` *(optioneel)* | embed-memory, embed-memory-backfill, memory-search | dash.voyageai.com → API keys. Voedt search_memory()'s vector-recall (naast de bestaande full-text). Zonder deze key blijft alles zoals nu: puur full-text zoeken, geen embeddings. |
 | `BRAINDUMP_WORKER_URL` *(optioneel)* | braindump-ingest | Publieke URL van de braindump media-worker (`integrations/braindump-worker/`). Zonder deze URL valt media (video/audio) terug op metadata-only (oEmbed/OpenGraph) — de app breekt nooit zonder. |
 | `WORKER_SECRET` *(optioneel, samen met bovenstaande)* | braindump-ingest | **zelf verzinnen** (random) — zelfde waarde als in de worker's eigen `.env`. |
@@ -195,6 +199,40 @@ verwerking op dankzij braindump-ingest's eigen content-hash dedup).
 > Wil je een notitie meteen privé houden? Zet `tier: geheim` in de frontmatter — die ene
 > waarde wordt gelezen; verder classificeert braindump-ingest domain/kind/tags zoals altijd.
 
+## 8. Inbox: e-mailsamenvattingen + concept-antwoorden (Gmail OAuth): eenmalige setup
+
+De Inbox-uitbreiding (highlights-paneel, AI-samenvatting per mail, concept-antwoord
+opslaan als échte Gmail-conceptmail) staat al in de code en de migratie/functies zijn al
+live gezet vanuit de sandbox. Twee dingen kunnen **niet** vanuit de sandbox — die doe je
+zelf, in deze volgorde:
+
+1. **Apps Script opnieuw deployen**: `syncGmail()` in het ene "OSLIFE ingest"-project
+   (zie §4 hierboven) stuurt nu ook `thread_id` en de volledige plaintext-body mee. Plak de
+   bijgewerkte inhoud van `integrations/apps-script/Code.gs` in het bestaande Apps
+   Script-project en sla op (**geen** nieuwe Script Properties of triggers nodig — dit hergebruikt
+   gewoon `installAllTriggers()`'s bestaande `syncGmail`-trigger). Zonder deze stap blijft
+   "Open in Gmail" op oudere rijen kapot en blijft de AI-samenvatting draaien op de oude
+   280-tekens snippet in plaats van de volledige mail.
+2. **Gmail OAuth-client aanmaken** (uitsluitend voor "concept opslaan in Gmail" —
+   `create-gmail-draft`; de sync zelf blijft via Apps Script lopen, dat is losse code):
+   - Google Cloud Console → nieuw/bestaand project → **Gmail API** inschakelen.
+   - OAuth consent screen → Internal/Testing volstaat voor een single-user app.
+   - Credentials → OAuth client ID → type **Desktop app**.
+   - Eenmalig autoriseren met scope `gmail.compose` (niets breder):
+     ```
+     https://accounts.google.com/o/oauth2/v2/auth?client_id=<ID>&redirect_uri=urn:ietf:wg:oauth:2.0:oob&response_type=code&scope=https://www.googleapis.com/auth/gmail.compose&access_type=offline&prompt=consent
+     ```
+     inloggen, de teruggegeven code kopiëren, en inwisselen voor een refresh token:
+     ```bash
+     curl -X POST https://oauth2.googleapis.com/token \
+       -d client_id=<ID> -d client_secret=<SECRET> -d code=<CODE> \
+       -d grant_type=authorization_code -d redirect_uri=urn:ietf:wg:oauth:2.0:oob
+     ```
+   - Zet `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET` en de `refresh_token` uit de respons als
+     `GMAIL_REFRESH_TOKEN` in Supabase → Edge Functions → Manage secrets (zie tabel
+     hierboven). Zonder deze drie geeft "concept opslaan in Gmail" een 502 terug — de rest
+     van de Inbox (lijst, samenvatting, concept-tekst genereren) werkt al zonder.
+
 ---
 
 ## Waarden die op meerdere plekken **gelijk** moeten zijn
@@ -206,7 +244,7 @@ verwerking op dankzij braindump-ingest's eigen content-hash dedup).
 ## Zelf verzinnen vs. opzoeken
 
 - **Verzinnen** (`openssl rand -base64 32`): `INGEST_SECRET`, `WALLET_WEBHOOK_SECRET`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, `WORKER_SECRET`, `COGNEE_WORKER_SECRET`.
-- **Opzoeken**: `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `OSLIFE_USER_ID`, `GBK_API_KEY`, `TELEGRAM_BOT_TOKEN`, `VOYAGE_API_KEY`.
+- **Opzoeken**: `VITE_SUPABASE_ANON_KEY`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `OSLIFE_USER_ID`, `GBK_API_KEY`, `TELEGRAM_BOT_TOKEN`, `VOYAGE_API_KEY`, `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` (§8).
 
 ## Per databron: welke secrets heb je nodig
 
@@ -220,6 +258,7 @@ verwerking op dankzij braindump-ingest's eigen content-hash dedup).
 | Schermtijd-sheet | `INGEST_SECRET`, `OSLIFE_USER_ID` (+ Apps Script props) |
 | Gezondheid-sheet | `INGEST_SECRET`, `OSLIFE_USER_ID` (+ Apps Script props) |
 | Inbox / Agenda / Te betalen | Apps Script: `SUPABASE_SERVICE_KEY`, `OSLIFE_USER_ID` (+ `PAYMENTS_CAL_ID`) |
+| Inbox · AI-samenvatting + concept-antwoord | `ANTHROPIC_API_KEY`, `SUPABASE_ANON_KEY` (samenvatten/concept-tekst genereren); `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` (concept opslaan in Gmail — zonder deze drie 502'd alleen die ene actie, zie §8) |
 | HEYRA brain-agents / Reflect-narrative | `ANTHROPIC_API_KEY` (optioneel — zonder deze key blijft alles rule-based zoals nu) |
 | Telegram-meldingen | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, `OSLIFE_USER_ID`, `VITE_TELEGRAM_BOT_USERNAME` |
 | Vector memory (search_memory hybrid recall) | `VOYAGE_API_KEY` (optioneel — zonder deze key blijft alles full-text zoals nu), `CRON_SECRET`, `OSLIFE_USER_ID` (voor de backfill) |
