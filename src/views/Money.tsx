@@ -51,6 +51,7 @@ export default function Money() {
     toggleSubscription,
     deleteSubscription,
     addHolding,
+    updateHolding,
     deleteHolding,
     refreshStockQuotes,
     addBalanceCheckpoint,
@@ -158,6 +159,7 @@ export default function Money() {
             fx={fx}
             loading={loadingQuotes}
             onAdd={addHolding}
+            onUpdate={updateHolding}
             onDelete={deleteHolding}
             onRefresh={refreshStockQuotes}
           />
