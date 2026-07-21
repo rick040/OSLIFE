@@ -18,6 +18,7 @@ import type {
   Goal,
   Milestone,
   EmailItem,
+  EmailReminder,
   Payment,
   ScreenDay,
   MeetingDay,
@@ -59,7 +60,7 @@ import { analyzeActivity } from './lib/crm/activityAnalyzer'
 import type { ActivityAnalysis } from './lib/crm/activityAnalyzer'
 import { unbilledBillableHours, sumHours, invoiceAmountFromHours } from './lib/crm/invoicing'
 import { parseWhatsapp } from './lib/crm/whatsapp'
-import { classifyImportance } from './lib/crm/emailClassify'
+import { classifyImportance, emailTaskDomain } from './lib/crm/emailClassify'
 import { classifyWithBrain, type Classification } from './understand'
 import { invokeBraindumpIngest } from './lib/braindump'
 import type { ClaudeImportRecord } from './lib/claudeImport'
@@ -379,6 +380,10 @@ interface State {
   // Patch an already-fetched email row with an AI summary result (on-demand
   // callers apply the summarize-email response themselves via this).
   applyEmailSummary: (id: string, patch: Partial<EmailItem>) => void
+  // Turn an email's AI-detected reminders into real Taken-screen tasks (Thread
+  // rows). Called exactly once per email, right after a fresh summarize-email
+  // result lands — never on re-render — so it can't double-create tasks.
+  addTasksFromEmailReminders: (email: EmailItem, reminders: EmailReminder[]) => void
   // Background pre-summarization of "Belangrijk" (high-importance) mail that
   // hasn't been summarized yet. Best-effort & idempotent, same shape as
   // autoTagTransactions.
@@ -1399,6 +1404,21 @@ export const useStore = create<State>()(
         patchSlice(set, 'emails', id, patch)
       },
 
+      addTasksFromEmailReminders: (email, reminders) => {
+        const domain = emailTaskDomain(email)
+        for (const r of reminders) {
+          if (!r.text) continue
+          get().addTask({
+            title: r.text,
+            due: r.date,
+            time: null,
+            domain,
+            priority: 'Medium',
+            notes: `Automatisch aangemaakt vanuit Inbox-mail: ${email.subject}`,
+          })
+        }
+      },
+
       autoSummarizeImportantEmails: async () => {
         if (autoSummarizeRunning) return
         autoSummarizeRunning = true
@@ -1416,6 +1436,7 @@ export const useStore = create<State>()(
               aiReminders: result.reminders,
               aiSummarizedAt: new Date().toISOString(),
             })
+            if (result.reminders.length > 0) get().addTasksFromEmailReminders(e, result.reminders)
           }
         } finally {
           autoSummarizeRunning = false
