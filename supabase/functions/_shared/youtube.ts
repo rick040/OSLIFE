@@ -1,0 +1,98 @@
+/**
+ * Lightweight, free YouTube metadata + transcript fetch — no yt-dlp, no
+ * cookies, no external worker, no API key.
+ *
+ * - Metadata (title/channel/thumbnail): YouTube's public oEmbed endpoint.
+ * - Transcript: YouTube ships caption tracks (manual or auto-generated) as
+ *   plain XML alongside every watch page. The track list is embedded in the
+ *   `ytInitialPlayerResponse` JSON blob in the page HTML — the exact
+ *   technique used by the popular `youtube-transcript` (npm) and
+ *   `youtube-transcript-api` (PyPI) tools, just reimplemented here with a
+ *   plain fetch() so it runs directly in this Deno edge function.
+ *
+ * This covers the vast majority of videos (most uploads get auto-generated
+ * captions within minutes). Videos with no captions at all still fall back
+ * to a metadata-only note — no worse than before, and everything above is
+ * free and needs nothing deployed or maintained.
+ */
+
+import { decodeEntities, fetchText } from "./webpage.ts";
+
+export interface YoutubeMeta {
+  title: string | null;
+  author: string | null;
+  thumb: string | null;
+}
+
+export async function fetchYoutubeMeta(url: string): Promise<YoutubeMeta> {
+  try {
+    const res = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url)}`);
+    if (res.ok) {
+      const d = await res.json();
+      return { title: d.title ?? null, author: d.author_name ?? null, thumb: d.thumbnail_url ?? null };
+    }
+  } catch { /* ignore */ }
+  return { title: null, author: null, thumb: null };
+}
+
+export function extractYoutubeId(url: string): string | null {
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/))([\w-]{11})/);
+  return m ? m[1] : null;
+}
+
+interface CaptionTrack {
+  baseUrl: string;
+  languageCode: string;
+  kind?: string; // "asr" = auto-generated
+}
+
+/** Manual beats auto-generated; Dutch beats English beats anything else. */
+function pickCaptionTrack(tracks: CaptionTrack[]): CaptionTrack | null {
+  if (!tracks.length) return null;
+  const score = (t: CaptionTrack) => {
+    let s = t.kind === "asr" ? 0 : 10;
+    if (t.languageCode?.startsWith("nl")) s += 5;
+    else if (t.languageCode?.startsWith("en")) s += 3;
+    return s;
+  };
+  return [...tracks].sort((a, b) => score(b) - score(a))[0];
+}
+
+/**
+ * Fetch a plain-text transcript for a video, or null if it has no captions
+ * (manual or auto-generated) at all. Two fetches: the watch page (to find the
+ * caption track list), then the track itself (small XML file).
+ */
+export async function fetchYoutubeTranscript(videoId: string): Promise<string | null> {
+  const html = await fetchText(`https://www.youtube.com/watch?v=${videoId}&hl=en`, 9000);
+  if (!html) return null;
+
+  // ytInitialPlayerResponse is one giant object; rather than balance braces
+  // across the whole thing, slice out just the "captions" value — it's
+  // immediately followed by "videoDetails" in every observed player response.
+  const marker = '"captions":';
+  const start = html.indexOf(marker);
+  if (start === -1) return null;
+  const afterMarker = html.slice(start + marker.length);
+  const end = afterMarker.indexOf(',"videoDetails');
+  if (end === -1) return null;
+
+  let captions: { playerCaptionsTracklistRenderer?: { captionTracks?: CaptionTrack[] } };
+  try {
+    captions = JSON.parse(afterMarker.slice(0, end));
+  } catch {
+    return null;
+  }
+  const track = pickCaptionTrack(captions.playerCaptionsTracklistRenderer?.captionTracks ?? []);
+  if (!track?.baseUrl) return null;
+
+  const xml = await fetchText(track.baseUrl, 9000);
+  if (!xml) return null;
+  const text = [...xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)]
+    .map((m) => decodeEntities(m[1].replace(/<[^>]+>/g, "")).trim())
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text || null;
+}
