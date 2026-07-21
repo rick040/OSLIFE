@@ -13,12 +13,16 @@
  * back to a regex tag-strip), image, pdf, office documents (docx/xlsx/pptx/
  * csv/txt), and image-type instagram/pinterest posts (Claude vision / document
  * blocks).
- * Delegated to braindump-worker (yt-dlp + ffmpeg + Groq Whisper): youtube, video,
- * audio, and video-type instagram/pinterest. The worker tries YouTube's own
- * caption tracks first (fast, free) and only falls back to audio+Whisper when
- * a video has no captions. When BRAINDUMP_WORKER_URL is not configured, media
- * falls back to metadata-only (oEmbed / OpenGraph) so the app still works
- * before the worker is deployed.
+ * YouTube is also handled inline, no worker required: oEmbed for title/
+ * channel/thumbnail, plus a plain fetch() of YouTube's own caption tracks for
+ * a transcript (see ../_shared/youtube.ts) — free, no API key, no yt-dlp.
+ * Covers any video with captions (manual or auto-generated), which is most of
+ * them; a caption-less video still gets a metadata-only note.
+ * Delegated to braindump-worker (yt-dlp + ffmpeg + Groq Whisper): video, audio,
+ * and video-type instagram/pinterest, plus youtube videos with no captions at
+ * all (audio+Whisper is the only way to get a transcript for those). When
+ * BRAINDUMP_WORKER_URL is not configured, those fall back to metadata-only
+ * (oEmbed / OpenGraph) so the app still works before the worker is deployed.
  *
  *   request:  { "entryId": "<uuid>" }
  *   response: { "ok": true, "status": "ready" | "processing" | "failed" }
@@ -34,6 +38,7 @@ import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 import { ANTHROPIC_API, MODEL, anthropicHeaders, extractText, parseJsonBlock } from "../_shared/anthropic.ts";
 import { CORS, SUPABASE_URL, corsPreflight, jsonResponder } from "../_shared/http.ts";
 import { extractArticle, extractSocialCaption, fetchText, htmlToText, parseOG } from "../_shared/webpage.ts";
+import { extractYoutubeId, fetchYoutubeMeta, fetchYoutubeTranscript } from "../_shared/youtube.ts";
 
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
@@ -320,34 +325,39 @@ async function extractPptxText(bytes: Uint8Array): Promise<string> {
   return parts.join("\n\n");
 }
 
-/** YouTube metadata-only fallback via oEmbed (used when the worker isn't configured). */
-async function processYoutubeFallback(apiKey: string, url: string): Promise<ProcessResult | null> {
-  let title: string | null = null, author: string | null = null, thumb: string | null = null;
-  try {
-    const res = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url)}`);
-    if (res.ok) {
-      const d = await res.json();
-      title = d.title ?? null;
-      author = d.author_name ?? null;
-      thumb = d.thumbnail_url ?? null;
-    }
-  } catch { /* ignore */ }
+/**
+ * YouTube: oEmbed for metadata (title/channel/thumbnail) plus a free, direct
+ * fetch of YouTube's own caption tracks for a transcript — see
+ * ../_shared/youtube.ts. When a transcript is found, Claude gets the full
+ * text and produces a real summary, same quality bar as every other source.
+ * When the video simply has no captions, this degrades to the old
+ * metadata-only note (title/channel/link) — the caller may then hand off to
+ * the audio+Whisper worker if one is configured.
+ */
+async function processYoutube(apiKey: string, url: string): Promise<ProcessResult | null> {
+  const videoId = extractYoutubeId(url);
+  const [{ title, author, thumb }, transcript] = await Promise.all([
+    fetchYoutubeMeta(url),
+    videoId ? fetchYoutubeTranscript(videoId) : Promise.resolve(null),
+  ]);
   const blocks: ContentBlock[] = [{
     type: "text",
     text: [
       `Gedeelde YouTube-video: ${url}`,
       title ? `Titel: ${title}` : "",
       author ? `Kanaal: ${author}` : "",
-      "Er is (nog) geen transcript beschikbaar — maak een korte notitie met titel, kanaal en link.",
+      transcript
+        ? `Transcript:\n"""\n${transcript.slice(0, 15000)}\n"""`
+        : "Er is geen transcript beschikbaar voor deze video — maak een korte notitie met titel, kanaal en link.",
     ].filter(Boolean).join("\n"),
   }];
   const note = await convert(apiKey, blocks);
-  return note ? { note, thumbUrl: thumb, meta: { url, transcript: false } } : null;
+  return note ? { note, thumbUrl: thumb, meta: { url, transcript: !!transcript } } : null;
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────────
 
-const MEDIA_KINDS = new Set(["youtube", "video", "audio"]);
+const MEDIA_KINDS = new Set(["video", "audio"]);
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return corsPreflight(CORS);
@@ -513,6 +523,25 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ── YouTube: try the free, inline caption-track pipeline first — no
+    // worker round-trip needed at all when the video has captions (most do).
+    // Only a caption-less video falls through to the audio+Whisper worker.
+    if (kind === "youtube" && url) {
+      const yt = await processYoutube(apiKey, url);
+      if (yt && yt.meta.transcript) return await finish(yt);
+      if (workerUrl && workerSecret) {
+        const res = await fetch(workerUrl.replace(/\/$/, "") + "/transcribe", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${workerSecret}` },
+          body: JSON.stringify({ entryId, sourceUrl: url, storagePath, sourceKind: r.source_kind }),
+        }).catch(() => null);
+        if (res && res.ok) return json({ ok: true, status: "processing" });
+      }
+      // No captions and no worker (or worker unreachable) → the metadata-only
+      // note processYoutube() already produced.
+      return yt ? await finish(yt) : await fail("Kon de YouTube-metadata niet ophalen");
+    }
+
     // ── Media: hand off to the worker, or metadata-only fallback ──
     if (MEDIA_KINDS.has(kind) || ((kind === "instagram" || kind === "pinterest") && url)) {
       if (workerUrl && workerSecret) {
@@ -527,10 +556,6 @@ Deno.serve(async (req) => {
         // downloadable video at all, falls back to describing the og:image).
         if (res && res.ok) return json({ ok: true, status: "processing" });
         // Worker unreachable → graceful metadata fallback below.
-      }
-      if (kind === "youtube" && url) {
-        const yt = await processYoutubeFallback(apiKey, url);
-        return yt ? await finish(yt) : await fail("Kon de YouTube-metadata niet ophalen");
       }
       if (url && (r.source_kind === "instagram" || r.source_kind === "pinterest")) {
         const social = await processSocial(apiKey, url);
