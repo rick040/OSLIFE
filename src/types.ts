@@ -75,6 +75,29 @@ export interface BraindumpEntry {
   error: string | null
 }
 
+export type WikiStatus = 'suggested' | 'confirmed' | 'rejected'
+
+/**
+ * A curated "Kennisbank" entry distilled from a braindump capture — Claude
+ * flags the odd braindump (an idea worth stealing, an interesting post) as
+ * `suggested` during ingest; the user confirms/rejects it in the Kennisbank
+ * view. Only `confirmed` entries get materialised as a real .md file in the
+ * vault. Mirrors InferredItem's suggest-then-confirm shape.
+ */
+export interface WikiEntry {
+  id: string
+  createdAt: string // ISO
+  status: WikiStatus
+  title: string
+  transcript: string
+  takeaway: string
+  application: string
+  domain: Domain | null
+  tags: string[]
+  sourceUrl: string | null
+  braindumpEntryId: string | null
+}
+
 /** Raw payload the share sheet / capture box hands to store.braindumpCapture(). */
 export interface BraindumpInput {
   sourceKind: BraindumpSourceKind

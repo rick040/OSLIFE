@@ -44,6 +44,7 @@ import type {
   PlanBlock,
   InferredItem,
   InferenceDecision,
+  WikiEntry,
   Person,
   Interaction,
   AdminItem,
@@ -169,6 +170,9 @@ import {
   upsertAppSettings,
   fetchPendingInferences,
   confirmInference,
+  fetchWikiEntries,
+  confirmWikiEntry,
+  materializeWikiEntry,
   fetchPeople,
   createPersonRow,
   updatePersonRow,
@@ -253,6 +257,7 @@ interface State {
   vendorTags: VendorTag[]
   braindumpEntries: BraindumpEntry[]
   inferences: InferredItem[]
+  wikiEntries: WikiEntry[]
   people: Person[]
   interactions: Interaction[]
   adminItems: AdminItem[]
@@ -331,6 +336,11 @@ interface State {
   // Inference engine (Slice 1): load the pending review queue and resolve one.
   loadInferences: () => Promise<void>
   resolveInference: (id: string, decision: InferenceDecision) => Promise<void>
+
+  // Kennisbank: load the wiki suggest-queue and resolve one. On confirm, the
+  // entry also gets materialised as a real .md file in the vault.
+  loadWikiEntries: () => Promise<void>
+  resolveWikiEntry: (id: string, decision: InferenceDecision) => Promise<void>
 
   // Slice 2 domains: mensen/relaties, huis & admin.
   addPerson: (p: Omit<Person, 'id'>) => void
@@ -519,6 +529,7 @@ const seed = () => ({
   vendorTags: [] as VendorTag[],
   braindumpEntries: [] as BraindumpEntry[],
   inferences: [] as InferredItem[],
+  wikiEntries: [] as WikiEntry[],
   people: [] as Person[],
   interactions: [] as Interaction[],
   adminItems: [] as AdminItem[],
@@ -547,7 +558,7 @@ const SEED_WHEN_FALSY = ['threads', 'nudge', 'dogProfile'] as const
 const EMPTY_WHEN_FALSY = [
   'projectMilestones', 'projectTasks', 'projectHours', 'projectInvoices',
   'projectActivity', 'checkins', 'learnedFacts', 'vendorTags', 'braindumpEntries',
-  'goalProposals', 'weekPlan', 'businessIdeas',
+  'goalProposals', 'weekPlan', 'businessIdeas', 'wikiEntries',
 ] as const
 
 /**
@@ -2091,7 +2102,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, people, interactions, adminItems, healthConditions, summaries, cleaningLog, businessIdeas] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, summaries, cleaningLog, businessIdeas] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -2104,6 +2115,7 @@ export const useStore = create<State>()(
             fetchBraindumpEntries(),
             fetchAppSettings(),
             fetchPendingInferences(),
+            fetchWikiEntries(),
             fetchPeople(),
             fetchInteractions(),
             fetchAdminItems(),
@@ -2147,6 +2159,8 @@ export const useStore = create<State>()(
             braindumpEntries,
             // Inference review queue is app-owned too — set directly.
             inferences,
+            // Kennisbank suggest-queue is app-owned too — set directly.
+            wikiEntries,
             // Slice 2 domains — app-owned, set directly (empty = none yet).
             people,
             interactions,
@@ -2203,6 +2217,7 @@ export const useStore = create<State>()(
           { table: 'client_messages', onChange: () => fetchClientMessages().then((d) => set({ messages: d })) },
           { table: 'heyra_memory', onChange: () => fetchLearnedFacts().then((d) => set({ learnedFacts: d })) },
           { table: 'braindump_entries', onChange: () => fetchBraindumpEntries().then((d) => set({ braindumpEntries: d })) },
+          { table: 'wiki_entries', onChange: () => fetchWikiEntries().then((d) => set({ wikiEntries: d })) },
           { table: 'app_settings', onChange: () => fetchAppSettings().then((p) => { if (p) set({ settings: p }) }) },
           { table: 'person', onChange: () => fetchPeople().then((d) => set({ people: d })) },
           { table: 'interaction', onChange: () => fetchInteractions().then((d) => set({ interactions: d })) },
@@ -2246,6 +2261,32 @@ export const useStore = create<State>()(
           if (item?.type === 'subscription_candidate') {
             void fetchSubscriptions().then((d) => d.length > 0 && set({ subscriptions: d }))
           }
+        }
+      },
+
+      loadWikiEntries: async () => {
+        const wikiEntries = await fetchWikiEntries()
+        set({ wikiEntries })
+      },
+
+      resolveWikiEntry: async (id, decision) => {
+        // Optimistic: drop it from the review queue immediately (rejected ones
+        // simply disappear; confirmed ones get refetched below with the real
+        // confirmed status/confirmedAt).
+        const prev = get().wikiEntries
+        const entry = prev.find((w) => w.id === id)
+        set({ wikiEntries: prev.filter((w) => w.id !== id) })
+        const ok = await confirmWikiEntry(id, decision)
+        if (!ok) {
+          // Roll back on failure so the user can retry.
+          set({ wikiEntries: prev })
+          return
+        }
+        if (decision === 'confirm' && entry) {
+          // Only confirmed entries get mirrored into the vault as a real .md
+          // file — best-effort, never blocks the UI.
+          void materializeWikiEntry({ ...entry, status: 'confirmed' })
+          void fetchWikiEntries().then((d) => set({ wikiEntries: d }))
         }
       },
 

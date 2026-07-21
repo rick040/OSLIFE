@@ -22,6 +22,7 @@ import {
   Contact,
   FileText,
   SprayCan,
+  BookOpen,
 } from 'lucide-react'
 
 // ── Central screen registry ──────────────────────────────────────────────────
@@ -48,6 +49,7 @@ export type View =
   | 'heyra'
   | 'capture'
   | 'memory'
+  | 'kennisbank'
   | 'reflect'
   | 'mindmap'
 
@@ -96,6 +98,7 @@ export const SCREENS: Screen[] = [
 
   // Reflect
   { id: 'memory', label: 'Geheugen', icon: Database, layer: 'Herinnering · incl. inferenties', group: 'Reflect', accent: 'text-muted' },
+  { id: 'kennisbank', label: 'Kennisbank', icon: BookOpen, layer: 'Herinnering · uitgelichte inzichten', group: 'Reflect', accent: 'text-buurtkaart' },
   { id: 'reflect', label: 'Reflectie', icon: Brain, layer: 'Reflectie · incl. databronnen', group: 'Reflect', accent: 'text-cross' },
   { id: 'mindmap', label: 'Verbanden', icon: Network, layer: 'Reflectie · grafiek', group: 'Reflect', accent: 'text-prjct' },
 ]

@@ -56,17 +56,28 @@ Geef ALLEEN een fenced \`\`\`json blok terug met exact deze velden:
   "sentiment": één van ${VALID_SENTIMENTS.join(", ")},
   "tags": ["3-6 korte trefwoorden, lowercase"],
   "fields": { "amount": number, "currency": "EUR", "dueDate": "YYYY-MM-DD", "sender": "naam" } of null,
-  "markdown": "de notitie in Markdown"
+  "markdown": "de notitie in Markdown",
+  "wiki": { "takeaway": "...", "application": "..." } of null
 }
 
 De "markdown" is lichtgewicht maar volledig: begin met een # titel, dan een korte samenvatting, dan de kernpunten als bullets. Bij een afbeelding: beschrijf wat te zien is en neem gelezen tekst (OCR) op. Bij een artikel/PDF: vat de belangrijkste punten samen. Neem de bronlink onderaan op als die er is. domain: parkingyou/prjct/buurtkaart zijn de bedrijven van de gebruiker, personal = privé, cross = meerdere.
 
-"fields" is alleen voor een rekening/bon/factuur: vul 'm met wat je letterlijk ziet (bedrag, valuta, vervaldatum, afzender/leverancier). Verzin nooit een bedrag of datum die je niet ziet — laat het veld dan gewoon weg. Bij alles wat geen rekening is: "fields": null.`;
+"fields" is alleen voor een rekening/bon/factuur: vul 'm met wat je letterlijk ziet (bedrag, valuta, vervaldatum, afzender/leverancier). Verzin nooit een bedrag of datum die je niet ziet — laat het veld dan gewoon weg. Bij alles wat geen rekening is: "fields": null.
+
+"wiki" is alleen voor content die een concreet, herbruikbaar idee of inzicht bevat dat Rick mogelijk wil implementeren — bijvoorbeeld een interessante Instagram-post over een aanpak/tool/groeistrategie, een slim stukje workflow, een businessmodel-truc. Dit is bewust selectief: de meeste braindumps (persoonlijke notities, taken, venten, routine-linkjes, transacties) krijgen GEEN wiki-veld — laat het dan gewoon "wiki": null. Alleen als het item duidelijk het karakter heeft van "dit is een idee/inzicht om te bewaren en ooit toe te passen", vul je 'm:
+  - "takeaway": één tot twee zinnen, de kern van het idee/inzicht (niet de hele inhoud herhalen).
+  - "application": concreet en specifiek hoe dit zou kunnen toepassen op Rick — zijn eigen bedrijven (ParkingYou, PRJCT Agency, Geldrop Buurtkaart), lopende projecten, of een nieuw soort project dat dit idee zou kunnen inspireren. Geen vage algemeenheden ("dit kun je toepassen op je bedrijf") — noem een concreet aanknopingspunt.
+Bij twijfel: "wiki": null. Beter een goede suggestie missen dan de kennisbank vervuilen met ruis.`;
 
 interface ContentBlock {
   type: string;
   text?: string;
   source?: { type: string; url?: string; media_type?: string; data?: string };
+}
+
+interface WikiSuggestion {
+  takeaway: string;
+  application: string;
 }
 
 interface Converted {
@@ -78,6 +89,16 @@ interface Converted {
   tags: string[];
   fields: Record<string, unknown> | null;
   markdown: string;
+  wiki: WikiSuggestion | null;
+}
+
+/** A wiki suggestion needs both a real takeaway and a real, non-empty application. Null on anything half-formed. */
+function sanitizeWiki(raw: unknown): WikiSuggestion | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const takeaway = String((raw as Record<string, unknown>).takeaway ?? "").trim();
+  const application = String((raw as Record<string, unknown>).application ?? "").trim();
+  if (!takeaway || !application) return null;
+  return { takeaway, application };
 }
 
 /** Keep only the known, well-typed keys a bill/receipt capture can carry. */
@@ -127,6 +148,7 @@ async function convert(apiKey: string, blocks: ContentBlock[]): Promise<Converte
   const fields = parsed.fields && typeof parsed.fields === "object" && !Array.isArray(parsed.fields)
     ? sanitizeFields(parsed.fields as Record<string, unknown>)
     : null;
+  const wiki = sanitizeWiki(parsed.wiki);
   return {
     title: typeof parsed.title === "string" ? parsed.title.trim() : null,
     summary: typeof parsed.summary === "string" ? parsed.summary.trim() : null,
@@ -136,6 +158,7 @@ async function convert(apiKey: string, blocks: ContentBlock[]): Promise<Converte
     tags,
     fields,
     markdown,
+    wiki,
   };
 }
 
@@ -413,6 +436,24 @@ Deno.serve(async (req) => {
       meta: { ...meta, ...res.meta, ...(res.note.fields ? { fields: res.note.fields } : {}) },
       error: null,
     }).eq("id", entryId);
+    // Claude flagged this as an actionable idea/insight worth a spot in the
+    // Kennisbank — propose it (status='suggested'); Rick confirms/rejects in
+    // the app, same shape as the inference engine. geheim entries are skipped,
+    // same tier gate as materialize-note/cognee-remember below.
+    if (res.note.wiki && r.tier !== "geheim") {
+      await sb.from("wiki_entries").insert({
+        user_id: r.user_id,
+        braindump_entry_id: entryId,
+        status: "suggested",
+        title: res.note.title ?? "Zonder titel",
+        transcript: res.note.markdown,
+        takeaway: res.note.wiki.takeaway,
+        application: res.note.wiki.application,
+        domain: res.note.domain,
+        tags: res.note.tags,
+        source_url: url,
+      });
+    }
     // Fire-and-forget: feed search_memory()'s hybrid recall. A missing
     // VOYAGE_API_KEY or any embedding failure is a silent no-op — the entry
     // is already "ready" regardless.

@@ -16,7 +16,7 @@
  * createInteractionRow, createMessageRow) plus embed-memory-backfill's
  * catch-all sweep for summaries (built by the non-HTTP build_summaries()).
  *
- *   request:  { "source": "braindump"|"interaction"|"summary"|"message"|"business_idea",
+ *   request:  { "source": "braindump"|"interaction"|"summary"|"message"|"business_idea"|"wiki",
  *               "id": "<uuid>", "frontmatter": {...}, "body": "..." }
  *   response: { "ok": true } | { "ok": false, "error": "<message>" }
  *
@@ -31,7 +31,7 @@ import { CORS, SUPABASE_URL, bearerToken, corsPreflight, jsonResponder } from ".
 
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-const VALID_SOURCES = new Set(["braindump", "interaction", "summary", "message", "business_idea"]);
+const VALID_SOURCES = new Set(["braindump", "interaction", "summary", "message", "business_idea", "wiki"]);
 
 const json = jsonResponder(CORS);
 
@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
   const id = (payload.id ?? "").trim();
   const body = (payload.body ?? "").trim();
   if (!VALID_SOURCES.has(source) || !id || !body) {
-    return json({ error: "source (braindump|interaction|summary|message), id and body are required" }, 400);
+    return json({ error: "source (braindump|interaction|summary|message|business_idea|wiki), id and body are required" }, 400);
   }
 
   const note = renderNote(

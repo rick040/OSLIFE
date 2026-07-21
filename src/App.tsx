@@ -9,6 +9,7 @@ import Heyra from './views/Heyra'
 import Capture from './views/Capture'
 import ShareIntake from './views/ShareIntake'
 import Memory from './views/Memory'
+import Kennisbank from './views/Kennisbank'
 import Reflect from './views/Reflect'
 import DayBuilder from './views/DayBuilder'
 import Vitals from './views/Vitals'
@@ -74,6 +75,7 @@ export default function App() {
     heyra: <Heyra onNav={(v) => setView(v as View)} />,
     capture: <Capture />,
     memory: <Memory />,
+    kennisbank: <Kennisbank />,
     reflect: <Reflect />,
     mindmap: <Mindmap />,
     // built in later phases

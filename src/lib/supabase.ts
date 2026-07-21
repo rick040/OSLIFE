@@ -29,6 +29,7 @@ import type {
   NotificationPrefs,
   VendorTag,
   BraindumpEntry,
+  WikiEntry,
   AppSettings,
   PlanBlock,
   InferredItem,
@@ -790,6 +791,73 @@ export async function uploadBraindumpFile(file: File | Blob, filename: string): 
     return null
   }
   return path
+}
+
+// ── Kennisbank: curated wiki entries distilled from braindump captures ────────
+// Suggest-then-confirm, same shape as the inference engine: braindump-ingest
+// proposes a `suggested` row when Claude flags an entry as an actionable
+// idea/insight; confirmWikiEntry() resolves it (RPC enforces ownership).
+
+const WIKI_COLS = 'id,created_at,status,title,transcript,takeaway,application,domain,tags,source_url,braindump_entry_id'
+
+function mapWikiRow(r: Record<string, unknown>): WikiEntry {
+  return {
+    id: r.id as string,
+    createdAt: (r.created_at as string) ?? new Date().toISOString(),
+    status: ((r.status as WikiEntry['status']) ?? 'suggested'),
+    title: (r.title as string) ?? '',
+    transcript: (r.transcript as string) ?? '',
+    takeaway: (r.takeaway as string) ?? '',
+    application: (r.application as string) ?? '',
+    domain: (r.domain as Domain) ?? null,
+    tags: (r.tags as string[]) ?? [],
+    sourceUrl: (r.source_url as string) ?? null,
+    braindumpEntryId: (r.braindump_entry_id as string) ?? null,
+  }
+}
+
+/** Suggested + confirmed entries only — rejected ones stay in the DB (so they're
+ *  never re-suggested) but drop out of the app, same as rejected inferences. */
+export async function fetchWikiEntries(): Promise<WikiEntry[]> {
+  const { data, error } = await supabase
+    .from('wiki_entries')
+    .select(WIKI_COLS)
+    .neq('status', 'rejected')
+    .order('created_at', { ascending: false })
+  warnWrite('wiki_entries.fetch', error)
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map(mapWikiRow)
+}
+
+/** Resolve a suggested wiki entry. The RPC enforces ownership and flips status. */
+export async function confirmWikiEntry(id: string, decision: InferenceDecision): Promise<boolean> {
+  const { data, error } = await supabase.rpc('confirm_wiki_entry', { p_id: id, p_decision: decision })
+  warnWrite('confirm_wiki_entry', error)
+  return data === true
+}
+
+/** Mirror a confirmed entry into the vault as a real .md file (best-effort, never throws). */
+export async function materializeWikiEntry(entry: WikiEntry): Promise<void> {
+  const body = [
+    `# ${entry.title}`,
+    '## Transcript',
+    entry.transcript,
+    '## Kernpunt',
+    entry.takeaway,
+    '## Toepassing',
+    entry.application,
+  ].join('\n\n')
+  try {
+    await supabase.functions.invoke('materialize-note', {
+      body: {
+        source: 'wiki',
+        id: entry.id,
+        frontmatter: { kind: 'wiki', domain: entry.domain, tags: entry.tags, source_url: entry.sourceUrl },
+        body,
+      },
+    })
+  } catch (err) {
+    console.warn('[OSLIFE] materialize-note (wiki) invoke failed', err)
+  }
 }
 
 export async function fetchPayments(): Promise<Payment[]> {
