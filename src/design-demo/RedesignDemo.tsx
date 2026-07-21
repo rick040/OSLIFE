@@ -1,106 +1,65 @@
 import { useState } from 'react'
 import {
-  Wifi,
-  ChevronRight,
-  Timer,
-  CheckSquare,
+  Cloud,
+  Settings,
+  ArrowRight,
   Plus,
-  FileText,
+  Home,
+  Activity,
+  Users,
+  Gauge,
+  CheckSquare,
+  Cake,
+  Video,
+  Droplet,
+  FolderKanban,
   Map as MapIcon,
-  AlertTriangle,
-  Bell,
-  Sparkles,
 } from 'lucide-react'
 import './redesign.css'
 
+const DAYS = [
+  { d: 'M', n: 21 },
+  { d: 'T', n: 22 },
+  { d: 'W', n: 23 },
+  { d: 'T', n: 24, today: true },
+  { d: 'F', n: 25 },
+  { d: 'S', n: 26 },
+  { d: 'S', n: 27 },
+]
+
+const DOMAIN_HEX: Record<string, string> = {
+  parkingyou: '#60A5FA',
+  prjct: '#A78BFA',
+  buurtkaart: '#34D399',
+  personal: '#FBBF24',
+  cross: '#F87171',
+}
+
 /**
- * Standalone preview of the docs/design.md Part 2 redesign proposal.
- * Not wired into the live app — reachable only at /design-demo, with mock
- * data, so it can be reviewed before any of this touches src/index.css or
- * the real components.
+ * Redesign demo v2 — "Tactile Organic Materialism". Standalone preview at
+ * /design-demo, not wired into the app. See docs/design.md and the v2
+ * proposal it was built from: atmospheric aurora glows, editorial narrative
+ * headers, and 48px+ tactile controls instead of flat SaaS-dashboard cards.
  */
 export default function RedesignDemo() {
   const [energy, setEnergy] = useState(3)
-  const [mood, setMood] = useState(4)
+  const [mood, setMood] = useState<'Great' | 'Typical' | 'Good'>('Good')
 
   return (
     <div className="rd-root">
-      <TopBar />
-
-      <div className="max-w-md mx-auto px-4 py-5 flex flex-col gap-6">
-        <ReviewBanner />
-
-        <HeroTile />
-
-        <Section label="Daily check-in">
-          <div className="rd-card">
-            <p className="text-sm font-medium mb-3" style={{ color: 'hsl(var(--r-ink))' }}>
-              Energy level today
-            </p>
-            <ScaleTrack value={energy} onChange={setEnergy} />
-            <p className="text-sm font-medium mt-4 mb-3" style={{ color: 'hsl(var(--r-ink))' }}>
-              Mood today
-            </p>
-            <ScaleTrack value={mood} onChange={setMood} />
-          </div>
-        </Section>
-
-        <Section label="Cockpit stats">
-          <div className="grid grid-cols-2 gap-3">
-            <KpiTile icon={<Timer className="h-4 w-4" />} label="Focus time" value="3h 45m" />
-            <KpiTile icon={<CheckSquare className="h-4 w-4" />} label="Tasks done" value="8 / 12" />
-          </div>
-        </Section>
-
-        <Section label="Quick actions">
-          <button className="rd-btn rd-btn-primary w-full">
-            <Plus className="h-4 w-4" />
-            Quick braindump note
-          </button>
-        </Section>
-
-        <Section label="Recent captures">
-          <div className="rd-card p-0">
-            <CaptureRow
-              icon={<FileText className="h-4 w-4" />}
-              title="Design system reference doc"
-              meta="Captured today at 09:15"
-              domain="prjct"
-            />
-            <CaptureRow
-              icon={<MapIcon className="h-4 w-4" />}
-              title="Buurtkaart survey PDF"
-              meta="Captured yesterday"
-              domain="buurtkaart"
-            />
-          </div>
-        </Section>
-
-        <Section label="Priorities">
-          <div className="flex flex-col gap-2">
-            <NudgeRow tone="urgent" text="Overdue: reply to Kyra's dokterspraktijk email" cta="Memory" />
-            <NudgeRow tone="attention" text="Q3 roadmap review needs your input" cta="Projects" />
-            <NudgeRow tone="calm" text="Nothing urgent — good time for deep work" />
-          </div>
-        </Section>
-
-        <Section label="Buttons">
-          <div className="flex flex-wrap gap-2.5">
-            <button className="rd-btn rd-btn-primary">Primary</button>
-            <button className="rd-btn rd-btn-ghost">Ghost</button>
-            <button className="rd-btn rd-btn-hero">Hero</button>
-          </div>
-        </Section>
-
-        <Section label="Domain chips">
-          <div className="flex flex-wrap gap-2">
-            <span className="rd-chip" data-domain="parkingyou">ParkingYou</span>
-            <span className="rd-chip" data-domain="prjct">PRJCT</span>
-            <span className="rd-chip" data-domain="buurtkaart">Buurtkaart</span>
-            <span className="rd-chip" data-domain="personal">Personal</span>
-            <span className="rd-chip" data-domain="cross">Cross</span>
-          </div>
-        </Section>
+      <div className="rd-phone">
+        <div className="rd-phone-notch" />
+        <div className="rd-phone-body">
+          <ReviewBanner />
+          <Header />
+          <HeroTile />
+          <CheckinBlock energy={energy} setEnergy={setEnergy} mood={mood} setMood={setMood} />
+          <VitalsSection />
+          <SuggestedSection />
+          <RemindersSection />
+          <CapturesSection />
+        </div>
+        <BottomNav />
       </div>
     </div>
   )
@@ -108,33 +67,88 @@ export default function RedesignDemo() {
 
 function ReviewBanner() {
   return (
-    <div
-      className="rounded-xl px-3.5 py-2.5 text-xs"
-      style={{
-        background: 'hsl(var(--r-sunken))',
-        color: 'hsl(var(--r-ink-soft))',
-        border: '1px solid hsl(var(--r-line))',
-      }}
+    <p
+      className="text-[11px] rounded-xl px-3 py-2"
+      style={{ background: 'hsl(var(--r-surface-raised))', color: 'hsl(var(--r-ink-muted))' }}
     >
-      Design preview only — not wired into the app. See <code>docs/design.md</code>.
+      Design preview v2 — not wired into the app. See <code>docs/design.md</code>.
+    </p>
+  )
+}
+
+function Header() {
+  return (
+    <div className="flex flex-col gap-3.5">
+      <div className="flex items-center justify-between">
+        <div className="rd-avatar" style={{ background: '#FBBF24' }}>
+          R
+        </div>
+        <div className="rd-date-strip flex-1 mx-3">
+          {DAYS.map((day) => (
+            <div key={day.n} className="rd-date-cell" data-today={day.today}>
+              <span>{day.d}</span>
+              <b>{day.n}</b>
+            </div>
+          ))}
+        </div>
+        <button className="rd-nudge-chevron">
+          <Settings className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="flex items-center gap-1.5 text-xs" style={{ color: 'hsl(var(--r-ink-muted))' }}>
+        <Cloud className="h-3.5 w-3.5" />
+        6° &middot; Amsterdam
+      </div>
+
+      <p className="rd-greeting">
+        Good morning. You have <span className="rd-count rd-count-azure">2 events</span>,{' '}
+        <span className="rd-count rd-count-azure">2 meetings</span> and{' '}
+        <span className="rd-count rd-count-emerald">3 tasks</span> today.
+      </p>
     </div>
   )
 }
 
-function TopBar() {
-  const time = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+function CheckinBlock({
+  energy,
+  setEnergy,
+  mood,
+  setMood,
+}: {
+  energy: number
+  setEnergy: (n: number) => void
+  mood: 'Great' | 'Typical' | 'Good'
+  setMood: (m: 'Great' | 'Typical' | 'Good') => void
+}) {
   return (
-    <div className="rd-topbar">
-      <div className="flex items-center gap-2">
-        <span className="rd-wordmark">OSLIFE</span>
-        <span className="rd-status-dot" style={{ background: 'hsl(var(--r-success))' }} />
-        <span className="text-[11px]" style={{ color: 'hsl(var(--r-muted))' }}>
-          synced
+    <div className="rd-card flex flex-col gap-3.5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold">Daily vitals</h3>
+          <p className="text-xs mt-0.5" style={{ color: 'hsl(var(--r-ink-secondary))' }}>
+            How is your energy right now?
+          </p>
+        </div>
+        <span className="text-xs font-bold tabular-nums" style={{ color: 'hsl(var(--r-accent-emerald))' }}>
+          {energy} / 5
         </span>
       </div>
-      <div className="flex items-center gap-2 text-xs" style={{ color: 'hsl(var(--r-ink-soft))' }}>
-        <Wifi className="h-3.5 w-3.5" />
-        {time}
+
+      <div className="rd-checkin-track">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button key={n} className="rd-checkin-block" data-active={n === energy} onClick={() => setEnergy(n)}>
+            {n}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-2">
+        {(['Great', 'Typical', 'Good'] as const).map((m) => (
+          <button key={m} className="rd-pill-toggle" data-active={m === mood} onClick={() => setMood(m)}>
+            {m}
+          </button>
+        ))}
       </div>
     </div>
   )
@@ -143,107 +157,198 @@ function TopBar() {
 function HeroTile() {
   return (
     <div className="rd-card-hero">
-      <p className="rd-section-label mb-2">Top priority</p>
-      <p className="text-lg font-semibold leading-snug mb-4" style={{ color: 'hsl(var(--r-ink))' }}>
-        Complete Strategie HQ Q3 roadmap review
-      </p>
+      <p className="rd-section-label mb-2">Current focus</p>
+      <p className="text-lg font-semibold leading-snug mb-4">Complete Q3 Strategie HQ roadmap review</p>
       <div className="rd-progress-track mb-2">
-        <div className="rd-progress-fill" style={{ width: '75%' }} />
+        <div className="rd-progress-fill" style={{ width: '65%' }} />
       </div>
-      <p className="text-xs mb-4" style={{ color: 'hsl(var(--r-ink-soft))' }}>
-        75% done
+      <p className="text-xs mb-4" style={{ color: 'hsl(var(--r-ink-secondary))' }}>
+        65% done
       </p>
-      <button className="rd-btn rd-btn-hero w-full">
-        Continue focus session
-        <ChevronRight className="h-4 w-4" />
+      <button className="rd-btn rd-btn-primary w-full">
+        Start focus session
+        <ArrowRight className="h-4 w-4" />
       </button>
     </div>
+  )
+}
+
+function VitalsSection() {
+  return (
+    <Section label="Cockpit vitals">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rd-kpi">
+          <div className="rd-kpi-icon">
+            <Droplet className="h-4 w-4" style={{ color: 'hsl(var(--r-accent-azure))' }} />
+          </div>
+          <div>
+            <p className="rd-kpi-label">Hydration</p>
+            <p className="rd-kpi-value">3 / 5 glasses</p>
+          </div>
+        </div>
+        <div className="rd-kpi">
+          <div className="rd-kpi-icon">
+            <CheckSquare className="h-4 w-4" style={{ color: 'hsl(var(--r-accent-emerald))' }} />
+          </div>
+          <div>
+            <p className="rd-kpi-label">Habits done</p>
+            <p className="rd-kpi-value">4 of 6</p>
+          </div>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+function SuggestedSection() {
+  return (
+    <Section label="Suggested">
+      <div className="rd-card p-1.5">
+        <NudgeRow
+          tone="calm"
+          icon={<Activity className="h-4 w-4" style={{ color: 'hsl(var(--r-accent-emerald))' }} />}
+          title="Outdoor run"
+          subtitle="Alertness rise in 45m"
+        />
+        <NudgeRow
+          tone="attention"
+          icon={<FolderKanban className="h-4 w-4" style={{ color: 'hsl(var(--r-accent-amber))' }} />}
+          title="Apply to YC"
+          subtitle="2:30 – 3:30 PM"
+        />
+        <NudgeRow
+          tone="urgent"
+          icon={<Gauge className="h-4 w-4" style={{ color: 'hsl(var(--r-accent-coral))' }} />}
+          title="Overdue: reply to Kyra's dokterspraktijk email"
+          subtitle="Rescheduled from yesterday"
+        />
+      </div>
+    </Section>
+  )
+}
+
+function RemindersSection() {
+  return (
+    <Section label="Reminders">
+      <div className="rd-card p-1.5">
+        <ReminderRow color="#FBBF24" icon={<Cake className="h-4 w-4" />} title="Farrel's birthday" trailing="Today" />
+        <ReminderRow
+          color="#60A5FA"
+          icon={<Video className="h-4 w-4" />}
+          title="Meeting with a client"
+          trailing="30 min"
+        />
+      </div>
+    </Section>
+  )
+}
+
+function CapturesSection() {
+  return (
+    <Section label="Today's captures">
+      <div className="rd-card p-1.5">
+        <CaptureRow
+          icon={<FolderKanban className="h-4 w-4" />}
+          title="Design inspiration bookmark"
+          domain="prjct"
+        />
+        <CaptureRow icon={<MapIcon className="h-4 w-4" />} title="Buurtkaart survey PDF" domain="buurtkaart" />
+      </div>
+    </Section>
   )
 }
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-2.5">
-      <p className="rd-section-label">{label}</p>
+      <p className="rd-section-label px-1">{label}</p>
       {children}
     </div>
   )
 }
 
-function ScaleTrack({ value, onChange }: { value: number; onChange: (n: number) => void }) {
-  return (
-    <div className="rd-checkin-track">
-      {[1, 2, 3, 4, 5].map((n) => (
-        <button
-          key={n}
-          className="rd-checkin-block"
-          data-active={n === value}
-          onClick={() => onChange(n)}
-          aria-pressed={n === value}
-        >
-          {n}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function KpiTile({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="rd-kpi">
-      <div className="rd-kpi-icon">{icon}</div>
-      <div className="mt-2">
-        <p className="rd-kpi-label">{label}</p>
-        <p className="rd-kpi-value">{value}</p>
-      </div>
-    </div>
-  )
-}
-
-function CaptureRow({
+function NudgeRow({
+  tone,
   icon,
   title,
-  meta,
-  domain,
+  subtitle,
 }: {
+  tone: 'urgent' | 'attention' | 'calm'
   icon: React.ReactNode
   title: string
-  meta: string
-  domain: 'parkingyou' | 'prjct' | 'buurtkaart' | 'personal' | 'cross'
+  subtitle: string
 }) {
   return (
-    <div className="rd-capture-row">
-      <div className="rd-capture-icon">{icon}</div>
+    <div className="rd-nudge" data-tone={tone}>
+      <div className="rd-nudge-icon">{icon}</div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium truncate" style={{ color: 'hsl(var(--r-ink))' }}>
-          {title}
-        </p>
-        <p className="text-xs" style={{ color: 'hsl(var(--r-muted))' }}>
-          {meta}
+        <p className="text-sm font-semibold leading-tight line-clamp-2">{title}</p>
+        <p className="text-xs mt-0.5" style={{ color: 'hsl(var(--r-ink-secondary))' }}>
+          {subtitle}
         </p>
       </div>
+      <button className="rd-nudge-chevron">
+        <ArrowRight className="h-4 w-4" />
+      </button>
+    </div>
+  )
+}
+
+function ReminderRow({
+  color,
+  icon,
+  title,
+  trailing,
+}: {
+  color: string
+  icon: React.ReactNode
+  title: string
+  trailing: string
+}) {
+  return (
+    <div className="rd-nudge" style={{ borderLeftColor: color }}>
+      <div className="rd-nudge-icon" style={{ color }}>
+        {icon}
+      </div>
+      <p className="text-sm font-semibold flex-1 min-w-0 truncate">{title}</p>
+      <span className="rd-chip">{trailing}</span>
+    </div>
+  )
+}
+
+function CaptureRow({ icon, title, domain }: { icon: React.ReactNode; title: string; domain: string }) {
+  return (
+    <div className="rd-nudge">
+      <div className="rd-nudge-icon" style={{ color: DOMAIN_HEX[domain] }}>
+        {icon}
+      </div>
+      <p className="text-sm font-semibold flex-1 min-w-0 truncate">{title}</p>
       <span className="rd-chip" data-domain={domain}>
+        <span className="rd-chip-dot" />
         {domain}
       </span>
     </div>
   )
 }
 
-const TONE_ICON = { urgent: AlertTriangle, attention: Bell, calm: Sparkles }
-
-function NudgeRow({ tone, text, cta }: { tone: 'urgent' | 'attention' | 'calm'; text: string; cta?: string }) {
-  const Icon = TONE_ICON[tone]
+function BottomNav() {
   return (
-    <div className="rd-nudge" data-tone={tone}>
-      <Icon className="h-4 w-4 shrink-0" style={{ color: `hsl(var(--r-${tone === 'urgent' ? 'destructive' : tone === 'attention' ? 'warning' : 'success'}))` }} />
-      <p className="text-sm flex-1 min-w-0 line-clamp-2" style={{ color: 'hsl(var(--r-ink))' }}>
-        {text}
-      </p>
-      {cta && (
-        <span className="text-xs font-semibold shrink-0" style={{ color: 'hsl(var(--r-ink-soft))' }}>
-          {cta}
-        </span>
-      )}
+    <div className="rd-bottom-nav">
+      <div className="rd-nav-icon" data-active="true">
+        <Home className="h-5 w-5" />
+      </div>
+      <div className="rd-nav-icon">
+        <Activity className="h-5 w-5" />
+      </div>
+      <div className="rd-fab">
+        <Plus className="h-6 w-6" />
+      </div>
+      <div className="rd-nav-icon">
+        <Droplet className="h-5 w-5" />
+      </div>
+      <div className="rd-nav-icon">
+        <Users className="h-5 w-5" />
+      </div>
     </div>
   )
 }
