@@ -751,6 +751,11 @@ export interface Subscription {
 
 // ── Inbox (most important Gmail threads) ─────────────────────────────────────
 
+export interface EmailReminder {
+  text: string
+  date: string | null // 'YYYY-MM-DD'
+}
+
 export interface EmailItem {
   id: string
   from: string
@@ -763,6 +768,11 @@ export interface EmailItem {
   importance?: 'high' | 'med' | 'low' | null
   threadId?: string | null
   labels?: string[]
+  body?: string | null
+  aiSummary?: string | null
+  aiTakeaways?: string[]
+  aiReminders?: EmailReminder[]
+  aiSummarizedAt?: string | null
 }
 
 // ── Layer 5/6: SURFACE + ACT ──────────────────────────────────────────────────
