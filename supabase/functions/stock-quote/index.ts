@@ -22,9 +22,27 @@
  *   supabase functions deploy stock-quote --project-ref nhyunnnmdcmojvkxrbpl
  */
 
-import { CORS, bearerToken, corsPreflight, jsonResponder } from "../_shared/http.ts";
+// Self-contained (no _shared/http.ts import): this function never touches the
+// database or needs SUPABASE_SERVICE_ROLE_KEY, so it doesn't need that
+// module's env preamble — just the same CORS/bearer-token shape every other
+// browser-invoked function uses.
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
+};
 
-const json = jsonResponder(CORS);
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...CORS } });
+}
+
+function corsPreflight(): Response {
+  return new Response(null, { headers: CORS });
+}
+
+function bearerToken(req: Request): string {
+  return (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+}
+
 const STOOQ_URL = "https://stooq.com/q/l/";
 const MAX_TICKERS = 40;
 
@@ -68,7 +86,7 @@ async function fetchQuotes(symbols: string[]): Promise<Map<string, { close: numb
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return corsPreflight(CORS);
+  if (req.method === "OPTIONS") return corsPreflight();
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
   const auth = bearerToken(req);
