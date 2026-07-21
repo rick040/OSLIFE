@@ -675,6 +675,43 @@ export interface Payment {
   domain: Domain
   source: string // 'calendar' | 'manual' | ...
   externalId?: string // google event id, for dedup
+  iban?: string | null // counterparty IBAN, for manually-added bills
+  paymentLink?: string | null // pasted payment/checkout URL
+  note?: string | null // free-text (what this is, invoice number, …)
+}
+
+// ── Investments: lightweight owned-holdings tracker ──────────────────────────
+// Scoped deliberately to what's actually owned — never a general market feed.
+// currentPrice/asOf are filled in client-side from stock-quote and never persisted.
+
+export interface Holding {
+  id: string
+  ticker: string // Stooq symbol, e.g. "AAPL.US", "ASML.NL"
+  name: string | null // friendly label, e.g. "Apple"
+  shares: number
+  costBasis: number // price paid per share, in `currency`
+  currency: 'EUR' | 'USD' | 'GBP'
+  purchaseDate: string // ISO date
+  notes: string | null
+}
+
+export interface HoldingQuote {
+  price: number | null // latest price, in `currency`
+  currency: 'EUR' | 'USD' | 'GBP'
+  asOf: string | null
+}
+
+// ── Manually-corrected account balance (drift fix) ───────────────────────────
+// The running balance is opening-balance + sum(transactions), which drifts once
+// transactions predate the import history. A checkpoint pins the *real* balance
+// at a point in time; balance = latest checkpoint + transactions strictly after it.
+
+export interface BalanceCheckpoint {
+  id: string
+  amount: number // EUR, the real balance at `asOf`
+  asOf: string // ISO date
+  note: string | null
+  createdAt: string // ISO
 }
 
 // ── Kyra: dog tracker ────────────────────────────────────────────────────────

@@ -52,6 +52,9 @@ import type {
   MemorySummary,
   BusinessIdea,
   IdeaSource,
+  Holding,
+  HoldingQuote,
+  BalanceCheckpoint,
 } from './types'
 import { vendorKey, isUntagged, isTransfer } from './finance/categories'
 import { categorizeVendor } from './heyra/agents/vendorAgent'
@@ -64,6 +67,7 @@ import { invokeBraindumpIngest } from './lib/braindump'
 import type { ClaudeImportRecord } from './lib/claudeImport'
 import { runReflect, computeCorrelations, computeAnomalies, buildNarrativePrompt, NARRATIVE_SYSTEM_PROMPT } from './reflect'
 import { askBrain } from './heyra/brainClient'
+import { buildFinanceCoachPrompt } from './finance/financeCoach'
 import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
 import { proposeGoals as proposeGoalsAI } from './heyra/goals'
 import { buildWeekPlan, weekDates } from './heyra/planner'
@@ -133,6 +137,14 @@ import {
   createSubscriptionRow,
   updateSubscriptionRow,
   deleteSubscriptionRow,
+  createPaymentRow,
+  fetchHoldings,
+  createHoldingRow,
+  deleteHoldingRow,
+  fetchStockQuotes,
+  fetchBalanceCheckpoints,
+  createBalanceCheckpointRow,
+  deleteBalanceCheckpointRow,
   createDogEntryRow,
   deleteDogEntryRow,
   updateDogEntryRow,
@@ -249,6 +261,14 @@ interface State {
   emails: EmailItem[]
   payments: Payment[]
   subscriptions: Subscription[]
+  holdings: Holding[]
+  balanceCheckpoints: BalanceCheckpoint[]
+  /** Latest price per holding ticker (from the last refreshStockQuotes() call). */
+  stockQuotes: Record<string, HoldingQuote>
+  fx: { EURUSD: number | null; EURGBP: number | null }
+  loadingQuotes: boolean
+  financeCoach: { text: string; generatedAt: string } | null
+  financeCoachLoading: boolean
   dogProfile: DogProfile
   dogEntries: DogEntry[]
   dogMedical: DogMedical[]
@@ -440,8 +460,27 @@ interface State {
   addTransactions: (txns: Transaction[]) => void
   importTransactions: (txns: Transaction[]) => Promise<{ inserted: number; duplicates: number }>
   markPaymentPaid: (id: string) => void
+  // Manually add a bill/invoice to "Te betalen" (payee/amount/due/IBAN/link/note).
+  addPayment: (payment: Omit<Payment, 'id' | 'status' | 'source'>) => void
   // Remove an outstanding (or any) payment entirely — from the store and the DB.
   deletePayment: (id: string) => void
+
+  // Investments — a scoped tracker for stocks/ETFs actually owned, never a
+  // general market feed. Prices are fetched only for held tickers.
+  addHolding: (holding: Omit<Holding, 'id'>) => void
+  deleteHolding: (id: string) => void
+  refreshStockQuotes: () => Promise<void>
+
+  // Manual balance checkpoint — pins the real account balance at a point in
+  // time so the running balance stops drifting from whatever it was seeded
+  // from; balance = latest checkpoint + transactions strictly after it.
+  addBalanceCheckpoint: (amount: number, asOf: string, note?: string | null) => void
+  deleteBalanceCheckpoint: (id: string) => void
+
+  // Finance coach — HEYRA wearing its "financial coach" hat: a grounded,
+  // narrative read on spending/subscriptions/bills, generated on demand
+  // (never auto-polled) from real store facts only.
+  refreshFinanceCoach: () => Promise<void>
   // Remove a single transaction — from the store and the DB. Handy to clear
   // demo/seed rows that shouldn't count toward the balance.
   deleteTransaction: (id: string) => void
@@ -521,6 +560,13 @@ const seed = () => ({
   emails: mock.emails,
   payments: mock.payments,
   subscriptions: mock.subscriptions,
+  holdings: mock.holdings,
+  balanceCheckpoints: mock.balanceCheckpoints,
+  stockQuotes: {} as Record<string, HoldingQuote>,
+  fx: { EURUSD: null, EURGBP: null } as { EURUSD: number | null; EURGBP: number | null },
+  loadingQuotes: false,
+  financeCoach: null as { text: string; generatedAt: string } | null,
+  financeCoachLoading: false,
   dogProfile: mock.dogProfile,
   dogEntries: mock.dogEntries,
   dogMedical: mock.dogMedical,
@@ -559,6 +605,7 @@ const EMPTY_WHEN_FALSY = [
   'projectMilestones', 'projectTasks', 'projectHours', 'projectInvoices',
   'projectActivity', 'checkins', 'learnedFacts', 'vendorTags', 'braindumpEntries',
   'goalProposals', 'weekPlan', 'businessIdeas', 'wikiEntries',
+  'holdings', 'balanceCheckpoints',
 ] as const
 
 /**
@@ -582,6 +629,10 @@ export function applyPersistDefaults(
   // not leave a spinner stuck on.
   state.proposingGoals = false
   state.planningWeek = false
+  state.loadingQuotes = false
+  state.financeCoachLoading = false
+  if (!state.stockQuotes) state.stockQuotes = {}
+  if (state.financeCoach === undefined) state.financeCoach = null
   if (state.weekPlanAt === undefined) state.weekPlanAt = null
   if (state.lastGoalProposalError === undefined) state.lastGoalProposalError = null
   if (state.lastPlanError === undefined) state.lastPlanError = null
@@ -2024,6 +2075,68 @@ export const useStore = create<State>()(
         void deleteSubscriptionRow(id)
       },
 
+      addPayment: (payment) => {
+        const tempId = uid('pay')
+        set((s) => ({
+          payments: [{ ...payment, id: tempId, status: 'open', source: 'manual' }, ...s.payments],
+          activity: pushSignal(s.activity, { text: `Betaling toegevoegd: ${payment.payee} (€${payment.amount})`, domain: payment.domain, loop: 'fast' }),
+        }))
+        void createPaymentRow(payment).then(swapTempId(set, 'payments', tempId))
+      },
+
+      addHolding: (holding) => {
+        const tempId = uid('hold')
+        set((s) => ({ holdings: [{ ...holding, id: tempId }, ...s.holdings] }))
+        void createHoldingRow(holding).then(swapTempId(set, 'holdings', tempId))
+        void get().refreshStockQuotes()
+      },
+
+      deleteHolding: (id) => {
+        removeFromSlice(set, 'holdings', id)
+        void deleteHoldingRow(id)
+      },
+
+      refreshStockQuotes: async () => {
+        const tickers = [...new Set(get().holdings.map((h) => h.ticker))]
+        if (!tickers.length) return
+        set({ loadingQuotes: true })
+        try {
+          const { quotes, fx } = await fetchStockQuotes(tickers)
+          set((s) => ({ stockQuotes: { ...s.stockQuotes, ...quotes }, fx, loadingQuotes: false }))
+        } catch {
+          set({ loadingQuotes: false })
+        }
+      },
+
+      addBalanceCheckpoint: (amount, asOf, note) => {
+        const tempId = uid('bal')
+        set((s) => ({
+          balanceCheckpoints: [{ id: tempId, amount, asOf, note: note ?? null, createdAt: new Date().toISOString() }, ...s.balanceCheckpoints],
+          activity: pushSignal(s.activity, { text: `Saldo bijgewerkt naar €${amount}`, domain: 'personal', loop: 'fast' }),
+        }))
+        void createBalanceCheckpointRow({ amount, asOf, note: note ?? null }).then(swapTempId(set, 'balanceCheckpoints', tempId))
+      },
+
+      deleteBalanceCheckpoint: (id) => {
+        removeFromSlice(set, 'balanceCheckpoints', id)
+        void deleteBalanceCheckpointRow(id)
+      },
+
+      refreshFinanceCoach: async () => {
+        set({ financeCoachLoading: true })
+        const s = get()
+        try {
+          const { system, prompt } = buildFinanceCoachPrompt(s)
+          const text = await askBrain(system, prompt, { maxTokens: 500 })
+          set({
+            financeCoach: text ? { text, generatedAt: new Date().toISOString() } : get().financeCoach,
+            financeCoachLoading: false,
+          })
+        } catch {
+          set({ financeCoachLoading: false })
+        }
+      },
+
       recomputeBrain: () => {
         const s = get()
         const essentials = deriveEssentials(s.clients, s.projects, s.goals, s.dogEntries)
@@ -2102,7 +2215,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, summaries, cleaningLog, businessIdeas] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -2123,6 +2236,8 @@ export const useStore = create<State>()(
             fetchSummaries(),
             fetchCleaningLog(),
             fetchBusinessIdeas(),
+            fetchHoldings(),
+            fetchBalanceCheckpoints(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -2169,6 +2284,8 @@ export const useStore = create<State>()(
             summaries,
             cleaningLog,
             businessIdeas,
+            holdings,
+            balanceCheckpoints,
             dataSource: 'live',
             isLoading: false,
           })
@@ -2177,6 +2294,8 @@ export const useStore = create<State>()(
           get().recomputeBrain()
           // Categorise any transactions still Uncategorized (cache-first, then AI).
           void get().autoTagTransactions()
+          // Prices for owned holdings only — never a general market feed.
+          void get().refreshStockQuotes()
         } catch (err) {
           console.warn('[OSLIFE] Supabase fetch failed', err)
           set({ isLoading: false })
@@ -2198,6 +2317,8 @@ export const useStore = create<State>()(
           }) },
           { table: 'projects', onChange: () => fetchProjects().then((d) => { if (d.length > 0) { set({ projects: d }); get().recomputeBrain() } }) },
           { table: 'payments', onChange: () => fetchPayments().then((d) => d.length > 0 && set({ payments: d })) },
+          { table: 'investment_holdings', onChange: () => fetchHoldings().then((d) => { set({ holdings: d }); void get().refreshStockQuotes() }) },
+          { table: 'balance_checkpoints', onChange: () => fetchBalanceCheckpoints().then((d) => set({ balanceCheckpoints: d })) },
           { table: 'habits', onChange: () => fetchHabits().then((d) => d.length > 0 && set({ habits: d })) },
           { table: 'habit_log', onChange: () => fetchHabits().then((d) => d.length > 0 && set({ habits: d })) },
           { table: 'cleaning_log', onChange: () => fetchCleaningLog().then((d) => set({ cleaningLog: d })) },

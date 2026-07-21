@@ -43,6 +43,9 @@ import type {
   MemoryHit,
   BusinessIdea,
   IdeaSource,
+  Holding,
+  HoldingQuote,
+  BalanceCheckpoint,
 } from '../types'
 import { today, habitStreak } from '../domains'
 import type { LearnedFact } from '../heyra/learning'
@@ -861,7 +864,7 @@ export async function materializeWikiEntry(entry: WikiEntry): Promise<void> {
 }
 
 export async function fetchPayments(): Promise<Payment[]> {
-  return fetchRows('payments', 'id,payee,amount,due,direction,status,domain,source,external_id', { column: 'due', ascending: true, nullsFirst: false }, (r) => ({
+  return fetchRows('payments', 'id,payee,amount,due,direction,status,domain,source,external_id,iban,payment_link,notes', { column: 'due', ascending: true, nullsFirst: false }, (r) => ({
     id: r.id as string,
     payee: (r.payee as string) ?? '',
     amount: (r.amount as number) ?? 0,
@@ -871,7 +874,97 @@ export async function fetchPayments(): Promise<Payment[]> {
     domain: ((r.domain as Domain) ?? 'personal'),
     source: (r.source as string) ?? 'manual',
     externalId: (r.external_id as string) ?? undefined,
+    iban: (r.iban as string) ?? null,
+    paymentLink: (r.payment_link as string) ?? null,
+    note: (r.notes as string) ?? null,
   }))
+}
+
+/** Insert a manually-added bill (source='manual') and return the new id. */
+export async function createPaymentRow(payment: Omit<Payment, 'id' | 'status' | 'source'>): Promise<string | null> {
+  return insertRow('payments', {
+    payee: payment.payee,
+    amount: payment.amount,
+    due: payment.due,
+    direction: payment.direction,
+    domain: payment.domain,
+    status: 'open',
+    source: 'manual',
+    iban: payment.iban ?? null,
+    payment_link: payment.paymentLink ?? null,
+    notes: payment.note ?? null,
+  })
+}
+
+// ── Investment holdings ───────────────────────────────────────────────────────
+
+export async function fetchHoldings(): Promise<Holding[]> {
+  return fetchRows('investment_holdings', 'id,ticker,name,shares,cost_basis,currency,purchase_date,notes', { column: 'purchase_date', ascending: false }, (r) => ({
+    id: r.id as string,
+    ticker: (r.ticker as string) ?? '',
+    name: (r.name as string) ?? null,
+    shares: (r.shares as number) ?? 0,
+    costBasis: (r.cost_basis as number) ?? 0,
+    currency: ((r.currency as Holding['currency']) ?? 'EUR'),
+    purchaseDate: (r.purchase_date as string) ?? '',
+    notes: (r.notes as string) ?? null,
+  }))
+}
+
+export async function createHoldingRow(holding: Omit<Holding, 'id'>): Promise<string | null> {
+  return insertRow('investment_holdings', {
+    ticker: holding.ticker,
+    name: holding.name,
+    shares: holding.shares,
+    cost_basis: holding.costBasis,
+    currency: holding.currency,
+    purchase_date: holding.purchaseDate,
+    notes: holding.notes,
+  })
+}
+
+export async function deleteHoldingRow(id: string): Promise<void> {
+  return deleteRow('investment_holdings', id)
+}
+
+/** Live quotes for a scoped set of tickers via the stock-quote edge function. Never throws — best-effort. */
+export async function fetchStockQuotes(tickers: string[]): Promise<{
+  quotes: Record<string, HoldingQuote>
+  fx: { EURUSD: number | null; EURGBP: number | null }
+}> {
+  const empty = { quotes: {}, fx: { EURUSD: null, EURGBP: null } }
+  if (!tickers.length) return empty
+  try {
+    const { data, error } = await supabase.functions.invoke('stock-quote', { body: { tickers } })
+    if (error || !data) return empty
+    return { quotes: data.quotes ?? {}, fx: data.fx ?? { EURUSD: null, EURGBP: null } }
+  } catch {
+    return empty
+  }
+}
+
+// ── Manual balance checkpoints ────────────────────────────────────────────────
+
+export async function fetchBalanceCheckpoints(): Promise<BalanceCheckpoint[]> {
+  return fetchRows('balance_checkpoints', 'id,amount,as_of,note,created_at', { column: 'as_of', ascending: false }, (r) => ({
+    id: r.id as string,
+    amount: (r.amount as number) ?? 0,
+    asOf: (r.as_of as string) ?? '',
+    note: (r.note as string) ?? null,
+    createdAt: (r.created_at as string) ?? '',
+  }))
+}
+
+export async function createBalanceCheckpointRow(checkpoint: Omit<BalanceCheckpoint, 'id' | 'createdAt'>): Promise<string | null> {
+  return insertRow('balance_checkpoints', {
+    amount: checkpoint.amount,
+    as_of: checkpoint.asOf,
+    note: checkpoint.note,
+  })
+}
+
+export async function deleteBalanceCheckpointRow(id: string): Promise<void> {
+  return deleteRow('balance_checkpoints', id)
 }
 
 export async function fetchSubscriptions(): Promise<Subscription[]> {
