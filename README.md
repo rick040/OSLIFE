@@ -86,6 +86,22 @@ milestone and takes the action — ticking the task or bumping the milestone's p
 **berichten-inbox** (`client_messages`) unifies e-mail / Fiverr / WhatsApp; WhatsApp exports
 import via `src/lib/crm/whatsapp.ts`. New rows get a `local-<uuid>` external id.
 
+### Strategie HQ — idea capture from anywhere, grounded elaboration
+A business idea reaches Strategie HQ two ways: the dedicated "Nieuw idee" capture on the
+screen itself, or dropped straight into ordinary HEYRA chat — the `idea` skill
+(`src/heyra/agents/ideaAgent.ts`) recognizes a pitch ("nieuw idee", "wat als we…", "business
+idee") via the same brain-first router every other skill uses, and hands back an editable
+`IdeaCaptureCard` inline in the conversation. Either path writes one `business_ideas` row and
+fires `idea-elaborate` (fire-and-forget, exactly like `braindump-ingest`). Before asking Claude
+to work the idea out, `idea-elaborate` now grounds itself: a hybrid full-text + vector recall
+over `search_memory()` (via `memory-search`, so the Voyage key stays server-side) surfaces
+related past braindumps, interactions and — since business ideas are themselves a
+`search_memory()` source — near-duplicate ideas, plus a knowledge-graph insight straight from
+cognee (reachable in-process here, unlike the frontend's `cognee-search` round trip). Both are
+best-effort with a bounded timeout; a failure or empty result just means the elaboration
+proceeds without that context, same graceful-degradation contract as every other HEYRA recall
+path.
+
 ### Auto-categorisation (vendor cache)
 New transactions tag themselves. When a merchant HEYRA has never seen shows up
 (and the rule-based CSV guesser left it `Uncategorized`), a Haiku call with

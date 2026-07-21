@@ -4,7 +4,7 @@
 // router stays about *routing* and this stays about *building the reply*.
 
 import type { useStore } from '../store'
-import type { Domain, Channel } from '../types'
+import type { Domain, Channel, IdeaSource } from '../types'
 import { DOMAIN_META, today } from '../domains'
 import { isTransfer } from '../finance/categories'
 
@@ -56,6 +56,15 @@ export interface ClientIntakeDraft {
   channelGuess: Channel
   fromBrain: boolean
   researchNote?: string | null // enrich-client's "what does this company do" (best-effort, may be absent)
+}
+
+/** HEYRA "business idee" draft — reviewed + edited before it becomes a Strategie HQ row and idea-elaborate takes over. */
+export interface IdeaCaptureDraft {
+  title: string
+  rawInput: string
+  domain: Domain
+  source: IdeaSource
+  fromBrain: boolean
 }
 
 const NOISE_PHRASES = [

@@ -21,6 +21,20 @@ describe('detectSkill — trigger word boundaries', () => {
   })
 })
 
+describe('detectSkill — business idea pitches route to Strategie HQ', () => {
+  it('routes an explicit "nieuw idee" pitch to idea', () => {
+    expect(detectSkill('nieuw idee: een abonnement voor hondenoppas in Geldrop').skill).toBe('idea')
+  })
+
+  it('routes a "wat als we" brainstorm opener to idea', () => {
+    expect(detectSkill('wat als we een tweede Buurtkaart voor Eindhoven starten').skill).toBe('idea')
+  })
+
+  it('does not fire on an ordinary task', () => {
+    expect(detectSkill('bel de klant morgen').skill).not.toBe('idea')
+  })
+})
+
 describe('isOpenLoopQuery — phrase-level, not bare "klant"/"staat" substrings', () => {
   it('does not fire on a plain client question', () => {
     expect(isOpenLoopQuery('Hoe gaat het met de klant van gisteren?')).toBe(false)

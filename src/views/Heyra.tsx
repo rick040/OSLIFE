@@ -5,7 +5,7 @@ import { contextualSuggestions, followUpSuggestions, type Topic } from '../heyra
 import { routeMessage } from '../heyra/router'
 import { emptyMemory, remember, type ConversationMemory } from '../heyra/memory'
 import type { LearnedFact } from '../heyra/learning'
-import type { SearchCardData, ChartCardData, ClientIntakeDraft } from '../heyra/cards'
+import type { SearchCardData, ChartCardData, ClientIntakeDraft, IdeaCaptureDraft } from '../heyra/cards'
 import { DomainChip, SentimentChip, KindChip } from '../components/ui'
 import type { StructuredItem, TaskDraft, Project, Client, Message } from '../types'
 import TaskCard from '../components/TaskCard'
@@ -13,6 +13,7 @@ import SearchResultCard from '../components/SearchResultCard'
 import DataVizCard from '../components/DataVizCard'
 import ProjectCard from '../components/ProjectCard'
 import ClientIntakeCard, { type ClientIntakeCommitOptions, type ClientIntakeResult } from '../components/ClientIntakeCard'
+import IdeaCaptureCard from '../components/IdeaCaptureCard'
 import { Send, Sparkles, Database, Mic, MicOff, Wand2, Lightbulb, Brain } from 'lucide-react'
 
 interface Msg {
@@ -30,6 +31,8 @@ interface Msg {
   project?: Project
   clientIntake?: ClientIntakeDraft
   clientIntakeResult?: ClientIntakeResult | null
+  ideaDraft?: IdeaCaptureDraft
+  ideaCreatedId?: string | null
   topic?: Topic
   learned?: LearnedFact[]
 }
@@ -181,6 +184,16 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
     setMsgs((m) => m.map((x) => (x.id === msgId ? { ...x, clientIntakeResult: result } : x)))
   }
 
+  async function commitIdea(msgId: string, draft: IdeaCaptureDraft) {
+    const row = await store.captureBusinessIdea({
+      title: draft.title,
+      source: draft.source,
+      rawInput: draft.rawInput,
+      domain: draft.domain,
+    })
+    setMsgs((m) => m.map((x) => (x.id === msgId ? { ...x, ideaCreatedId: row?.id ?? null } : x)))
+  }
+
   function startPendingLabels() {
     pendingTimers.current.forEach(clearTimeout)
     setPendingLabel(PENDING_LABELS[0])
@@ -237,6 +250,7 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
                 chart: result.chart,
                 project: result.project,
                 clientIntake: result.clientIntake,
+                ideaDraft: result.ideaDraft,
                 topic: result.topic,
               }
             : x,
@@ -350,6 +364,16 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
                     draft={m.clientIntake}
                     result={m.clientIntakeResult}
                     onCommit={(draft, opts) => commitClientIntake(m.id, draft, opts)}
+                    onNav={onNav}
+                  />
+                </div>
+              )}
+              {m.ideaDraft && (
+                <div className="mt-2">
+                  <IdeaCaptureCard
+                    draft={m.ideaDraft}
+                    createdId={m.ideaCreatedId}
+                    onCommit={(draft) => commitIdea(m.id, draft)}
                     onNav={onNav}
                   />
                 </div>
