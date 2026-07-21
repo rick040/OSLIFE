@@ -49,7 +49,7 @@ import type {
   BalanceCheckpoint,
 } from '../types'
 import { today, habitStreak } from '../domains'
-import type { LearnedFact } from '../heyra/learning'
+import { CATEGORY_META, type LearnedFact, type LearningCategory } from '../heyra/learning'
 
 // New oslife project (nhyunnnmdcmojvkxrbpl, eu-west-1).
 // Set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY in .env.local
@@ -802,7 +802,7 @@ export async function uploadBraindumpFile(file: File | Blob, filename: string): 
 // proposes a `suggested` row when Claude flags an entry as an actionable
 // idea/insight; confirmWikiEntry() resolves it (RPC enforces ownership).
 
-const WIKI_COLS = 'id,created_at,status,title,transcript,takeaway,application,domain,tags,source_url,braindump_entry_id'
+const WIKI_COLS = 'id,created_at,status,title,transcript,takeaway,application,category,domain,tags,source_url,braindump_entry_id'
 
 function mapWikiRow(r: Record<string, unknown>): WikiEntry {
   return {
@@ -813,6 +813,7 @@ function mapWikiRow(r: Record<string, unknown>): WikiEntry {
     transcript: (r.transcript as string) ?? '',
     takeaway: (r.takeaway as string) ?? '',
     application: (r.application as string) ?? '',
+    category: (r.category as LearningCategory) ?? null,
     domain: (r.domain as Domain) ?? null,
     tags: (r.tags as string[]) ?? [],
     sourceUrl: (r.source_url as string) ?? null,
@@ -843,13 +844,14 @@ export async function confirmWikiEntry(id: string, decision: InferenceDecision):
 export async function materializeWikiEntry(entry: WikiEntry): Promise<void> {
   const body = [
     `# ${entry.title}`,
+    entry.category ? `## Categorie\n${CATEGORY_META[entry.category].label}` : '',
     '## Transcript',
     entry.transcript,
     '## Kernpunt',
     entry.takeaway,
     '## Toepassing',
     entry.application,
-  ].join('\n\n')
+  ].filter(Boolean).join('\n\n')
   try {
     await supabase.functions.invoke('materialize-note', {
       body: {

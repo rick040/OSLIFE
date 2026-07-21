@@ -2477,6 +2477,25 @@ export const useStore = create<State>()(
           // file — best-effort, never blocks the UI.
           void materializeWikiEntry({ ...entry, status: 'confirmed' })
           void fetchWikiEntries().then((d) => set({ wikiEntries: d }))
+          // Rick confirming a Kennisbank suggestion IS him vouching for it, so
+          // its takeaway graduates into permanent knowledge: a LearnedFact
+          // under the same category, folded into every future HEYRA prompt
+          // via renderLearnedFacts (memoryContext.ts) — same "learn as we
+          // speak" store a chat-derived fact lands in. Only when Claude tagged
+          // a category at ingest time; skip rather than mis-file otherwise.
+          if (entry.category) {
+            const fact: LearnedFact = {
+              id: crypto.randomUUID(),
+              text: entry.takeaway,
+              category: entry.category,
+              createdAt: new Date().toISOString(),
+            }
+            const { merged, added } = mergeFacts(get().learnedFacts, [fact])
+            if (added.length) {
+              set({ learnedFacts: merged })
+              void persistLearnedFacts(merged)
+            }
+          }
         }
       },
 

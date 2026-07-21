@@ -7,7 +7,7 @@ import { BraindumpCard, BraindumpDetail } from '../components/BraindumpCard'
 import { searchMemory } from '../lib/supabase'
 import { cogneeSearch } from '../heyra/agents/cognee'
 import type { BraindumpEntry, MemoryHit, InferredItem } from '../types'
-import type { FactCategory } from '../heyra/learning'
+import { CATEGORY_META, type FactCategory } from '../heyra/learning'
 import {
   Lock,
   GitBranch,
@@ -93,14 +93,6 @@ function InferenceCard({ item, onResolve }: {
   )
 }
 
-const CATEGORY_META: Record<FactCategory, { label: string; hex: string }> = {
-  preference: { label: 'Voorkeur', hex: '#9385B0' },
-  person: { label: 'Persoon', hex: '#7CA9C9' },
-  context: { label: 'Context', hex: '#8A9A6B' },
-  workflow: { label: 'Werkwijze', hex: '#C6A05B' },
-  goal: { label: 'Doel', hex: '#C58392' },
-}
-
 const SOURCE_LABEL: Record<string, string> = {
   braindump: 'Braindump',
   interaction: 'Contact',
@@ -127,6 +119,15 @@ export default function Memory() {
   } = useStore()
   const [tab, setTab] = useState<Tab>('threads')
   const [openEntry, setOpenEntry] = useState<BraindumpEntry | null>(null)
+  const [learnedFilter, setLearnedFilter] = useState<FactCategory | 'all'>('all')
+  const visibleLearnedFacts = useMemo(
+    () => (learnedFilter === 'all' ? learnedFacts : learnedFacts.filter((f) => f.category === learnedFilter)),
+    [learnedFacts, learnedFilter],
+  )
+  const learnedCategoriesPresent = useMemo(
+    () => Array.from(new Set(learnedFacts.map((f) => f.category))),
+    [learnedFacts],
+  )
 
   // Refresh the inference queue on entry so hourly-produced inferences show without a reload.
   useEffect(() => { void loadInferences() }, [loadInferences])
@@ -287,10 +288,38 @@ export default function Memory() {
           ))}
 
           {tab === 'learned' && (learnedFacts.length === 0 ? (
-            <Empty>Nog niks geleerd — hoe meer je met HEYRA praat, hoe persoonlijker dit wordt.</Empty>
+            <Empty>Nog niks geleerd — hoe meer je met HEYRA praat en hoe meer je bevestigt in de Kennisbank, hoe persoonlijker dit wordt.</Empty>
           ) : (
-            <div className="space-y-2 animate-fade-up">
-              {learnedFacts.map((f) => {
+            <div className="space-y-3 animate-fade-up">
+              {learnedCategoriesPresent.length > 1 && (
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={() => setLearnedFilter('all')}
+                    className={`chip text-[11px] ${learnedFilter === 'all' ? 'bg-forest/15 text-forest' : 'bg-line text-muted'}`}
+                  >
+                    Alle ({learnedFacts.length})
+                  </button>
+                  {learnedCategoriesPresent.map((cat) => {
+                    const meta = CATEGORY_META[cat]
+                    const count = learnedFacts.filter((f) => f.category === cat).length
+                    return (
+                      <button
+                        key={cat}
+                        onClick={() => setLearnedFilter(cat)}
+                        className="chip text-[11px]"
+                        style={
+                          learnedFilter === cat
+                            ? { background: `${meta.hex}22`, color: meta.hex }
+                            : undefined
+                        }
+                      >
+                        {meta.label} ({count})
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {visibleLearnedFacts.map((f) => {
                 const meta = CATEGORY_META[f.category]
                 return (
                   <div key={f.id} className="card p-3 flex items-start justify-between gap-3">

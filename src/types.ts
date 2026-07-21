@@ -1,5 +1,7 @@
 // ── Core domain model for OSLIFE ─────────────────────────────────────────────
 
+import type { LearningCategory } from './heyra/learning'
+
 export type Domain = 'parkingyou' | 'prjct' | 'buurtkaart' | 'personal' | 'cross'
 
 export type ItemKind =
@@ -83,6 +85,12 @@ export type WikiStatus = 'suggested' | 'confirmed' | 'rejected'
  * `suggested` during ingest; the user confirms/rejects it in the Kennisbank
  * view. Only `confirmed` entries get materialised as a real .md file in the
  * vault. Mirrors InferredItem's suggest-then-confirm shape.
+ *
+ * `category` sorts the learning itself (life lesson, way of living, business
+ * system/practice, implementation idea, pet) — set by Claude at ingest time.
+ * On confirm, store.resolveWikiEntry() turns the takeaway into a permanent
+ * LearnedFact under this same category (src/heyra/learning.ts), so HEYRA's
+ * advice keeps drawing on it long after the Kennisbank card scrolls by.
  */
 export interface WikiEntry {
   id: string
@@ -92,6 +100,7 @@ export interface WikiEntry {
   transcript: string
   takeaway: string
   application: string
+  category: LearningCategory | null
   domain: Domain | null
   tags: string[]
   sourceUrl: string | null

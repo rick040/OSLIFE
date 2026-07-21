@@ -1,4 +1,4 @@
-// ── HEYRA · learned memory (learn-as-we-speak) ────────────────────────────────
+// ── HEYRA · learned memory (learn-as-we-speak + braindump learnings) ─────────
 // HEYRA's conversation memory (heyra/memory.ts) is session-only — it forgets
 // everything on reload. This module is the durable half: after every exchange a
 // lightweight Haiku call reads the last turn and distills any *durable* fact
@@ -8,17 +8,67 @@
 // back into every future prompt (memoryContext.ts), so HEYRA gets more
 // personalised the more Rick talks to it.
 //
+// A second source feeds the same store: when Rick confirms a Kennisbank
+// (wiki_entries) suggestion distilled from a braindump, its takeaway is turned
+// into a LearnedFact too (see store.ts resolveWikiEntry), tagged with one of
+// the LEARNING_CATEGORIES below — so a lesson from an article, a business
+// system worth copying, or a tip for the dog becomes part of HEYRA's permanent
+// knowledge exactly like a fact it picked up mid-conversation.
+//
 // Honesty rule (same as reflect.ts): a fact is only stored when Rick actually
-// stated it. The extractor is told to skip anything transient (today's tasks,
-// deadlines, amounts — those already live in the real store) and to invent
-// nothing. On any brain failure extraction returns [] and nothing breaks.
+// stated it (or explicitly confirmed it, for braindump-derived learnings). The
+// extractor is told to skip anything transient (today's tasks, deadlines,
+// amounts — those already live in the real store) and to invent nothing. On
+// any brain failure extraction returns [] and nothing breaks.
 
 import { askBrain } from './brainClient'
 import { parseBrainJson } from './brainJson'
 
-export type FactCategory = 'preference' | 'person' | 'context' | 'workflow' | 'goal'
+/** Extracted live, from a HEYRA conversation. */
+export type ChatFactCategory = 'preference' | 'person' | 'context' | 'workflow' | 'goal'
 
-const CATEGORIES: FactCategory[] = ['preference', 'person', 'context', 'workflow', 'goal']
+/**
+ * Extracted from a confirmed Kennisbank (wiki) entry — the categories Rick
+ * asked for when fleshing out braindump learnings: life lessons, ways of
+ * living, business systems/practices, implementation ideas, and dog/pet stuff.
+ * Must match the check constraint on wiki_entries.category and
+ * LEARNING_CATEGORIES in supabase/functions/braindump-ingest/index.ts.
+ */
+export type LearningCategory =
+  | 'life_lesson'
+  | 'way_of_living'
+  | 'business_system'
+  | 'business_practice'
+  | 'implementation'
+  | 'pet'
+
+export type FactCategory = ChatFactCategory | LearningCategory
+
+const CHAT_FACT_CATEGORIES: ChatFactCategory[] = ['preference', 'person', 'context', 'workflow', 'goal']
+
+export const LEARNING_CATEGORIES: LearningCategory[] = [
+  'life_lesson',
+  'way_of_living',
+  'business_system',
+  'business_practice',
+  'implementation',
+  'pet',
+]
+
+/** Label + accent colour for every category, shared by the Geleerd tab and Kennisbank. */
+export const CATEGORY_META: Record<FactCategory, { label: string; hex: string }> = {
+  preference: { label: 'Voorkeur', hex: '#9385B0' },
+  person: { label: 'Persoon', hex: '#7CA9C9' },
+  context: { label: 'Context', hex: '#8A9A6B' },
+  workflow: { label: 'Werkwijze', hex: '#C6A05B' },
+  goal: { label: 'Doel', hex: '#C58392' },
+  life_lesson: { label: 'Levensles', hex: '#D08B4C' },
+  way_of_living: { label: 'Levensstijl', hex: '#6FA88A' },
+  business_system: { label: 'Business-systeem', hex: '#5B7C99' },
+  business_practice: { label: 'Business-praktijk', hex: '#B0704A' },
+  implementation: { label: 'Implementatie-idee', hex: '#7A8CC4' },
+  pet: { label: 'Huisdier', hex: '#CC8A3D' },
+}
 
 export interface LearnedFact {
   id: string
@@ -121,7 +171,7 @@ export async function extractFacts(
     const text = String((entry as { text?: unknown }).text ?? '').trim()
     if (!text || text.length > 160) continue
     const rawCat = String((entry as { category?: unknown }).category ?? 'context')
-    const category = (CATEGORIES as string[]).includes(rawCat) ? (rawCat as FactCategory) : 'context'
+    const category = (CHAT_FACT_CATEGORIES as string[]).includes(rawCat) ? (rawCat as FactCategory) : 'context'
     if (isDuplicate(text, existing) || isDuplicate(text, facts)) continue
     facts.push({ id: crypto.randomUUID(), text, category, createdAt: now })
   }
@@ -131,6 +181,9 @@ export async function extractFacts(
 /** Compact block for prompt injection; empty string when nothing has been learned yet. */
 export function renderLearnedFacts(facts: LearnedFact[]): string {
   if (!facts.length) return ''
-  const lines = facts.slice(0, MAX_FACTS).map((f) => `- ${f.text}`).join('\n')
+  const lines = facts
+    .slice(0, MAX_FACTS)
+    .map((f) => `- [${CATEGORY_META[f.category].label}] ${f.text}`)
+    .join('\n')
   return `Wat ik in eerdere gesprekken over Rick heb geleerd:\n${lines}`
 }
