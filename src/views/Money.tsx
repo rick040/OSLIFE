@@ -190,13 +190,16 @@ export default function Money() {
   ]
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="flex flex-col gap-7 max-w-4xl mx-auto">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Wallet className="h-5 w-5 text-buurtkaart" /> Money
-          </h1>
-          <p className="text-sm text-muted mt-1">ABN AMRO · transacties, betalingen en abonnementen.</p>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Wallet className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">Money</h1>
+            <p className="text-sm text-muted mt-0.5">ABN AMRO · transacties, betalingen en abonnementen.</p>
+          </div>
         </div>
         <div className="flex gap-2">
           <button
@@ -265,7 +268,7 @@ export default function Money() {
             {revenueGoal && (
               <div className="card p-4">
                 <div className="text-xs uppercase tracking-wider text-muted flex items-center gap-1 truncate">
-                  <Target className="h-3.5 w-3.5 text-prjct shrink-0" /> Doel {eur0(revenueGoal.target)}
+                  <Target className="h-3.5 w-3.5 text-ink-soft shrink-0" /> Doel {eur0(revenueGoal.target)}
                 </div>
                 <div className="text-2xl font-bold tabular-nums mt-1">{Math.round((revenueGoal.current / revenueGoal.target) * 100)}%</div>
                 <div className="h-1.5 w-full rounded-full bg-line overflow-hidden mt-2">
@@ -356,7 +359,7 @@ export default function Money() {
         <div className="card p-4">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
             <SectionTitle hint="Gelogd in je betalingen-agenda. Te ontvangen van klanten en zelf te betalen.">
-              <span className="flex items-center gap-2"><Receipt className="h-4 w-4 text-personal" /> Openstaande betalingen</span>
+              <span className="flex items-center gap-2"><Receipt className="h-4 w-4 text-ink-soft" /> Openstaande betalingen</span>
             </SectionTitle>
             <div className="flex gap-2 shrink-0">
               <span className="chip bg-buurtkaart/12 text-buurtkaart-deep">+{eur0(toReceive)} in</span>
@@ -594,7 +597,7 @@ function Vendors({
       <div className="card p-4 flex items-start justify-between gap-3 flex-wrap">
         <div>
           <SectionTitle hint="Elke winkelier die HEYRA één keer heeft opgezocht — daarna gratis herbruikt.">
-            <span className="flex items-center gap-2"><Tag className="h-4 w-4 text-prjct" /> Vendor-geheugen</span>
+            <span className="flex items-center gap-2"><Tag className="h-4 w-4 text-ink-soft" /> Vendor-geheugen</span>
           </SectionTitle>
           <p className="text-xs text-faint mt-1">
             {vendorTags.length} onthouden{untagged ? ` · ${untagged} transactie(s) nog niet gecategoriseerd` : ' · alles getagd'}
