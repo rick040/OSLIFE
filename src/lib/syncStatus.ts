@@ -152,6 +152,6 @@ export const HEALTH_META: Record<SyncHealth, { label: string; hex: string; dot: 
   up: { label: 'Actief', hex: '#34D399', dot: '#34D399' },
   slow: { label: 'Vertraagd', hex: '#FBBF24', dot: '#FBBF24' },
   down: { label: 'Offline', hex: '#F87171', dot: '#F87171' },
-  empty: { label: 'Geen data', hex: '#8C9080', dot: '#B4B8AC' },
+  empty: { label: 'Geen data', hex: '#a3a3a3', dot: '#525252' },
   error: { label: 'Fout', hex: '#F87171', dot: '#F87171' },
 }

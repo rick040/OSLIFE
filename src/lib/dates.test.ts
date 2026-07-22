@@ -24,7 +24,7 @@ describe('deadlineInfo (badge style)', () => {
   it('flags deadlines within a week as "over Xd"', () =>
     expect(deadlineInfo('2026-07-10', today)).toEqual({ label: 'over 7d', color: '#FBBF24', urgent: true }))
   it('shows the short date beyond a week, not urgent', () =>
-    expect(deadlineInfo('2026-07-11', today)).toEqual({ label: '11 jul', color: '#8C9080', urgent: false }))
+    expect(deadlineInfo('2026-07-11', today)).toEqual({ label: '11 jul', color: '#a3a3a3', urgent: false }))
 })
 
 describe('dueLabel (row style)', () => {

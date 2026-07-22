@@ -34,7 +34,7 @@ export function deadlineInfo(iso: string | null, today: string = TODAY): Deadlin
   if (d < 0) return { label: overdueLabel(d), color: '#F87171', urgent: true }
   if (d === 0) return { label: 'Vandaag', color: '#FBBF24', urgent: true }
   if (d <= 7) return { label: `over ${d}d`, color: '#FBBF24', urgent: true }
-  return { label: fmtDate(iso), color: '#8C9080', urgent: false }
+  return { label: fmtDate(iso), color: '#a3a3a3', urgent: false }
 }
 
 /**

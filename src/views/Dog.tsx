@@ -44,7 +44,7 @@ const KIND: Record<DogKind, { label: string; icon: typeof Bone; hex: string }> =
   training: { label: 'Training',   icon: Dumbbell,      hex: '#60A5FA' },
   vet:      { label: 'Dierenarts', icon: Stethoscope,   hex: '#F87171' },
   weight:   { label: 'Gewicht',    icon: Scale,         hex: '#A78BFA' },
-  note:     { label: 'Notitie',    icon: Camera,        hex: '#5C6150' },
+  note:     { label: 'Notitie',    icon: Camera,        hex: '#8c8c8c' },
 }
 
 const QUICK: DogKind[] = ['walk', 'food', 'water', 'pee', 'poop', 'play', 'treat', 'training', 'vet']

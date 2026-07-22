@@ -49,5 +49,5 @@ export const FOLLOWUP_META: Record<FollowUpHealth, { hex: string; label: string 
   green:  { hex: '#34D399', label: 'Op schema' },
   yellow: { hex: '#FBBF24', label: 'Opvolgen binnenkort' },
   red:    { hex: '#F87171', label: 'Opvolging te laat' },
-  none:   { hex: '#8C9080', label: 'Nog geen contact' },
+  none:   { hex: '#a3a3a3', label: 'Nog geen contact' },
 }
