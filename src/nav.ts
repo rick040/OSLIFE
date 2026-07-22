@@ -15,8 +15,6 @@ import {
   Repeat,
   Compass,
   Map,
-  Eye,
-  Home,
   Dog,
   CheckSquare,
   Contact,
@@ -41,8 +39,6 @@ export type View =
   | 'northstar'
   | 'strategiehq'
   | 'buurtkaart'
-  | 'eyes'
-  | 'dakmeester'
   | 'dog'
   | 'relaties'
   | 'huisadmin'
@@ -89,8 +85,6 @@ export const SCREENS: Screen[] = [
   { id: 'projects', label: 'Projecten', icon: FolderKanban, layer: 'Business · werk', group: 'Business', accent: 'text-prjct' },
   { id: 'strategiehq', label: 'Strategie HQ', icon: Compass, layer: 'Business · strategie', group: 'Business', accent: 'text-forest' },
   { id: 'buurtkaart', label: 'Buurtkaart', icon: Map, layer: 'Business · Geldrop', group: 'Business', accent: 'text-buurtkaart' },
-  { id: 'eyes', label: 'The Eyes', icon: Eye, layer: 'Business · monitoring', group: 'Business', accent: 'text-cross' },
-  { id: 'dakmeester', label: 'Dakmeester', icon: Home, layer: 'Business · klant', group: 'Business', accent: 'text-parkingyou' },
 
   // Intake
   { id: 'heyra', label: 'HEYRA', icon: MessageSquare, layer: 'Intake · Begrijpen', group: 'Intake', accent: 'text-prjct' },

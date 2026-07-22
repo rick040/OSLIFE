@@ -21,8 +21,6 @@ import Cleaning from './views/Cleaning'
 import Dog from './views/Dog'
 import StrategieHQ from './views/StrategieHQ'
 import Buurtkaart from './views/Buurtkaart'
-import Eyes from './views/Eyes'
-import Dakmeester from './views/Dakmeester'
 import InboxView from './views/Inbox'
 import NorthStar from './views/NorthStar'
 import Mindmap from './views/Mindmap'
@@ -88,8 +86,6 @@ export default function App() {
     crm: <CRM />,
     strategiehq: <StrategieHQ onNav={(v) => setView(v)} />,
     buurtkaart: <Buurtkaart />,
-    eyes: <Eyes />,
-    dakmeester: <Dakmeester />,
     dog: <Dog />,
     relaties: <Relaties />,
     huisadmin: <HuisAdmin />,
