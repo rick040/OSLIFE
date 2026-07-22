@@ -5,7 +5,8 @@ import { isTransfer } from '../finance/categories'
 import { dueLabel } from '../lib/dates'
 import { OPENING_BALANCE } from '../mockData'
 import { clientHealth } from '../lib/crm/followUp'
-import { Empty, SetupHint, Sparkline } from '../components/ui'
+import { classifyImportance } from '../lib/crm/emailClassify'
+import { Empty, SetupHint, Sparkline, Ring } from '../components/ui'
 import { GreetingHeader, HeroStat, MetricTile, GoalRow, DetailCard, ScheduleCard, TaskRow, type Tone } from '../components/v3'
 import { useWeather, weatherMeta } from '../hooks/useWeather'
 import { storeNudgeToDash, type DashNudge, type NudgeTone } from '../components/NudgeCard'
@@ -26,7 +27,7 @@ import {
   Activity,
 } from 'lucide-react'
 
-import { eur0 as eur } from '../lib/format'
+import { eur0 as eur, fmtGoalValue } from '../lib/format'
 
 /** Real local hour in Rick's timezone, so the greeting tracks the actual time of day. */
 function amsterdamHour(): number {
@@ -84,7 +85,12 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     .filter((p) => p.status === 'active' || p.status === 'review' || p.status === 'blocked')
     .sort((a, b) => (a.deadline ? daysBetween(TODAY, a.deadline) : 999) - (b.deadline ? daysBetween(TODAY, b.deadline) : 999))
 
-  const allImportantMail = emails.filter((e) => e.important)
+  // The synced `important` flag is unreliable (flags newsletters/social as
+  // important) — reclassify locally the same way Inbox.tsx does, and show the
+  // most recent ones first.
+  const allImportantMail = emails
+    .filter((e) => classifyImportance(e) === 'high')
+    .sort((a, b) => (a.receivedAt < b.receivedAt ? 1 : -1))
   const importantMail = allImportantMail.slice(0, 3)
 
   // money — balance is computed identically to the Money screen (opening balance
@@ -378,26 +384,35 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           </button>
         </HeroStat>
       ) : today ? (
-        <HeroStat label="Stappen vandaag" value={stepsLabel} suffix="k">
-          <div className="flex flex-col gap-3">
+        <div className="card-hero p-5">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Vandaag</p>
+            {stepsStale && lastStepsDay && <span className="chip bg-sunken text-muted">nog niet gesynct</span>}
+          </div>
+          <div className="grid grid-cols-3 gap-3">
             <button
               onClick={() => setMetricDialog('steps')}
-              className="h-1.5 w-full rounded-full bg-sunken overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 text-left"
-              aria-label="Bekijk 14-daagse grafiek van stappen"
+              className="flex flex-col items-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-2xl py-1"
             >
-              <div className="h-full rounded-full bg-forest transition-all duration-700" style={{ width: `${stepsPct * 100}%` }} />
+              <Ring value={stepsPct} size={72} color="stroke-forest-hi" label={`${stepsLabel}k`} />
+              <span className="text-xs text-muted">stappen</span>
             </button>
-            <div className="flex items-center gap-2 flex-wrap">
-              {stepsStale && lastStepsDay && <span className="chip bg-sunken text-muted">nog niet gesynct</span>}
-              <button onClick={() => setMetricDialog('sleep')} className="chip bg-sunken text-ink-soft hover:text-ink">
-                {today.sleepHours}u slaap
-              </button>
-              <button onClick={() => setMetricDialog('energy')} className="chip bg-sunken text-ink-soft hover:text-ink">
-                energie {today.energy}/5
-              </button>
-            </div>
+            <button
+              onClick={() => setMetricDialog('sleep')}
+              className="flex flex-col items-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-2xl py-1"
+            >
+              <Ring value={Math.min(1, today.sleepHours / 8)} size={72} color="stroke-forest-hi" label={`${today.sleepHours}u`} />
+              <span className="text-xs text-muted">slaap</span>
+            </button>
+            <button
+              onClick={() => setMetricDialog('energy')}
+              className="flex flex-col items-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-2xl py-1"
+            >
+              <Ring value={today.energy / 5} size={72} color="stroke-forest-hi" label={`${today.energy}/5`} />
+              <span className="text-xs text-muted">energie</span>
+            </button>
           </div>
-        </HeroStat>
+        </div>
       ) : null}
 
       {/* ── metrics: neutral tiles, one tap through — vitals lives here now as
@@ -445,7 +460,13 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         </div>
         {revenueGoal ? (
           <>
-            <GoalRow label={revenueGoal.title} current={revenueGoal.current} target={revenueGoal.target} format={eur} onClick={() => onNav('northstar')} />
+            <GoalRow
+              label={revenueGoal.title}
+              current={revenueGoal.current}
+              target={revenueGoal.target}
+              format={(n) => fmtGoalValue(n, revenueGoal.metric)}
+              onClick={() => onNav('northstar')}
+            />
             <p className="text-xs text-faint px-1">
               {Math.round(goalPct * 100)}%
               {revenueGoal.deadline && ` · ${goalDays >= 0 ? `nog ${goalDays} dagen tot` : 'verlopen'} ${fmtDate(revenueGoal.deadline)}`}
@@ -477,33 +498,34 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
             <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Gewoontes</p>
             <span className="text-xs text-muted tabular-nums">{doneHabits}/{habits.length}</span>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-3 gap-2.5">
             {habits.map((h) => (
               <button
                 key={h.id}
                 onClick={() => tickHabit(h.id)}
                 aria-pressed={h.doneToday}
-                className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                className={`aspect-square flex flex-col items-center justify-center gap-1.5 rounded-2xl p-2 text-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
                   h.doneToday ? 'bg-buurtkaart/12 text-buurtkaart-deep' : 'bg-sunken text-ink-soft hover:text-ink'
                 }`}
               >
-                <span>{h.emoji}</span> {h.name}
-                <CheckCircle2 className={`h-3.5 w-3.5 ${h.doneToday ? '' : 'text-faint'}`} />
+                <span className="text-2xl leading-none">{h.emoji}</span>
+                <span className="text-xs font-medium leading-tight line-clamp-2">{h.name}</span>
+                <CheckCircle2 className={`h-4 w-4 ${h.doneToday ? '' : 'text-faint'}`} />
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* ── tasks due today ───────────────────────────────────────────────────── */}
+      {/* ── tasks due today — the second focal point after the priority card ── */}
       {assignedToday > 0 && (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between px-1">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Vandaag afmaken</p>
-            <span className="text-xs text-muted tabular-nums">{doneToday.length}/{assignedToday}</span>
+        <div className="card p-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <p className="text-base font-medium text-ink">Vandaag afmaken</p>
+            <span className="text-sm text-muted tabular-nums">{doneToday.length}/{assignedToday}</span>
           </div>
           {focusTasks.length > 0 && (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               {focusTasks.map((t) => {
                 const p = projectById.get(t.projectId)
                 const due = dueLabel(t.dueDate ?? null, { prefix: 'deadline ' })

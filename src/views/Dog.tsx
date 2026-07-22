@@ -375,14 +375,13 @@ function QuickButton({
   return (
     <button
       {...lp}
-      className="card p-3 flex flex-col items-center gap-1.5 hover:bg-sunken transition-colors active:scale-95 select-none cursor-pointer"
+      className="card p-3.5 flex flex-col items-center gap-2 hover:bg-sunken transition-colors active:scale-95 select-none cursor-pointer"
       style={{ WebkitTouchCallout: 'none', userSelect: 'none' }}
     >
-      <span className="h-10 w-10 rounded-2xl flex items-center justify-center" style={{ background: `${meta.hex}22` }}>
+      <span className="h-11 w-11 rounded-2xl flex items-center justify-center" style={{ background: `${meta.hex}22` }}>
         <Icon className="h-5 w-5" style={{ color: meta.hex }} />
       </span>
       <span className="text-xs font-medium">{meta.label}</span>
-      <span className="text-[9px] text-faint leading-tight">houd vast voor details</span>
     </button>
   )
 }
@@ -572,7 +571,7 @@ export default function Dog() {
           </button>
         </div>
         {todaySorted.length === 0 ? (
-          <Empty>Nog niks gelogd vandaag. Tik een knop hierboven of houd vast voor details.</Empty>
+          <Empty>Nog niks gelogd vandaag. Tik een knop hierboven om te loggen.</Empty>
         ) : (
           <div className="card divide-y divide-line">
             {todaySorted.map((e) => (

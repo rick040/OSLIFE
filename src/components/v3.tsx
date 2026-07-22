@@ -237,13 +237,13 @@ export function ScheduleCard({
   actionLabel?: string
 }) {
   return (
-    <div className="card p-4 min-w-[220px] shrink-0 flex flex-col justify-between gap-6 min-h-[152px]">
+    <div className="card p-4 w-[260px] shrink-0 flex flex-col justify-between gap-6 min-h-[152px]">
       <div>
         <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide ${TONE_TEXT[tone]}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${TONE_BG[tone].replace('/15', '')}`} />
           {urgencyLabel}
         </span>
-        <p className="text-sm font-medium leading-snug mt-2 text-ink line-clamp-2">{title}</p>
+        <p className="text-sm font-medium leading-snug mt-2 text-ink">{title}</p>
         {meta && <p className="text-xs text-faint mt-1">{meta}</p>}
       </div>
       {onAction && (
@@ -286,7 +286,7 @@ export function TaskRow({
   onToggle: () => void
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-full bg-sunken px-3.5 py-2.5">
+    <div className="flex items-center gap-3 rounded-2xl bg-sunken px-4 py-3">
       <button
         onClick={onToggle}
         aria-label={`${title} afvinken`}
@@ -296,7 +296,7 @@ export function TaskRow({
       >
         <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
       </button>
-      <p className={`text-sm flex-1 min-w-0 truncate ${checked ? 'line-through text-faint' : 'text-ink'}`}>{title}</p>
+      <p className={`text-sm flex-1 min-w-0 leading-snug ${checked ? 'line-through text-faint' : 'text-ink'}`}>{title}</p>
       {meta && <span className="chip bg-canvas text-muted shrink-0">{meta}</span>}
       <PriorityBar level={priority} />
     </div>
