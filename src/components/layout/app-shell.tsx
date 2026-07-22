@@ -7,6 +7,7 @@ import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppHeader } from '@/components/layout/app-header'
 import { CommandMenu } from '@/components/layout/command-menu'
 import { MobileBottomNav } from '@/components/layout/mobile-bottom-nav'
+import TimerWidget from '@/components/TimerWidget'
 
 export interface AppShellProps {
   view: View
@@ -81,6 +82,7 @@ export function AppShell({
 
       <MobileBottomNav view={view} onNav={onNav} onShowGrid={onShowGrid} />
       <CommandMenu open={commandOpen} onOpenChange={setCommandOpen} onNav={onNav} />
+      <TimerWidget />
     </SidebarProvider>
   )
 }

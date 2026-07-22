@@ -531,6 +531,13 @@ export interface AppSettings {
   hourlyRate: number // EUR per hour, used to invoice unbilled hours
 }
 
+/** A running project-hours stopwatch — client-only (persisted to localStorage via the store's persist middleware), never synced to Supabase. Stopping it writes a real HourEntry. */
+export interface ActiveTimer {
+  projectId: string
+  projectName: string
+  startedAt: string // ISO
+}
+
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue'
 
 export interface Invoice {

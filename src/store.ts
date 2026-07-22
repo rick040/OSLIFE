@@ -37,6 +37,7 @@ import type {
   HourEntry,
   Invoice,
   ActivityEntry,
+  ActiveTimer,
   VendorTag,
   BraindumpEntry,
   BraindumpInput,
@@ -251,6 +252,8 @@ interface State {
   projectHours: HourEntry[]
   projectInvoices: Invoice[]
   projectActivity: ActivityEntry[]
+  /** The one project-hours stopwatch that can be running at a time, client-only. */
+  activeTimer: ActiveTimer | null
   goals: Goal[]
   milestones: Milestone[]
   goalProposals: GoalProposal[]
@@ -459,6 +462,12 @@ interface State {
   deleteProjectTask: (id: string) => void
   addHours: (projectId: string, h: Omit<HourEntry, 'id' | 'projectId'>) => void
   deleteHours: (id: string) => void
+  // Project-hours stopwatch — a single running timer, client-only (see
+  // `activeTimer`). Starting one while another runs stops+logs the old one
+  // first so time is never silently lost. Stopping writes a real HourEntry.
+  startTimer: (projectId: string, projectName: string) => void
+  stopTimer: (note?: string) => void
+  discardTimer: () => void
   addInvoice: (projectId: string, inv: Omit<Invoice, 'id' | 'projectId'>) => void
   updateInvoice: (id: string, patch: Partial<Invoice>) => void
   deleteInvoice: (id: string) => void
@@ -564,6 +573,7 @@ const seed = () => ({
   projectHours: [] as HourEntry[],
   projectInvoices: [] as Invoice[],
   projectActivity: [] as ActivityEntry[],
+  activeTimer: null as ActiveTimer | null,
   goals: mock.goals,
   milestones: mock.milestones,
   goalProposals: [] as GoalProposal[],
@@ -1816,6 +1826,26 @@ export const useStore = create<State>()(
         removeFromSlice(set, 'projectHours', id)
         void deleteHourRow(id)
       },
+
+      startTimer: (projectId, projectName) => {
+        // Switching projects mid-timer shouldn't silently lose the running
+        // time — log it first, same as stopping normally.
+        if (get().activeTimer) get().stopTimer()
+        set({ activeTimer: { projectId, projectName, startedAt: new Date().toISOString() } })
+      },
+
+      stopTimer: (note) => {
+        const timer = get().activeTimer
+        if (!timer) return
+        const elapsedHours = Math.round(((Date.now() - new Date(timer.startedAt).getTime()) / 3600000) * 100) / 100
+        set({ activeTimer: null })
+        // Below ~36s isn't worth a row — most likely an accidental start/stop.
+        if (elapsedHours >= 0.01) {
+          get().addHours(timer.projectId, { date: today(), hours: elapsedHours, note: note?.trim() || 'Timer', billable: true, billed: false })
+        }
+      },
+
+      discardTimer: () => set({ activeTimer: null }),
 
       // ── Invoices ───────────────────────────────────────────────────────────
       addInvoice: (projectId, inv) => {
