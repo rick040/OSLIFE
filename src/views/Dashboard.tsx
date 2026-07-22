@@ -46,17 +46,20 @@ function amsterdamHour(): number {
  * through. Icon sits inline beside the text (not stacked on its own row
  * above it) so the tile hugs its content instead of reserving a fixed
  * 76px of height that reads as dead space on narrow 2-col mobile grids.
+ *
+ * The icon badge is always neutral — a row of six differently-colored
+ * icons reads as noise, not information. Color is reserved for the value
+ * itself when a tile actually has something to signal (an overdue amount,
+ * a positive trend), never for decorating the glyph.
  */
 function KpiTile({
   icon: Icon,
-  iconClass,
   value,
   label,
   onClick,
   corner,
 }: {
   icon: React.ComponentType<{ className?: string }>
-  iconClass: string
   value: React.ReactNode
   label: string
   onClick?: () => void
@@ -64,9 +67,6 @@ function KpiTile({
   corner?: React.ReactNode
 }) {
   const Comp = onClick ? 'button' : 'div'
-  // Tinted icon tile: same hue as the icon, at low coverage — the bento-card
-  // icon-badge pattern, not just a bare glyph floating above the number.
-  const tintClass = iconClass.replace('text-', 'bg-') + '/12'
   return (
     <Comp
       onClick={onClick}
@@ -76,8 +76,8 @@ function KpiTile({
           grid columns) — on the tight 2-col mobile grid it's the first
           thing to go so the number itself gets the full width. */}
       {corner && <span className="absolute right-2.5 top-2.5 hidden sm:inline-flex">{corner}</span>}
-      <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${tintClass}`}>
-        <Icon className={`h-4 w-4 ${iconClass}`} />
+      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sunken">
+        <Icon className="h-4 w-4 text-ink-soft" />
       </span>
       <div className={`min-w-0 flex-1 ${corner ? 'sm:pr-11' : ''}`}>
         <div className="text-lg font-bold tabular-nums truncate leading-tight">{value}</div>
@@ -315,7 +315,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           {greeting}, Rick. <span className="text-muted font-normal text-sm">{fmtDate(TODAY)}</span>
         </h1>
         <span className="inline-flex items-center gap-1.5 text-xs text-muted">
-          <WeatherIcon className="h-4 w-4 text-parkingyou" />
+          <WeatherIcon className="h-4 w-4" />
           {locationLabel}{weather.tempC != null && ` · ${weather.tempC}°C`}
         </span>
       </div>
@@ -426,20 +426,19 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
 
         <KpiTile
           icon={Wallet}
-          iconClass="text-buurtkaart"
           value={transactions.length ? eur(balance) : '–'}
           label="saldo"
           onClick={() => setMetricDialog('saldo')}
-          corner={transactions.length >= 2 ? <Sparkline values={balanceTrend} className="text-buurtkaart" width={44} height={20} /> : undefined}
+          corner={transactions.length >= 2 ? <Sparkline values={balanceTrend} className="text-ink-soft" width={44} height={20} /> : undefined}
         />
         <KpiTile
           icon={Receipt}
-          iconClass="text-personal"
           value={
             openPayments.length ? (
               // Two short stacked amounts, not one squeezed "€1.200 / €45"
               // string — that format either truncated or forced the tile
-              // wider than its 2-col mobile column has room for.
+              // wider than its 2-col mobile column has room for. Color here
+              // signals the actual money direction, not the tile's category.
               <span className="flex flex-col gap-0.5 text-base leading-tight">
                 <span className="text-buurtkaart-deep">+{eur(toReceive)}</span>
                 <span className="text-cross-deep">-{eur(toPay)}</span>
@@ -453,21 +452,18 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         />
         <KpiTile
           icon={Mail}
-          iconClass="text-parkingyou"
           value={unreadImportant.length || '0'}
           label="belangrijke mail"
           onClick={() => onNav('inbox')}
         />
         <KpiTile
           icon={CheckSquare}
-          iconClass="text-forest"
           value={openThreads.length}
           label="open taken"
           onClick={() => onNav('tasks')}
         />
         <KpiTile
           icon={Target}
-          iconClass="text-prjct"
           value={revenueGoal ? `${Math.round(goalPct * 100)}%` : '–'}
           label="North Star"
           onClick={() => onNav('northstar')}
@@ -476,8 +472,8 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           onClick={() => onNav('habits')}
           className="card flex items-center gap-2.5 p-2.5 text-left outline-none"
         >
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-personal/12">
-            <Flame className="h-4 w-4 text-personal" />
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sunken">
+            <Flame className="h-4 w-4 text-ink-soft" />
           </span>
           <div className="min-w-0 flex-1">
             <div className="text-lg font-bold tabular-nums leading-tight">
@@ -486,7 +482,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
             <div className="text-xs text-faint truncate">gewoontes</div>
             {habits.length > 0 && (
               <div className="mt-1">
-                <SegmentedProgress done={habits.filter((h) => h.doneToday).length} total={habits.length} color="bg-personal" />
+                <SegmentedProgress done={habits.filter((h) => h.doneToday).length} total={habits.length} color="bg-forest" />
               </div>
             )}
           </div>
@@ -608,7 +604,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
             >
               <span>{h.emoji}</span> {h.name}
               <span className="text-xs text-faint flex items-center gap-0.5">
-                <Flame className="h-3 w-3 text-personal" /> {h.streak}
+                <Flame className="h-3 w-3" /> {h.streak}
               </span>
               <CheckCircle2 className={`h-3.5 w-3.5 ${h.doneToday ? 'text-buurtkaart' : 'text-faint'}`} />
             </button>
@@ -622,7 +618,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         <div className="card p-4 animate-fade-up" style={{ animationDelay: '120ms' }}>
           <div className="flex items-center justify-between mb-3">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Target className="h-4 w-4 text-prjct" /> North Star
+              <Target className="h-4 w-4 text-muted" /> North Star
             </span>
             <button className="text-xs text-muted hover:text-ink flex items-center gap-1" onClick={() => onNav('northstar')}>
               alles <ArrowRight className="h-3 w-3" />
@@ -671,7 +667,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         <div className="card p-4 animate-fade-up" style={{ animationDelay: '140ms' }}>
           <div className="flex items-center justify-between mb-3">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <FolderKanban className="h-4 w-4 text-parkingyou" /> Projecten
+              <FolderKanban className="h-4 w-4 text-muted" /> Projecten
             </span>
             <button className="text-xs text-muted hover:text-ink flex items-center gap-1" onClick={() => onNav('projects')}>
               alle {projects.length} <ArrowRight className="h-3 w-3" />
@@ -713,7 +709,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         <div className="card p-4 animate-fade-up" style={{ animationDelay: '160ms' }}>
           <div className="flex items-center justify-between mb-3">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Mail className="h-4 w-4 text-personal" /> Belangrijke mail
+              <Mail className="h-4 w-4 text-muted" /> Belangrijke mail
             </span>
             <button className="text-xs text-muted hover:text-ink flex items-center gap-1" onClick={() => onNav('inbox')}>
               inbox <ArrowRight className="h-3 w-3" />
