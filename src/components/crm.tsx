@@ -1,6 +1,7 @@
 // Shared UI primitives + constants for the native CRM (CRM / Projecten).
 import { useEffect } from 'react'
 import { X, FolderKanban, Clock } from 'lucide-react'
+import { cn } from '../lib/utils'
 import type { ProjectStatus, ClientStatus, Priority, Domain, Project, Client } from '../types'
 import { deadlineInfo } from '../lib/dates'
 import { TODAY } from '../domains'
@@ -84,11 +85,14 @@ let openSheetCount = 0
 
 export function SheetShell({
   onClose, children, className = 'md:items-center md:justify-center', panelClassName = 'md:max-w-lg md:max-h-[90dvh] max-h-[92dvh]',
+  fullScreenMobile = false,
 }: {
   onClose: () => void
   children: React.ReactNode
   className?: string
   panelClassName?: string
+  /** Below `md`, fill the viewport edge-to-edge instead of the default bottom-sheet — for detail screens with enough content to want the whole phone screen. Desktop is unaffected. */
+  fullScreenMobile?: boolean
 }) {
   useEffect(() => {
     // Sheets nest (client → project → form). Count open sheets so the body scroll
@@ -107,7 +111,13 @@ export function SheetShell({
   return (
     <div className={`fixed inset-0 z-50 flex flex-col ${className}`}>
       <div className="absolute inset-0 bg-scrim/55 backdrop-blur-md" onClick={onClose} />
-      <div className={`relative mt-auto md:mt-0 w-full ${panelClassName} flex flex-col bg-canvas md:rounded-4xl rounded-t-4xl border border-line shadow-pop overflow-hidden`}>
+      <div
+        className={cn(
+          'relative mt-auto md:mt-0 w-full flex flex-col bg-canvas md:rounded-4xl rounded-t-4xl border border-line shadow-pop overflow-hidden',
+          panelClassName,
+          fullScreenMobile && 'mt-0 h-full max-h-full rounded-none border-0 md:mt-0 md:h-auto md:max-h-[92dvh] md:rounded-4xl md:border',
+        )}
+      >
         {children}
       </div>
     </div>
@@ -191,6 +201,26 @@ export function Kpi({ icon, label, value, sub, alert, tint }: { icon: React.Reac
       </div>
       <div className={`text-2xl font-bold tabular-nums ${alert ? 'text-cross-deep' : ''}`}>{value}</div>
       <div className="text-xs text-faint mt-0.5">{sub}</div>
+    </div>
+  )
+}
+
+/** Small SVG progress ring with the percentage centered inside — used for task/budget completion visuals. */
+export function RingProgress({ pct, size = 56, stroke = 6, color = '#6FA07C' }: { pct: number; size?: number; stroke?: number; color?: string }) {
+  const r = (size - stroke) / 2
+  const c = 2 * Math.PI * r
+  const clamped = Math.min(1, Math.max(0, pct))
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" className="text-line" strokeWidth={stroke} />
+        <circle
+          cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+          strokeDasharray={c} strokeDashoffset={c * (1 - clamped)} strokeLinecap="round"
+          className="transition-[stroke-dashoffset] duration-500"
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center text-xs font-bold tabular-nums">{Math.round(clamped * 100)}%</div>
     </div>
   )
 }
