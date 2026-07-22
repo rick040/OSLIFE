@@ -296,10 +296,14 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
 
   return (
     <div className="flex flex-col h-[calc(100vh-7rem)] max-w-3xl mx-auto">
-      <div className="flex items-center gap-2 mb-4">
-        <Sparkles className="h-5 w-5 text-prjct" />
-        <h1 className="text-xl font-semibold">HEYRA</h1>
-        <span className="chip bg-sunken text-muted">antwoordt uit één geheugen</span>
+      <div className="flex items-center gap-3 mb-6">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+          <Sparkles className="h-5 w-5 text-ink-soft" />
+        </span>
+        <div>
+          <h1 className="text-xl font-medium text-ink">HEYRA</h1>
+          <p className="text-sm text-muted mt-0.5">antwoordt uit één geheugen</p>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto space-y-4 pr-1">

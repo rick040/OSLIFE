@@ -295,8 +295,8 @@ export default function Reflect() {
         <SectionTitle>Afwijkingen</SectionTitle>
         <div className="space-y-2">
           {anomalies.map((a) => (
-            <div key={a.id} className="card p-3 border-orange-500/30 bg-orange-500/5 flex items-start gap-3">
-              <AlertTriangle className="h-4 w-4 text-orange-300 mt-0.5 shrink-0" />
+            <div key={a.id} className="card p-3 bg-personal/8 flex items-start gap-3">
+              <AlertTriangle className="h-4 w-4 text-personal-deep mt-0.5 shrink-0" />
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-ink">{a.title}</span>

@@ -485,7 +485,7 @@ export default function Dog() {
   const todaySorted = [...today].sort((a, b) => b.at.localeCompare(a.at))
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="flex flex-col gap-7 max-w-3xl mx-auto">
       {/* Modals */}
       {detailKind && (
         <EntryModal

@@ -247,7 +247,7 @@ export default function NorthStar() {
       )}
 
       {lastGoalProposalError && !proposingGoals && (
-        <div className="card p-3 text-sm text-orange-700 bg-orange-500/10 border-orange-500/30">{lastGoalProposalError}</div>
+        <div className="card p-3 text-sm text-personal-deep bg-personal/10">{lastGoalProposalError}</div>
       )}
       {!lastGoalProposalError && proposalAttempted && !proposingGoals && goalProposals.length === 0 && (
         <div className="card p-3 text-sm text-muted bg-sunken">

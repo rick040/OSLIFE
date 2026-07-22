@@ -180,13 +180,18 @@ export default function Memory() {
   ]
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="flex flex-col gap-7 max-w-4xl mx-auto">
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold">Geheugen</h1>
-          <p className="text-sm text-muted mt-1">
-            Eén doorzoekbaar geheugen. Een belofte mag nooit begraven raken onder een gewoonte.
-          </p>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Brain className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">Geheugen</h1>
+            <p className="text-sm text-muted mt-0.5">
+              Eén doorzoekbaar geheugen. Een belofte mag nooit begraven raken onder een gewoonte.
+            </p>
+          </div>
         </div>
         <span className="flex items-center gap-1.5 text-[11px] text-faint shrink-0">
           <span className={`h-1.5 w-1.5 rounded-full ${dataSource === 'live' ? 'bg-forest' : 'bg-faint'}`} />
@@ -201,7 +206,7 @@ export default function Memory() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Doorzoek je hele geheugen…"
-          className="w-full rounded-xl bg-surface border border-line pl-9 pr-9 py-2.5 text-sm outline-none focus:border-forest-hi/50"
+          className="w-full rounded-xl bg-sunken border border-line pl-9 pr-9 py-2.5 text-sm outline-none focus:border-forest-hi/50"
         />
         {query && (
           <button

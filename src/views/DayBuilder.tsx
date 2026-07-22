@@ -141,17 +141,20 @@ export default function DayBuilder() {
   const hasPlan = inWeek.length > 0
 
   return (
-    <div className="space-y-5 max-w-3xl mx-auto">
+    <div className="flex flex-col gap-7 max-w-3xl mx-auto">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <CalendarRange className="h-5 w-5 text-personal" /> Dagplanner
-          </h1>
-          <p className="text-sm text-muted mt-1 max-w-xl">
-            Een optimaal plan voor vandaag en de rest van de week, gebouwd rond je{' '}
-            <span className="text-ink">agenda-afspraken</span>, je <span className="text-ink">routines</span> en je
-            aangeleerde focuspiek. Vergrendel de blokken die kloppen of zet ze in Google Agenda.
-          </p>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <CalendarRange className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">Dagplanner</h1>
+            <p className="text-sm text-muted mt-0.5 max-w-xl">
+              Een optimaal plan voor vandaag en de rest van de week, gebouwd rond je{' '}
+              <span className="text-ink">agenda-afspraken</span>, je <span className="text-ink">routines</span> en je
+              aangeleerde focuspiek. Vergrendel de blokken die kloppen of zet ze in Google Agenda.
+            </p>
+          </div>
         </div>
         <button className="btn-primary" onClick={generateWeekPlan} disabled={planningWeek}>
           {planningWeek ? (
@@ -166,7 +169,7 @@ export default function DayBuilder() {
       </div>
 
       {lastPlanError && !planningWeek && (
-        <div className="card p-3 text-sm text-orange-700 bg-orange-500/10 border-orange-500/30">{lastPlanError}</div>
+        <div className="card p-3 text-sm text-personal-deep bg-personal/10">{lastPlanError}</div>
       )}
 
       {/* learned-window banner */}

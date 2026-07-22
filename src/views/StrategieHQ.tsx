@@ -155,7 +155,7 @@ function IdeaCard({ idea, onOpen }: { idea: BusinessIdea; onOpen: () => void }) 
           {busy ? (
             <Loader2 className="h-5 w-5 animate-spin text-buurtkaart" />
           ) : (
-            <AlertTriangle className="h-5 w-5 text-orange-600" />
+            <AlertTriangle className="h-5 w-5 text-personal-deep" />
           )}
         </div>
       )}
@@ -433,7 +433,7 @@ function IdeaDetailModal({
             <h2 className="text-xl font-bold tracking-tight leading-snug">{idea.title}</h2>
 
             {idea.elaborationStatus === 'failed' && (
-              <div className="rounded-xl bg-orange-500/10 border border-orange-500/30 p-3 text-sm text-orange-700 flex items-start gap-2">
+              <div className="rounded-xl bg-personal/10 p-3 text-sm text-personal-deep flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                 <div className="flex-1">
                   <p className="font-medium">Uitwerken mislukt</p>
@@ -586,7 +586,7 @@ function IdeaDetailModal({
 
       {!editing && (
         <div className="sticky bottom-0 bg-canvas/90 backdrop-blur border-t border-line px-4 py-3 flex justify-end">
-          <button onClick={() => setConfirmDelete(true)} className="btn-ghost !py-1.5 text-xs text-orange-600">
+          <button onClick={() => setConfirmDelete(true)} className="btn-ghost !py-1.5 text-xs text-cross-deep">
             <Trash2 className="h-3.5 w-3.5" /> Verwijderen
           </button>
         </div>

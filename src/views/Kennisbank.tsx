@@ -134,12 +134,17 @@ export default function Kennisbank() {
   const openLiveEntry = openEntry ? confirmed.find((e) => e.id === openEntry.id) ?? openEntry : null
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      <div>
-        <h1 className="text-xl font-semibold">Kennisbank</h1>
-        <p className="text-sm text-muted mt-1">
-          Bruikbare inzichten uit je braindumps — niet alles, alleen wat de moeite waard is om te onthouden en ooit toe te passen.
-        </p>
+    <div className="flex flex-col gap-7 max-w-4xl mx-auto">
+      <div className="flex items-center gap-3">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+          <BookOpen className="h-5 w-5 text-ink-soft" />
+        </span>
+        <div>
+          <h1 className="text-xl font-medium text-ink">Kennisbank</h1>
+          <p className="text-sm text-muted mt-0.5">
+            Bruikbare inzichten uit je braindumps — niet alles, alleen wat de moeite waard is om te onthouden en ooit toe te passen.
+          </p>
+        </div>
       </div>
 
       {suggested.length > 0 && (

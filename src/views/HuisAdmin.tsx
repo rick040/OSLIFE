@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../store'
 import { Empty } from '../components/ui'
-import { Plus, Trash2, CalendarClock } from 'lucide-react'
+import { Plus, Trash2, CalendarClock, Home } from 'lucide-react'
 import type { AdminCategory } from '../types'
 
 const CAT_LABEL: Record<AdminCategory, string> = {
@@ -52,38 +52,38 @@ export default function HuisAdmin() {
   const yearlyTotal = adminItems.reduce((s, a) => s + (a.amount ?? 0), 0)
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
-      <div>
-        <h1 className="text-xl font-semibold">Huis &amp; Admin</h1>
-        <p className="text-sm text-muted mt-1">
-          Saai maar duur als je het vergeet. Contracten, verzekeringen, garanties en verlengingen,
-          met een seintje voordat de opzegtermijn verloopt.
-        </p>
+    <div className="flex flex-col gap-7 max-w-3xl mx-auto">
+      <div className="flex items-center gap-3">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+          <Home className="h-5 w-5 text-ink-soft" />
+        </span>
+        <div>
+          <h1 className="text-xl font-medium text-ink">Huis &amp; Admin</h1>
+          <p className="text-sm text-muted mt-0.5">
+            Saai maar duur als je het vergeet. Contracten, verzekeringen, garanties en verlengingen,
+            met een seintje voordat de opzegtermijn verloopt.
+          </p>
+        </div>
       </div>
 
       <div className="card p-4 space-y-3">
-        <div className="flex items-center gap-2 text-sm font-medium"><Plus className="h-4 w-4 text-buurtkaart" /> Item toevoegen</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titel (bv. Autoverzekering)"
-            className="rounded-lg border border-line bg-transparent px-3 py-2 text-sm" />
-          <select value={category} onChange={(e) => setCategory(e.target.value as AdminCategory)}
-            className="rounded-lg border border-line bg-transparent px-3 py-2 text-sm">
+        <div className="flex items-center gap-2 text-sm font-medium"><Plus className="h-4 w-4 text-ink-soft" /> Item toevoegen</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titel (bv. Autoverzekering)" className="input" />
+          <select value={category} onChange={(e) => setCategory(e.target.value as AdminCategory)} className="input">
             {(Object.keys(CAT_LABEL) as AdminCategory[]).map((c) => <option key={c} value={c}>{CAT_LABEL[c]}</option>)}
           </select>
-          <label className="text-xs text-faint flex flex-col gap-1">
+          <label className="text-xs text-faint flex flex-col gap-1.5">
             Verloopt / verlengt op
-            <input type="date" value={renewalOn} onChange={(e) => setRenewalOn(e.target.value)}
-              className="rounded-lg border border-line bg-transparent px-3 py-2 text-sm text-ink" />
+            <input type="date" value={renewalOn} onChange={(e) => setRenewalOn(e.target.value)} className="input" />
           </label>
-          <label className="text-xs text-faint flex flex-col gap-1">
+          <label className="text-xs text-faint flex flex-col gap-1.5">
             Jaarlast (€)
-            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0"
-              className="rounded-lg border border-line bg-transparent px-3 py-2 text-sm text-ink" />
+            <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0" className="input" />
           </label>
         </div>
-        <button onClick={submit} disabled={!title.trim()}
-          className="rounded-lg bg-buurtkaart/10 text-buurtkaart-deep border border-buurtkaart/40 px-4 py-2 text-sm font-medium hover:bg-buurtkaart/15 disabled:opacity-50">
-          Toevoegen
+        <button onClick={submit} disabled={!title.trim()} className="btn-primary">
+          <Plus className="h-4 w-4" /> Toevoegen
         </button>
       </div>
 
@@ -111,7 +111,7 @@ export default function HuisAdmin() {
                       </div>
                       {a.amount != null && <div className="text-xs text-faint mt-0.5">€{a.amount.toLocaleString('nl-NL')}/jaar</div>}
                     </div>
-                    <button title="Verwijderen" onClick={() => deleteAdminItem(a.id)} className="p-2 rounded-lg hover:bg-line text-muted shrink-0">
+                    <button title="Verwijderen" onClick={() => deleteAdminItem(a.id)} className="p-2 rounded-lg hover:bg-sunken text-muted shrink-0">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
