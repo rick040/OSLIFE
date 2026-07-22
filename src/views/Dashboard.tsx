@@ -4,6 +4,7 @@ import { TODAY, DOMAIN_META, fmtDate, daysBetween } from '../domains'
 import { isTransfer } from '../finance/categories'
 import { dueLabel } from '../lib/dates'
 import { OPENING_BALANCE } from '../mockData'
+import { clientHealth } from '../lib/crm/followUp'
 import { Empty, SetupHint, Sparkline } from '../components/ui'
 import { GreetingHeader, HeroStat, MetricTile, GoalRow, DetailCard, ScheduleCard, TaskRow, type Tone } from '../components/v3'
 import { useWeather, weatherMeta } from '../hooks/useWeather'
@@ -22,6 +23,7 @@ import {
   CalendarRange,
   CheckSquare,
   Target,
+  Activity,
 } from 'lucide-react'
 
 import { eur0 as eur } from '../lib/format'
@@ -52,6 +54,8 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     emails,
     transactions,
     payments,
+    dogReminders,
+    clients,
     completeBlock,
     skipBlock,
     tickHabit,
@@ -156,11 +160,24 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   // from the live data so the card is never blank. Either way the priority carousel
   // gets a structured nudge (tone + domain + source + action), not a bare string.
   const overduePay = openPayments.filter((p) => p.due && daysBetween(TODAY, p.due) < 0)
+  // Overdue money is the thing most likely to actually cost something if
+  // ignored, so it earns the one hero slot over vitals — vitals only gets it
+  // back when nothing more pressing is true today.
+  const overdueOutgoing = overduePay.filter((p) => p.direction === 'outgoing')
+  const overdueOutgoingTotal = overdueOutgoing.reduce((a, p) => a + p.amount, 0)
   const overdueProjects = activeProjects.filter((p) => p.deadline && daysBetween(TODAY, p.deadline) < 0)
   const habitsLeft = habits.filter((h) => !h.doneToday)
   // Was filtering the already-sliced 3-item preview list — undercounted
   // whenever there were more than 3 important mails. Count against the full set.
   const unreadImportant = allImportantMail.filter((e) => e.unread)
+  // Kyra: reminders (vet, meds, ...) due today or overdue — a missed vet
+  // appointment matters as much as a missed invoice, so it competes for the
+  // same "what needs attention" real estate instead of living only on Dog.
+  const dogDue = dogReminders.filter((r) => !r.done && r.due <= TODAY)
+  // CRM: clients whose follow-up cadence has lapsed — the same object-
+  // permanence problem as an unpaid invoice, just for a relationship instead
+  // of money.
+  const clientsNeedingFollowUp = clients.filter((c) => clientHealth(c, TODAY) === 'red')
 
   // Prioriteiten: every currently-true thing that actually needs attention,
   // most urgent first — not just the single loudest one. A Reflect-authored
@@ -209,6 +226,22 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         reason: 'gewoonten open',
         tone: 'attention',
         cta: { label: 'Naar Gewoonten', view: 'habits' },
+      })
+    if (dogDue.length)
+      list.push({
+        text: `${dogDue[0].title}${dogDue.length > 1 ? ` (+${dogDue.length - 1} meer)` : ''} voor Kyra staat open.`,
+        domain: 'personal',
+        reason: 'kyra-reminder',
+        tone: 'attention',
+        cta: { label: 'Naar Kyra', view: 'dog' },
+      })
+    if (clientsNeedingFollowUp.length)
+      list.push({
+        text: `${clientsNeedingFollowUp.length} klant${clientsNeedingFollowUp.length > 1 ? 'en' : ''} (o.a. ${clientsNeedingFollowUp[0].name}) wacht${clientsNeedingFollowUp.length > 1 ? '' : 't'} al langer dan de opvolgcyclus op contact.`,
+        domain: clientsNeedingFollowUp[0].domain,
+        reason: 'opvolging klant',
+        tone: 'attention',
+        cta: { label: 'Naar CRM', view: 'crm' },
       })
     if (!list.length && habits.length)
       list.push({
@@ -335,9 +368,17 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         }
       />
 
-      {/* ── vitals hero: one giant number, the day's single focal metric ────── */}
-      <HeroStat label="Stappen vandaag" value={stepsLabel} suffix="k">
-        {today ? (
+      {/* ── hero: whatever's actually most pressing today earns the one giant-
+          number slot — overdue money first, vitals only as the calm-day
+          fallback, not the permanent default. ───────────────────────────── */}
+      {overdueOutgoing.length > 0 ? (
+        <HeroStat label="Te betalen (verlopen)" value={eur(overdueOutgoingTotal)}>
+          <button onClick={() => onNav('money')} className="chip bg-cross/15 text-cross-deep">
+            {overdueOutgoing.length} betaling{overdueOutgoing.length > 1 ? 'en' : ''} over de vervaldatum — bekijk in Geld →
+          </button>
+        </HeroStat>
+      ) : today ? (
+        <HeroStat label="Stappen vandaag" value={stepsLabel} suffix="k">
           <div className="flex flex-col gap-3">
             <button
               onClick={() => setMetricDialog('steps')}
@@ -347,9 +388,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               <div className="h-full rounded-full bg-forest transition-all duration-700" style={{ width: `${stepsPct * 100}%` }} />
             </button>
             <div className="flex items-center gap-2 flex-wrap">
-              {stepsStale && lastStepsDay && (
-                <span className="chip bg-sunken text-muted">nog niet gesynct</span>
-              )}
+              {stepsStale && lastStepsDay && <span className="chip bg-sunken text-muted">nog niet gesynct</span>}
               <button onClick={() => setMetricDialog('sleep')} className="chip bg-sunken text-ink-soft hover:text-ink">
                 {today.sleepHours}u slaap
               </button>
@@ -358,15 +397,12 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               </button>
             </div>
           </div>
-        ) : (
-          <button onClick={() => onNav('vitals')} className="text-sm text-ink-soft hover:text-ink">
-            Nog geen gezondheidsdata — tik om te koppelen →
-          </button>
-        )}
-      </HeroStat>
+        </HeroStat>
+      ) : null}
 
-      {/* ── metrics: neutral tiles, one tap through ──────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+      {/* ── metrics: neutral tiles, one tap through — vitals lives here now as
+          one tile among equals, not a permanent oversized hero. ───────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
         <MetricTile
           icon={Wallet}
           value={transactions.length ? eur(balance) : '–'}
@@ -391,6 +427,12 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         />
         <MetricTile icon={Mail} value={unreadImportant.length || '0'} label="belangrijke mail" onClick={() => onNav('inbox')} />
         <MetricTile icon={CheckSquare} value={openThreads.length} label="open taken" onClick={() => onNav('tasks')} />
+        <MetricTile
+          icon={Activity}
+          value={today ? `${stepsLabel}k` : '–'}
+          label="stappen vandaag"
+          onClick={() => (today ? setMetricDialog('steps') : onNav('vitals'))}
+        />
       </div>
 
       {/* ── goals — segmented progress + fraction, not an abstract percentage ── */}
