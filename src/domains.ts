@@ -54,11 +54,11 @@ export const DOMAIN_META: Record<
 
 /** Raw hex per domain (mid tone), for recharts fills/strokes. */
 export const DOMAIN_HEX: Record<Domain, string> = {
-  parkingyou: '#6E8CA8',
-  prjct: '#9385B0',
-  buurtkaart: '#6FA07C',
-  personal: '#C6A05B',
-  cross: '#C58392',
+  parkingyou: '#60A5FA',
+  prjct: '#A78BFA',
+  buurtkaart: '#34D399',
+  personal: '#FBBF24',
+  cross: '#F87171',
 }
 
 export const KIND_LABEL: Record<ItemKind, string> = {

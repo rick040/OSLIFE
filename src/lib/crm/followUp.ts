@@ -46,8 +46,8 @@ export function clientHealth(client: Client, today: string): FollowUpHealth {
 
 /** Presentation for each health state — dot colour + short Dutch label. */
 export const FOLLOWUP_META: Record<FollowUpHealth, { hex: string; label: string }> = {
-  green:  { hex: '#6FA07C', label: 'Op schema' },
-  yellow: { hex: '#C6A05B', label: 'Opvolgen binnenkort' },
-  red:    { hex: '#C58392', label: 'Opvolging te laat' },
+  green:  { hex: '#34D399', label: 'Op schema' },
+  yellow: { hex: '#FBBF24', label: 'Opvolgen binnenkort' },
+  red:    { hex: '#F87171', label: 'Opvolging te laat' },
   none:   { hex: '#8C9080', label: 'Nog geen contact' },
 }

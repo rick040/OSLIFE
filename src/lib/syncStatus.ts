@@ -149,9 +149,9 @@ export function formatAbsolute(lastAt: string | null): string {
 }
 
 export const HEALTH_META: Record<SyncHealth, { label: string; hex: string; dot: string }> = {
-  up: { label: 'Actief', hex: '#6FA07C', dot: '#6FA07C' },
-  slow: { label: 'Vertraagd', hex: '#C6A05B', dot: '#C6A05B' },
-  down: { label: 'Offline', hex: '#C58392', dot: '#C58392' },
+  up: { label: 'Actief', hex: '#34D399', dot: '#34D399' },
+  slow: { label: 'Vertraagd', hex: '#FBBF24', dot: '#FBBF24' },
+  down: { label: 'Offline', hex: '#F87171', dot: '#F87171' },
   empty: { label: 'Geen data', hex: '#8C9080', dot: '#B4B8AC' },
-  error: { label: 'Fout', hex: '#C58392', dot: '#C58392' },
+  error: { label: 'Fout', hex: '#F87171', dot: '#F87171' },
 }

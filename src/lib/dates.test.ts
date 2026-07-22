@@ -18,11 +18,11 @@ describe('overdueLabel', () => {
 describe('deadlineInfo (badge style)', () => {
   it('returns null without a date', () => expect(deadlineInfo(null, today)).toBeNull())
   it('flags overdue deadlines', () =>
-    expect(deadlineInfo('2026-06-28', today)).toEqual({ label: '5d te laat', color: '#C58392', urgent: true }))
+    expect(deadlineInfo('2026-06-28', today)).toEqual({ label: '5d te laat', color: '#F87171', urgent: true }))
   it('flags today', () =>
-    expect(deadlineInfo('2026-07-03', today)).toEqual({ label: 'Vandaag', color: '#C6A05B', urgent: true }))
+    expect(deadlineInfo('2026-07-03', today)).toEqual({ label: 'Vandaag', color: '#FBBF24', urgent: true }))
   it('flags deadlines within a week as "over Xd"', () =>
-    expect(deadlineInfo('2026-07-10', today)).toEqual({ label: 'over 7d', color: '#C6A05B', urgent: true }))
+    expect(deadlineInfo('2026-07-10', today)).toEqual({ label: 'over 7d', color: '#FBBF24', urgent: true }))
   it('shows the short date beyond a week, not urgent', () =>
     expect(deadlineInfo('2026-07-11', today)).toEqual({ label: '11 jul', color: '#8C9080', urgent: false }))
 })

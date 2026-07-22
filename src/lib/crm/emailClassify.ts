@@ -19,10 +19,10 @@ export interface EmailTag {
 
 const TAGS = {
   fiverr: { key: 'fiverr', label: 'Fiverr', hex: '#5A9E86' },
-  prjct: { key: 'prjct', label: 'PRJCT', hex: '#9385B0' },
-  parkingyou: { key: 'parkingyou', label: 'ParkingYou', hex: '#6E8CA8' },
-  finance: { key: 'finance', label: 'Betalen', hex: '#C58392' },
-  personal: { key: 'personal', label: 'Persoonlijk', hex: '#C6A05B' },
+  prjct: { key: 'prjct', label: 'PRJCT', hex: '#A78BFA' },
+  parkingyou: { key: 'parkingyou', label: 'ParkingYou', hex: '#60A5FA' },
+  finance: { key: 'finance', label: 'Betalen', hex: '#F87171' },
+  personal: { key: 'personal', label: 'Persoonlijk', hex: '#FBBF24' },
 } as const
 
 /** All domain tags in display order — used to render the inbox domain filter. */
