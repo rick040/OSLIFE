@@ -6,10 +6,11 @@
 // code over `store` — the model only ever supplies the free-text name it
 // heard, it never guesses an id itself.
 //
-// Phase 1 ships project resolution only (mirrors the existing findProject()).
-// Phase 2 extends this to clients/invoices/tasks, resolved hierarchically
-// (e.g. project first, then invoices scoped to that project) so ambiguity
-// doesn't compound across two unresolved entities at once.
+// Invoices resolve HIERARCHICALLY: resolveInvoiceForProject() only ever scores
+// invoices already scoped to one resolved project, so an ambiguous message
+// ("de factuur is betaald" with 2 projects and 2 invoices each) never asks the
+// user to disambiguate both dimensions in one shot — project first, then, only
+// if still ambiguous, invoice within that project.
 
 import type { useStore } from '../../store'
 import { extractKeywords, matchScore } from '../cards'
@@ -29,6 +30,18 @@ export interface ResolveResult {
   candidates: EntityRef[]
 }
 
+/** Picks a single clear winner from scored candidates, or returns the close ones for disambiguation. Shared by every resolve* below so "clear win" means the same thing everywhere. */
+function pickWinner(ranked: { ref: EntityRef; score: number }[]): ResolveResult {
+  if (!ranked.length) return { entity: null, candidates: [] }
+  const [best, second] = ranked
+  const clearWin = !second || best.score >= second.score * CLEAR_WIN_RATIO
+  if (clearWin) return { entity: best.ref, candidates: [] }
+  // Keep only candidates within striking distance of the leader — a distant
+  // third match shouldn't clutter a disambiguation list.
+  const close = ranked.filter((r) => r.score >= best.score * 0.5)
+  return { entity: null, candidates: close.map((r) => r.ref) }
+}
+
 function rankProjects(keywords: string[], store: Store): { ref: EntityRef; score: number }[] {
   return store.projects
     .map((p) => ({
@@ -39,20 +52,69 @@ function rankProjects(keywords: string[], store: Store): { ref: EntityRef; score
     .sort((a, b) => b.score - a.score)
 }
 
-/** Resolves a project mention in free text. The only table wired up in Phase 1. */
+/** Resolves a project mention in free text. */
 export function resolveProject(text: string, store: Store): ResolveResult {
   const keywords = extractKeywords(text)
   if (!keywords.length) return { entity: null, candidates: [] }
+  return pickWinner(rankProjects(keywords, store))
+}
 
-  const ranked = rankProjects(keywords, store)
-  if (!ranked.length) return { entity: null, candidates: [] }
+/** Resolves a client mention in free text. */
+export function resolveClient(text: string, store: Store): ResolveResult {
+  const keywords = extractKeywords(text)
+  if (!keywords.length) return { entity: null, candidates: [] }
+  const ranked = store.clients
+    .map((c) => ({
+      ref: { table: 'clients' as const, id: c.id, label: c.name },
+      score: matchScore(keywords, c.name),
+    }))
+    .filter((r) => r.score >= MIN_SCORE)
+    .sort((a, b) => b.score - a.score)
+  return pickWinner(ranked)
+}
+
+/** Resolves an open task/thread mention in free text (excludes derived project/client loops — those aren't real tasks). */
+export function resolveTask(text: string, store: Store): ResolveResult {
+  const keywords = extractKeywords(text)
+  if (!keywords.length) return { entity: null, candidates: [] }
+  const ranked = store.threads
+    .filter((t) => t.status === 'open' && !/^thr-(prj|cli)-/.test(t.id))
+    .map((t) => ({
+      ref: { table: 'tasks' as const, id: t.id, label: t.title },
+      score: matchScore(keywords, t.title),
+    }))
+    .filter((r) => r.score >= MIN_SCORE)
+    .sort((a, b) => b.score - a.score)
+  return pickWinner(ranked)
+}
+
+/**
+ * Resolves an invoice scoped to an ALREADY-RESOLVED project — never scores
+ * across every invoice in the app, so it can't compound with project
+ * ambiguity. A project with exactly one invoice resolves to it directly even
+ * without a strong text match (the common case: "de factuur is betaald"
+ * rarely names the invoice number).
+ */
+export function resolveInvoiceForProject(text: string, projectId: string, store: Store): ResolveResult {
+  const invoicesForProject = store.projectInvoices.filter((i) => i.projectId === projectId)
+  if (invoicesForProject.length === 0) return { entity: null, candidates: [] }
+  if (invoicesForProject.length === 1) {
+    const i = invoicesForProject[0]
+    return { entity: { table: 'project_invoices', id: i.id, label: i.number || `factuur ${i.status}` }, candidates: [] }
+  }
+
+  const keywords = extractKeywords(text)
+  const ranked = invoicesForProject
+    .map((i) => ({
+      ref: { table: 'project_invoices' as const, id: i.id, label: `${i.number || 'factuur'} · ${i.status}` },
+      score: matchScore(keywords, i.number, i.note),
+    }))
+    .sort((a, b) => b.score - a.score)
 
   const [best, second] = ranked
-  const clearWin = !second || best.score >= second.score * CLEAR_WIN_RATIO
+  const clearWin = best.score >= MIN_SCORE && (!second || best.score >= second.score * CLEAR_WIN_RATIO)
   if (clearWin) return { entity: best.ref, candidates: [] }
-
-  // Keep only candidates within striking distance of the leader — a distant
-  // third match shouldn't clutter a disambiguation list.
-  const close = ranked.filter((r) => r.score >= best.score * 0.5)
-  return { entity: null, candidates: close.map((r) => r.ref) }
+  // No confident text match among several invoices — surface all of them
+  // scoped to this project rather than guessing which one was meant.
+  return { entity: null, candidates: ranked.map((r) => r.ref) }
 }

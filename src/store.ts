@@ -105,6 +105,10 @@ import {
   insertDayBlock,
   fetchDogEntries,
   fetchBrainState,
+  fetchTasks,
+  insertTaskRow,
+  updateTaskRow,
+  deleteTaskRow,
   fetchLearnedFacts,
   persistLearnedFacts,
   fetchScreenDays,
@@ -689,6 +693,9 @@ function pushSignal(activity: ActivitySignal[], s: Omit<ActivitySignal, 'id' | '
 /** True for threads derived live from projects/clients (not worth persisting). */
 const isDerivedThreadId = (id: string) => /^thr-(prj|cli)-/.test(id)
 
+/** True for a thread that's a real row in the `tasks` table — a Supabase id that isn't a derived project/client loop. Used to merge tasks-table refetches with brain_state.threads (legacy/derived) without either clobbering the other. */
+const isTaskRow = (t: Thread) => isDbId(t.id) && !isDerivedThreadId(t.id)
+
 /** Only persist closed-state and captured threads — derived ones come from projects. */
 function persistableThreads(threads: Thread[]): Thread[] {
   return threads.filter((t) => t.status === 'closed' || !isDerivedThreadId(t.id))
@@ -722,6 +729,24 @@ const removeFromSlice = (set: StoreSet, slice: IdSliceKey, id: string) =>
 /** Push the persistable brain state (threads + patterns) to Supabase. */
 const persistBrain = (get: () => State) =>
   void persistBrainState(persistableThreads(get().threads), get().patterns)
+
+/**
+ * Routes a thread status/patch write to the right place during the
+ * brain_state.threads → tasks migration:
+ *  - derived (project/client) loops have no `tasks` row — the only place a
+ *    status override survives a reload is brain_state.threads;
+ *  - a real DB task (id already swapped to its Supabase uuid) gets a targeted
+ *    tasks-table write;
+ *  - a real task whose id hasn't been swapped yet (created before this
+ *    migration shipped, still living only in brain_state, or a brand new one
+ *    whose insert hasn't resolved) falls back to persistBrain() so it keeps
+ *    working exactly as before until a backfill moves it into `tasks`.
+ */
+function persistThreadWrite(get: () => State, id: string, writeTask: () => void): void {
+  if (isDerivedThreadId(id)) persistBrain(get)
+  else if (isDbId(id)) writeTask()
+  else persistBrain(get)
+}
 
 /**
  * Object-permanence follow-up: mark a client contacted "now" (optimistic +
@@ -760,12 +785,13 @@ export const useStore = create<State>()(
           createdAt: new Date().toISOString(),
           ...c,
         }
+        const tempThreadId = uid('thr')
         set((s) => {
           // a captured task or vent with a "promise" shape opens a thread (REMEMBER)
           const threads = [...s.threads]
           if (c.kind === 'task' && openThread) {
             threads.unshift({
-              id: uid('thr'),
+              id: tempThreadId,
               domain: c.domain,
               title: c.summary,
               owedTo: 'self (captured)',
@@ -784,8 +810,17 @@ export const useStore = create<State>()(
             }),
           }
         })
-        // a new thread (owed loop) changes the persisted brain state
-        if (c.kind === 'task' && openThread) persistBrain(get)
+        // A new thread (owed loop) is a real task row now — targeted insert
+        // instead of a persistBrain() whole-blob rewrite.
+        if (c.kind === 'task' && openThread) {
+          const t = get().threads.find((x) => x.id === tempThreadId)
+          if (t) {
+            void insertTaskRow({
+              domain: t.domain, title: t.title, owedTo: t.owedTo, due: t.due,
+              status: t.status, createdAt: t.createdAt, priority: t.priority, notes: t.notes,
+            }).then(swapTempId(set, 'threads', tempThreadId))
+          }
+        }
         return item
       },
 
@@ -1033,29 +1068,34 @@ export const useStore = create<State>()(
       },
 
       addTask: (draft) => {
-        const id = uid('thr')
+        const tempId = uid('thr')
         const due = draft.due ?? null
+        const thread: Thread = {
+          id: tempId,
+          domain: draft.domain,
+          title: draft.title,
+          owedTo: 'self (HEYRA)',
+          due,
+          status: 'open',
+          createdAt: new Date().toISOString(),
+          priority: draft.priority ?? null,
+          notes: draft.notes ?? null,
+        }
         set((s) => ({
-          threads: [
-            {
-              id,
-              domain: draft.domain,
-              title: draft.title,
-              owedTo: 'self (HEYRA)',
-              due,
-              status: 'open' as const,
-              createdAt: new Date().toISOString(),
-            },
-            ...s.threads,
-          ],
+          threads: [thread, ...s.threads],
           activity: pushSignal(s.activity, {
             text: `Taak toegevoegd via HEYRA → ${DOMAIN_META[draft.domain].label}${draft.due ? ` · deadline ${draft.due.slice(5)}` : ''}`,
             domain: draft.domain,
             loop: 'fast',
           }),
         }))
-        persistBrain(get)
-        return id
+        // Real per-row insert (tasks table) instead of a persistBrain() whole-
+        // blob rewrite — a real DB id gets swapped in once the insert lands.
+        void insertTaskRow({
+          domain: thread.domain, title: thread.title, owedTo: thread.owedTo, due: thread.due,
+          status: thread.status, createdAt: thread.createdAt, priority: thread.priority, notes: thread.notes,
+        }).then(swapTempId(set, 'threads', tempId))
+        return tempId
       },
 
       closeThread: (id) => {
@@ -1068,17 +1108,17 @@ export const useStore = create<State>()(
               : s.activity,
           }
         })
-        persistBrain(get)
+        persistThreadWrite(get, id, () => updateTaskRow(id, { status: 'closed' }))
       },
 
       reopenThread: (id) => {
         patchSlice(set, 'threads', id, { status: 'open' })
-        persistBrain(get)
+        persistThreadWrite(get, id, () => updateTaskRow(id, { status: 'open' }))
       },
 
       updateThread: (id, patch) => {
         patchSlice(set, 'threads', id, patch)
-        persistBrain(get)
+        persistThreadWrite(get, id, () => updateTaskRow(id, patch))
       },
 
       deleteThread: (id) => {
@@ -1089,7 +1129,8 @@ export const useStore = create<State>()(
           return
         }
         removeFromSlice(set, 'threads', id)
-        persistBrain(get)
+        if (isDbId(id)) void deleteTaskRow(id)
+        else persistBrain(get)
       },
 
       tickHabit: (id) => {
@@ -2322,7 +2363,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, medications, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, medications, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -2346,6 +2387,7 @@ export const useStore = create<State>()(
             fetchBusinessIdeas(),
             fetchHoldings(),
             fetchBalanceCheckpoints(),
+            fetchTasks(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -2359,7 +2401,14 @@ export const useStore = create<State>()(
             ...(subscriptions.length > 0 && { subscriptions }),
             ...(goals.length > 0 && { goals }),
             ...(dogEntries.length > 0 && { dogEntries }),
-            ...(brainState.threads.length > 0 && { threads: brainState.threads }),
+            // Transition read: real task rows (tasks table) + whatever's still only
+            // in brain_state.threads (derived-loop status overrides, and any
+            // pre-migration captured/HEYRA threads not yet backfilled into tasks).
+            // No id collisions expected — tasks always carry a fresh Supabase uuid —
+            // but dedupe by id defensively in case a backfill double-writes one.
+            ...((tasks.length > 0 || brainState.threads.length > 0) && {
+              threads: [...tasks, ...brainState.threads.filter((t) => !tasks.some((x) => x.id === t.id))],
+            }),
             ...(brainState.patterns.length > 0 && { patterns: brainState.patterns }),
             ...(screenDays.length > 0 && { screenDays }),
             ...(projects.length > 0 && { projects }),
@@ -2436,10 +2485,16 @@ export const useStore = create<State>()(
           { table: 'goals', onChange: () => fetchGoals().then((d) => d.length > 0 && set({ goals: d })) },
           { table: 'daily_checkin', onChange: () => fetchCheckins().then((d) => { set({ checkins: d }); get().recomputeBrain() }) },
           { table: 'notification_prefs', onChange: () => fetchNotificationPrefs().then((p) => set({ notificationPrefs: p })) },
-          { table: 'brain_state', onChange: () => fetchBrainState().then((b) => set({
-            ...(b.threads.length > 0 && { threads: b.threads }),
+          { table: 'brain_state', onChange: () => fetchBrainState().then((b) => set((s) => ({
+            // Never let a brain_state refetch clobber the real tasks-table rows
+            // already merged into `threads` — only replace the derived/legacy
+            // portion (see isTaskRow()).
+            ...(b.threads.length > 0 && { threads: [...s.threads.filter(isTaskRow), ...b.threads] }),
             ...(b.patterns.length > 0 && { patterns: b.patterns }),
-          })) },
+          }))) },
+          { table: 'tasks', onChange: () => fetchTasks().then((d) => set((s) => ({
+            threads: [...d, ...s.threads.filter((t) => !isTaskRow(t))],
+          }))) },
           { table: 'clients', onChange: () => fetchClients().then((d) => { if (d.length > 0) { set({ clients: d }); get().recomputeBrain() } }) },
           { table: 'project_milestones', onChange: () => fetchMilestones().then((d) => set({ projectMilestones: d })) },
           { table: 'project_tasks', onChange: () => fetchProjectTaskRows().then((d) => set({ projectTasks: d })) },
