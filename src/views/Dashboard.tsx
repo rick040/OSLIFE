@@ -4,29 +4,24 @@ import { TODAY, DOMAIN_META, fmtDate, daysBetween } from '../domains'
 import { isTransfer } from '../finance/categories'
 import { dueLabel } from '../lib/dates'
 import { OPENING_BALANCE } from '../mockData'
-import { DomainChip, Empty, SetupHint, Ring, SegmentedProgress, Sparkline } from '../components/ui'
+import { Empty, SetupHint, Sparkline } from '../components/ui'
+import { GreetingHeader, HeroStat, MetricTile, GoalRow, DetailCard, ScheduleCard, TaskRow, type Tone } from '../components/v3'
 import { useWeather, weatherMeta } from '../hooks/useWeather'
-import { storeNudgeToDash, PriorityList, type DashNudge, type NudgeTone } from '../components/NudgeCard'
+import { storeNudgeToDash, type DashNudge, type NudgeTone } from '../components/NudgeCard'
 import { MetricDetailDialog, type MetricPoint } from '../components/MetricDetailDialog'
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip } from 'recharts'
 import { CHART_TIP, AXIS_TICK_11 } from '../components/chart'
 import {
   CheckCircle2,
   SkipForward,
-  Clock,
-  Moon,
-  Zap,
-  Target,
   Wallet,
   FolderKanban,
   Mail,
-  Flame,
   ArrowRight,
   Receipt,
-  Activity,
   CalendarRange,
   CheckSquare,
-  Check,
+  Target,
 } from 'lucide-react'
 
 import { eur0 as eur } from '../lib/format'
@@ -41,51 +36,7 @@ function amsterdamHour(): number {
   return parseInt(h, 10) % 24
 }
 
-/**
- * Compact KPI tile — the dashboard's "cockpit" row. One glance, one tap
- * through. Icon sits inline beside the text (not stacked on its own row
- * above it) so the tile hugs its content instead of reserving a fixed
- * 76px of height that reads as dead space on narrow 2-col mobile grids.
- *
- * The icon badge is always neutral — a row of six differently-colored
- * icons reads as noise, not information. Color is reserved for the value
- * itself when a tile actually has something to signal (an overdue amount,
- * a positive trend), never for decorating the glyph.
- */
-function KpiTile({
-  icon: Icon,
-  value,
-  label,
-  onClick,
-  corner,
-}: {
-  icon: React.ComponentType<{ className?: string }>
-  value: React.ReactNode
-  label: string
-  onClick?: () => void
-  /** Optional small visual (sparkline, dots), right-aligned next to the text. */
-  corner?: React.ReactNode
-}) {
-  const Comp = onClick ? 'button' : 'div'
-  return (
-    <Comp
-      onClick={onClick}
-      className={`card relative flex items-center gap-2.5 p-2.5 text-left ${onClick ? 'outline-none' : ''}`}
-    >
-      {/* Sparkline flourish only where a tile has room to spare (sm+, wider
-          grid columns) — on the tight 2-col mobile grid it's the first
-          thing to go so the number itself gets the full width. */}
-      {corner && <span className="absolute right-2.5 top-2.5 hidden sm:inline-flex">{corner}</span>}
-      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sunken">
-        <Icon className="h-4 w-4 text-ink-soft" />
-      </span>
-      <div className={`min-w-0 flex-1 ${corner ? 'sm:pr-11' : ''}`}>
-        <div className="text-lg font-bold tabular-nums truncate leading-tight">{value}</div>
-        <div className="text-xs text-faint truncate">{label}</div>
-      </div>
-    </Comp>
-  )
-}
+const NUDGE_TONE: Record<NudgeTone, Tone> = { urgent: 'danger', attention: 'warning', calm: 'success' }
 
 export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const {
@@ -106,7 +57,6 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     tickHabit,
     toggleMilestone,
     markEmailRead,
-    markPaymentPaid,
     toggleProjectTask,
   } = useStore()
 
@@ -119,8 +69,8 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   // steps, and say so, instead of showing a misleading zero ring.
   const stepsStale = !today || today.steps === 0
   const lastStepsDay = stepsStale ? [...healthDays].reverse().find((d) => d.steps > 0) : today
-  const stepsRingValue = lastStepsDay ? lastStepsDay.steps / lastStepsDay.stepGoal : 0
-  const stepsRingLabel = lastStepsDay ? (lastStepsDay.steps / 1000).toFixed(1) + 'k' : '–'
+  const stepsPct = lastStepsDay ? Math.min(1, lastStepsDay.steps / lastStepsDay.stepGoal) : 0
+  const stepsLabel = lastStepsDay ? (lastStepsDay.steps / 1000).toFixed(1) : '–'
 
   const openThreads = threads
     .filter((t) => t.status === 'open')
@@ -203,8 +153,8 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
 
   // Nudge: a Reflect pass writes a rich cross-domain nudge. Until then (e.g. fresh
   // live data, before any nightly reflect), derive the single most pressing nudge
-  // from the live data so the card is never blank. Either way we hand NudgeCard a
-  // structured nudge (tone + domain + source + action), not a bare string.
+  // from the live data so the card is never blank. Either way the priority carousel
+  // gets a structured nudge (tone + domain + source + action), not a bare string.
   const overduePay = openPayments.filter((p) => p.due && daysBetween(TODAY, p.due) < 0)
   const overdueProjects = activeProjects.filter((p) => p.deadline && daysBetween(TODAY, p.deadline) < 0)
   const habitsLeft = habits.filter((h) => !h.doneToday)
@@ -224,7 +174,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       list.push({
         text: `Je hebt ${overduePay.length} betaling${overduePay.length > 1 ? 'en' : ''} over de vervaldatum (o.a. ${overduePay[0].payee}). Regel die eerst — ze blokkeren je hoofd.`,
         domain: 'buurtkaart',
-        reason: 'oudste verlopen betaling',
+        reason: 'verlopen betaling',
         tone: 'urgent',
         cta: { label: 'Naar Geld', view: 'money' },
       })
@@ -232,7 +182,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       list.push({
         text: `${overdueProjects[0].name} staat over de deadline. Plan vandaag één concreet blok om 'm los te trekken.`,
         domain: overdueProjects[0].domain,
-        reason: 'project over de deadline',
+        reason: 'over de deadline',
         tone: 'urgent',
         cta: { label: 'Naar Projecten', view: 'projects' },
       })
@@ -240,7 +190,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       list.push({
         text: `Maar ${today.sleepHours}u geslapen. Houd vandaag je zwaarste denkwerk in de ochtend en plan niks na 22:30.`,
         domain: 'cross',
-        reason: 'weinig slaap gemeten',
+        reason: 'weinig slaap',
         tone: 'attention',
         cta: { label: 'Naar Gezondheid', view: 'vitals' },
       })
@@ -248,7 +198,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       list.push({
         text: `${unreadImportant.length} belangrijke mail wacht op antwoord. Beantwoord 'm nu het nog klein is.`,
         domain: 'parkingyou',
-        reason: 'belangrijke mail ongelezen',
+        reason: 'mail ongelezen',
         tone: 'attention',
         cta: { label: 'Naar Inbox', view: 'inbox' },
       })
@@ -256,7 +206,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       list.push({
         text: `Nog ${habitsLeft.length}/${habits.length} gewoonten open vandaag. Pak de makkelijkste eerst voor de momentum.`,
         domain: 'buurtkaart',
-        reason: 'gewoonten nog open vandaag',
+        reason: 'gewoonten open',
         tone: 'attention',
         cta: { label: 'Naar Gewoonten', view: 'habits' },
       })
@@ -268,7 +218,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         tone: 'calm',
         cta: { label: 'Naar Noordster', view: 'northstar' },
       })
-    return list.sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]).slice(0, 3)
+    return list.sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone]).slice(0, 4)
   })()
 
   // Levensbalans: one real 0-100 score per life domain, from the same data
@@ -307,138 +257,127 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     ] as { domain: string; score: number | null }[]
   ).filter((d): d is { domain: string; score: number } => d.score !== null)
 
+  const doneHabits = habits.filter((h) => h.doneToday).length
+
   return (
-    <div className="space-y-4">
-      {/* ── compact header: one line, no dedicated card ─────────────────────── */}
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 animate-fade-up">
-        <h1 className="text-xl font-semibold">
-          {greeting}, Rick. <span className="text-muted font-normal text-sm">{fmtDate(TODAY)}</span>
-        </h1>
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted">
+    <div className="flex flex-col gap-5">
+      {/* ── greeting — the one place a full sentence lives, inline-bold stats ── */}
+      <div className="flex items-start justify-between gap-4">
+        <GreetingHeader
+          eyebrow={fmtDate(TODAY)}
+          name={`${greeting}, Rick.`}
+          sentence={
+            <>
+              Je hebt vandaag <b>{focusTasks.length} taken</b>
+              {blocks.length > 0 && (
+                <>
+                  {' '}
+                  en <b>{blocks.filter((b) => b.status === 'planned').length} geplande blokken</b>
+                </>
+              )}
+              {today && (
+                <>
+                  , en je energie staat op <b>{today.energy}/5</b>
+                </>
+              )}
+              .
+            </>
+          }
+        />
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted shrink-0 mt-1">
           <WeatherIcon className="h-4 w-4" />
-          {locationLabel}{weather.tempC != null && ` · ${weather.tempC}°C`}
+          {locationLabel}
+          {weather.tempC != null && ` · ${weather.tempC}°C`}
         </span>
       </div>
 
-      {/* ── prioriteiten: every real thing that needs attention today, ranked ── */}
+      {/* ── priorities — horizontal carousel, most urgent first ─────────────── */}
       {priorities.length > 0 && (
-        <div className="card p-0 overflow-hidden animate-fade-up" style={{ animationDelay: '20ms' }}>
-          <div className="px-3.5 pt-2.5">
-            <span className="text-xs uppercase tracking-wider text-muted font-semibold">
-              Prioriteiten
-            </span>
+        <div className="flex flex-col gap-2">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted px-1">Prioriteiten</p>
+          <div className="flex gap-2.5 overflow-x-auto pb-1 -mx-1 px-1">
+            {priorities.map((p, i) => (
+              <ScheduleCard
+                key={i}
+                tone={NUDGE_TONE[p.tone]}
+                urgencyLabel={p.reason}
+                title={p.text}
+                onAction={p.cta ? () => onNav(p.cta!.view) : undefined}
+                actionLabel={p.cta?.label}
+              />
+            ))}
           </div>
-          <PriorityList items={priorities} onNav={onNav} />
         </div>
       )}
 
-      {/* ── focus hero: the one thing to look at first ──────────────────────── */}
-      <div className="card p-0 overflow-hidden animate-fade-up" style={{ animationDelay: '40ms' }}>
-        <div className="p-3.5">
-          <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-wider text-muted font-semibold">Nu doen</span>
-            {nextBlock && (
-              <span className="text-xs text-muted flex items-center gap-1">
-                <Clock className="h-3 w-3" /> {nextBlock.start}–{nextBlock.end}
-              </span>
-            )}
-          </div>
-          {nextBlock ? (
-            <div className="flex flex-wrap items-center gap-2 mt-1.5">
-              <DomainChip domain={nextBlock.domain} small />
-              <span className="text-sm font-medium">{nextBlock.title}</span>
-              <div className="flex gap-1.5 ml-auto">
-                <button className="btn-primary min-h-[44px] !py-1.5 !px-3 text-xs" onClick={() => completeBlock(nextBlock.id)}>
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Klaar
-                </button>
-                <button className="btn-ghost min-h-[44px] !py-1.5 !px-3 text-xs" onClick={() => skipBlock(nextBlock.id)}>
-                  <SkipForward className="h-3.5 w-3.5" /> Overslaan
-                </button>
-              </div>
-            </div>
-          ) : blocks.length ? (
-            <p className="text-sm text-faint mt-1.5">Niks meer gepland vandaag. 🎉</p>
-          ) : (
-            <button onClick={() => onNav('daybuilder')} className="text-xs text-muted hover:text-ink flex items-center gap-1 mt-1.5">
-              <CalendarRange className="h-3.5 w-3.5" /> Bouw je dag in de Dagplanner <ArrowRight className="h-3 w-3" />
+      {/* ── focus: the one thing to act on right now, with real actions ─────── */}
+      <DetailCard
+        domain={nextBlock?.domain}
+        title={
+          nextBlock ? nextBlock.title : blocks.length ? 'Niks meer gepland vandaag 🎉' : 'Nog niks ingepland vandaag'
+        }
+        meta={nextBlock ? `${nextBlock.start}–${nextBlock.end}` : undefined}
+        actions={
+          nextBlock ? (
+            <>
+              <button className="btn-primary !py-1.5 !px-3 text-xs" onClick={() => completeBlock(nextBlock.id)}>
+                <CheckCircle2 className="h-3.5 w-3.5" /> Klaar
+              </button>
+              <button className="btn-ghost !py-1.5 !px-3 text-xs" onClick={() => skipBlock(nextBlock.id)}>
+                <SkipForward className="h-3.5 w-3.5" /> Overslaan
+              </button>
+            </>
+          ) : !blocks.length ? (
+            <button className="btn-ghost !py-1.5 !px-3 text-xs" onClick={() => onNav('daybuilder')}>
+              <CalendarRange className="h-3.5 w-3.5" /> Bouw je dag
             </button>
-          )}
-        </div>
-      </div>
+          ) : undefined
+        }
+      />
 
-      {/* ── KPI cockpit strip: everything at a glance, one tap through ──────── */}
-      {/* One elevated "hero" bento tile for the single always-relevant daily
-          number — vitals — everything else stays low-key so it doesn't
-          compete for attention (one focal point, not eight). 8 units at
-          lg:grid-cols-4 (hero=2 + six 1-col tiles) fills exactly two full
-          rows — no lonely tile stranded on its own row. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 animate-fade-up" style={{ animationDelay: '60ms' }}>
-        <div className="card-hero p-3 col-span-2 sm:col-span-3 lg:col-span-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider">Vitaal vandaag</span>
+      {/* ── vitals hero: one giant number, the day's single focal metric ────── */}
+      <HeroStat label="Stappen vandaag" value={stepsLabel} suffix="k">
+        {today ? (
+          <div className="flex flex-col gap-3">
             <button
-              onClick={() => onNav('vitals')}
-              className="text-xs font-semibold underline-offset-2 hover:underline outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 rounded"
+              onClick={() => setMetricDialog('steps')}
+              className="h-1.5 w-full rounded-full bg-sunken overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 text-left"
+              aria-label="Bekijk 14-daagse grafiek van stappen"
             >
-              alles
+              <div className="h-full rounded-full bg-forest transition-all duration-700" style={{ width: `${stepsPct * 100}%` }} />
             </button>
-          </div>
-          {today ? (
-            <div className="flex items-center gap-3 mt-1.5">
-              <div className="flex flex-col items-center gap-0.5 shrink-0">
-                <button
-                  onClick={() => setMetricDialog('steps')}
-                  className="rounded-xl p-1 -m-1 outline-none transition-colors hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-                  aria-label={
-                    stepsStale && lastStepsDay
-                      ? `Stappen — nog niet gesynchroniseerd vandaag, laatst bekend ${fmtDate(lastStepsDay.date)}. Bekijk 14-daagse grafiek`
-                      : 'Stappen — bekijk 14-daagse grafiek'
-                  }
-                >
-                  <Ring value={stepsRingValue} size={56} stroke={6} color="stroke-forest-hi" label={stepsRingLabel} />
-                </button>
-                {stepsStale && lastStepsDay && (
-                  <span className="text-xs font-medium whitespace-nowrap">nog niet gesynct</span>
-                )}
-              </div>
-              <div className="flex flex-col gap-1 min-w-0">
-                <button
-                  onClick={() => setMetricDialog('sleep')}
-                  className="flex items-center gap-1.5 text-sm font-semibold tabular-nums rounded-lg px-1.5 py-0.5 -mx-1.5 outline-none transition-colors hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-                >
-                  <Moon className="h-3.5 w-3.5" />{today.sleepHours}u
-                </button>
-                <button
-                  onClick={() => setMetricDialog('energy')}
-                  className="flex items-center gap-1.5 text-sm font-semibold tabular-nums rounded-lg px-1.5 py-0.5 -mx-1.5 outline-none transition-colors hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-                >
-                  <Zap className="h-3.5 w-3.5" />{today.energy}/5
-                </button>
-              </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {stepsStale && lastStepsDay && (
+                <span className="chip bg-sunken text-muted">nog niet gesynct</span>
+              )}
+              <button onClick={() => setMetricDialog('sleep')} className="chip bg-sunken text-ink-soft hover:text-ink">
+                {today.sleepHours}u slaap
+              </button>
+              <button onClick={() => setMetricDialog('energy')} className="chip bg-sunken text-ink-soft hover:text-ink">
+                energie {today.energy}/5
+              </button>
             </div>
-          ) : (
-            <button onClick={() => onNav('vitals')} className="flex items-center gap-3 mt-1.5 text-left">
-              <Activity className="h-6 w-6 shrink-0" />
-              <div className="text-sm font-medium">Nog geen gezondheidsdata — tik om te koppelen</div>
-            </button>
-          )}
-        </div>
+          </div>
+        ) : (
+          <button onClick={() => onNav('vitals')} className="text-sm text-ink-soft hover:text-ink">
+            Nog geen gezondheidsdata — tik om te koppelen →
+          </button>
+        )}
+      </HeroStat>
 
-        <KpiTile
+      {/* ── metrics: neutral tiles, one tap through ──────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <MetricTile
           icon={Wallet}
           value={transactions.length ? eur(balance) : '–'}
           label="saldo"
           onClick={() => setMetricDialog('saldo')}
-          corner={transactions.length >= 2 ? <Sparkline values={balanceTrend} className="text-ink-soft" width={44} height={20} /> : undefined}
+          corner={transactions.length >= 2 ? <Sparkline values={balanceTrend} className="text-ink-soft" width={40} height={18} /> : undefined}
         />
-        <KpiTile
+        <MetricTile
           icon={Receipt}
           value={
             openPayments.length ? (
-              // Two short stacked amounts, not one squeezed "€1.200 / €45"
-              // string — that format either truncated or forced the tile
-              // wider than its 2-col mobile column has room for. Color here
-              // signals the actual money direction, not the tile's category.
               <span className="flex flex-col gap-0.5 text-base leading-tight">
                 <span className="text-buurtkaart-deep">+{eur(toReceive)}</span>
                 <span className="text-cross-deep">-{eur(toPay)}</span>
@@ -450,50 +389,103 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           label="te ontv. / te betalen"
           onClick={() => onNav('money')}
         />
-        <KpiTile
-          icon={Mail}
-          value={unreadImportant.length || '0'}
-          label="belangrijke mail"
-          onClick={() => onNav('inbox')}
-        />
-        <KpiTile
-          icon={CheckSquare}
-          value={openThreads.length}
-          label="open taken"
-          onClick={() => onNav('tasks')}
-        />
-        <KpiTile
-          icon={Target}
-          value={revenueGoal ? `${Math.round(goalPct * 100)}%` : '–'}
-          label="North Star"
-          onClick={() => onNav('northstar')}
-        />
-        <button
-          onClick={() => onNav('habits')}
-          className="card flex items-center gap-2.5 p-2.5 text-left outline-none"
-        >
-          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sunken">
-            <Flame className="h-4 w-4 text-ink-soft" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-lg font-bold tabular-nums leading-tight">
-              {habits.length ? `${habits.filter((h) => h.doneToday).length}/${habits.length}` : '–'}
-            </div>
-            <div className="text-xs text-faint truncate">gewoontes</div>
-            {habits.length > 0 && (
-              <div className="mt-1">
-                <SegmentedProgress done={habits.filter((h) => h.doneToday).length} total={habits.length} color="bg-forest" />
-              </div>
-            )}
-          </div>
-        </button>
+        <MetricTile icon={Mail} value={unreadImportant.length || '0'} label="belangrijke mail" onClick={() => onNav('inbox')} />
+        <MetricTile icon={CheckSquare} value={openThreads.length} label="open taken" onClick={() => onNav('tasks')} />
       </div>
+
+      {/* ── goals — segmented progress + fraction, not an abstract percentage ── */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between px-1">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Doelen</p>
+          <button className="text-xs text-muted hover:text-ink flex items-center gap-1" onClick={() => onNav('northstar')}>
+            alles <ArrowRight className="h-3 w-3" />
+          </button>
+        </div>
+        {revenueGoal ? (
+          <>
+            <GoalRow label={revenueGoal.title} current={revenueGoal.current} target={revenueGoal.target} format={eur} onClick={() => onNav('northstar')} />
+            <p className="text-xs text-faint px-1">
+              {Math.round(goalPct * 100)}%
+              {revenueGoal.deadline && ` · ${goalDays >= 0 ? `nog ${goalDays} dagen tot` : 'verlopen'} ${fmtDate(revenueGoal.deadline)}`}
+            </p>
+            {nextMilestone && (
+              <button
+                onClick={() => toggleMilestone(nextMilestone.id)}
+                className="flex items-center gap-2 rounded-full bg-sunken px-4 py-2.5 text-left hover:bg-line transition-colors"
+              >
+                <CheckCircle2 className="h-4 w-4 text-faint shrink-0" />
+                <span className="text-sm flex-1">
+                  <span className="text-faint text-xs block">volgende mijlpaal</span>
+                  {nextMilestone.title}
+                </span>
+              </button>
+            )}
+          </>
+        ) : (
+          <SetupHint icon={Target} title="Nog geen doel ingesteld" cta="Stel je North Star in" onCta={() => onNav('northstar')}>
+            Eén meetbaar doel met deadline geeft alle andere schermen richting.
+          </SetupHint>
+        )}
+      </div>
+
+      {/* ── habits: compact tap-to-check chip row ───────────────────────────── */}
+      {habits.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between px-1">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Gewoontes</p>
+            <span className="text-xs text-muted tabular-nums">{doneHabits}/{habits.length}</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {habits.map((h) => (
+              <button
+                key={h.id}
+                onClick={() => tickHabit(h.id)}
+                aria-pressed={h.doneToday}
+                className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                  h.doneToday ? 'bg-buurtkaart/12 text-buurtkaart-deep' : 'bg-sunken text-ink-soft hover:text-ink'
+                }`}
+              >
+                <span>{h.emoji}</span> {h.name}
+                <CheckCircle2 className={`h-3.5 w-3.5 ${h.doneToday ? '' : 'text-faint'}`} />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── tasks due today ───────────────────────────────────────────────────── */}
+      {assignedToday > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between px-1">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Vandaag afmaken</p>
+            <span className="text-xs text-muted tabular-nums">{doneToday.length}/{assignedToday}</span>
+          </div>
+          {focusTasks.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              {focusTasks.map((t) => {
+                const p = projectById.get(t.projectId)
+                const due = dueLabel(t.dueDate ?? null, { prefix: 'deadline ' })
+                return (
+                  <TaskRow
+                    key={t.id}
+                    title={t.name}
+                    meta={p?.name}
+                    priority={due.overdue ? 'high' : 'medium'}
+                    checked={false}
+                    onToggle={() => toggleProjectTask(t.id, true)}
+                  />
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── levensbalans: one computed score per domain, not a vibe ─────────── */}
       {radarData.length >= 3 && (
-        <div className="card p-3.5 animate-fade-up" style={{ animationDelay: '70ms' }}>
+        <div className="card p-4">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs uppercase tracking-wider text-muted font-semibold">Levensbalans</span>
+            <span className="text-[11px] font-medium uppercase tracking-wider text-muted">Levensbalans</span>
             <span className="text-xs text-faint">score per domein · vandaag</span>
           </div>
           <ResponsiveContainer width="100%" height={190}>
@@ -557,116 +549,12 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         action={{ label: 'Naar Geld', onClick: () => { setMetricDialog(null); onNav('money') } }}
       />
 
-      {/* ── taken vandaag: project tasks due today, the actual to-do list ───── */}
-      {assignedToday > 0 && (
-        <div className="card p-3.5 animate-fade-up" style={{ animationDelay: '80ms' }}>
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs uppercase tracking-wider text-muted font-semibold">Vandaag afmaken</span>
-            <span className="text-xs text-muted tabular-nums">{doneToday.length}/{assignedToday}</span>
-          </div>
-          <SegmentedProgress done={doneToday.length} total={assignedToday} color="bg-forest" />
-          {focusTasks.length > 0 && (
-            <div className="space-y-1.5 mt-2.5">
-              {focusTasks.map((t) => {
-                const p = projectById.get(t.projectId)
-                const due = dueLabel(t.dueDate ?? null, { prefix: 'deadline ' })
-                return (
-                  <div key={t.id} className="flex items-center gap-2.5">
-                    <button
-                      onClick={() => toggleProjectTask(t.id, true)}
-                      aria-label={`${t.name} afvinken`}
-                      className="shrink-0 h-6 w-6 rounded-md border border-line flex items-center justify-center text-transparent hover:border-forest hover:text-forest transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-                    >
-                      <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
-                    </button>
-                    <span className="text-sm text-ink truncate flex-1">{t.name}</span>
-                    <span className="text-xs text-faint truncate shrink-0 max-w-[9rem]">{p?.name ?? 'Project'}</span>
-                    <span className={`text-xs shrink-0 ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>{due.label}</span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── habits: compact tap-to-check chip row ───────────────────────────── */}
-      {habits.length > 0 && (
-        <div className="flex flex-wrap gap-2 animate-fade-up" style={{ animationDelay: '100ms' }}>
-          {habits.map((h) => (
-            <button
-              key={h.id}
-              onClick={() => tickHabit(h.id)}
-              aria-pressed={h.doneToday}
-              className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-                h.doneToday ? 'border-buurtkaart/50 bg-buurtkaart/10 text-buurtkaart-deep' : 'border-line hover:border-line-strong'
-              }`}
-            >
-              <span>{h.emoji}</span> {h.name}
-              <span className="text-xs text-faint flex items-center gap-0.5">
-                <Flame className="h-3 w-3" /> {h.streak}
-              </span>
-              <CheckCircle2 className={`h-3.5 w-3.5 ${h.doneToday ? 'text-buurtkaart' : 'text-faint'}`} />
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* ── below the fold: secondary detail, scroll for more ───────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-2">
-        {/* North Star */}
-        <div className="card p-4 animate-fade-up" style={{ animationDelay: '120ms' }}>
-          <div className="flex items-center justify-between mb-3">
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <Target className="h-4 w-4 text-muted" /> North Star
-            </span>
-            <button className="text-xs text-muted hover:text-ink flex items-center gap-1" onClick={() => onNav('northstar')}>
-              alles <ArrowRight className="h-3 w-3" />
-            </button>
-          </div>
-          {revenueGoal ? (
-            <>
-              <div className="text-sm text-ink truncate">{revenueGoal.title}</div>
-              <div className="flex items-baseline justify-between mt-1">
-                <span className="text-2xl font-bold tabular-nums">{eur(revenueGoal.current)}</span>
-                <span className="text-sm text-muted">van {eur(revenueGoal.target)}</span>
-              </div>
-              <div className="h-2 w-full rounded-full bg-line overflow-hidden mt-2">
-                <div className="h-full rounded-full bg-prjct transition-all duration-700" style={{ width: `${Math.min(1, goalPct) * 100}%` }} />
-              </div>
-              <p className="text-xs text-faint mt-1.5">
-                {Math.round(goalPct * 100)}%
-                {revenueGoal.deadline && ` · ${goalDays >= 0 ? `nog ${goalDays} dagen tot` : 'verlopen'} ${fmtDate(revenueGoal.deadline)}`}
-              </p>
-            </>
-          ) : (
-            <SetupHint
-              icon={Target}
-              title="Nog geen doel ingesteld"
-              cta="Stel je North Star in"
-              onCta={() => onNav('northstar')}
-            >
-              Eén meetbaar doel met deadline geeft alle andere schermen richting.
-            </SetupHint>
-          )}
-          {revenueGoal && nextMilestone && (
-            <button
-              onClick={() => toggleMilestone(nextMilestone.id)}
-              className="mt-3 w-full flex items-center gap-2 rounded-xl border border-line p-2.5 text-left hover:border-prjct/50 transition-colors"
-            >
-              <CheckCircle2 className="h-4 w-4 text-faint shrink-0" />
-              <span className="text-sm flex-1">
-                <span className="text-faint text-xs block">volgende mijlpaal</span>
-                {nextMilestone.title}
-              </span>
-            </button>
-          )}
-        </div>
-
+      {/* ── below the fold: secondary detail ──────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2">
         {/* Projects */}
-        <div className="card p-4 animate-fade-up" style={{ animationDelay: '140ms' }}>
+        <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="flex items-center gap-2 text-sm font-semibold">
+            <span className="flex items-center gap-2 text-sm font-medium">
               <FolderKanban className="h-4 w-4 text-muted" /> Projecten
             </span>
             <button className="text-xs text-muted hover:text-ink flex items-center gap-1" onClick={() => onNav('projects')}>
@@ -684,9 +572,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
                       {p.name} <span className="text-faint">· {p.client}</span>
                     </span>
                     {p.status === 'blocked' && <span className="chip bg-cross/15 text-cross-deep !py-0">geblokkeerd</span>}
-                    <span className={`text-xs shrink-0 ${due.overdue ? 'text-cross' : 'text-faint'}`}>
-                      {due.label}
-                    </span>
+                    <span className={`text-xs shrink-0 ${due.overdue ? 'text-cross' : 'text-faint'}`}>{due.label}</span>
                   </div>
                 )
               })}
@@ -694,21 +580,16 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           ) : projects.length ? (
             <Empty>Geen actieve projecten. 🎉</Empty>
           ) : (
-            <SetupHint
-              icon={FolderKanban}
-              title="Nog geen projecten"
-              cta="Open Projecten"
-              onCta={() => onNav('projects')}
-            >
+            <SetupHint icon={FolderKanban} title="Nog geen projecten" cta="Open Projecten" onCta={() => onNav('projects')}>
               Maak je eerste project aan om te beginnen.
             </SetupHint>
           )}
         </div>
 
         {/* Inbox */}
-        <div className="card p-4 animate-fade-up" style={{ animationDelay: '160ms' }}>
+        <div className="card p-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="flex items-center gap-2 text-sm font-semibold">
+            <span className="flex items-center gap-2 text-sm font-medium">
               <Mail className="h-4 w-4 text-muted" /> Belangrijke mail
             </span>
             <button className="text-xs text-muted hover:text-ink flex items-center gap-1" onClick={() => onNav('inbox')}>
@@ -718,16 +599,8 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           {importantMail.length ? (
             <div className="space-y-2">
               {importantMail.map((e) => (
-                <button
-                  key={e.id}
-                  onClick={() => markEmailRead(e.id)}
-                  className="w-full text-left flex items-start gap-2"
-                >
-                  {e.unread ? (
-                    <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-personal shrink-0" />
-                  ) : (
-                    <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-line shrink-0" />
-                  )}
+                <button key={e.id} onClick={() => markEmailRead(e.id)} className="w-full text-left flex items-start gap-2">
+                  <span className={`mt-1.5 h-1.5 w-1.5 rounded-full shrink-0 ${e.unread ? 'bg-personal' : 'bg-line'}`} />
                   <span className="min-w-0 flex-1">
                     <span className={`text-sm truncate block ${e.unread ? 'text-ink font-medium' : 'text-muted'}`}>
                       {e.from} <span className="text-faint font-normal">· {e.subject}</span>
@@ -740,12 +613,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           ) : emails.length ? (
             <Empty>Geen belangrijke mail. Inbox is rustig. 🎉</Empty>
           ) : (
-            <SetupHint
-              icon={Mail}
-              title="Inbox nog niet gekoppeld"
-              cta="Open Inbox"
-              onCta={() => onNav('inbox')}
-            >
+            <SetupHint icon={Mail} title="Inbox nog niet gekoppeld" cta="Open Inbox" onCta={() => onNav('inbox')}>
               Koppel Gmail via het Apps Script.
             </SetupHint>
           )}
