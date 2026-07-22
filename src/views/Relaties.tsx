@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { Empty } from '../components/ui'
-import { UserPlus, MessageCircle, Trash2, AlertCircle } from 'lucide-react'
+import { UserPlus, MessageCircle, Trash2, AlertCircle, Users } from 'lucide-react'
 import type { PersonKind } from '../types'
 
 const KIND_LABEL: Record<PersonKind, string> = {
@@ -48,31 +48,32 @@ export default function Relaties() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
-      <div>
-        <h1 className="text-xl font-semibold">Relaties</h1>
-        <p className="text-sm text-muted mt-1">
-          Wie verwaarloos je? Leg mensen vast, log contact, en zie wie je te lang niet sprak of
-          wie nog een reactie van je wacht.
-        </p>
+    <div className="flex flex-col gap-7 max-w-3xl mx-auto">
+      <div className="flex items-center gap-3">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+          <Users className="h-5 w-5 text-ink-soft" />
+        </span>
+        <div>
+          <h1 className="text-xl font-medium text-ink">Relaties</h1>
+          <p className="text-sm text-muted mt-0.5">
+            Wie verwaarloos je? Leg mensen vast, log contact, en zie wie je te lang niet sprak of
+            wie nog een reactie van je wacht.
+          </p>
+        </div>
       </div>
 
       <div className="card p-4 space-y-3">
-        <div className="flex items-center gap-2 text-sm font-medium"><UserPlus className="h-4 w-4 text-prjct" /> Persoon toevoegen</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Naam"
-            className="rounded-lg border border-line bg-transparent px-3 py-2 text-sm" />
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail (voor mail-matching)"
-            className="rounded-lg border border-line bg-transparent px-3 py-2 text-sm" />
+        <div className="flex items-center gap-2 text-sm font-medium"><UserPlus className="h-4 w-4 text-ink-soft" /> Persoon toevoegen</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Naam" className="input" />
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail (voor mail-matching)" className="input" />
         </div>
         <div className="flex items-center gap-2">
-          <select value={kind} onChange={(e) => setKind(e.target.value as PersonKind)}
-            className="rounded-lg border border-line bg-transparent px-3 py-2 text-sm">
+          <select value={kind} onChange={(e) => setKind(e.target.value as PersonKind)} className="input">
             {(['network', 'business', 'both'] as PersonKind[]).map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
           </select>
-          <button onClick={submit} disabled={!name.trim()}
-            className="ml-auto rounded-lg bg-prjct/10 text-prjct-deep border border-prjct/40 px-4 py-2 text-sm font-medium hover:bg-prjct/15 disabled:opacity-50">
-            Toevoegen
+          <button onClick={submit} disabled={!name.trim()} className="btn-primary ml-auto">
+            <UserPlus className="h-4 w-4" /> Toevoegen
           </button>
         </div>
       </div>
@@ -108,10 +109,10 @@ export default function Relaties() {
                     <button
                       title="Contact loggen"
                       onClick={() => logInteraction({ personId: p.id, channel: 'call', direction: 'out', summary: null, owedReply: false, occurredAt: new Date().toISOString() })}
-                      className="p-2 rounded-lg hover:bg-line text-muted">
+                      className="p-2 rounded-lg hover:bg-sunken text-muted">
                       <MessageCircle className="h-4 w-4" />
                     </button>
-                    <button title="Verwijderen" onClick={() => deletePerson(p.id)} className="p-2 rounded-lg hover:bg-line text-muted">
+                    <button title="Verwijderen" onClick={() => deletePerson(p.id)} className="p-2 rounded-lg hover:bg-sunken text-muted">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>

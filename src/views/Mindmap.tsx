@@ -325,8 +325,11 @@ export default function Mindmap() {
     <div className={outer}>
       {/* header */}
       <div className={`flex items-center justify-between gap-3 ${fullscreen ? 'px-4 pt-3 shrink-0' : ''}`}>
-        <h1 className="text-xl font-semibold flex items-center gap-2">
-          <Network className="h-5 w-5 text-forest" /> Second brain
+        <h1 className="text-xl font-medium text-ink flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Network className="h-5 w-5 text-ink-soft" />
+          </span>
+          Second brain
         </h1>
         <button
           onClick={() => setFullscreen((f) => !f)}

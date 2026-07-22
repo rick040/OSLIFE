@@ -65,14 +65,18 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
   const detail = detailId ? businessIdeas.find((i) => i.id === detailId) ?? null : null
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-faint">Strategie</div>
-          <h1 className="text-3xl font-bold tracking-tight leading-none">HQ.</h1>
-          <p className="text-sm text-muted mt-1.5">
-            Al je business ideeën — uitgewerkt door HEYRA tot een volledige analyse.
-          </p>
+    <div className="flex flex-col gap-7 max-w-3xl mx-auto">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Lightbulb className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">Strategie HQ</h1>
+            <p className="text-sm text-muted mt-0.5">
+              Al je business ideeën — uitgewerkt door HEYRA tot een volledige analyse.
+            </p>
+          </div>
         </div>
         <button onClick={() => setNewOpen(true)} className="btn-primary !py-2 text-sm shrink-0">
           <Plus className="h-4 w-4" /> Nieuw idee

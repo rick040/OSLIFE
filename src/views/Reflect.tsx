@@ -143,28 +143,31 @@ export default function Reflect() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="flex flex-col gap-7 max-w-4xl mx-auto">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Brain className="h-5 w-5 text-cross" /> Reflect
-          </h1>
-          <p className="text-sm text-muted mt-1 max-w-xl">
-            De laag die je <span className="text-ink">volledige</span> geheugen over alle domeinen tegelijk leest.
-            Vindt verbanden die geen enkele losse tracker kan zien, en schrijft verfijnde patronen terug.
-          </p>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Brain className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">Reflect</h1>
+            <p className="text-sm text-muted mt-0.5 max-w-xl">
+              De laag die je <span className="text-ink">volledige</span> geheugen over alle domeinen tegelijk leest.
+              Vindt verbanden die geen enkele losse tracker kan zien, en schrijft verfijnde patronen terug.
+            </p>
+          </div>
         </div>
-        <button className="btn-primary bg-cross hover:bg-cross/80" onClick={runNightlyReflect}>
+        <button className="btn-primary" onClick={runNightlyReflect}>
           <Play className="h-4 w-4" /> Nachtelijke reflectie uitvoeren
         </button>
       </div>
 
       {lastDigest && (
-        <div className="card p-3 border-cross/40 bg-cross/5 text-sm text-ink-soft animate-fade-up">
+        <div className="card p-3 bg-sunken text-sm text-ink-soft animate-fade-up">
           Reflectie heeft <b>{reflectCount}×</b> gedraaid. Patronen zijn versterkt en het Overzicht (dagelijkse nudge) is bijgewerkt.
           {lastDigest.narrative && (
             <p className="mt-2 text-ink flex items-start gap-2">
-              <Brain className="h-4 w-4 shrink-0 mt-0.5 text-cross" />
+              <Brain className="h-4 w-4 shrink-0 mt-0.5 text-ink-soft" />
               <span>{lastDigest.narrative}</span>
             </p>
           )}
