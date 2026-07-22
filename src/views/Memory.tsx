@@ -94,11 +94,11 @@ function InferenceCard({ item, onResolve }: {
 }
 
 const CATEGORY_META: Record<FactCategory, { label: string; hex: string }> = {
-  preference: { label: 'Voorkeur', hex: '#9385B0' },
+  preference: { label: 'Voorkeur', hex: '#A78BFA' },
   person: { label: 'Persoon', hex: '#7CA9C9' },
   context: { label: 'Context', hex: '#8A9A6B' },
-  workflow: { label: 'Werkwijze', hex: '#C6A05B' },
-  goal: { label: 'Doel', hex: '#C58392' },
+  workflow: { label: 'Werkwijze', hex: '#FBBF24' },
+  goal: { label: 'Doel', hex: '#F87171' },
 }
 
 const SOURCE_LABEL: Record<string, string> = {

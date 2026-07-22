@@ -257,9 +257,9 @@ export default function Reflect() {
               <Tooltip
                 contentStyle={CHART_TIP}
               />
-              <ReferenceLine yAxisId="l" y={6} stroke="#C58392" strokeDasharray="4 4" />
-              <Line yAxisId="l" type="monotone" dataKey="sleep" stroke="#C6A05B" strokeWidth={2} dot={false} name="sleep (h)" />
-              <Line yAxisId="r" type="monotone" dataKey="energy" stroke="#6E8CA8" strokeWidth={2} dot={false} name="energy (1-5)" />
+              <ReferenceLine yAxisId="l" y={6} stroke="#F87171" strokeDasharray="4 4" />
+              <Line yAxisId="l" type="monotone" dataKey="sleep" stroke="#FBBF24" strokeWidth={2} dot={false} name="sleep (h)" />
+              <Line yAxisId="r" type="monotone" dataKey="energy" stroke="#60A5FA" strokeWidth={2} dot={false} name="energy (1-5)" />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -282,7 +282,7 @@ export default function Reflect() {
               />
               <Bar dataKey="spend" radius={[4, 4, 0, 0]}>
                 {spendByDay.map((d) => (
-                  <Cell key={d.iso} fill={d.deadline ? '#C58392' : '#333333'} />
+                  <Cell key={d.iso} fill={d.deadline ? '#F87171' : '#333333'} />
                 ))}
               </Bar>
             </BarChart>

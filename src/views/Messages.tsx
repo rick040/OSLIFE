@@ -21,9 +21,9 @@ function domainTagKey(clientDomain: Domain | undefined, channels: Set<Channel>):
 }
 
 const CH: Record<Channel, { label: string; hex: string; icon: typeof Mail }> = {
-  email: { label: 'E-mail', hex: '#6E8CA8', icon: Mail },
-  fiverr: { label: 'Fiverr', hex: '#9385B0', icon: Zap },
-  whatsapp: { label: 'WhatsApp', hex: '#6FA07C', icon: MessageSquare },
+  email: { label: 'E-mail', hex: '#60A5FA', icon: Mail },
+  fiverr: { label: 'Fiverr', hex: '#A78BFA', icon: Zap },
+  whatsapp: { label: 'WhatsApp', hex: '#34D399', icon: MessageSquare },
 }
 
 function timeAgo(iso: string): string {
@@ -495,7 +495,7 @@ function ImportWhatsapp({ onClose }: { onClose: () => void }) {
         <TextArea value={raw} onChange={(e) => setRaw(e.target.value)} rows={8} placeholder="[12/06/2026, 14:32] Klant: Hoi Rick!…" />
       </Field>
       {result && (
-        <div className="text-sm rounded-xl px-3 py-2 flex items-center gap-2" style={{ background: '#6FA07C18' }}>
+        <div className="text-sm rounded-xl px-3 py-2 flex items-center gap-2" style={{ background: '#34D39918' }}>
           <Upload className="h-4 w-4 text-forest" /> {result}
         </div>
       )}

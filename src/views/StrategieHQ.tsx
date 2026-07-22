@@ -554,7 +554,7 @@ function IdeaDetailModal({
                     <div className="grid grid-cols-2 gap-2">
                       <SwotQuadrant title="Sterktes" items={idea.swot.strengths} hex="#3F7E52" />
                       <SwotQuadrant title="Zwaktes" items={idea.swot.weaknesses} hex="#B94A3F" />
-                      <SwotQuadrant title="Kansen" items={idea.swot.opportunities} hex="#6E8CA8" />
+                      <SwotQuadrant title="Kansen" items={idea.swot.opportunities} hex="#60A5FA" />
                       <SwotQuadrant title="Bedreigingen" items={idea.swot.threats} hex="#B98A2E" />
                     </div>
                   </div>

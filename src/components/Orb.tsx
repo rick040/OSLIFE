@@ -79,7 +79,7 @@ export default function Orb({
             height: size * 0.34,
             right: -size * 0.05,
             top: -size * 0.05,
-            background: '#C58392',
+            background: '#F87171',
             boxShadow: '0 0 0 2px hsl(var(--canvas))',
           }}
         />

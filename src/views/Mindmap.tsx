@@ -14,11 +14,11 @@ import {
 const BG     = '#F4F5EE'
 const DOT    = '#C8CDB8'
 const CAT_COL: Record<CatId, string> = {
-  work:   '#6E8CA8',
-  money:  '#6FA07C',
-  health: '#C58392',
-  habits: '#C6A05B',
-  goals:  '#9385B0',
+  work:   '#60A5FA',
+  money:  '#34D399',
+  health: '#F87171',
+  habits: '#FBBF24',
+  goals:  '#A78BFA',
   mind:   '#5C8050',
 }
 const CAT_LABEL: Record<CatId, string> = {
@@ -27,7 +27,7 @@ const CAT_LABEL: Record<CatId, string> = {
 const EDGE_DIM  = '#D8DDD0'
 const EDGE_LIT  = '#A8B4A0'
 const CROSS_DIM = '#BCC8D8'
-const CROSS_HI  = '#6E8CA8'
+const CROSS_HI  = '#60A5FA'
 const INK       = '#1B1D17'
 const MUTED     = '#5C6150'
 const FAINT     = '#8C9080'
@@ -373,8 +373,8 @@ export default function Mindmap() {
             onClick={() => setShowCross((v) => !v)}
             className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium border transition-all"
             style={{
-              background: showCross ? '#6E8CA818' : 'transparent',
-              borderColor: showCross ? '#6E8CA860' : '#D8DDD0',
+              background: showCross ? '#60A5FA18' : 'transparent',
+              borderColor: showCross ? '#60A5FA60' : '#D8DDD0',
               color: showCross ? '#3F586E' : FAINT,
             }}
           >
@@ -516,7 +516,7 @@ export default function Mindmap() {
                 >
                   {isSel && <circle r={r + 9} fill={col} opacity={0.1} filter="url(#glow-sel)" />}
                   {n.kind === 'category' && <circle r={r + 4} fill="none" stroke={col} strokeWidth={0.8} opacity={0.2} />}
-                  {alert && !isSel && <circle r={r + 4} fill="none" stroke="#C58392" strokeWidth={1} opacity={0.55} />}
+                  {alert && !isSel && <circle r={r + 4} fill="none" stroke="#F87171" strokeWidth={1} opacity={0.55} />}
                   {collapsed && <circle r={r + 4} fill="none" stroke={col} strokeWidth={0.7} strokeDasharray="2 3" opacity={0.35} />}
                   {(n.kind === 'category' || isSel) && <circle r={r} fill={col} opacity={0.15} filter="url(#glow-node)" />}
                   <circle r={r}

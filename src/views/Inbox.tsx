@@ -20,10 +20,10 @@ function extractName(addr: string): string {
 
 function impColor(imp: string | null | undefined): string {
   switch (imp) {
-    case 'high': return '#C58392'  // red
-    case 'med':  return '#C6A05B'  // orange
+    case 'high': return '#F87171'  // red
+    case 'med':  return '#FBBF24'  // orange
     case 'low':  return '#8C9080'  // muted
-    default:     return '#6FA07C'  // forest (important fallback)
+    default:     return '#34D399'  // forest (important fallback)
   }
 }
 

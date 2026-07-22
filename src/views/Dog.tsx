@@ -34,27 +34,27 @@ import {
 } from 'lucide-react'
 
 const KIND: Record<DogKind, { label: string; icon: typeof Bone; hex: string }> = {
-  walk:     { label: 'Wandeling',  icon: Footprints,   hex: '#6FA07C' },
-  food:     { label: 'Eten',       icon: Bone,          hex: '#C6A05B' },
-  water:    { label: 'Water',      icon: Droplet,       hex: '#6E8CA8' },
-  pee:      { label: 'Plas',       icon: Droplet,       hex: '#C6A05B' },
-  poop:     { label: 'Poep',       icon: Sparkles,      hex: '#9385B0' },
-  play:     { label: 'Spelen',     icon: Sparkles,      hex: '#C58392' },
-  treat:    { label: 'Snack',      icon: Bone,          hex: '#C6A05B' },
-  training: { label: 'Training',   icon: Dumbbell,      hex: '#6E8CA8' },
-  vet:      { label: 'Dierenarts', icon: Stethoscope,   hex: '#C58392' },
-  weight:   { label: 'Gewicht',    icon: Scale,         hex: '#9385B0' },
+  walk:     { label: 'Wandeling',  icon: Footprints,   hex: '#34D399' },
+  food:     { label: 'Eten',       icon: Bone,          hex: '#FBBF24' },
+  water:    { label: 'Water',      icon: Droplet,       hex: '#60A5FA' },
+  pee:      { label: 'Plas',       icon: Droplet,       hex: '#FBBF24' },
+  poop:     { label: 'Poep',       icon: Sparkles,      hex: '#A78BFA' },
+  play:     { label: 'Spelen',     icon: Sparkles,      hex: '#F87171' },
+  treat:    { label: 'Snack',      icon: Bone,          hex: '#FBBF24' },
+  training: { label: 'Training',   icon: Dumbbell,      hex: '#60A5FA' },
+  vet:      { label: 'Dierenarts', icon: Stethoscope,   hex: '#F87171' },
+  weight:   { label: 'Gewicht',    icon: Scale,         hex: '#A78BFA' },
   note:     { label: 'Notitie',    icon: Camera,        hex: '#5C6150' },
 }
 
 const QUICK: DogKind[] = ['walk', 'food', 'water', 'pee', 'poop', 'play', 'treat', 'training', 'vet']
 
 const MED_META: Record<DogMedicalType, { label: string; icon: typeof Syringe; hex: string }> = {
-  vaccine:   { label: 'Enting',      icon: Syringe,     hex: '#6FA07C' },
-  vet:       { label: 'Dierenarts',  icon: Stethoscope, hex: '#C58392' },
-  medication:{ label: 'Medicatie',   icon: Pill,        hex: '#6E8CA8' },
-  condition: { label: 'Conditie',    icon: HeartPulse,  hex: '#C6A05B' },
-  weight:    { label: 'Gewicht',     icon: Scale,       hex: '#9385B0' },
+  vaccine:   { label: 'Enting',      icon: Syringe,     hex: '#34D399' },
+  vet:       { label: 'Dierenarts',  icon: Stethoscope, hex: '#F87171' },
+  medication:{ label: 'Medicatie',   icon: Pill,        hex: '#60A5FA' },
+  condition: { label: 'Conditie',    icon: HeartPulse,  hex: '#FBBF24' },
+  weight:    { label: 'Gewicht',     icon: Scale,       hex: '#A78BFA' },
 }
 
 const POOP_LABELS: Record<number, string> = {
@@ -446,7 +446,7 @@ export default function Dog() {
     { k: 'walk' as DogKind, label: 'Wandelingen', goal: 3 },
     { k: 'food' as DogKind, label: 'Maaltijden', goal: 2 },
     { k: 'water' as DogKind, label: 'Water', goal: 5 },
-    { label: 'Sanitair', goal: 6, val: count('pee') + count('poop'), hex: '#9385B0', icon: Droplet },
+    { label: 'Sanitair', goal: 6, val: count('pee') + count('poop'), hex: '#A78BFA', icon: Droplet },
   ]
 
   const ageYears = Math.floor(daysBetween(dogProfile.birthdate, TODAY) / 365)
@@ -600,7 +600,7 @@ export default function Dog() {
               <XAxis dataKey="date" tick={AXIS_TICK_11} axisLine={false} tickLine={false} />
               <YAxis domain={[8, 10]} tick={AXIS_TICK_10} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={CHART_TIP_BARE} formatter={(v: number) => [`${v} kg`, 'gewicht']} />
-              <Line type="monotone" dataKey="kg" stroke="#9385B0" strokeWidth={2.5} dot={{ r: 3, fill: '#9385B0' }} />
+              <Line type="monotone" dataKey="kg" stroke="#A78BFA" strokeWidth={2.5} dot={{ r: 3, fill: '#A78BFA' }} />
             </LineChart>
           </ResponsiveContainer>
         </div>

@@ -34,17 +34,17 @@ export default function LoopExplainer({ onClose }: { onClose: () => void }) {
           <path
             d="M 90 120 H 700"
             fill="none"
-            stroke="#6E8CA8"
+            stroke="#60A5FA"
             strokeWidth="2"
             strokeDasharray="6 6"
             className="animate-flow-dash"
           />
           {/* act → reflect (down) */}
-          <path d="M 700 120 V 200 H 410" fill="none" stroke="#C58392" strokeWidth="2" strokeDasharray="6 6" className="animate-flow-dash" />
+          <path d="M 700 120 V 200 H 410" fill="none" stroke="#F87171" strokeWidth="2" strokeDasharray="6 6" className="animate-flow-dash" />
           {/* reflect → remember (up, write-back) */}
-          <path d="M 410 200 V 138" fill="none" stroke="#C58392" strokeWidth="2" strokeDasharray="6 6" className="animate-flow-dash" />
+          <path d="M 410 200 V 138" fill="none" stroke="#F87171" strokeWidth="2" strokeDasharray="6 6" className="animate-flow-dash" />
           {/* act → intake (outcomes become new signals) */}
-          <path d="M 700 120 V 250 H 90 V 138" fill="none" stroke="#6FA07C" strokeWidth="1.5" strokeDasharray="4 6" className="animate-flow-dash" opacity="0.7" />
+          <path d="M 700 120 V 250 H 90 V 138" fill="none" stroke="#34D399" strokeWidth="1.5" strokeDasharray="4 6" className="animate-flow-dash" opacity="0.7" />
 
           {/* layer nodes */}
           {LAYERS.map((l) => (
@@ -61,7 +61,7 @@ export default function LoopExplainer({ onClose }: { onClose: () => void }) {
 
           {/* reflect node */}
           <g>
-            <rect x={355} y={200} width={110} height={40} rx={12} fill="#F6ECEE" stroke="#C58392" />
+            <rect x={355} y={200} width={110} height={40} rx={12} fill="#F6ECEE" stroke="#F87171" />
             <text x={410} y={218} textAnchor="middle" fill="#8A5260" fontSize="13" fontWeight="600">
               Reflect
             </text>

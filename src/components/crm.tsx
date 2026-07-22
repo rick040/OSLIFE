@@ -30,10 +30,10 @@ export const CRM_STATUS: Record<ProjectStatus, string> = {
   done: 'Opgeleverd',
 }
 export const STATUS_HEX: Record<string, string> = {
-  'In uitvoering': '#6FA07C',
-  Gepland: '#6E8CA8',
-  Gepauzeerd: '#C6A05B',
-  Opgeleverd: '#9385B0',
+  'In uitvoering': '#34D399',
+  Gepland: '#60A5FA',
+  Gepauzeerd: '#FBBF24',
+  Opgeleverd: '#A78BFA',
 }
 export const PROJECT_STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
   { value: 'lead', label: 'Gepland (lead)' },
@@ -44,8 +44,8 @@ export const PROJECT_STATUS_OPTIONS: { value: ProjectStatus; label: string }[] =
 ]
 
 export const CLIENT_HEX: Record<string, string> = {
-  Active: '#6FA07C', Lead: '#6E8CA8', Prospect: '#9385B0',
-  Planned: '#C6A05B', Inactive: '#C58392', Past: '#8C9080',
+  Active: '#34D399', Lead: '#60A5FA', Prospect: '#A78BFA',
+  Planned: '#FBBF24', Inactive: '#F87171', Past: '#8C9080',
 }
 export const CLIENT_STATUS_NL: Record<string, string> = {
   Active: 'Actief', Lead: 'Lead', Prospect: 'Prospect',
@@ -53,7 +53,7 @@ export const CLIENT_STATUS_NL: Record<string, string> = {
 }
 export const CLIENT_STATUS_OPTIONS: ClientStatus[] = ['Active', 'Lead', 'Prospect', 'Planned', 'Inactive', 'Past']
 
-export const PRIO_HEX: Record<string, string> = { High: '#C58392', Medium: '#C6A05B', Low: '#8C9080' }
+export const PRIO_HEX: Record<string, string> = { High: '#F87171', Medium: '#FBBF24', Low: '#8C9080' }
 export const PRIO_NL: Record<string, string> = { High: 'Hoog', Medium: 'Gemiddeld', Low: 'Laag' }
 export const PRIORITY_OPTIONS: Priority[] = ['High', 'Medium', 'Low']
 

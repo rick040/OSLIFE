@@ -17,13 +17,13 @@ import type { ActivityAnalysis } from '../lib/crm/activityAnalyzer'
 import { unbilledBillableHours, sumHours, invoiceAmountFromHours } from '../lib/crm/invoicing'
 
 const DOMAIN_COLOR: Record<string, string> = {
-  parkingyou: '#6E8CA8', prjct: '#9385B0', buurtkaart: '#6FA07C', personal: '#C6A05B', cross: '#C58392',
+  parkingyou: '#60A5FA', prjct: '#A78BFA', buurtkaart: '#34D399', personal: '#FBBF24', cross: '#F87171',
 }
 const INVOICE_STATUS: Record<Invoice['status'], { label: string; hex: string }> = {
   draft: { label: 'Concept', hex: '#8C9080' },
-  sent: { label: 'Verstuurd', hex: '#6E8CA8' },
-  paid: { label: 'Betaald', hex: '#6FA07C' },
-  overdue: { label: 'Te laat', hex: '#C58392' },
+  sent: { label: 'Verstuurd', hex: '#60A5FA' },
+  paid: { label: 'Betaald', hex: '#34D399' },
+  overdue: { label: 'Te laat', hex: '#F87171' },
 }
 const RECUR_NL: Record<Recurrence, string> = { daily: 'dagelijks', weekly: 'wekelijks', monthly: 'maandelijks' }
 
@@ -50,7 +50,7 @@ export default function ProjectDetail({ project: initial, onClose }: { project: 
   const [confirmDel, setConfirmDel] = useState(false)
 
   const client = clients.find((c) => c.id === project.clientId)
-  const iconColor = DOMAIN_COLOR[project.domain] ?? '#9385B0'
+  const iconColor = DOMAIN_COLOR[project.domain] ?? '#A78BFA'
   const crmStatus = CRM_STATUS[project.status]
   const statusColor = STATUS_HEX[crmStatus]
 
@@ -226,7 +226,7 @@ function TaskRow({ t, onToggle, onDelete }: { t: ProjectTask; onToggle: () => vo
   const d = deadlineInfo(t.dueDate ?? null)
   return (
     <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-line last:border-0 group">
-      <button onClick={onToggle} className="shrink-0 h-5 w-5 rounded-md border flex items-center justify-center" style={{ background: t.done ? '#6FA07C' : 'transparent', borderColor: t.done ? '#6FA07C' : '#C8C8CC' }}>
+      <button onClick={onToggle} className="shrink-0 h-5 w-5 rounded-md border flex items-center justify-center" style={{ background: t.done ? '#34D399' : 'transparent', borderColor: t.done ? '#34D399' : '#C8C8CC' }}>
         {t.done && <Check className="h-3 w-3 text-white" strokeWidth={2.5} />}
       </button>
       <div className="flex-1 min-w-0">
@@ -321,7 +321,7 @@ function Milestones({ projectId, milestones }: { projectId: string; milestones: 
         return (
           <div key={m.id} className="rounded-2xl bg-surface border border-line p-3.5 group">
             <div className="flex items-start gap-2">
-              <button onClick={() => updateMilestone(m.id, { done: !m.done })} className="mt-0.5 shrink-0 h-5 w-5 rounded-md border flex items-center justify-center" style={{ background: m.done ? '#6FA07C' : 'transparent', borderColor: m.done ? '#6FA07C' : '#C8C8CC' }}>
+              <button onClick={() => updateMilestone(m.id, { done: !m.done })} className="mt-0.5 shrink-0 h-5 w-5 rounded-md border flex items-center justify-center" style={{ background: m.done ? '#34D399' : 'transparent', borderColor: m.done ? '#34D399' : '#C8C8CC' }}>
                 {m.done && <Check className="h-3 w-3 text-white" strokeWidth={2.5} />}
               </button>
               <div className="flex-1 min-w-0">
@@ -511,7 +511,7 @@ function Activity({ projectId }: { projectId: string }) {
         />
         <button onClick={submit} disabled={!text.trim()} className="w-full py-1.5 rounded-lg bg-forest text-white text-sm font-semibold disabled:opacity-40">Loggen &amp; analyseren</button>
         {lastResult && (
-          <div className="text-xs rounded-lg px-3 py-2 flex items-start gap-2" style={{ background: lastResult.match ? '#6FA07C18' : '#8C908018' }}>
+          <div className="text-xs rounded-lg px-3 py-2 flex items-start gap-2" style={{ background: lastResult.match ? '#34D39918' : '#8C908018' }}>
             <Sparkles className="h-3.5 w-3.5 mt-0.5 shrink-0 text-forest" />
             <span className="text-ink-soft">{lastResult.reason}{lastResult.match ? ` · ${Math.round(lastResult.confidence * 100)}% zeker` : ''}</span>
           </div>
@@ -526,7 +526,7 @@ function Activity({ projectId }: { projectId: string }) {
             <div className="flex items-center gap-2 mt-1.5">
               <span className="text-[11px] text-faint">{fmtDate(a.createdAt.slice(0, 10))}</span>
               {a.action && (
-                <Pill hex="#6FA07C" className="text-[10px] font-semibold px-1.5 py-0.5 rounded">
+                <Pill hex="#34D399" className="text-[10px] font-semibold px-1.5 py-0.5 rounded">
                   {a.action === 'completed' ? 'taak afgevinkt' : a.action === 'progress' ? 'voortgang bijgewerkt' : 'gekoppeld'}
                 </Pill>
               )}

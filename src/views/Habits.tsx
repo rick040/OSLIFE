@@ -108,7 +108,7 @@ export default function Habits() {
                     className={`h-6 w-6 rounded-full flex items-center justify-center shrink-0 ${
                       h.doneToday ? 'text-white' : 'border border-line text-transparent'
                     }`}
-                    style={h.doneToday ? { background: h.color ?? '#6FA07C' } : undefined}
+                    style={h.doneToday ? { background: h.color ?? '#34D399' } : undefined}
                   >
                     <Check className="h-3.5 w-3.5" />
                   </span>
@@ -132,7 +132,7 @@ export default function Habits() {
                 />
                 <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                   {weekData.map((d) => (
-                    <Cell key={d.iso} fill={d.count === habits.length ? '#34431F' : '#6FA07C'} />
+                    <Cell key={d.iso} fill={d.count === habits.length ? '#34431F' : '#34D399'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -169,8 +169,8 @@ export default function Habits() {
                       title={`${iso}: ${done ? 'gedaan' : 'gemist'}`}
                       className="aspect-square rounded-md"
                       style={{
-                        background: done ? active.color ?? '#6FA07C' : '#F4F5EE',
-                        outline: isToday ? `2px solid ${active.color ?? '#6FA07C'}` : 'none',
+                        background: done ? active.color ?? '#34D399' : '#F4F5EE',
+                        outline: isToday ? `2px solid ${active.color ?? '#34D399'}` : 'none',
                         outlineOffset: 1,
                       }}
                     />
@@ -193,14 +193,14 @@ export default function Habits() {
                 return (
                   <div key={h.id} className="p-3.5">
                     <div className="flex items-center gap-2.5 mb-2">
-                      <span className="h-2 w-2 rounded-full shrink-0" style={{ background: h.color ?? '#6FA07C' }} />
+                      <span className="h-2 w-2 rounded-full shrink-0" style={{ background: h.color ?? '#34D399' }} />
                       <span className="text-lg shrink-0">{h.emoji}</span>
                       <button onClick={() => setSel(h.id)} className="flex-1 text-left text-sm font-medium truncate hover:text-forest">{h.name}</button>
                       {h.streak > 0 && <span className="text-[11px] text-personal-deep flex items-center gap-0.5"><Flame className="h-3 w-3" /> {h.streak}</span>}
                       <button onClick={() => deleteHabit(h.id)} className="text-faint hover:text-cross p-1 shrink-0" aria-label="Verwijder"><X className="h-3.5 w-3.5" /></button>
                     </div>
                     <div className="h-1 rounded-full bg-line overflow-hidden">
-                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${c}%`, background: h.color ?? '#6FA07C' }} />
+                      <div className="h-full rounded-full transition-all duration-500" style={{ width: `${c}%`, background: h.color ?? '#34D399' }} />
                     </div>
                     <div className="text-[11px] text-faint mt-1">{c}% in 30 dagen</div>
                   </div>

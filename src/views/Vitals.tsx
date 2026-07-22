@@ -140,10 +140,10 @@ export default function Vitals() {
             <XAxis dataKey="date" tick={AXIS_TICK_10} />
             <YAxis tick={AXIS_TICK_10} />
             <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [v.toLocaleString('nl-NL'), 'stappen']} />
-            <ReferenceLine y={today.stepGoal} stroke="#6FA07C" strokeDasharray="4 4" />
+            <ReferenceLine y={today.stepGoal} stroke="#34D399" strokeDasharray="4 4" />
             <Bar dataKey="steps" radius={[4, 4, 0, 0]}>
               {data.map((x) => (
-                <Cell key={x.date} fill={x.steps >= today.stepGoal ? '#6FA07C' : '#333333'} />
+                <Cell key={x.date} fill={x.steps >= today.stepGoal ? '#34D399' : '#333333'} />
               ))}
             </Bar>
           </BarChart>
@@ -163,8 +163,8 @@ export default function Vitals() {
               <XAxis dataKey="date" tick={AXIS_TICK_10} />
               <YAxis domain={[0, 9]} tick={AXIS_TICK_10} />
               <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v}u`, 'slaap']} />
-              <ReferenceLine y={6} stroke="#C58392" strokeDasharray="4 4" />
-              <Line type="monotone" dataKey="sleep" stroke="#6E8CA8" strokeWidth={2} dot={false} />
+              <ReferenceLine y={6} stroke="#F87171" strokeDasharray="4 4" />
+              <Line type="monotone" dataKey="sleep" stroke="#60A5FA" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -181,7 +181,7 @@ export default function Vitals() {
               <XAxis dataKey="date" tick={AXIS_TICK_10} />
               <YAxis domain={[50, 70]} tick={AXIS_TICK_10} />
               <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v} bpm`, 'rust-HR']} />
-              <Line type="monotone" dataKey="hr" stroke="#C58392" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="hr" stroke="#F87171" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -249,10 +249,10 @@ export default function Vitals() {
             <XAxis dataKey="date" tick={AXIS_TICK_10} />
             <YAxis allowDecimals={false} tick={AXIS_TICK_10} />
             <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v} meeting(s)`, 'aantal']} />
-            <ReferenceLine y={3} stroke="#C58392" strokeDasharray="4 4" />
+            <ReferenceLine y={3} stroke="#F87171" strokeDasharray="4 4" />
             <Bar dataKey="count" radius={[4, 4, 0, 0]}>
               {meetingData.map((m) => (
-                <Cell key={m.iso} fill={deadlines.includes(m.iso) ? '#C58392' : '#333333'} />
+                <Cell key={m.iso} fill={deadlines.includes(m.iso) ? '#F87171' : '#333333'} />
               ))}
             </Bar>
           </BarChart>

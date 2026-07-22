@@ -19,20 +19,20 @@ interface Submission {
 }
 
 const SUB_STATUS: Record<string, { label: string; hex: string }> = {
-  nieuw: { label: 'Nieuw', hex: '#6E8CA8' },
-  benaderd: { label: 'Benaderd', hex: '#C6A05B' },
-  akkoord: { label: 'Akkoord', hex: '#6FA07C' },
+  nieuw: { label: 'Nieuw', hex: '#60A5FA' },
+  benaderd: { label: 'Benaderd', hex: '#FBBF24' },
+  akkoord: { label: 'Akkoord', hex: '#34D399' },
   betaald: { label: 'Betaald', hex: '#34431F' },
-  afgewezen: { label: 'Afgewezen', hex: '#C58392' },
+  afgewezen: { label: 'Afgewezen', hex: '#F87171' },
 }
 const INV_STATUS: Record<string, { label: string; hex: string }> = {
-  open: { label: 'Open', hex: '#C6A05B' },
-  te_laat: { label: 'Te laat', hex: '#C58392' },
-  betaald: { label: 'Betaald', hex: '#6FA07C' },
+  open: { label: 'Open', hex: '#FBBF24' },
+  te_laat: { label: 'Te laat', hex: '#F87171' },
+  betaald: { label: 'Betaald', hex: '#34D399' },
 }
 const ED_STATUS: Record<string, { label: string; hex: string }> = {
-  upcoming: { label: 'Aankomend', hex: '#6E8CA8' },
-  active: { label: 'Actief', hex: '#6FA07C' },
+  upcoming: { label: 'Aankomend', hex: '#60A5FA' },
+  active: { label: 'Actief', hex: '#34D399' },
   completed: { label: 'Afgerond', hex: '#8C9080' },
 }
 
