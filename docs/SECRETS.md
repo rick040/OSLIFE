@@ -27,6 +27,7 @@ Publiek/veilig (RLS beschermt de data).
 | `OSLIFE_USER_ID` | *-sheet-ingest, wallet-ingest, notify-tick, telegram-webhook | Supabase → Authentication → Users → jouw UUID |
 | `INGEST_SECRET` | health/payments/screentime-sheet-ingest | **zelf verzinnen** (random) |
 | `WALLET_WEBHOOK_SECRET` | wallet-ingest | **zelf verzinnen** (random) |
+| `GEOFENCE_WEBHOOK_SECRET` *(optioneel)* | geofence-ingest | **zelf verzinnen** (random) — valt terug op `WALLET_WEBHOOK_SECRET` als niet gezet (zelfde telefoon/MacroDroid-app). |
 | `GBK_API_KEY` | gbk-overview | Geldrop Buurtkaart admin → API key (`X-GBK-Key`) |
 | `GBK_BASE_URL` *(optioneel)* | gbk-overview | `https://www.geldropbuurtkaart.nl` (default) |
 | `ANTHROPIC_API_KEY` | heyra-brain | console.anthropic.com → API keys. HEYRA's agents (src/heyra/agents/) en de nachtelijke Reflect-narrative vallen terug op de bestaande rule-based tekst als deze niet gezet is — de app breekt nooit zonder deze key. Ook gebruikt door summarize-email en draft-email-reply (Inbox, zie §8). |
@@ -243,7 +244,7 @@ zelf, in deze volgorde:
 
 ## Zelf verzinnen vs. opzoeken
 
-- **Verzinnen** (`openssl rand -base64 32`): `INGEST_SECRET`, `WALLET_WEBHOOK_SECRET`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, `WORKER_SECRET`, `COGNEE_WORKER_SECRET`.
+- **Verzinnen** (`openssl rand -base64 32`): `INGEST_SECRET`, `WALLET_WEBHOOK_SECRET`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, `WORKER_SECRET`, `COGNEE_WORKER_SECRET`, `GEOFENCE_WEBHOOK_SECRET`.
 - **Opzoeken**: `VITE_SUPABASE_ANON_KEY`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `OSLIFE_USER_ID`, `GBK_API_KEY`, `TELEGRAM_BOT_TOKEN`, `VOYAGE_API_KEY`, `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` (§8).
 
 ## Per databron: welke secrets heb je nodig
@@ -255,6 +256,7 @@ zelf, in deze volgorde:
 | Buurtkaart (WordPress API) | `GBK_API_KEY` |
 | Geld · Betalingen-sheet | `INGEST_SECRET`, `OSLIFE_USER_ID` (+ Apps Script props) |
 | Geld · Wallet | `WALLET_WEBHOOK_SECRET`, `OSLIFE_USER_ID` |
+| Locatie-check-ins (geofence, PM-072 Fase 1) | `GEOFENCE_WEBHOOK_SECRET` (optioneel — valt terug op `WALLET_WEBHOOK_SECRET`), `OSLIFE_USER_ID` |
 | Schermtijd-sheet | `INGEST_SECRET`, `OSLIFE_USER_ID` (+ Apps Script props) |
 | Gezondheid-sheet | `INGEST_SECRET`, `OSLIFE_USER_ID` (+ Apps Script props) |
 | Inbox / Agenda / Te betalen | Apps Script: `SUPABASE_SERVICE_KEY`, `OSLIFE_USER_ID` (+ `PAYMENTS_CAL_ID`) |
