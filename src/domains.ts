@@ -77,7 +77,7 @@ export const KIND_LABEL: Record<ItemKind, string> = {
 export const SENTIMENT_META: Record<Sentiment, { label: string; cls: string }> = {
   positive: { label: 'positief', cls: 'bg-buurtkaart/15 text-buurtkaart-deep' },
   neutral: { label: 'neutraal', cls: 'bg-line text-muted' },
-  negative: { label: 'negatief', cls: 'bg-orange-500/15 text-orange-700' },
+  negative: { label: 'negatief', cls: 'bg-personal/15 text-personal-deep' },
   stressed: { label: 'gestrest', cls: 'bg-cross/15 text-cross-deep' },
 }
 
