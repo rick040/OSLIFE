@@ -86,19 +86,19 @@ export default function Vitals() {
         <div className="text-xs font-semibold uppercase tracking-wider mb-2">Vandaag</div>
         <div className="flex flex-wrap items-center justify-around gap-4">
           <div className="flex flex-col items-center gap-1">
-            <Ring value={today.steps / today.stepGoal} size={72} color="stroke-[#16210f]" label={today.steps.toLocaleString('nl-NL')} />
+            <Ring value={today.steps / today.stepGoal} size={72} color="stroke-forest-hi" label={today.steps.toLocaleString('nl-NL')} />
             <span className="text-xs font-medium flex items-center gap-1"><Footprints className="h-3.5 w-3.5" /> doel {today.stepGoal.toLocaleString('nl-NL')}</span>
           </div>
           <div className="flex flex-col items-center gap-1">
-            <Ring value={today.sleepHours / 8} size={72} color="stroke-[#16210f]" label={today.sleepHours + 'u'} />
+            <Ring value={today.sleepHours / 8} size={72} color="stroke-forest-hi" label={today.sleepHours + 'u'} />
             <span className="text-xs font-medium flex items-center gap-1"><Moon className="h-3.5 w-3.5" /> doel 8u</span>
           </div>
           <div className="flex flex-col items-center gap-1">
-            <Ring value={today.energy / 5} size={72} color="stroke-[#16210f]" label={today.energy + '/5'} />
+            <Ring value={today.energy / 5} size={72} color="stroke-forest-hi" label={today.energy + '/5'} />
             <span className="text-xs font-medium flex items-center gap-1"><Zap className="h-3.5 w-3.5" /> energie</span>
           </div>
           <div className="flex flex-col items-center gap-1">
-            <Ring value={today.mood / 5} size={72} color="stroke-[#16210f]" label={today.mood + '/5'} />
+            <Ring value={today.mood / 5} size={72} color="stroke-forest-hi" label={today.mood + '/5'} />
             <span className="text-xs font-medium flex items-center gap-1"><Smile className="h-3.5 w-3.5" /> stemming</span>
           </div>
           <div className="flex flex-col items-center justify-center">

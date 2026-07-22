@@ -22,7 +22,7 @@ const SUB_STATUS: Record<string, { label: string; hex: string }> = {
   nieuw: { label: 'Nieuw', hex: '#60A5FA' },
   benaderd: { label: 'Benaderd', hex: '#FBBF24' },
   akkoord: { label: 'Akkoord', hex: '#34D399' },
-  betaald: { label: 'Betaald', hex: '#34431F' },
+  betaald: { label: 'Betaald', hex: '#34D399' },
   afgewezen: { label: 'Afgewezen', hex: '#F87171' },
 }
 const INV_STATUS: Record<string, { label: string; hex: string }> = {
@@ -33,7 +33,7 @@ const INV_STATUS: Record<string, { label: string; hex: string }> = {
 const ED_STATUS: Record<string, { label: string; hex: string }> = {
   upcoming: { label: 'Aankomend', hex: '#60A5FA' },
   active: { label: 'Actief', hex: '#34D399' },
-  completed: { label: 'Afgerond', hex: '#8C9080' },
+  completed: { label: 'Afgerond', hex: '#a3a3a3' },
 }
 
 import { eur } from '../lib/format'

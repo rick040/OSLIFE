@@ -243,7 +243,7 @@ export default function Money() {
             <div className="card-hero relative p-4">
               {transactions.length >= 2 && (
                 <span className="absolute right-4 top-4">
-                  <Sparkline values={balanceTrend} className="text-[#16210f]" width={56} height={24} />
+                  <Sparkline values={balanceTrend} className="text-forest-hi" width={56} height={24} />
                 </span>
               )}
               <div className="text-xs font-semibold uppercase tracking-wider">Saldo</div>
@@ -283,9 +283,9 @@ export default function Money() {
                 <BarChart data={byCategory} layout="vertical" margin={{ top: 0, right: 16, left: 24, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" horizontal={false} />
                   <XAxis type="number" tick={AXIS_TICK_10} />
-                  <YAxis type="category" dataKey="cat" width={90} tick={{ fill: '#5C6150', fontSize: 11 }} />
+                  <YAxis type="category" dataKey="cat" width={90} tick={{ fill: '#8c8c8c', fontSize: 11 }} />
                   <Tooltip
-                    cursor={{ fill: '#F4F5EE' }}
+                    cursor={{ fill: '#2a2a2a' }}
                     contentStyle={CHART_TIP}
                     formatter={(v: number) => [`€${v}`, 'uitgegeven']}
                   />

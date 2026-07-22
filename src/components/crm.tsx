@@ -45,7 +45,7 @@ export const PROJECT_STATUS_OPTIONS: { value: ProjectStatus; label: string }[] =
 
 export const CLIENT_HEX: Record<string, string> = {
   Active: '#34D399', Lead: '#60A5FA', Prospect: '#A78BFA',
-  Planned: '#FBBF24', Inactive: '#F87171', Past: '#8C9080',
+  Planned: '#FBBF24', Inactive: '#F87171', Past: '#a3a3a3',
 }
 export const CLIENT_STATUS_NL: Record<string, string> = {
   Active: 'Actief', Lead: 'Lead', Prospect: 'Prospect',
@@ -53,7 +53,7 @@ export const CLIENT_STATUS_NL: Record<string, string> = {
 }
 export const CLIENT_STATUS_OPTIONS: ClientStatus[] = ['Active', 'Lead', 'Prospect', 'Planned', 'Inactive', 'Past']
 
-export const PRIO_HEX: Record<string, string> = { High: '#F87171', Medium: '#FBBF24', Low: '#8C9080' }
+export const PRIO_HEX: Record<string, string> = { High: '#F87171', Medium: '#FBBF24', Low: '#a3a3a3' }
 export const PRIO_NL: Record<string, string> = { High: 'Hoog', Medium: 'Gemiddeld', Low: 'Laag' }
 export const PRIORITY_OPTIONS: Priority[] = ['High', 'Medium', 'Low']
 
@@ -294,7 +294,7 @@ export function ProjectRow({ p, onClick, onClientClick }: { p: Project; onClick:
 }
 
 export function ClientCard({ c, onClick }: { c: Client; onClick: () => void }) {
-  const color = CLIENT_HEX[c.clientStatus ?? 'Past'] ?? '#8C9080'
+  const color = CLIENT_HEX[c.clientStatus ?? 'Past'] ?? '#a3a3a3'
   return (
     <button onClick={onClick} className="card p-3.5 w-40 shrink-0 text-left hover:bg-sunken transition-colors">
       <div className="flex items-center gap-2 mb-2">

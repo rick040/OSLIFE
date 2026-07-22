@@ -18,13 +18,17 @@ import { Markdown } from '../components/BraindumpCard'
 const STATUS_LABEL: Record<IdeaLifecycleStatus, string> = {
   idea: 'Idee', active: 'Actief', parked: 'Geparkeerd', archived: 'Gearchiveerd',
 }
+// Light pastel stops — these are chip text colors read against their own
+// ~12%-alpha tinted background, so they need to stay light on the dark
+// canvas (the same "-deep" convention as the domain tokens), not the dark
+// saturated stops a light-mode card would have used.
 const STATUS_HEX: Record<IdeaLifecycleStatus, string> = {
-  idea: '#8C9080', active: '#3F7E52', parked: '#B98A2E', archived: '#5C6150',
+  idea: '#a3a3a3', active: '#6ee7b7', parked: '#fcd34d', archived: '#8c8c8c',
 }
 const IMPACT_LABEL: Record<ImpactLevel, string> = { low: 'laag', medium: 'gemiddeld', high: 'hoog' }
 /** Risk impact: high = bad (red). Opportunity potential: high = good (green). */
-const RISK_HEX: Record<ImpactLevel, string> = { low: '#3F7E52', medium: '#B98A2E', high: '#B94A3F' }
-const POTENTIAL_HEX: Record<ImpactLevel, string> = { low: '#8C9080', medium: '#B98A2E', high: '#3F7E52' }
+const RISK_HEX: Record<ImpactLevel, string> = { low: '#6ee7b7', medium: '#fcd34d', high: '#fca5a5' }
+const POTENTIAL_HEX: Record<ImpactLevel, string> = { low: '#a3a3a3', medium: '#fcd34d', high: '#6ee7b7' }
 
 function feasibilityStroke(score: number | null): string {
   if (score === null) return 'stroke-line'
@@ -506,7 +510,7 @@ function IdeaDetailModal({
                           <BarChart data={financeData} layout="vertical" margin={{ top: 0, right: 16, left: 8, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" horizontal={false} className="stroke-line" />
                             <XAxis type="number" tick={AXIS_TICK_10} tickFormatter={(v) => eur(v)} />
-                            <YAxis type="category" dataKey="name" width={70} tick={{ fill: '#5C6150', fontSize: 11 }} />
+                            <YAxis type="category" dataKey="name" width={70} tick={{ fill: '#8c8c8c', fontSize: 11 }} />
                             <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => eur(v)} />
                             <Bar dataKey="omzet" radius={[0, 4, 4, 0]} fill={DOMAIN_HEX[idea.domain]} />
                           </BarChart>

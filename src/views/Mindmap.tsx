@@ -10,33 +10,33 @@ import {
   Network, Zap, Lightbulb, Eye, X, Plus, Minus, Maximize2, Minimize2, Layers, Tag, GitFork,
 } from 'lucide-react'
 
-// ── light branded palette (matches app design system) ─────────────────────
-const BG     = '#F4F5EE'
-const DOT    = '#C8CDB8'
+// ── dark branded palette (matches app design system) ───────────────────────
+const BG     = '#0a0a0a'
+const DOT    = '#262626'
 const CAT_COL: Record<CatId, string> = {
   work:   '#60A5FA',
   money:  '#34D399',
   health: '#F87171',
   habits: '#FBBF24',
   goals:  '#A78BFA',
-  mind:   '#5C8050',
+  mind:   '#84CC16',
 }
 const CAT_LABEL: Record<CatId, string> = {
   work: 'WORK', money: 'MONEY', health: 'HEALTH', habits: 'HABITS', goals: 'GOALS', mind: 'MIND',
 }
-const EDGE_DIM  = '#D8DDD0'
-const EDGE_LIT  = '#A8B4A0'
-const CROSS_DIM = '#BCC8D8'
+const EDGE_DIM  = '#262626'
+const EDGE_LIT  = '#525252'
+const CROSS_DIM = '#334155'
 const CROSS_HI  = '#60A5FA'
-const INK       = '#1B1D17'
-const MUTED     = '#5C6150'
-const FAINT     = '#8C9080'
+const INK       = '#f5f5f5'
+const MUTED     = '#a3a3a3'
+const FAINT     = '#8c8c8c'
 const HALO      = BG
 
 const TONE: Record<string, { bg: string; border: string; accent: string; icon: typeof Zap; label: string }> = {
-  action:  { bg: '#EFF3F8', border: '#BFD0E0', accent: '#3F586E', icon: Zap,       label: 'actie' },
-  insight: { bg: '#F3F1F8', border: '#C8C0DC', accent: '#5C4F79', icon: Lightbulb, label: 'inzicht' },
-  watch:   { bg: '#FAF4EC', border: '#DDD0B8', accent: '#856325', icon: Eye,       label: 'let op' },
+  action:  { bg: '#1a2733', border: '#2d4356', accent: '#93c5fd', icon: Zap,       label: 'actie' },
+  insight: { bg: '#211f2e', border: '#3a3550', accent: '#c4b5fd', icon: Lightbulb, label: 'inzicht' },
+  watch:   { bg: '#2b2410', border: '#4a3f1a', accent: '#fcd34d', icon: Eye,       label: 'let op' },
 }
 
 const dotR = (n: BNode) => n.kind === 'category' ? 10 : n.kind === 'entity' ? 6 : 4
@@ -352,12 +352,12 @@ export default function Mindmap() {
                 className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium border transition-all"
                 style={{
                   background: hidden ? 'transparent' : col + '18',
-                  borderColor: hidden ? '#D8DDD0' : col + '60',
+                  borderColor: hidden ? EDGE_DIM : col + '60',
                   color: hidden ? FAINT : col,
                   opacity: hidden ? 0.6 : 1,
                 }}
               >
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: hidden ? '#C0C8B0' : col }} />
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: hidden ? '#4a4a4a' : col }} />
                 {CAT_LABEL[c.id]}
                 {!hidden && expanded.size > 0 && cnt > 0 && (
                   <span className="ml-0.5 opacity-60">{cnt}</span>
@@ -374,8 +374,8 @@ export default function Mindmap() {
             className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium border transition-all"
             style={{
               background: showCross ? '#60A5FA18' : 'transparent',
-              borderColor: showCross ? '#60A5FA60' : '#D8DDD0',
-              color: showCross ? '#3F586E' : FAINT,
+              borderColor: showCross ? '#60A5FA60' : EDGE_DIM,
+              color: showCross ? '#93c5fd' : FAINT,
             }}
           >
             <GitFork className="h-3 w-3" /> Cross
@@ -385,9 +385,9 @@ export default function Mindmap() {
             onClick={() => setAllLabels((v) => !v)}
             className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium border transition-all"
             style={{
-              background: allLabels ? '#34431F18' : 'transparent',
-              borderColor: allLabels ? '#34431F60' : '#D8DDD0',
-              color: allLabels ? '#34431F' : FAINT,
+              background: allLabels ? '#34D39918' : 'transparent',
+              borderColor: allLabels ? '#34D39960' : EDGE_DIM,
+              color: allLabels ? '#6ee7b7' : FAINT,
             }}
           >
             <Tag className="h-3 w-3" /> Labels
@@ -508,7 +508,7 @@ export default function Mindmap() {
                 || (highlight?.has(n.id) ?? false) || showRecordLabels
               const fs = n.kind === 'category' ? 12.5 : n.kind === 'entity' ? 11 : 10
               const fw = n.kind === 'category' ? 700 : n.kind === 'entity' ? 600 : 400
-              const fc = n.kind === 'category' ? INK : n.kind === 'entity' ? '#44483A' : MUTED
+              const fc = n.kind === 'category' ? INK : n.kind === 'entity' ? '#d4d4d4' : MUTED
               return (
                 <g key={n.id} transform={`translate(${sp.x},${sp.y})`}
                   opacity={dimmed && !lit ? 0.12 : 1}

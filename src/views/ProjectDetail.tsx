@@ -20,7 +20,7 @@ const DOMAIN_COLOR: Record<string, string> = {
   parkingyou: '#60A5FA', prjct: '#A78BFA', buurtkaart: '#34D399', personal: '#FBBF24', cross: '#F87171',
 }
 const INVOICE_STATUS: Record<Invoice['status'], { label: string; hex: string }> = {
-  draft: { label: 'Concept', hex: '#8C9080' },
+  draft: { label: 'Concept', hex: '#a3a3a3' },
   sent: { label: 'Verstuurd', hex: '#60A5FA' },
   paid: { label: 'Betaald', hex: '#34D399' },
   overdue: { label: 'Te laat', hex: '#F87171' },
@@ -511,7 +511,7 @@ function Activity({ projectId }: { projectId: string }) {
         />
         <button onClick={submit} disabled={!text.trim()} className="w-full py-1.5 rounded-lg bg-forest text-white text-sm font-semibold disabled:opacity-40">Loggen &amp; analyseren</button>
         {lastResult && (
-          <div className="text-xs rounded-lg px-3 py-2 flex items-start gap-2" style={{ background: lastResult.match ? '#34D39918' : '#8C908018' }}>
+          <div className="text-xs rounded-lg px-3 py-2 flex items-start gap-2" style={{ background: lastResult.match ? '#34D39918' : '#8c8c8c18' }}>
             <Sparkles className="h-3.5 w-3.5 mt-0.5 shrink-0 text-forest" />
             <span className="text-ink-soft">{lastResult.reason}{lastResult.match ? ` · ${Math.round(lastResult.confidence * 100)}% zeker` : ''}</span>
           </div>
