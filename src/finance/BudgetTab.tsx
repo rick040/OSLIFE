@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { Empty, SectionTitle } from '../components/ui'
 import { eur0, eur } from '../lib/format'
 import { fmtDate } from '../domains'
-import type { Goal } from '../types'
-import { Plus, Target, Trash2, Sparkles, RefreshCw } from 'lucide-react'
+import type { Goal, BudgetCap } from '../types'
+import { Plus, Target, Trash2, Sparkles, RefreshCw, PiggyBank } from 'lucide-react'
 
 export function BudgetTab({
   goals,
@@ -13,6 +13,8 @@ export function BudgetTab({
   coach,
   coachLoading,
   onRefreshCoach,
+  budgetCaps,
+  onUpdateBudgetCap,
 }: {
   goals: Goal[]
   onAddGoal: (g: Omit<Goal, 'id'>) => void
@@ -21,6 +23,8 @@ export function BudgetTab({
   coach: { text: string; generatedAt: string } | null
   coachLoading: boolean
   onRefreshCoach: () => void
+  budgetCaps: BudgetCap[]
+  onUpdateBudgetCap: (id: string, patch: Partial<BudgetCap>) => void
 }) {
   const financialGoals = goals.filter((g) => g.metric === 'EUR')
   const [form, setForm] = useState(false)
@@ -67,6 +71,60 @@ export function BudgetTab({
           ))}
         </div>
       )}
+
+      <SectionTitle><span className="flex items-center gap-2"><PiggyBank className="h-4 w-4 text-prjct" /> Budgetten</span></SectionTitle>
+      {budgetCaps.length === 0 ? (
+        <Empty>Nog geen budgetplafond. Verschijnt hier automatisch zodra je een budgetadvies (Geheugen → Inferenties) bevestigt — of stel er zelf een in via de Supabase SQL-editor (`budget_rules`).</Empty>
+      ) : (
+        <div className="space-y-3">
+          {budgetCaps.map((b) => (
+            <BudgetCapRow key={b.id} cap={b} onUpdate={(patch) => onUpdateBudgetCap(b.id, patch)} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BudgetCapRow({ cap, onUpdate }: { cap: BudgetCap; onUpdate: (patch: Partial<BudgetCap>) => void }) {
+  const [editing, setEditing] = useState(false)
+  const [max, setMax] = useState(String(cap.monthlyMax))
+
+  const save = () => {
+    const val = parseFloat(max.replace(',', '.'))
+    if (!isNaN(val)) onUpdate({ monthlyMax: val })
+    setEditing(false)
+  }
+
+  return (
+    <div className="card p-4 flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-ink truncate">{cap.category}</div>
+        <div className="text-xs text-faint">{cap.active ? 'actief' : 'gepauzeerd'}{cap.sourceRuleId ? ' — automatisch voorgesteld' : ''}</div>
+      </div>
+      <div className="flex items-center gap-3 shrink-0">
+        {editing ? (
+          <input
+            value={max}
+            onChange={(e) => setMax(e.target.value)}
+            onBlur={save}
+            onKeyDown={(e) => e.key === 'Enter' && save()}
+            autoFocus
+            inputMode="decimal"
+            className="w-24 rounded-lg bg-sunken border border-line px-2 py-1 text-sm outline-none"
+          />
+        ) : (
+          <button onClick={() => setEditing(true)} className="text-sm font-semibold tabular-nums hover:underline">
+            {eur0(cap.monthlyMax)}<span className="text-xs text-faint font-normal"> /mnd</span>
+          </button>
+        )}
+        <button
+          onClick={() => onUpdate({ active: !cap.active })}
+          className={`text-xs px-2 py-1 rounded-full ${cap.active ? 'bg-prjct/15 text-prjct' : 'bg-line text-muted'}`}
+        >
+          {cap.active ? 'aan' : 'uit'}
+        </button>
+      </div>
     </div>
   )
 }

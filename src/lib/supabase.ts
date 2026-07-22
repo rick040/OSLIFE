@@ -42,6 +42,8 @@ import type {
   AdminItem,
   HealthCondition,
   Medication,
+  BudgetCap,
+  ProfileFact,
   MemorySummary,
   MemoryHit,
   BusinessIdea,
@@ -2198,6 +2200,54 @@ export async function createMedicationRow(m: Omit<Medication, 'id'>): Promise<st
     reminder_times: m.reminderTimes,
     active: m.active,
   })
+}
+
+// ── Generieke patroon-engine: budgetplafonds + versioneerd profiel ───────────
+// (R11/R12 — zie 20260724000000_pattern_engine_profile.sql). budget_caps
+// wordt aangemaakt door confirm_inference() bij het bevestigen van een
+// budget_cap_suggestion; het maximum blijft daarna hier gewoon aanpasbaar.
+
+export async function fetchBudgetCaps(): Promise<BudgetCap[]> {
+  return fetchRows('budget_caps', 'id,category,monthly_max,active,source_rule_id,tier', { column: 'category' }, (r) => ({
+    id: r.id as string,
+    category: (r.category as string) ?? '',
+    monthlyMax: Number(r.monthly_max) || 0,
+    active: (r.active as boolean) ?? true,
+    sourceRuleId: (r.source_rule_id as string) ?? null,
+    tier: (r.tier as BudgetCap['tier']) ?? 'normaal',
+  }))
+}
+
+const BUDGET_CAP_COLS: Record<string, string> = { monthlyMax: 'monthly_max', active: 'active' }
+
+export async function updateBudgetCapRow(id: string, patch: Partial<BudgetCap>): Promise<void> {
+  await updateRow('budget_caps', id, patch, BUDGET_CAP_COLS)
+}
+
+/**
+ * Only the current (non-superseded) version of every profile fact — the
+ * versioned replacement path for heyra_memory/LearnedFact, starting with
+ * R12's theme detection (see src/types.ts's ProfileFact doc comment).
+ */
+export async function fetchProfileFacts(): Promise<ProfileFact[]> {
+  const { data, error } = await supabase
+    .from('profile_facts')
+    .select('id,key,label,value,version,confidence,source_rule_id,source_ids,tier,created_at')
+    .is('superseded_at', null)
+    .order('created_at', { ascending: false })
+  warnWrite('profile_facts.fetch', error)
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    id: r.id as string,
+    key: r.key as string,
+    label: (r.label as string) ?? '',
+    value: (r.value as Record<string, unknown>) ?? {},
+    version: (r.version as number) ?? 1,
+    confidence: Number(r.confidence) || 0,
+    sourceRuleId: (r.source_rule_id as string) ?? null,
+    sourceIds: (r.source_ids as string[]) ?? [],
+    tier: (r.tier as ProfileFact['tier']) ?? 'normaal',
+    createdAt: (r.created_at as string) ?? '',
+  }))
 }
 
 // ── Geheugen & retrieval (Slice 3) ────────────────────────────────────────────

@@ -52,6 +52,8 @@ import type {
   AdminItem,
   HealthCondition,
   Medication,
+  BudgetCap,
+  ProfileFact,
   MemorySummary,
   BusinessIdea,
   IdeaSource,
@@ -211,6 +213,9 @@ import {
   updateHealthConditionRow,
   fetchMedications,
   createMedicationRow,
+  fetchBudgetCaps,
+  updateBudgetCapRow,
+  fetchProfileFacts,
   fetchSummaries,
   forgetRecord as forgetRecordApi,
   fetchBusinessIdeas,
@@ -302,6 +307,8 @@ interface State {
   adminItems: AdminItem[]
   healthConditions: HealthCondition[]
   medications: Medication[]
+  budgetCaps: BudgetCap[]
+  profileFacts: ProfileFact[]
   summaries: MemorySummary[]
   businessIdeas: BusinessIdea[]
   /** Cached extra fields per HEYRA action kind (proposeAction.ts) — see recordCardTemplateUsage. */
@@ -384,6 +391,7 @@ interface State {
   resolveInference: (id: string, decision: InferenceDecision) => Promise<string | null>
   updateHealthCondition: (id: string, patch: Partial<HealthCondition>) => Promise<void>
   createMedication: (m: Omit<Medication, 'id'>) => Promise<void>
+  updateBudgetCap: (id: string, patch: Partial<BudgetCap>) => Promise<void>
 
   // Kennisbank: load the wiki suggest-queue and resolve one. On confirm, the
   // entry also gets materialised as a real .md file in the vault.
@@ -628,6 +636,8 @@ const seed = () => ({
   adminItems: [] as AdminItem[],
   healthConditions: [] as HealthCondition[],
   medications: [] as Medication[],
+  budgetCaps: [] as BudgetCap[],
+  profileFacts: [] as ProfileFact[],
   summaries: [] as MemorySummary[],
   businessIdeas: [] as BusinessIdea[],
   cardTemplates: [] as CardTemplate[],
@@ -2402,7 +2412,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, medications, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -2421,6 +2431,8 @@ export const useStore = create<State>()(
             fetchAdminItems(),
             fetchHealthConditions(),
             fetchMedications(),
+            fetchBudgetCaps(),
+            fetchProfileFacts(),
             fetchSummaries(),
             fetchCleaningLog(),
             fetchBusinessIdeas(),
@@ -2479,6 +2491,8 @@ export const useStore = create<State>()(
             adminItems,
             healthConditions,
             medications,
+            budgetCaps,
+            profileFacts,
             summaries,
             cleaningLog,
             businessIdeas,
@@ -2613,6 +2627,11 @@ export const useStore = create<State>()(
       createMedication: async (m) => {
         const id = await createMedicationRow(m)
         if (id) set({ medications: [...get().medications, { ...m, id }] })
+      },
+
+      updateBudgetCap: async (id, patch) => {
+        set({ budgetCaps: get().budgetCaps.map((b) => (b.id === id ? { ...b, ...patch } : b)) })
+        await updateBudgetCapRow(id, patch)
       },
 
       loadWikiEntries: async () => {
