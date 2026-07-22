@@ -14,6 +14,9 @@ import DataVizCard from '../components/DataVizCard'
 import ProjectCard from '../components/ProjectCard'
 import ClientIntakeCard, { type ClientIntakeCommitOptions, type ClientIntakeResult } from '../components/ClientIntakeCard'
 import IdeaCaptureCard from '../components/IdeaCaptureCard'
+import ActionCardView from '../components/ActionCardView'
+import { dispatchAction } from '../heyra/actions/registry'
+import type { ActionCard, EntityRef } from '../heyra/actions/types'
 import { Send, Sparkles, Database, Mic, MicOff, Wand2, Lightbulb, Brain } from 'lucide-react'
 
 interface Msg {
@@ -24,6 +27,8 @@ interface Msg {
   classified?: StructuredItem
   skill?: AgentId
   trigger?: string | null
+  /** Generic dynamic cards (Phase 2+ agents) — rendered through ActionCardView, one component for any action kind. */
+  cards?: ActionCard[]
   draft?: TaskDraft
   taskAdded?: boolean
   search?: SearchCardData
@@ -194,6 +199,29 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
     setMsgs((m) => m.map((x) => (x.id === msgId ? { ...x, ideaCreatedId: row?.id ?? null } : x)))
   }
 
+  /** Applies a patch to one card within one message's `cards` array — every action-card interaction (confirm/cancel/disambiguate) goes through this. */
+  function patchCard(msgId: string, cardId: string, patch: Partial<ActionCard>) {
+    setMsgs((m) =>
+      m.map((x) =>
+        x.id === msgId ? { ...x, cards: x.cards?.map((c) => (c.id === cardId ? { ...c, ...patch } : c)) } : x,
+      ),
+    )
+  }
+
+  async function confirmCard(msgId: string, card: ActionCard) {
+    patchCard(msgId, card.id, { status: 'confirmed' })
+    const outcome = await dispatchAction(store, card)
+    patchCard(msgId, card.id, outcome.ok ? { status: 'dispatched' } : { status: 'failed', error: outcome.error })
+  }
+
+  function cancelCard(msgId: string, card: ActionCard) {
+    patchCard(msgId, card.id, { status: 'dismissed' })
+  }
+
+  function selectCardCandidate(msgId: string, card: ActionCard, entity: EntityRef) {
+    patchCard(msgId, card.id, { entity, candidates: [] })
+  }
+
   function startPendingLabels() {
     pendingTimers.current.forEach(clearTimeout)
     setPendingLabel(PENDING_LABELS[0])
@@ -245,6 +273,7 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
                 pending: false,
                 skill: agent === 'chat' ? undefined : agent,
                 trigger,
+                cards: result.cards,
                 draft: result.draft,
                 search: result.search,
                 chart: result.chart,
@@ -378,6 +407,17 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
                   />
                 </div>
               )}
+              {m.cards?.map((card) => (
+                <div className="mt-2" key={card.id}>
+                  <ActionCardView
+                    card={card}
+                    onNav={onNav}
+                    onConfirm={(c) => confirmCard(m.id, c)}
+                    onCancel={(c) => cancelCard(m.id, c)}
+                    onSelectCandidate={(c, entity) => selectCardCandidate(m.id, c, entity)}
+                  />
+                </div>
+              ))}
               {m.learned && m.learned.length > 0 && (
                 <div className="mt-1.5 animate-fade-up">
                   <div className="card p-2.5 bg-prjct/8 border-prjct/20">

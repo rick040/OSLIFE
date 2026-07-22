@@ -82,7 +82,8 @@ const STOPWORDS = new Set([
   'met', 'wat', 'is', 'er', 'op', 'in', 'en', 'of', 'staat', 'heb', 'ik', 'nog', 'the', 'my',
 ])
 
-function extractKeywords(text: string): string[] {
+/** Exported for reuse by heyra/actions/resolveEntity.ts — same tokenize-and-strip-noise approach for matching free text against any entity's display fields, not just search. */
+export function extractKeywords(text: string): string[] {
   let s = ` ${text.toLowerCase()} `
   for (const p of NOISE_PHRASES) s = s.split(p).join(' ')
   return s
@@ -91,7 +92,7 @@ function extractKeywords(text: string): string[] {
     .filter((w) => w.length >= 3 && !STOPWORDS.has(w))
 }
 
-function matchScore(keywords: string[], ...fields: (string | null | undefined)[]): number {
+export function matchScore(keywords: string[], ...fields: (string | null | undefined)[]): number {
   const hay = fields.filter(Boolean).join(' ').toLowerCase()
   if (!hay) return 0
   return keywords.reduce((n, k) => n + (hay.includes(k) ? 1 : 0), 0)

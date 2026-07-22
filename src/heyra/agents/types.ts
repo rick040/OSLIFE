@@ -9,6 +9,7 @@ import type { SearchCardData, ChartCardData, ClientIntakeDraft, IdeaCaptureDraft
 import type { Topic } from '../suggestions'
 import type { ConversationMemory } from '../memory'
 import type { AgentId } from '../skills'
+import type { ActionCard } from '../actions/types'
 
 export type Store = ReturnType<typeof useStore.getState>
 
@@ -23,6 +24,8 @@ export interface AgentResult {
   /** Empty string means "no confident answer" — the router falls through to chatAgent. */
   text: string
   topic: Topic
+  /** Generic dynamic cards (Phase 2+) — the replacement for the fixed fields below. New agents/action kinds should populate this instead of adding another fixed field here. */
+  cards?: ActionCard[]
   draft?: TaskDraft
   search?: SearchCardData
   chart?: ChartCardData
