@@ -51,6 +51,7 @@ import type {
   Interaction,
   AdminItem,
   HealthCondition,
+  Medication,
   MemorySummary,
   BusinessIdea,
   IdeaSource,
@@ -201,6 +202,10 @@ import {
   updateAdminItemRow,
   deleteAdminItemRow,
   fetchHealthConditions,
+  fetchHealthConditionByEventId,
+  updateHealthConditionRow,
+  fetchMedications,
+  createMedicationRow,
   fetchSummaries,
   forgetRecord as forgetRecordApi,
   fetchBusinessIdeas,
@@ -289,6 +294,7 @@ interface State {
   interactions: Interaction[]
   adminItems: AdminItem[]
   healthConditions: HealthCondition[]
+  medications: Medication[]
   summaries: MemorySummary[]
   businessIdeas: BusinessIdea[]
   settings: AppSettings
@@ -362,7 +368,10 @@ interface State {
 
   // Inference engine (Slice 1): load the pending review queue and resolve one.
   loadInferences: () => Promise<void>
-  resolveInference: (id: string, decision: InferenceDecision) => Promise<void>
+  /** Returns the newly created health_condition's id when confirming a health_condition_promotion, else null. */
+  resolveInference: (id: string, decision: InferenceDecision) => Promise<string | null>
+  updateHealthCondition: (id: string, patch: Partial<HealthCondition>) => Promise<void>
+  createMedication: (m: Omit<Medication, 'id'>) => Promise<void>
 
   // Kennisbank: load the wiki suggest-queue and resolve one. On confirm, the
   // entry also gets materialised as a real .md file in the vault.
@@ -606,6 +615,7 @@ const seed = () => ({
   interactions: [] as Interaction[],
   adminItems: [] as AdminItem[],
   healthConditions: [] as HealthCondition[],
+  medications: [] as Medication[],
   summaries: [] as MemorySummary[],
   businessIdeas: [] as BusinessIdea[],
   settings: { hourlyRate: 0 } as AppSettings,
@@ -2312,7 +2322,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, medications, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -2330,6 +2340,7 @@ export const useStore = create<State>()(
             fetchInteractions(),
             fetchAdminItems(),
             fetchHealthConditions(),
+            fetchMedications(),
             fetchSummaries(),
             fetchCleaningLog(),
             fetchBusinessIdeas(),
@@ -2378,6 +2389,7 @@ export const useStore = create<State>()(
             interactions,
             adminItems,
             healthConditions,
+            medications,
             summaries,
             cleaningLog,
             businessIdeas,
@@ -2473,15 +2485,38 @@ export const useStore = create<State>()(
         if (!ok) {
           // Roll back on failure so the user can retry.
           set({ inferences: prev })
-          return
+          return null
         }
-        // A confirmed subscription_candidate created a subscription row — refresh.
         if (decision === 'confirm') {
           const item = prev.find((i) => i.id === id)
+          // A confirmed subscription_candidate created a subscription row — refresh.
           if (item?.type === 'subscription_candidate') {
             void fetchSubscriptions().then((d) => d.length > 0 && set({ subscriptions: d }))
           }
+          // PM-072 Fase 2: a confirmed health_condition_promotion (was P1's
+          // silent auto-insert, now confirm-gated) created a dossier — health_
+          // condition already refreshes via its own Realtime subscription, but
+          // the caller (the app-startup splashscreen) needs this specific new
+          // dossier's id right away to open the baseline-info wizard against.
+          if (item?.type === 'health_condition_promotion') {
+            const created = await fetchHealthConditionByEventId(id)
+            if (created) {
+              set({ healthConditions: [created, ...get().healthConditions.filter((c) => c.id !== created.id)] })
+              return created.id
+            }
+          }
         }
+        return null
+      },
+
+      updateHealthCondition: async (id, patch) => {
+        set({ healthConditions: get().healthConditions.map((c) => (c.id === id ? { ...c, ...patch } : c)) })
+        await updateHealthConditionRow(id, patch)
+      },
+
+      createMedication: async (m) => {
+        const id = await createMedicationRow(m)
+        if (id) set({ medications: [...get().medications, { ...m, id }] })
       },
 
       loadWikiEntries: async () => {

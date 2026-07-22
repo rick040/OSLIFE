@@ -40,6 +40,7 @@ import type {
   Interaction,
   AdminItem,
   HealthCondition,
+  Medication,
   MemorySummary,
   MemoryHit,
   BusinessIdea,
@@ -2038,6 +2039,68 @@ export async function fetchHealthConditions(): Promise<HealthCondition[]> {
     notes: (r.notes as string) ?? null,
     tier: (r.tier as HealthCondition['tier']) ?? 'geheim',
   }))
+}
+
+const HEALTH_CONDITION_COLS: Record<string, string> = {
+  label: 'label', status: 'status', notes: 'notes',
+}
+
+/** Baseline-info wizard writes here after PM-072 Fase 2's confirm-gated P1 creates the dossier. */
+export async function updateHealthConditionRow(id: string, patch: Partial<HealthCondition>): Promise<void> {
+  await updateRow('health_condition', id, patch, HEALTH_CONDITION_COLS)
+}
+
+/**
+ * Find the dossier confirm_inference() just created from a confirmed
+ * health_condition_promotion event — the migration appends the event's own id
+ * to `derived_from` specifically so the splashscreen can locate it without
+ * confirm_inference()'s boolean return type having to change.
+ */
+export async function fetchHealthConditionByEventId(eventId: string): Promise<HealthCondition | null> {
+  const { data, error } = await supabase
+    .from('health_condition')
+    .select('id,subject,label,opened_at,status,notes,tier')
+    .contains('derived_from', [eventId])
+    .order('opened_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  warnWrite('health_condition.fetchByEvent', error)
+  if (!data) return null
+  return {
+    id: data.id as string,
+    subject: (data.subject as string) ?? 'rick',
+    label: (data.label as string) ?? '',
+    openedAt: (data.opened_at as string) ?? '',
+    status: (data.status as HealthCondition['status']) ?? 'active',
+    notes: (data.notes as string) ?? null,
+    tier: (data.tier as HealthCondition['tier']) ?? 'geheim',
+  }
+}
+
+// ── Medicatie-herinneringen (PM-072 Fase 2) ───────────────────────────────────
+
+export async function fetchMedications(): Promise<Medication[]> {
+  return fetchRows('medications', 'id,health_condition_id,name,dosage,schedule_note,reminder_times,active,tier', { column: 'name' }, (r) => ({
+    id: r.id as string,
+    healthConditionId: (r.health_condition_id as string) ?? null,
+    name: (r.name as string) ?? '',
+    dosage: (r.dosage as string) ?? null,
+    scheduleNote: (r.schedule_note as string) ?? null,
+    reminderTimes: ((r.reminder_times as string[]) ?? []).map((t) => t.slice(0, 5)),
+    active: (r.active as boolean) ?? true,
+    tier: (r.tier as Medication['tier']) ?? 'geheim',
+  }))
+}
+
+export async function createMedicationRow(m: Omit<Medication, 'id'>): Promise<string | null> {
+  return insertRow('medications', {
+    health_condition_id: m.healthConditionId,
+    name: m.name,
+    dosage: m.dosage,
+    schedule_note: m.scheduleNote,
+    reminder_times: m.reminderTimes,
+    active: m.active,
+  })
 }
 
 // ── Geheugen & retrieval (Slice 3) ────────────────────────────────────────────

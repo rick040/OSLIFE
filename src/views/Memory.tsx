@@ -37,6 +37,8 @@ const INFERENCE_TYPE_LABEL: Record<string, string> = {
   subscription_candidate: 'Terugkerende uitgave',
   energy_dip_pattern: 'Slaap/energie-signaal',
   project_stall: 'Project ligt stil',
+  health_condition_promotion: 'Dossier-voorstel',
+  repeat_location_pattern: 'Terugkerend locatiepatroon',
 }
 
 function InferenceCard({ item, onResolve }: {

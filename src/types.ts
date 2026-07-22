@@ -318,6 +318,22 @@ export interface HealthCondition {
   tier: Tier
 }
 
+/**
+ * A scheduled medication reminder (PM-072 Fase 2). reminderTimes fires a
+ * Telegram message every day at each time — there's no native Android app for
+ * AlarmManager, so this reuses the existing notify-tick/Telegram channel.
+ */
+export interface Medication {
+  id: string
+  healthConditionId: string | null
+  name: string
+  dosage: string | null
+  scheduleNote: string | null
+  reminderTimes: string[] // 'HH:MM', local/Amsterdam time
+  active: boolean
+  tier: Tier
+}
+
 // ── Memory & retrieval (PM-201 Slice 3) ───────────────────────────────────────
 
 /** A rolled-up digest of a period (nightly build_summaries). */
