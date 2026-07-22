@@ -151,20 +151,25 @@ export default function Buurtkaart() {
     setSubs((ss) => ss.map((s) => (s.id === subId ? { ...s, invoices: s.invoices.map((i) => (i.id === invId ? { ...i, status } : i)) } : s)))
 
   return (
-    <div className="space-y-5 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-faint">Geldrop · beheer</div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2"><Map className="h-6 w-6 text-buurtkaart" /> Buurtkaart</h1>
+    <div className="flex flex-col gap-7 max-w-3xl mx-auto">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Map className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">Buurtkaart</h1>
+            <p className="text-sm text-muted mt-0.5">Geldrop · beheer</p>
+          </div>
         </div>
-        <button onClick={loadGbk} className="h-9 w-9 rounded-full bg-buurtkaart/15 text-buurtkaart-deep flex items-center justify-center" aria-label="Vernieuwen"><RefreshCw className={`h-4 w-4 ${status === 'loading' ? 'animate-spin' : ''}`} /></button>
+        <button onClick={loadGbk} className="h-9 w-9 rounded-full bg-sunken text-ink-soft flex items-center justify-center hover:bg-surface transition-colors" aria-label="Vernieuwen"><RefreshCw className={`h-4 w-4 ${status === 'loading' ? 'animate-spin' : ''}`} /></button>
       </div>
 
       {/* stats */}
       <div className="grid grid-cols-2 gap-3">
         <Stat label="Actieve editie" value={active?.name.split(',')[0] ?? 'Geen'} />
-        <Stat label="Plekken vrij" value={String(spotsFree)} color="text-buurtkaart-deep" />
-        <Stat label="Klanten" value={String(subs.length)} color="text-prjct-deep" />
+        <Stat label="Plekken vrij" value={String(spotsFree)} />
+        <Stat label="Klanten" value={String(subs.length)} />
         <Stat label="Open facturen" value={String(openInv.length)} sub={openInv.length ? eur(openSum) : undefined} color={openInv.length ? 'text-personal-deep' : 'text-ink'} />
       </div>
 
@@ -179,7 +184,7 @@ export default function Buurtkaart() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="text-xs font-semibold uppercase tracking-wider text-faint">Edities</div>
-            <button onClick={() => setEdForm((f) => !f)} className="text-sm text-buurtkaart-deep font-medium">+ Nieuwe editie</button>
+            <button onClick={() => setEdForm((f) => !f)} className="text-sm text-ink-soft font-medium hover:text-ink">+ Nieuwe editie</button>
           </div>
           {edForm && (
             <div className="card p-4 flex gap-2">

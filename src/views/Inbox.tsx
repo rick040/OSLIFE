@@ -123,16 +123,19 @@ export default function Inbox() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="flex flex-col gap-7 max-w-3xl mx-auto">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Mail className="h-5 w-5 text-personal" /> Inbox
-          </h1>
-          <p className="text-sm text-muted mt-1">
-            De mails die er nu toe doen, uit je Gmail.{' '}
-            {totalUnread > 0 ? `${totalUnread} ongelezen.` : 'Alles gelezen.'}
-          </p>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Mail className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">Inbox</h1>
+            <p className="text-sm text-muted mt-0.5">
+              De mails die er nu toe doen, uit je Gmail.{' '}
+              {totalUnread > 0 ? `${totalUnread} ongelezen.` : 'Alles gelezen.'}
+            </p>
+          </div>
         </div>
         {totalUnread > 0 && (
           <button className="btn-ghost" onClick={markAllEmailsRead}>
@@ -195,7 +198,7 @@ export default function Inbox() {
             return (
               <div
                 key={e.threadId ?? e.id}
-                className={`card w-full p-4 flex items-start gap-3 ${e.unread ? 'border-personal/30' : ''}`}
+                className="card w-full p-4 flex items-start gap-3"
               >
                 {/* Importance dot */}
                 <span
@@ -244,11 +247,11 @@ export default function Inbox() {
                   {e.unread && (
                     <button
                       onClick={() => doMarkRead(e)}
-                      className="h-7 w-7 rounded-lg bg-buurtkaart/10 flex items-center justify-center hover:bg-buurtkaart/20 transition-colors"
+                      className="h-7 w-7 rounded-lg bg-sunken flex items-center justify-center hover:bg-surface transition-colors"
                       aria-label="Markeer als gelezen"
                       title="Markeer als gelezen"
                     >
-                      <MailOpen className="h-3.5 w-3.5 text-buurtkaart-deep" />
+                      <MailOpen className="h-3.5 w-3.5 text-ink-soft" />
                     </button>
                   )}
                   {e.threadId && (
@@ -257,11 +260,11 @@ export default function Inbox() {
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(ev) => ev.stopPropagation()}
-                      className="h-7 w-7 rounded-lg bg-parkingyou/10 flex items-center justify-center hover:bg-parkingyou/20 transition-colors"
+                      className="h-7 w-7 rounded-lg bg-sunken flex items-center justify-center hover:bg-surface transition-colors"
                       aria-label="Open in Gmail"
                       title="Open in Gmail"
                     >
-                      <ExternalLink className="h-3.5 w-3.5 text-parkingyou-deep" />
+                      <ExternalLink className="h-3.5 w-3.5 text-ink-soft" />
                     </a>
                   )}
                 </div>
