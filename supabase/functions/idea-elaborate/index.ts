@@ -246,7 +246,7 @@ async function elaborate(apiKey: string, title: string, rawInput: string, source
     res = await fetch(ANTHROPIC_API, {
       method: "POST",
       headers: anthropicHeaders(apiKey),
-      body: JSON.stringify({ model: MODEL, max_tokens: 8000, system: ELABORATE_SYSTEM, messages: [{ role: "user", content: prompt }] }),
+      body: JSON.stringify({ model: MODEL, max_tokens: 16000, system: ELABORATE_SYSTEM, messages: [{ role: "user", content: prompt }] }),
     });
   } catch (e) {
     console.error(`idea-elaborate: fetch to Anthropic failed: ${String(e)}`);
