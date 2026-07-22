@@ -1,27 +1,30 @@
 import { useState } from 'react'
-import { Layers, Grid3x3, Home, Wallet } from 'lucide-react'
+import { Layers, Grid3x3, LayoutTemplate, Home, Wallet } from 'lucide-react'
 import { SegmentedSwitcher, IconRail } from './components'
 import Framework from './Framework'
 import Library from './Library'
+import Cards from './Cards'
 import Homepage from './Homepage'
 import Finance from './Finance'
 import './redesign.css'
 
-const SECTIONS = ['Framework', 'Library', 'Homepage', 'Finance'] as const
+const SECTIONS = ['Framework', 'Library', 'Cards', 'Homepage', 'Finance'] as const
 type Section = (typeof SECTIONS)[number]
 
 const RAIL_ICONS: Record<Section, React.ReactNode> = {
   Framework: <Layers className="h-[18px] w-[18px]" />,
   Library: <Grid3x3 className="h-[18px] w-[18px]" />,
+  Cards: <LayoutTemplate className="h-[18px] w-[18px]" />,
   Homepage: <Home className="h-[18px] w-[18px]" />,
   Finance: <Wallet className="h-[18px] w-[18px]" />,
 }
 
 /**
  * RICK-OS v3 redesign preview — standalone, at /design-demo, not wired into
- * the app. Phase 1 (tokens/framework) + Phase 2 (full component library) +
- * 2 of the proposed 12 screens (Homepage, Finance) so the direction can be
- * reviewed before the remaining 10 screens get built from this same library.
+ * the app. Phase 1 (tokens/framework) + Phase 2 (full component library +
+ * dedicated interactive-card library) + 2 of the proposed 12 screens
+ * (Homepage, Finance) so the direction can be reviewed before the
+ * remaining 10 screens get built from this same library.
  */
 export default function RedesignDemo() {
   const [section, setSection] = useState<Section>('Framework')
@@ -44,6 +47,7 @@ export default function RedesignDemo() {
 
           {section === 'Framework' && <Framework />}
           {section === 'Library' && <Library />}
+          {section === 'Cards' && <Cards />}
           {section === 'Homepage' && <Homepage />}
           {section === 'Finance' && <Finance />}
         </div>

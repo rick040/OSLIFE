@@ -68,11 +68,11 @@ export default function Library() {
             <PriorityBar level="low" />
           </Swatch>
           <Swatch label="Urgency dot + label">
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold" style={{ color: 'hsl(var(--v3-danger-text))' }}>
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'hsl(var(--v3-danger-text))' }}>
               <UrgencyDot tone="danger" />
               OVER 20 MINUTEN
             </span>
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold" style={{ color: 'hsl(var(--v3-success-text))' }}>
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'hsl(var(--v3-success-text))' }}>
               <UrgencyDot tone="success" />5 UUR
             </span>
           </Swatch>

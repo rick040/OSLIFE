@@ -51,7 +51,7 @@ export default function Framework() {
           {SEMANTIC.map((s) => (
             <div key={s.name} className="flex flex-col gap-2">
               <div
-                className="h-16 rounded-2xl flex items-center justify-center text-sm font-bold"
+                className="h-16 rounded-2xl flex items-center justify-center text-sm font-semibold"
                 style={{ background: s.fillHex, color: s.textHex }}
               >
                 Aa
@@ -73,19 +73,19 @@ export default function Framework() {
               1,302
             </p>
             <p className="text-xs mt-1" style={{ color: 'hsl(var(--v3-text-secondary))' }}>
-              Display — hero numbers · 800 weight · tabular-nums · tracking -0.02em
+              Display — hero numbers · 700 weight (ceiling) · tabular-nums · tracking -0.01em
             </p>
           </div>
           <div>
             <p className="v3-heading">Section heading</p>
             <p className="text-xs mt-1" style={{ color: 'hsl(var(--v3-text-secondary))' }}>
-              Heading — card titles · 700 weight · 18px
+              Heading — card titles · 600 weight · 18px
             </p>
           </div>
           <div>
             <p className="v3-micro-label">Micro label</p>
             <p className="text-xs mt-1" style={{ color: 'hsl(var(--v3-text-secondary))' }}>
-              Micro-label — eyebrows/units · 700 weight · 10px · uppercase · tracked 0.12em
+              Micro-label — eyebrows/units · 600 weight · 10px · uppercase · tracked 0.1em
             </p>
           </div>
           <div>

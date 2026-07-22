@@ -152,7 +152,7 @@ export function ListRow({
     <div className="v3-list-row">
       <p className="text-sm font-semibold flex-1 min-w-0 truncate">{title}</p>
       {tag && <TagPill label={tag} tone={tagTone} />}
-      <span className="text-sm font-bold tabular-nums" style={{ color: 'hsl(var(--v3-text-primary))' }}>
+      <span className="text-sm font-semibold tabular-nums" style={{ color: 'hsl(var(--v3-text-primary))' }}>
         {trailing}
       </span>
     </div>
@@ -318,7 +318,7 @@ export function Donut({
         />
       </svg>
       {label && (
-        <span className="absolute inset-0 flex items-center justify-center text-sm font-bold tabular-nums">
+        <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold tabular-nums">
           {label}
         </span>
       )}
@@ -357,6 +357,115 @@ export function GreetingHeader({
         <p className="v3-greeting-name">{name}</p>
       </div>
       <p className="v3-greeting-sentence">{sentence}</p>
+    </div>
+  )
+}
+
+const AVATAR_PALETTE = ['#60A5FA', '#A78BFA', '#34D399', '#FBBF24', '#F87171', '#38BDF8']
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/)
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase()
+}
+
+function colorForName(name: string) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0
+  return AVATAR_PALETTE[Math.abs(hash) % AVATAR_PALETTE.length]
+}
+
+export function Avatar({ name, size = 'md', color }: { name: string; size?: 'sm' | 'md' | 'lg'; color?: string }) {
+  return (
+    <span className="v3-avatar" data-size={size} style={{ background: color ?? colorForName(name) }}>
+      {initials(name)}
+    </span>
+  )
+}
+
+export function AssigneeRow({ name, role, color }: { name: string; role: string; color?: string }) {
+  return (
+    <div className="v3-assignee-row">
+      <Avatar name={name} color={color} />
+      <div className="min-w-0">
+        <p className="v3-assignee-name truncate">{name}</p>
+        <p className="v3-assignee-role truncate">{role}</p>
+      </div>
+    </div>
+  )
+}
+
+export interface DetailCardAssignee {
+  name: string
+  role: string
+  color?: string
+}
+
+/**
+ * Detail / event card — the "expand for full context" pattern: tag + flag
+ * pills, title, meta/due lines, assignees, a clamped description, and a
+ * sticky action bar. Same shape whether it's a meeting, a task, or a CRM
+ * client record — only the fields change.
+ */
+export function DetailCard({
+  tag,
+  tagTone = 'info',
+  flag,
+  title,
+  meta,
+  due,
+  assignees,
+  description,
+  actionLabel,
+  actionMeta,
+  actionIcon,
+}: {
+  tag?: string
+  tagTone?: Tone
+  flag?: string
+  title: string
+  meta?: string
+  due?: string
+  assignees?: DetailCardAssignee[]
+  description?: string
+  actionLabel?: string
+  actionMeta?: string
+  actionIcon?: React.ReactNode
+}) {
+  return (
+    <div className="v3-detail-card">
+      <div className="v3-detail-body">
+        {(tag || flag) && (
+          <div className="v3-detail-tags">
+            {tag ? <TagPill label={tag} tone={tagTone} /> : <span />}
+            {flag && <Pill>{flag}</Pill>}
+          </div>
+        )}
+        <p className="v3-detail-title">{title}</p>
+        {(meta || due) && (
+          <p className="v3-detail-meta">
+            {meta}
+            {meta && due && ' · '}
+            {due}
+          </p>
+        )}
+        {assignees && assignees.length > 0 && (
+          <div className="flex flex-col gap-2.5">
+            {assignees.map((a) => (
+              <AssigneeRow key={a.name} {...a} />
+            ))}
+          </div>
+        )}
+        {description && <p className="v3-detail-description">{description}</p>}
+      </div>
+      {actionLabel && (
+        <div className="v3-detail-actionbar">
+          <button className="v3-btn v3-btn-primary !h-9 !px-4 text-xs">
+            {actionIcon}
+            {actionLabel}
+          </button>
+          {actionMeta && <span className="v3-detail-actionbar-meta">{actionMeta}</span>}
+        </div>
+      )}
     </div>
   )
 }
