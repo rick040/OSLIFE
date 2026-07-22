@@ -62,20 +62,20 @@ export function MetricDetailDialog({
         <ResponsiveContainer width="100%" height={200}>
           {kind === 'bar' ? (
             <BarChart data={data} margin={{ top: 4, right: 4, left: -8, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis dataKey="date" tick={AXIS_TICK_10} />
               <YAxis tick={AXIS_TICK_10} />
               <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v.toLocaleString('nl-NL')}${unit}`, title]} />
               {goal != null && <ReferenceLine y={goal} stroke={color} strokeDasharray="4 4" />}
               <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                 {data.map((d) => (
-                  <Cell key={d.date} fill={goal != null ? (d.value >= goal ? color : '#D4D7C8') : color} />
+                  <Cell key={d.date} fill={goal != null ? (d.value >= goal ? color : '#333333') : color} />
                 ))}
               </Bar>
             </BarChart>
           ) : (
             <LineChart data={data} margin={{ top: 4, right: 4, left: -8, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis dataKey="date" tick={AXIS_TICK_10} />
               <YAxis tick={AXIS_TICK_10} />
               <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v.toLocaleString('nl-NL')}${unit}`, title]} />

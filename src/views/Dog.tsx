@@ -596,7 +596,7 @@ export default function Dog() {
           </div>
           <ResponsiveContainer width="100%" height={150}>
             <LineChart data={weights} margin={{ top: 6, right: 10, left: -16, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" vertical={false} />
               <XAxis dataKey="date" tick={AXIS_TICK_11} axisLine={false} tickLine={false} />
               <YAxis domain={[8, 10]} tick={AXIS_TICK_10} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={CHART_TIP_BARE} formatter={(v: number) => [`${v} kg`, 'gewicht']} />

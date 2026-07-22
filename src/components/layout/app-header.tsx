@@ -4,7 +4,6 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
-import { ThemeToggle } from '@/components/layout/theme-toggle'
 import { ProfileDropdown } from '@/components/layout/profile-dropdown'
 
 export interface AppHeaderProps {
@@ -51,7 +50,6 @@ export function AppHeader({
             <span className="text-xs">⌘</span>K
           </kbd>
         </Button>
-        <ThemeToggle />
         <ProfileDropdown email={email} onShowSettings={onShowSettings} />
       </div>
     </header>

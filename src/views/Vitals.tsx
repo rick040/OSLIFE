@@ -136,14 +136,14 @@ export default function Vitals() {
         <p className="text-xs text-faint mb-2">Groen = doel gehaald, lijn = dagdoel {today.stepGoal.toLocaleString('nl-NL')}.</p>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={data} margin={{ top: 4, right: 4, left: -8, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
             <XAxis dataKey="date" tick={AXIS_TICK_10} />
             <YAxis tick={AXIS_TICK_10} />
             <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [v.toLocaleString('nl-NL'), 'stappen']} />
             <ReferenceLine y={today.stepGoal} stroke="#6FA07C" strokeDasharray="4 4" />
             <Bar dataKey="steps" radius={[4, 4, 0, 0]}>
               {data.map((x) => (
-                <Cell key={x.date} fill={x.steps >= today.stepGoal ? '#6FA07C' : '#D4D7C8'} />
+                <Cell key={x.date} fill={x.steps >= today.stepGoal ? '#6FA07C' : '#333333'} />
               ))}
             </Bar>
           </BarChart>
@@ -159,7 +159,7 @@ export default function Vitals() {
           <p className="text-xs text-faint mb-2">Roze lijn = 6u drempel, daaronder keldert je energie.</p>
           <ResponsiveContainer width="100%" height={170}>
             <LineChart data={data} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis dataKey="date" tick={AXIS_TICK_10} />
               <YAxis domain={[0, 9]} tick={AXIS_TICK_10} />
               <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v}u`, 'slaap']} />
@@ -177,7 +177,7 @@ export default function Vitals() {
           <p className="text-xs text-faint mb-2">Hoger op slechte nachten, lager bij herstel.</p>
           <ResponsiveContainer width="100%" height={170}>
             <LineChart data={data} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis dataKey="date" tick={AXIS_TICK_10} />
               <YAxis domain={[50, 70]} tick={AXIS_TICK_10} />
               <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v} bpm`, 'rust-HR']} />
@@ -209,7 +209,7 @@ export default function Vitals() {
             </div>
             <ResponsiveContainer width="100%" height={160}>
               <BarChart data={screenData} margin={{ top: 4, right: 4, left: -8, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
                 <XAxis dataKey="date" tick={AXIS_TICK_10} />
                 <YAxis tick={AXIS_TICK_10} />
                 <Tooltip contentStyle={CHART_TIP} formatter={(v: number, n) => [fmtMin(v), n === 'focus' ? 'focus' : 'afleiding']} />
@@ -245,14 +245,14 @@ export default function Vitals() {
         <p className="text-xs text-faint mb-2">Roze = dag op/rond een PRJCT/campagne-deadline. 3+ meetings = versnipperde dag.</p>
         <ResponsiveContainer width="100%" height={160}>
           <BarChart data={meetingData} margin={{ top: 4, right: 4, left: -8, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
             <XAxis dataKey="date" tick={AXIS_TICK_10} />
             <YAxis allowDecimals={false} tick={AXIS_TICK_10} />
             <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v} meeting(s)`, 'aantal']} />
             <ReferenceLine y={3} stroke="#C58392" strokeDasharray="4 4" />
             <Bar dataKey="count" radius={[4, 4, 0, 0]}>
               {meetingData.map((m) => (
-                <Cell key={m.iso} fill={deadlines.includes(m.iso) ? '#C58392' : '#D4D7C8'} />
+                <Cell key={m.iso} fill={deadlines.includes(m.iso) ? '#C58392' : '#333333'} />
               ))}
             </Bar>
           </BarChart>

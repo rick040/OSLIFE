@@ -281,7 +281,7 @@ export default function Money() {
               <SectionTitle hint="Uitgaven deze maand per categorie.">Waar gaat het heen</SectionTitle>
               <ResponsiveContainer width="100%" height={Math.max(140, byCategory.length * 30)}>
                 <BarChart data={byCategory} layout="vertical" margin={{ top: 0, right: 16, left: 24, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" horizontal={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" horizontal={false} />
                   <XAxis type="number" tick={AXIS_TICK_10} />
                   <YAxis type="category" dataKey="cat" width={90} tick={{ fill: '#5C6150', fontSize: 11 }} />
                   <Tooltip

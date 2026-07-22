@@ -250,7 +250,7 @@ export default function Reflect() {
           )}
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={sleepEnergy} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis dataKey="date" tick={AXIS_TICK_10} />
               <YAxis yAxisId="l" domain={[0, 9]} tick={AXIS_TICK_10} />
               <YAxis yAxisId="r" orientation="right" domain={[0, 5]} hide />
@@ -273,7 +273,7 @@ export default function Reflect() {
           </p>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={spendByDay} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis dataKey="date" tick={AXIS_TICK_10} />
               <YAxis tick={AXIS_TICK_10} />
               <Tooltip
@@ -282,7 +282,7 @@ export default function Reflect() {
               />
               <Bar dataKey="spend" radius={[4, 4, 0, 0]}>
                 {spendByDay.map((d) => (
-                  <Cell key={d.iso} fill={d.deadline ? '#C58392' : '#D4D7C8'} />
+                  <Cell key={d.iso} fill={d.deadline ? '#C58392' : '#333333'} />
                 ))}
               </Bar>
             </BarChart>

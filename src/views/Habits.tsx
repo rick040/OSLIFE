@@ -122,7 +122,7 @@ export default function Habits() {
             <SectionTitle hint="Aantal afgevinkte gewoontes per dag, afgelopen 7 dagen.">Deze week</SectionTitle>
             <ResponsiveContainer width="100%" height={150}>
               <BarChart data={weekData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" vertical={false} />
                 <XAxis dataKey="day" tick={AXIS_TICK_11} axisLine={false} tickLine={false} />
                 <YAxis allowDecimals={false} domain={[0, habits.length]} tick={AXIS_TICK_10} axisLine={false} tickLine={false} />
                 <Tooltip

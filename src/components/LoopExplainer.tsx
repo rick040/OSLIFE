@@ -49,7 +49,7 @@ export default function LoopExplainer({ onClose }: { onClose: () => void }) {
           {/* layer nodes */}
           {LAYERS.map((l) => (
             <g key={l.id}>
-              <rect x={l.x - 55} y={100} width={110} height={40} rx={12} fill="#FFFFFF" stroke="#E7E9DE" />
+              <rect x={l.x - 55} y={100} width={110} height={40} rx={12} fill="#FFFFFF" stroke="#2a2a2a" />
               <text x={l.x} y={118} textAnchor="middle" fill="#1B1D17" fontSize="13" fontWeight="600">
                 {l.label}
               </text>

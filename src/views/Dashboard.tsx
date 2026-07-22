@@ -367,11 +367,11 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       </div>
 
       {/* ── KPI cockpit strip: everything at a glance, one tap through ──────── */}
-      {/* One bold "hero" bento tile (lime, dark text) for the single always-
-          relevant daily number — vitals — everything else stays low-key so
-          it doesn't compete for attention (one focal point, not eight).
-          8 units at lg:grid-cols-4 (hero=2 + six 1-col tiles) fills exactly
-          two full rows — no lonely tile stranded on its own row. */}
+      {/* One elevated "hero" bento tile for the single always-relevant daily
+          number — vitals — everything else stays low-key so it doesn't
+          compete for attention (one focal point, not eight). 8 units at
+          lg:grid-cols-4 (hero=2 + six 1-col tiles) fills exactly two full
+          rows — no lonely tile stranded on its own row. */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 animate-fade-up" style={{ animationDelay: '60ms' }}>
         <div className="card-hero p-3 col-span-2 sm:col-span-3 lg:col-span-2">
           <div className="flex items-center justify-between">
@@ -388,14 +388,14 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               <div className="flex flex-col items-center gap-0.5 shrink-0">
                 <button
                   onClick={() => setMetricDialog('steps')}
-                  className="rounded-xl p-1 -m-1 outline-none transition-colors hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                  className="rounded-xl p-1 -m-1 outline-none transition-colors hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                   aria-label={
                     stepsStale && lastStepsDay
                       ? `Stappen — nog niet gesynchroniseerd vandaag, laatst bekend ${fmtDate(lastStepsDay.date)}. Bekijk 14-daagse grafiek`
                       : 'Stappen — bekijk 14-daagse grafiek'
                   }
                 >
-                  <Ring value={stepsRingValue} size={56} stroke={6} color="stroke-[#16210f]" label={stepsRingLabel} />
+                  <Ring value={stepsRingValue} size={56} stroke={6} color="stroke-forest-hi" label={stepsRingLabel} />
                 </button>
                 {stepsStale && lastStepsDay && (
                   <span className="text-xs font-medium whitespace-nowrap">nog niet gesynct</span>
@@ -404,13 +404,13 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               <div className="flex flex-col gap-1 min-w-0">
                 <button
                   onClick={() => setMetricDialog('sleep')}
-                  className="flex items-center gap-1.5 text-sm font-semibold tabular-nums rounded-lg px-1.5 py-0.5 -mx-1.5 outline-none transition-colors hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                  className="flex items-center gap-1.5 text-sm font-semibold tabular-nums rounded-lg px-1.5 py-0.5 -mx-1.5 outline-none transition-colors hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                 >
                   <Moon className="h-3.5 w-3.5" />{today.sleepHours}u
                 </button>
                 <button
                   onClick={() => setMetricDialog('energy')}
-                  className="flex items-center gap-1.5 text-sm font-semibold tabular-nums rounded-lg px-1.5 py-0.5 -mx-1.5 outline-none transition-colors hover:bg-black/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                  className="flex items-center gap-1.5 text-sm font-semibold tabular-nums rounded-lg px-1.5 py-0.5 -mx-1.5 outline-none transition-colors hover:bg-white/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                 >
                   <Zap className="h-3.5 w-3.5" />{today.energy}/5
                 </button>
@@ -502,10 +502,10 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           </div>
           <ResponsiveContainer width="100%" height={190}>
             <RadarChart data={radarData} outerRadius="68%">
-              <PolarGrid stroke="#E7E9DE" />
+              <PolarGrid stroke="#2a2a2a" />
               <PolarAngleAxis dataKey="domain" tick={AXIS_TICK_11} />
               <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
-              <Radar dataKey="score" stroke="#6FA07C" fill="#6FA07C" fillOpacity={0.35} strokeWidth={2} />
+              <Radar dataKey="score" stroke="#34D399" fill="#34D399" fillOpacity={0.35} strokeWidth={2} />
               <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v}/100`, 'score']} />
             </RadarChart>
           </ResponsiveContainer>
@@ -520,7 +520,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
             title="Stappen"
             subtitle="Laatste 14 dagen"
             data={metricSeries.steps}
-            color="#6FA07C"
+            color="#34D399"
             goal={today.stepGoal}
             kind="bar"
             action={{ label: 'Naar Gezondheid', onClick: () => { setMetricDialog(null); onNav('vitals') } }}
@@ -532,7 +532,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
             subtitle="Laatste 14 dagen"
             data={metricSeries.sleep}
             unit="u"
-            color="#6E8CA8"
+            color="#60A5FA"
             goal={8}
             kind="line"
             action={{ label: 'Naar Gezondheid', onClick: () => { setMetricDialog(null); onNav('vitals') } }}
@@ -543,7 +543,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
             title="Energie"
             subtitle="Laatste 14 dagen · schaal 1-5"
             data={metricSeries.energy}
-            color="#C6A05B"
+            color="#FBBF24"
             kind="line"
             action={{ label: 'Naar Gezondheid', onClick: () => { setMetricDialog(null); onNav('vitals') } }}
           />
@@ -556,7 +556,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         subtitle="Laatste 14 dagen"
         data={saldoTrend}
         unit="€"
-        color="#6FA07C"
+        color="#34D399"
         kind="line"
         action={{ label: 'Naar Geld', onClick: () => { setMetricDialog(null); onNav('money') } }}
       />

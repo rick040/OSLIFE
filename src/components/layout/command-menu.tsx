@@ -1,7 +1,4 @@
-import { Laptop, Moon, Sun } from 'lucide-react'
-
 import { SCREENS, GROUP_ORDER, type View, type ScreenGroup } from '@/nav'
-import { useTheme } from '@/components/layout/theme-provider'
 import {
   CommandDialog,
   CommandEmpty,
@@ -9,7 +6,6 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
 } from '@/components/ui/command'
 
 const GROUP_LABELS: Record<ScreenGroup, string> = {
@@ -27,8 +23,6 @@ export interface CommandMenuProps {
 }
 
 export function CommandMenu({ open, onOpenChange, onNav }: CommandMenuProps) {
-  const { setTheme } = useTheme()
-
   const run = (fn: () => void) => {
     onOpenChange(false)
     fn()
@@ -63,21 +57,6 @@ export function CommandMenu({ open, onOpenChange, onNav }: CommandMenuProps) {
             </CommandGroup>
           )
         })}
-        <CommandSeparator />
-        <CommandGroup heading="Thema">
-          <CommandItem onSelect={() => run(() => setTheme('light'))}>
-            <Sun />
-            <span>Licht</span>
-          </CommandItem>
-          <CommandItem onSelect={() => run(() => setTheme('dark'))}>
-            <Moon />
-            <span>Donker</span>
-          </CommandItem>
-          <CommandItem onSelect={() => run(() => setTheme('system'))}>
-            <Laptop />
-            <span>Systeem</span>
-          </CommandItem>
-        </CommandGroup>
       </CommandList>
     </CommandDialog>
   )
