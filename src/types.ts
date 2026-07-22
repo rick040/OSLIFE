@@ -118,6 +118,8 @@ export interface BraindumpInput {
   storagePath?: string | null
   /** Optional user hint at capture time. */
   domain?: Domain | null
+  /** Written to meta.source — e.g. 'heyra-voice' so a raw voice exchange is distinguishable from a typed one in Geheugen/search_memory() results, without a dedicated column. */
+  sourceTag?: string
 }
 
 // ── Layer 3: REMEMBER (three separate stores) ────────────────────────────────
