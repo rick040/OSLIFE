@@ -1,5 +1,7 @@
 // ── Core domain model for OSLIFE ─────────────────────────────────────────────
 
+import type { LearningCategory } from './heyra/learning'
+
 export type Domain = 'parkingyou' | 'prjct' | 'buurtkaart' | 'personal' | 'cross'
 
 export type ItemKind =
@@ -83,6 +85,12 @@ export type WikiStatus = 'suggested' | 'confirmed' | 'rejected'
  * `suggested` during ingest; the user confirms/rejects it in the Kennisbank
  * view. Only `confirmed` entries get materialised as a real .md file in the
  * vault. Mirrors InferredItem's suggest-then-confirm shape.
+ *
+ * `category` sorts the learning itself (life lesson, way of living, business
+ * system/practice, implementation idea, pet) — set by Claude at ingest time.
+ * On confirm, store.resolveWikiEntry() turns the takeaway into a permanent
+ * LearnedFact under this same category (src/heyra/learning.ts), so HEYRA's
+ * advice keeps drawing on it long after the Kennisbank card scrolls by.
  */
 export interface WikiEntry {
   id: string
@@ -92,6 +100,7 @@ export interface WikiEntry {
   transcript: string
   takeaway: string
   application: string
+  category: LearningCategory | null
   domain: Domain | null
   tags: string[]
   sourceUrl: string | null
@@ -309,6 +318,22 @@ export interface HealthCondition {
   tier: Tier
 }
 
+/**
+ * A scheduled medication reminder (PM-072 Fase 2). reminderTimes fires a
+ * Telegram message every day at each time — there's no native Android app for
+ * AlarmManager, so this reuses the existing notify-tick/Telegram channel.
+ */
+export interface Medication {
+  id: string
+  healthConditionId: string | null
+  name: string
+  dosage: string | null
+  scheduleNote: string | null
+  reminderTimes: string[] // 'HH:MM', local/Amsterdam time
+  active: boolean
+  tier: Tier
+}
+
 // ── Memory & retrieval (PM-201 Slice 3) ───────────────────────────────────────
 
 /** A rolled-up digest of a period (nightly build_summaries). */
@@ -522,6 +547,13 @@ export interface AppSettings {
   hourlyRate: number // EUR per hour, used to invoice unbilled hours
 }
 
+/** A running project-hours stopwatch — client-only (persisted to localStorage via the store's persist middleware), never synced to Supabase. Stopping it writes a real HourEntry. */
+export interface ActiveTimer {
+  projectId: string
+  projectName: string
+  startedAt: string // ISO
+}
+
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue'
 
 export interface Invoice {
@@ -675,6 +707,48 @@ export interface Payment {
   domain: Domain
   source: string // 'calendar' | 'manual' | ...
   externalId?: string // google event id, for dedup
+  iban?: string | null // counterparty IBAN, for manually-added bills
+  paymentLink?: string | null // pasted payment/checkout URL
+  note?: string | null // free-text (what this is, invoice number, …)
+}
+
+// ── Investments: lightweight owned-holdings tracker ──────────────────────────
+// Scoped deliberately to what's actually owned — never a general market feed.
+// currentPrice/asOf are filled in client-side from stock-quote and never persisted.
+
+export interface Holding {
+  id: string
+  ticker: string // Stooq symbol, e.g. "AAPL.US", "ASML.NL"
+  name: string | null // friendly label, e.g. "Apple"
+  shares: number
+  costBasis: number // price paid per share, in `currency`
+  currency: 'EUR' | 'USD' | 'GBP'
+  purchaseDate: string // ISO date
+  notes: string | null
+  // Fallback for tickers Stooq doesn't carry (e.g. some European ETPs/ETNs) —
+  // a price you type in yourself, in `currency`. Live quotes always win when
+  // available; this only fills the gap when stock-quote comes back empty.
+  manualPrice: number | null
+  manualPriceAt: string | null // ISO date it was last set
+}
+
+export interface HoldingQuote {
+  price: number | null // latest price, in `currency`
+  currency: 'EUR' | 'USD' | 'GBP'
+  asOf: string | null
+}
+
+// ── Manually-corrected account balance (drift fix) ───────────────────────────
+// The running balance is opening-balance + sum(transactions), which drifts once
+// transactions predate the import history. A checkpoint pins the *real* balance
+// at a point in time; balance = latest checkpoint + transactions strictly after it.
+
+export interface BalanceCheckpoint {
+  id: string
+  amount: number // EUR, the real balance at `asOf`
+  asOf: string // ISO date
+  note: string | null
+  createdAt: string // ISO
 }
 
 // ── Kyra: dog tracker ────────────────────────────────────────────────────────
@@ -751,6 +825,11 @@ export interface Subscription {
 
 // ── Inbox (most important Gmail threads) ─────────────────────────────────────
 
+export interface EmailReminder {
+  text: string
+  date: string | null // 'YYYY-MM-DD'
+}
+
 export interface EmailItem {
   id: string
   from: string
@@ -763,6 +842,11 @@ export interface EmailItem {
   importance?: 'high' | 'med' | 'low' | null
   threadId?: string | null
   labels?: string[]
+  body?: string | null
+  aiSummary?: string | null
+  aiTakeaways?: string[]
+  aiReminders?: EmailReminder[]
+  aiSummarizedAt?: string | null
 }
 
 // ── Layer 5/6: SURFACE + ACT ──────────────────────────────────────────────────

@@ -22,7 +22,9 @@ import {
   ChevronRight,
   Plus,
   UserPlus,
+  Sparkles,
 } from 'lucide-react'
+import OnboardingWizard from '../components/OnboardingWizard'
 
 const STATUS_ORDER = ['In uitvoering', 'Gepland', 'Gepauzeerd', 'Opgeleverd'] as const
 
@@ -31,10 +33,25 @@ export default function CRM() {
   const [filter, setFilter] = useState('In uitvoering')
   const [view, setView] = useState<ProjectViewMode>('grid')
   const [showMessages, setShowMessages] = useState(false)
+  const [showOnboarding, setShowOnboarding] = useState(false)
   const {
     setOpenProject, setOpenClient, setCreatingProject, setCreatingClient,
     openClientById, modals,
   } = useProjectBrowserModals(clients)
+
+  function handleOnboardingDone(result: { clientId: string | null; projectId: string | null }) {
+    setShowOnboarding(false)
+    // Read fresh from the store rather than this render's `projects`/`clients`
+    // closure — the create just resolved and may not have re-rendered CRM yet.
+    const fresh = useStore.getState()
+    if (result.projectId) {
+      const p = fresh.projects.find((x) => x.id === result.projectId)
+      if (p) setOpenProject(p)
+    } else if (result.clientId) {
+      const c = fresh.clients.find((x) => x.id === result.clientId)
+      if (c) setOpenClient(c)
+    }
+  }
 
   const unread = messages.filter((m) => m.unread).length
 
@@ -96,6 +113,19 @@ export default function CRM() {
           </button>
         </div>
       </div>
+
+      {/* Onboarding wizard entry — the full flow: paste a client message, let
+          AI draft the project, review every step, commit to the CRM. */}
+      <button onClick={() => setShowOnboarding(true)} className="card p-4 w-full flex items-center gap-3 hover:bg-sunken transition-colors text-left">
+        <span className="h-10 w-10 rounded-2xl bg-sunken flex items-center justify-center shrink-0">
+          <Sparkles className="h-5 w-5 text-ink-soft" />
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="font-medium text-ink">Klant onboarden</div>
+          <div className="text-xs text-muted">Plak een bericht, laat AI het project opzetten — scope, taken, mijlpalen &amp; voorstel</div>
+        </div>
+        <ChevronRight className="h-4 w-4 text-faint shrink-0" />
+      </button>
 
       {/* Berichten entry */}
       <button onClick={() => setShowMessages(true)} className="card p-4 w-full flex items-center gap-3 hover:bg-sunken transition-colors text-left">
@@ -212,6 +242,9 @@ export default function CRM() {
           onClose={() => setShowMessages(false)}
           onReadConversation={markConversationRead}
         />
+      )}
+      {showOnboarding && (
+        <OnboardingWizard onClose={() => setShowOnboarding(false)} onDone={handleOnboardingDone} />
       )}
       {modals}
     </div>

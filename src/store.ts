@@ -18,6 +18,7 @@ import type {
   Goal,
   Milestone,
   EmailItem,
+  EmailReminder,
   Payment,
   ScreenDay,
   MeetingDay,
@@ -36,6 +37,7 @@ import type {
   HourEntry,
   Invoice,
   ActivityEntry,
+  ActiveTimer,
   VendorTag,
   BraindumpEntry,
   BraindumpInput,
@@ -49,9 +51,13 @@ import type {
   Interaction,
   AdminItem,
   HealthCondition,
+  Medication,
   MemorySummary,
   BusinessIdea,
   IdeaSource,
+  Holding,
+  HoldingQuote,
+  BalanceCheckpoint,
 } from './types'
 import { vendorKey, isUntagged, isTransfer } from './finance/categories'
 import { categorizeVendor } from './heyra/agents/vendorAgent'
@@ -59,11 +65,13 @@ import { analyzeActivity } from './lib/crm/activityAnalyzer'
 import type { ActivityAnalysis } from './lib/crm/activityAnalyzer'
 import { unbilledBillableHours, sumHours, invoiceAmountFromHours } from './lib/crm/invoicing'
 import { parseWhatsapp } from './lib/crm/whatsapp'
+import { classifyImportance, emailTaskDomain } from './lib/crm/emailClassify'
 import { classifyWithBrain, type Classification } from './understand'
 import { invokeBraindumpIngest } from './lib/braindump'
 import type { ClaudeImportRecord } from './lib/claudeImport'
 import { runReflect, computeCorrelations, computeAnomalies, buildNarrativePrompt, NARRATIVE_SYSTEM_PROMPT } from './reflect'
 import { askBrain } from './heyra/brainClient'
+import { buildFinanceCoachPrompt } from './finance/financeCoach'
 import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
 import { proposeGoals as proposeGoalsAI } from './heyra/goals'
 import { buildWeekPlan, weekDates } from './heyra/planner'
@@ -125,6 +133,7 @@ import {
   resetBraindumpEntryRow,
   persistEmailRead,
   persistAllEmailsRead,
+  summarizeEmail,
   createHabitRow,
   softDeleteHabitRow,
   persistHabitTick,
@@ -133,6 +142,15 @@ import {
   createSubscriptionRow,
   updateSubscriptionRow,
   deleteSubscriptionRow,
+  createPaymentRow,
+  fetchHoldings,
+  createHoldingRow,
+  updateHoldingRow,
+  deleteHoldingRow,
+  fetchStockQuotes,
+  fetchBalanceCheckpoints,
+  createBalanceCheckpointRow,
+  deleteBalanceCheckpointRow,
   createDogEntryRow,
   deleteDogEntryRow,
   updateDogEntryRow,
@@ -184,6 +202,10 @@ import {
   updateAdminItemRow,
   deleteAdminItemRow,
   fetchHealthConditions,
+  fetchHealthConditionByEventId,
+  updateHealthConditionRow,
+  fetchMedications,
+  createMedicationRow,
   fetchSummaries,
   forgetRecord as forgetRecordApi,
   fetchBusinessIdeas,
@@ -235,6 +257,8 @@ interface State {
   projectHours: HourEntry[]
   projectInvoices: Invoice[]
   projectActivity: ActivityEntry[]
+  /** The one project-hours stopwatch that can be running at a time, client-only. */
+  activeTimer: ActiveTimer | null
   goals: Goal[]
   milestones: Milestone[]
   goalProposals: GoalProposal[]
@@ -249,6 +273,14 @@ interface State {
   emails: EmailItem[]
   payments: Payment[]
   subscriptions: Subscription[]
+  holdings: Holding[]
+  balanceCheckpoints: BalanceCheckpoint[]
+  /** Latest price per holding ticker (from the last refreshStockQuotes() call). */
+  stockQuotes: Record<string, HoldingQuote>
+  fx: { EURUSD: number | null; EURGBP: number | null }
+  loadingQuotes: boolean
+  financeCoach: { text: string; generatedAt: string } | null
+  financeCoachLoading: boolean
   dogProfile: DogProfile
   dogEntries: DogEntry[]
   dogMedical: DogMedical[]
@@ -262,6 +294,7 @@ interface State {
   interactions: Interaction[]
   adminItems: AdminItem[]
   healthConditions: HealthCondition[]
+  medications: Medication[]
   summaries: MemorySummary[]
   businessIdeas: BusinessIdea[]
   settings: AppSettings
@@ -335,7 +368,10 @@ interface State {
 
   // Inference engine (Slice 1): load the pending review queue and resolve one.
   loadInferences: () => Promise<void>
-  resolveInference: (id: string, decision: InferenceDecision) => Promise<void>
+  /** Returns the newly created health_condition's id when confirming a health_condition_promotion, else null. */
+  resolveInference: (id: string, decision: InferenceDecision) => Promise<string | null>
+  updateHealthCondition: (id: string, patch: Partial<HealthCondition>) => Promise<void>
+  createMedication: (m: Omit<Medication, 'id'>) => Promise<void>
 
   // Kennisbank: load the wiki suggest-queue and resolve one. On confirm, the
   // entry also gets materialised as a real .md file in the vault.
@@ -374,6 +410,17 @@ interface State {
   dismissPlanBlock: (id: string) => void
   markEmailRead: (id: string) => void
   markAllEmailsRead: () => void
+  // Patch an already-fetched email row with an AI summary result (on-demand
+  // callers apply the summarize-email response themselves via this).
+  applyEmailSummary: (id: string, patch: Partial<EmailItem>) => void
+  // Turn an email's AI-detected reminders into real Taken-screen tasks (Thread
+  // rows). Called exactly once per email, right after a fresh summarize-email
+  // result lands — never on re-render — so it can't double-create tasks.
+  addTasksFromEmailReminders: (email: EmailItem, reminders: EmailReminder[]) => void
+  // Background pre-summarization of "Belangrijk" (high-importance) mail that
+  // hasn't been summarized yet. Best-effort & idempotent, same shape as
+  // autoTagTransactions.
+  autoSummarizeImportantEmails: () => Promise<void>
 
   // CRM — clients
   addClient: (client: Omit<Client, 'id'>) => void
@@ -424,6 +471,12 @@ interface State {
   deleteProjectTask: (id: string) => void
   addHours: (projectId: string, h: Omit<HourEntry, 'id' | 'projectId'>) => void
   deleteHours: (id: string) => void
+  // Project-hours stopwatch — a single running timer, client-only (see
+  // `activeTimer`). Starting one while another runs stops+logs the old one
+  // first so time is never silently lost. Stopping writes a real HourEntry.
+  startTimer: (projectId: string, projectName: string) => void
+  stopTimer: (note?: string) => void
+  discardTimer: () => void
   addInvoice: (projectId: string, inv: Omit<Invoice, 'id' | 'projectId'>) => void
   updateInvoice: (id: string, patch: Partial<Invoice>) => void
   deleteInvoice: (id: string) => void
@@ -440,8 +493,28 @@ interface State {
   addTransactions: (txns: Transaction[]) => void
   importTransactions: (txns: Transaction[]) => Promise<{ inserted: number; duplicates: number }>
   markPaymentPaid: (id: string) => void
+  // Manually add a bill/invoice to "Te betalen" (payee/amount/due/IBAN/link/note).
+  addPayment: (payment: Omit<Payment, 'id' | 'status' | 'source'>) => void
   // Remove an outstanding (or any) payment entirely — from the store and the DB.
   deletePayment: (id: string) => void
+
+  // Investments — a scoped tracker for stocks/ETFs actually owned, never a
+  // general market feed. Prices are fetched only for held tickers.
+  addHolding: (holding: Omit<Holding, 'id'>) => void
+  updateHolding: (id: string, patch: Partial<Omit<Holding, 'id'>>) => void
+  deleteHolding: (id: string) => void
+  refreshStockQuotes: () => Promise<void>
+
+  // Manual balance checkpoint — pins the real account balance at a point in
+  // time so the running balance stops drifting from whatever it was seeded
+  // from; balance = latest checkpoint + transactions strictly after it.
+  addBalanceCheckpoint: (amount: number, asOf: string, note?: string | null) => void
+  deleteBalanceCheckpoint: (id: string) => void
+
+  // Finance coach — HEYRA wearing its "financial coach" hat: a grounded,
+  // narrative read on spending/subscriptions/bills, generated on demand
+  // (never auto-polled) from real store facts only.
+  refreshFinanceCoach: () => Promise<void>
   // Remove a single transaction — from the store and the DB. Handy to clear
   // demo/seed rows that shouldn't count toward the balance.
   deleteTransaction: (id: string) => void
@@ -509,6 +582,7 @@ const seed = () => ({
   projectHours: [] as HourEntry[],
   projectInvoices: [] as Invoice[],
   projectActivity: [] as ActivityEntry[],
+  activeTimer: null as ActiveTimer | null,
   goals: mock.goals,
   milestones: mock.milestones,
   goalProposals: [] as GoalProposal[],
@@ -521,6 +595,13 @@ const seed = () => ({
   emails: mock.emails,
   payments: mock.payments,
   subscriptions: mock.subscriptions,
+  holdings: mock.holdings,
+  balanceCheckpoints: mock.balanceCheckpoints,
+  stockQuotes: {} as Record<string, HoldingQuote>,
+  fx: { EURUSD: null, EURGBP: null } as { EURUSD: number | null; EURGBP: number | null },
+  loadingQuotes: false,
+  financeCoach: null as { text: string; generatedAt: string } | null,
+  financeCoachLoading: false,
   dogProfile: mock.dogProfile,
   dogEntries: mock.dogEntries,
   dogMedical: mock.dogMedical,
@@ -534,6 +615,7 @@ const seed = () => ({
   interactions: [] as Interaction[],
   adminItems: [] as AdminItem[],
   healthConditions: [] as HealthCondition[],
+  medications: [] as Medication[],
   summaries: [] as MemorySummary[],
   businessIdeas: [] as BusinessIdea[],
   settings: { hourlyRate: 0 } as AppSettings,
@@ -559,6 +641,7 @@ const EMPTY_WHEN_FALSY = [
   'projectMilestones', 'projectTasks', 'projectHours', 'projectInvoices',
   'projectActivity', 'checkins', 'learnedFacts', 'vendorTags', 'braindumpEntries',
   'goalProposals', 'weekPlan', 'businessIdeas', 'wikiEntries',
+  'holdings', 'balanceCheckpoints',
 ] as const
 
 /**
@@ -582,6 +665,10 @@ export function applyPersistDefaults(
   // not leave a spinner stuck on.
   state.proposingGoals = false
   state.planningWeek = false
+  state.loadingQuotes = false
+  state.financeCoachLoading = false
+  if (!state.stockQuotes) state.stockQuotes = {}
+  if (state.financeCoach === undefined) state.financeCoach = null
   if (state.weekPlanAt === undefined) state.weekPlanAt = null
   if (state.lastGoalProposalError === undefined) state.lastGoalProposalError = null
   if (state.lastPlanError === undefined) state.lastPlanError = null
@@ -589,6 +676,9 @@ export function applyPersistDefaults(
 
 /** Guard so overlapping auto-tag runs (load + realtime) don't double-work. */
 let autoTagRunning = false
+
+/** Guard so overlapping email auto-summarize runs (load + realtime) don't double-work. */
+let autoSummarizeRunning = false
 
 const uid = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1000)}`
 
@@ -1383,6 +1473,49 @@ export const useStore = create<State>()(
         void persistEmailRead(id, true)
       },
 
+      applyEmailSummary: (id, patch) => {
+        patchSlice(set, 'emails', id, patch)
+      },
+
+      addTasksFromEmailReminders: (email, reminders) => {
+        const domain = emailTaskDomain(email)
+        for (const r of reminders) {
+          if (!r.text) continue
+          get().addTask({
+            title: r.text,
+            due: r.date,
+            time: null,
+            domain,
+            priority: 'Medium',
+            notes: `Automatisch aangemaakt vanuit Inbox-mail: ${email.subject}`,
+          })
+        }
+      },
+
+      autoSummarizeImportantEmails: async () => {
+        if (autoSummarizeRunning) return
+        autoSummarizeRunning = true
+        try {
+          const candidates = get().emails.filter(
+            (e) => isDbId(e.id) && !e.aiSummarizedAt && classifyImportance(e) === 'high',
+          )
+          // Cap per run to keep cost bounded — realtime/next load picks up the rest.
+          for (const e of candidates.slice(0, 10)) {
+            const result = await summarizeEmail(e.id)
+            if (!result) continue
+            patchSlice(set, 'emails', e.id, {
+              aiSummary: result.summary,
+              aiTakeaways: result.takeaways,
+              aiReminders: result.reminders,
+              aiSummarizedAt: new Date().toISOString(),
+            })
+            if (result.reminders.length > 0) get().addTasksFromEmailReminders(e, result.reminders)
+          }
+        } finally {
+          autoSummarizeRunning = false
+        }
+      },
+
       markPaymentPaid: (id) => {
         set((s) => {
           const p = s.payments.find((x) => x.id === id)
@@ -1704,6 +1837,26 @@ export const useStore = create<State>()(
         void deleteHourRow(id)
       },
 
+      startTimer: (projectId, projectName) => {
+        // Switching projects mid-timer shouldn't silently lose the running
+        // time — log it first, same as stopping normally.
+        if (get().activeTimer) get().stopTimer()
+        set({ activeTimer: { projectId, projectName, startedAt: new Date().toISOString() } })
+      },
+
+      stopTimer: (note) => {
+        const timer = get().activeTimer
+        if (!timer) return
+        const elapsedHours = Math.round(((Date.now() - new Date(timer.startedAt).getTime()) / 3600000) * 100) / 100
+        set({ activeTimer: null })
+        // Below ~36s isn't worth a row — most likely an accidental start/stop.
+        if (elapsedHours >= 0.01) {
+          get().addHours(timer.projectId, { date: today(), hours: elapsedHours, note: note?.trim() || 'Timer', billable: true, billed: false })
+        }
+      },
+
+      discardTimer: () => set({ activeTimer: null }),
+
       // ── Invoices ───────────────────────────────────────────────────────────
       addInvoice: (projectId, inv) => {
         const tempId = uid('inv')
@@ -2024,6 +2177,73 @@ export const useStore = create<State>()(
         void deleteSubscriptionRow(id)
       },
 
+      addPayment: (payment) => {
+        const tempId = uid('pay')
+        set((s) => ({
+          payments: [{ ...payment, id: tempId, status: 'open', source: 'manual' }, ...s.payments],
+          activity: pushSignal(s.activity, { text: `Betaling toegevoegd: ${payment.payee} (€${payment.amount})`, domain: payment.domain, loop: 'fast' }),
+        }))
+        void createPaymentRow(payment).then(swapTempId(set, 'payments', tempId))
+      },
+
+      addHolding: (holding) => {
+        const tempId = uid('hold')
+        set((s) => ({ holdings: [{ ...holding, id: tempId }, ...s.holdings] }))
+        void createHoldingRow(holding).then(swapTempId(set, 'holdings', tempId))
+        void get().refreshStockQuotes()
+      },
+
+      updateHolding: (id, patch) => {
+        patchSlice(set, 'holdings', id, patch)
+        void updateHoldingRow(id, patch)
+      },
+
+      deleteHolding: (id) => {
+        removeFromSlice(set, 'holdings', id)
+        void deleteHoldingRow(id)
+      },
+
+      refreshStockQuotes: async () => {
+        const tickers = [...new Set(get().holdings.map((h) => h.ticker))]
+        if (!tickers.length) return
+        set({ loadingQuotes: true })
+        try {
+          const { quotes, fx } = await fetchStockQuotes(tickers)
+          set((s) => ({ stockQuotes: { ...s.stockQuotes, ...quotes }, fx, loadingQuotes: false }))
+        } catch {
+          set({ loadingQuotes: false })
+        }
+      },
+
+      addBalanceCheckpoint: (amount, asOf, note) => {
+        const tempId = uid('bal')
+        set((s) => ({
+          balanceCheckpoints: [{ id: tempId, amount, asOf, note: note ?? null, createdAt: new Date().toISOString() }, ...s.balanceCheckpoints],
+          activity: pushSignal(s.activity, { text: `Saldo bijgewerkt naar €${amount}`, domain: 'personal', loop: 'fast' }),
+        }))
+        void createBalanceCheckpointRow({ amount, asOf, note: note ?? null }).then(swapTempId(set, 'balanceCheckpoints', tempId))
+      },
+
+      deleteBalanceCheckpoint: (id) => {
+        removeFromSlice(set, 'balanceCheckpoints', id)
+        void deleteBalanceCheckpointRow(id)
+      },
+
+      refreshFinanceCoach: async () => {
+        set({ financeCoachLoading: true })
+        const s = get()
+        try {
+          const { system, prompt } = buildFinanceCoachPrompt(s)
+          const text = await askBrain(system, prompt, { maxTokens: 500 })
+          set({
+            financeCoach: text ? { text, generatedAt: new Date().toISOString() } : get().financeCoach,
+            financeCoachLoading: false,
+          })
+        } catch {
+          set({ financeCoachLoading: false })
+        }
+      },
+
       recomputeBrain: () => {
         const s = get()
         const essentials = deriveEssentials(s.clients, s.projects, s.goals, s.dogEntries)
@@ -2102,7 +2322,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, summaries, cleaningLog, businessIdeas] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, medications, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -2120,9 +2340,12 @@ export const useStore = create<State>()(
             fetchInteractions(),
             fetchAdminItems(),
             fetchHealthConditions(),
+            fetchMedications(),
             fetchSummaries(),
             fetchCleaningLog(),
             fetchBusinessIdeas(),
+            fetchHoldings(),
+            fetchBalanceCheckpoints(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -2166,9 +2389,12 @@ export const useStore = create<State>()(
             interactions,
             adminItems,
             healthConditions,
+            medications,
             summaries,
             cleaningLog,
             businessIdeas,
+            holdings,
+            balanceCheckpoints,
             dataSource: 'live',
             isLoading: false,
           })
@@ -2177,6 +2403,10 @@ export const useStore = create<State>()(
           get().recomputeBrain()
           // Categorise any transactions still Uncategorized (cache-first, then AI).
           void get().autoTagTransactions()
+          // Prices for owned holdings only — never a general market feed.
+          void get().refreshStockQuotes()
+          // Pre-summarize "Belangrijk" mail that hasn't been summarized yet.
+          void get().autoSummarizeImportantEmails()
         } catch (err) {
           console.warn('[OSLIFE] Supabase fetch failed', err)
           set({ isLoading: false })
@@ -2192,12 +2422,14 @@ export const useStore = create<State>()(
           { table: 'health_daily_stats', onChange: () => fetchHealthDays().then((d) => { if (d.length > 0) { set({ healthDays: d }); get().recomputeBrain() } }) },
           { table: 'finance_tx', onChange: () => fetchTransactions().then((d) => { if (d.length > 0) { set({ transactions: d }); get().recomputeBrain(); void get().autoTagTransactions() } }) },
           { table: 'vendor_tags', onChange: () => fetchVendorTags().then((d) => { set({ vendorTags: d }); void get().autoTagTransactions() }) },
-          { table: 'gmail_messages', onChange: () => fetchEmails().then((d) => d.length > 0 && set({ emails: d })) },
+          { table: 'gmail_messages', onChange: () => fetchEmails().then((d) => { if (d.length > 0) { set({ emails: d }); void get().autoSummarizeImportantEmails() } }) },
           { table: 'day_blocks', onChange: () => Promise.all([fetchBlocks(), fetchMeetingDays()]).then(([b, m]) => {
             set({ ...(b.length > 0 && { blocks: b }), ...(m.length > 0 && { meetingDays: m }) })
           }) },
           { table: 'projects', onChange: () => fetchProjects().then((d) => { if (d.length > 0) { set({ projects: d }); get().recomputeBrain() } }) },
           { table: 'payments', onChange: () => fetchPayments().then((d) => d.length > 0 && set({ payments: d })) },
+          { table: 'investment_holdings', onChange: () => fetchHoldings().then((d) => { set({ holdings: d }); void get().refreshStockQuotes() }) },
+          { table: 'balance_checkpoints', onChange: () => fetchBalanceCheckpoints().then((d) => set({ balanceCheckpoints: d })) },
           { table: 'habits', onChange: () => fetchHabits().then((d) => d.length > 0 && set({ habits: d })) },
           { table: 'habit_log', onChange: () => fetchHabits().then((d) => d.length > 0 && set({ habits: d })) },
           { table: 'cleaning_log', onChange: () => fetchCleaningLog().then((d) => set({ cleaningLog: d })) },
@@ -2253,15 +2485,38 @@ export const useStore = create<State>()(
         if (!ok) {
           // Roll back on failure so the user can retry.
           set({ inferences: prev })
-          return
+          return null
         }
-        // A confirmed subscription_candidate created a subscription row — refresh.
         if (decision === 'confirm') {
           const item = prev.find((i) => i.id === id)
+          // A confirmed subscription_candidate created a subscription row — refresh.
           if (item?.type === 'subscription_candidate') {
             void fetchSubscriptions().then((d) => d.length > 0 && set({ subscriptions: d }))
           }
+          // PM-072 Fase 2: a confirmed health_condition_promotion (was P1's
+          // silent auto-insert, now confirm-gated) created a dossier — health_
+          // condition already refreshes via its own Realtime subscription, but
+          // the caller (the app-startup splashscreen) needs this specific new
+          // dossier's id right away to open the baseline-info wizard against.
+          if (item?.type === 'health_condition_promotion') {
+            const created = await fetchHealthConditionByEventId(id)
+            if (created) {
+              set({ healthConditions: [created, ...get().healthConditions.filter((c) => c.id !== created.id)] })
+              return created.id
+            }
+          }
         }
+        return null
+      },
+
+      updateHealthCondition: async (id, patch) => {
+        set({ healthConditions: get().healthConditions.map((c) => (c.id === id ? { ...c, ...patch } : c)) })
+        await updateHealthConditionRow(id, patch)
+      },
+
+      createMedication: async (m) => {
+        const id = await createMedicationRow(m)
+        if (id) set({ medications: [...get().medications, { ...m, id }] })
       },
 
       loadWikiEntries: async () => {
@@ -2287,6 +2542,25 @@ export const useStore = create<State>()(
           // file — best-effort, never blocks the UI.
           void materializeWikiEntry({ ...entry, status: 'confirmed' })
           void fetchWikiEntries().then((d) => set({ wikiEntries: d }))
+          // Rick confirming a Kennisbank suggestion IS him vouching for it, so
+          // its takeaway graduates into permanent knowledge: a LearnedFact
+          // under the same category, folded into every future HEYRA prompt
+          // via renderLearnedFacts (memoryContext.ts) — same "learn as we
+          // speak" store a chat-derived fact lands in. Only when Claude tagged
+          // a category at ingest time; skip rather than mis-file otherwise.
+          if (entry.category) {
+            const fact: LearnedFact = {
+              id: crypto.randomUUID(),
+              text: entry.takeaway,
+              category: entry.category,
+              createdAt: new Date().toISOString(),
+            }
+            const { merged, added } = mergeFacts(get().learnedFacts, [fact])
+            if (added.length) {
+              set({ learnedFacts: merged })
+              void persistLearnedFacts(merged)
+            }
+          }
         }
       },
 

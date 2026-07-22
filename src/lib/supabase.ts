@@ -4,6 +4,7 @@ import type {
   Checkin,
   Transaction,
   EmailItem,
+  EmailReminder,
   MeetingDay,
   Domain,
   ScreenDay,
@@ -39,13 +40,17 @@ import type {
   Interaction,
   AdminItem,
   HealthCondition,
+  Medication,
   MemorySummary,
   MemoryHit,
   BusinessIdea,
   IdeaSource,
+  Holding,
+  HoldingQuote,
+  BalanceCheckpoint,
 } from '../types'
 import { today, habitStreak } from '../domains'
-import type { LearnedFact } from '../heyra/learning'
+import { CATEGORY_META, type LearnedFact, type LearningCategory } from '../heyra/learning'
 
 // New oslife project (nhyunnnmdcmojvkxrbpl, eu-west-1).
 // Set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY in .env.local
@@ -798,7 +803,7 @@ export async function uploadBraindumpFile(file: File | Blob, filename: string): 
 // proposes a `suggested` row when Claude flags an entry as an actionable
 // idea/insight; confirmWikiEntry() resolves it (RPC enforces ownership).
 
-const WIKI_COLS = 'id,created_at,status,title,transcript,takeaway,application,domain,tags,source_url,braindump_entry_id'
+const WIKI_COLS = 'id,created_at,status,title,transcript,takeaway,application,category,domain,tags,source_url,braindump_entry_id'
 
 function mapWikiRow(r: Record<string, unknown>): WikiEntry {
   return {
@@ -809,6 +814,7 @@ function mapWikiRow(r: Record<string, unknown>): WikiEntry {
     transcript: (r.transcript as string) ?? '',
     takeaway: (r.takeaway as string) ?? '',
     application: (r.application as string) ?? '',
+    category: (r.category as LearningCategory) ?? null,
     domain: (r.domain as Domain) ?? null,
     tags: (r.tags as string[]) ?? [],
     sourceUrl: (r.source_url as string) ?? null,
@@ -839,13 +845,14 @@ export async function confirmWikiEntry(id: string, decision: InferenceDecision):
 export async function materializeWikiEntry(entry: WikiEntry): Promise<void> {
   const body = [
     `# ${entry.title}`,
+    entry.category ? `## Categorie\n${CATEGORY_META[entry.category].label}` : '',
     '## Transcript',
     entry.transcript,
     '## Kernpunt',
     entry.takeaway,
     '## Toepassing',
     entry.application,
-  ].join('\n\n')
+  ].filter(Boolean).join('\n\n')
   try {
     await supabase.functions.invoke('materialize-note', {
       body: {
@@ -861,7 +868,7 @@ export async function materializeWikiEntry(entry: WikiEntry): Promise<void> {
 }
 
 export async function fetchPayments(): Promise<Payment[]> {
-  return fetchRows('payments', 'id,payee,amount,due,direction,status,domain,source,external_id', { column: 'due', ascending: true, nullsFirst: false }, (r) => ({
+  return fetchRows('payments', 'id,payee,amount,due,direction,status,domain,source,external_id,iban,payment_link,notes', { column: 'due', ascending: true, nullsFirst: false }, (r) => ({
     id: r.id as string,
     payee: (r.payee as string) ?? '',
     amount: (r.amount as number) ?? 0,
@@ -871,7 +878,116 @@ export async function fetchPayments(): Promise<Payment[]> {
     domain: ((r.domain as Domain) ?? 'personal'),
     source: (r.source as string) ?? 'manual',
     externalId: (r.external_id as string) ?? undefined,
+    iban: (r.iban as string) ?? null,
+    paymentLink: (r.payment_link as string) ?? null,
+    note: (r.notes as string) ?? null,
   }))
+}
+
+/** Insert a manually-added bill (source='manual') and return the new id. */
+export async function createPaymentRow(payment: Omit<Payment, 'id' | 'status' | 'source'>): Promise<string | null> {
+  return insertRow('payments', {
+    payee: payment.payee,
+    amount: payment.amount,
+    due: payment.due,
+    direction: payment.direction,
+    domain: payment.domain,
+    status: 'open',
+    source: 'manual',
+    iban: payment.iban ?? null,
+    payment_link: payment.paymentLink ?? null,
+    notes: payment.note ?? null,
+  })
+}
+
+// ── Investment holdings ───────────────────────────────────────────────────────
+
+export async function fetchHoldings(): Promise<Holding[]> {
+  return fetchRows('investment_holdings', 'id,ticker,name,shares,cost_basis,currency,purchase_date,notes,manual_price,manual_price_at', { column: 'purchase_date', ascending: false }, (r) => ({
+    id: r.id as string,
+    ticker: (r.ticker as string) ?? '',
+    name: (r.name as string) ?? null,
+    shares: (r.shares as number) ?? 0,
+    costBasis: (r.cost_basis as number) ?? 0,
+    currency: ((r.currency as Holding['currency']) ?? 'EUR'),
+    purchaseDate: (r.purchase_date as string) ?? '',
+    notes: (r.notes as string) ?? null,
+    manualPrice: (r.manual_price as number) ?? null,
+    manualPriceAt: (r.manual_price_at as string) ?? null,
+  }))
+}
+
+export async function createHoldingRow(holding: Omit<Holding, 'id'>): Promise<string | null> {
+  return insertRow('investment_holdings', {
+    ticker: holding.ticker,
+    name: holding.name,
+    shares: holding.shares,
+    cost_basis: holding.costBasis,
+    currency: holding.currency,
+    purchase_date: holding.purchaseDate,
+    notes: holding.notes,
+    manual_price: holding.manualPrice,
+    manual_price_at: holding.manualPriceAt,
+  })
+}
+
+const HOLDING_COLS: Record<string, string> = {
+  name: 'name',
+  shares: 'shares',
+  costBasis: 'cost_basis',
+  currency: 'currency',
+  purchaseDate: 'purchase_date',
+  notes: 'notes',
+  manualPrice: 'manual_price',
+  manualPriceAt: 'manual_price_at',
+}
+
+export async function updateHoldingRow(id: string, patch: Partial<Omit<Holding, 'id'>>): Promise<void> {
+  await updateRow('investment_holdings', id, patch, HOLDING_COLS)
+}
+
+export async function deleteHoldingRow(id: string): Promise<void> {
+  return deleteRow('investment_holdings', id)
+}
+
+/** Live quotes for a scoped set of tickers via the stock-quote edge function. Never throws — best-effort. */
+export async function fetchStockQuotes(tickers: string[]): Promise<{
+  quotes: Record<string, HoldingQuote>
+  fx: { EURUSD: number | null; EURGBP: number | null }
+}> {
+  const empty = { quotes: {}, fx: { EURUSD: null, EURGBP: null } }
+  if (!tickers.length) return empty
+  try {
+    const { data, error } = await supabase.functions.invoke('stock-quote', { body: { tickers } })
+    if (error || !data) return empty
+    return { quotes: data.quotes ?? {}, fx: data.fx ?? { EURUSD: null, EURGBP: null } }
+  } catch {
+    return empty
+  }
+}
+
+// ── Manual balance checkpoints ────────────────────────────────────────────────
+
+export async function fetchBalanceCheckpoints(): Promise<BalanceCheckpoint[]> {
+  return fetchRows('balance_checkpoints', 'id,amount,as_of,note,created_at', { column: 'as_of', ascending: false }, (r) => ({
+    id: r.id as string,
+    amount: (r.amount as number) ?? 0,
+    asOf: (r.as_of as string) ?? '',
+    note: (r.note as string) ?? null,
+    createdAt: (r.created_at as string) ?? '',
+  }))
+}
+
+export async function createBalanceCheckpointRow(checkpoint: Omit<BalanceCheckpoint, 'id' | 'createdAt'>): Promise<string | null> {
+  return insertRow('balance_checkpoints', {
+    amount: checkpoint.amount,
+    as_of: checkpoint.asOf,
+    note: checkpoint.note,
+  })
+}
+
+export async function deleteBalanceCheckpointRow(id: string): Promise<void> {
+  return deleteRow('balance_checkpoints', id)
 }
 
 export async function fetchSubscriptions(): Promise<Subscription[]> {
@@ -890,10 +1006,13 @@ export async function fetchSubscriptions(): Promise<Subscription[]> {
 
 // ── Email / Inbox ─────────────────────────────────────────────────────────────
 
+const EMAIL_COLS =
+  'id,from_addr,subject,snippet,received_at,read,importance,labels,thread_id,body,ai_summary,ai_takeaways,ai_reminders,ai_summarized_at'
+
 export async function fetchEmails(): Promise<EmailItem[]> {
   // 400 (up from 50) so the label-filtered CRM inbox (deriveGmailMessages) sees
   // enough history — client/Fiverr-labelled mail is interleaved among all mail.
-  return fetchRows('gmail_messages', 'id,from_addr,subject,snippet,received_at,read,importance,labels', { column: 'received_at', ascending: false, limit: 400 }, (r) => ({
+  return fetchRows('gmail_messages', EMAIL_COLS, { column: 'received_at', ascending: false, limit: 400 }, (r) => ({
     id: r.id as string,
     from: (r.from_addr as string) ?? '',
     subject: (r.subject as string) ?? '',
@@ -902,8 +1021,52 @@ export async function fetchEmails(): Promise<EmailItem[]> {
     unread: !(r.read as boolean),
     important: (r.importance as string) === 'high',
     domain: inferEmailDomain((r.labels as string[]) ?? []),
+    threadId: (r.thread_id as string) ?? null,
     labels: (r.labels as string[]) ?? [],
+    body: (r.body as string) ?? null,
+    aiSummary: (r.ai_summary as string) ?? null,
+    aiTakeaways: (r.ai_takeaways as string[]) ?? [],
+    aiReminders: (r.ai_reminders as EmailReminder[]) ?? [],
+    aiSummarizedAt: (r.ai_summarized_at as string) ?? null,
   }))
+}
+
+/** Calls summarize-email; patches nothing itself — caller applies the result to the store. */
+export async function summarizeEmail(id: string): Promise<{
+  summary: string
+  takeaways: string[]
+  reminders: EmailReminder[]
+} | null> {
+  if (!isDbId(id)) return null
+  const { data, error } = await supabase.functions.invoke('summarize-email', { body: { id } })
+  if (error || !data || data.error) {
+    console.warn('[OSLIFE] summarize-email failed', error ?? data?.error)
+    return null
+  }
+  return data
+}
+
+/** Calls draft-email-reply. Returns null (with a console warning) on failure — never persisted. */
+export async function draftEmailReply(id: string, instruction?: string): Promise<string | null> {
+  if (!isDbId(id)) return null
+  const { data, error } = await supabase.functions.invoke('draft-email-reply', { body: { id, instruction } })
+  if (error || !data || data.error) {
+    console.warn('[OSLIFE] draft-email-reply failed', error ?? data?.error)
+    return null
+  }
+  return (data.draft as string) ?? null
+}
+
+/** Calls create-gmail-draft. Returns { ok, error? } so the UI can show a failure inline. */
+export async function saveGmailDraft(id: string, body: string): Promise<{ ok: boolean; error?: string }> {
+  if (!isDbId(id)) return { ok: false, error: 'invalid id' }
+  const { data, error } = await supabase.functions.invoke('create-gmail-draft', { body: { id, body } })
+  if (error || !data || data.error) {
+    const message = (error?.message as string) ?? (data?.error as string) ?? 'unknown error'
+    console.warn('[OSLIFE] create-gmail-draft failed', message)
+    return { ok: false, error: message }
+  }
+  return { ok: true }
 }
 
 // ── Calendar / Meeting days ───────────────────────────────────────────────────
@@ -1876,6 +2039,68 @@ export async function fetchHealthConditions(): Promise<HealthCondition[]> {
     notes: (r.notes as string) ?? null,
     tier: (r.tier as HealthCondition['tier']) ?? 'geheim',
   }))
+}
+
+const HEALTH_CONDITION_COLS: Record<string, string> = {
+  label: 'label', status: 'status', notes: 'notes',
+}
+
+/** Baseline-info wizard writes here after PM-072 Fase 2's confirm-gated P1 creates the dossier. */
+export async function updateHealthConditionRow(id: string, patch: Partial<HealthCondition>): Promise<void> {
+  await updateRow('health_condition', id, patch, HEALTH_CONDITION_COLS)
+}
+
+/**
+ * Find the dossier confirm_inference() just created from a confirmed
+ * health_condition_promotion event — the migration appends the event's own id
+ * to `derived_from` specifically so the splashscreen can locate it without
+ * confirm_inference()'s boolean return type having to change.
+ */
+export async function fetchHealthConditionByEventId(eventId: string): Promise<HealthCondition | null> {
+  const { data, error } = await supabase
+    .from('health_condition')
+    .select('id,subject,label,opened_at,status,notes,tier')
+    .contains('derived_from', [eventId])
+    .order('opened_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  warnWrite('health_condition.fetchByEvent', error)
+  if (!data) return null
+  return {
+    id: data.id as string,
+    subject: (data.subject as string) ?? 'rick',
+    label: (data.label as string) ?? '',
+    openedAt: (data.opened_at as string) ?? '',
+    status: (data.status as HealthCondition['status']) ?? 'active',
+    notes: (data.notes as string) ?? null,
+    tier: (data.tier as HealthCondition['tier']) ?? 'geheim',
+  }
+}
+
+// ── Medicatie-herinneringen (PM-072 Fase 2) ───────────────────────────────────
+
+export async function fetchMedications(): Promise<Medication[]> {
+  return fetchRows('medications', 'id,health_condition_id,name,dosage,schedule_note,reminder_times,active,tier', { column: 'name' }, (r) => ({
+    id: r.id as string,
+    healthConditionId: (r.health_condition_id as string) ?? null,
+    name: (r.name as string) ?? '',
+    dosage: (r.dosage as string) ?? null,
+    scheduleNote: (r.schedule_note as string) ?? null,
+    reminderTimes: ((r.reminder_times as string[]) ?? []).map((t) => t.slice(0, 5)),
+    active: (r.active as boolean) ?? true,
+    tier: (r.tier as Medication['tier']) ?? 'geheim',
+  }))
+}
+
+export async function createMedicationRow(m: Omit<Medication, 'id'>): Promise<string | null> {
+  return insertRow('medications', {
+    health_condition_id: m.healthConditionId,
+    name: m.name,
+    dosage: m.dosage,
+    schedule_note: m.scheduleNote,
+    reminder_times: m.reminderTimes,
+    active: m.active,
+  })
 }
 
 // ── Geheugen & retrieval (Slice 3) ────────────────────────────────────────────

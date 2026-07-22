@@ -1,20 +1,22 @@
 import { useMemo, useState } from 'react'
 import {
   X, FolderKanban, Plus, Check, Clock, Trash2, Pencil, Repeat,
-  Flag, Timer, FileText, Sparkles, ListChecks, Info,
+  Flag, Timer, FileText, Sparkles, ListChecks, Info, Mic, Loader2, Square,
 } from 'lucide-react'
 import type { Project, ProjectTask, ProjectMilestone, Invoice, Recurrence, Priority } from '../types'
 import { fmtDate, TODAY } from '../domains'
 import { deadlineInfo } from '../lib/dates'
 import { Pill, ConfirmDialog } from '../components/ui'
 import { useStore } from '../store'
+import { useIsMobile } from '../hooks/use-mobile'
 import ProjectForm from './ProjectForm'
 import {
   eur, CRM_STATUS, STATUS_HEX, PRIO_HEX, PRIO_NL,
-  SheetShell, Field, TextInput, SelectInput,
+  SheetShell, Field, TextInput, TextArea, SelectInput, RingProgress,
 } from '../components/crm'
 import type { ActivityAnalysis } from '../lib/crm/activityAnalyzer'
 import { unbilledBillableHours, sumHours, invoiceAmountFromHours } from '../lib/crm/invoicing'
+import { runTranscriptAnalysis } from '../lib/crm/transcriptAgent'
 
 const DOMAIN_COLOR: Record<string, string> = {
   parkingyou: '#60A5FA', prjct: '#A78BFA', buurtkaart: '#34D399', personal: '#FBBF24', cross: '#F87171',
@@ -27,12 +29,13 @@ const INVOICE_STATUS: Record<Invoice['status'], { label: string; hex: string }> 
 }
 const RECUR_NL: Record<Recurrence, string> = { daily: 'dagelijks', weekly: 'wekelijks', monthly: 'maandelijks' }
 
-type Tab = 'details' | 'taken' | 'mijlpalen' | 'uren' | 'facturen' | 'activiteit'
+type Tab = 'overzicht' | 'taken' | 'mijlpalen' | 'uren' | 'facturen' | 'gesprek' | 'activiteit'
 
 export default function ProjectDetail({ project: initial, onClose }: { project: Project; onClose: () => void }) {
   // Always read the live row from the store so edits/realtime reflect instantly.
   const project = useStore((s) => s.projects.find((p) => p.id === initial.id)) ?? initial
   const { clients, deleteProject } = useStore()
+  const isMobile = useIsMobile()
   // Select the raw (stable-reference) arrays and filter locally — a selector that
   // allocates a new array every call (e.g. `s.x.filter(...)`) breaks zustand v5's
   // useSyncExternalStore snapshot check and causes an infinite render loop.
@@ -45,7 +48,7 @@ export default function ProjectDetail({ project: initial, onClose }: { project: 
   const hours = allHours.filter((h) => h.projectId === project.id)
   const invoices = allInvoices.filter((i) => i.projectId === project.id)
 
-  const [tab, setTab] = useState<Tab>('details')
+  const [tab, setTab] = useState<Tab>('taken')
   const [editing, setEditing] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
 
@@ -64,19 +67,27 @@ export default function ProjectDetail({ project: initial, onClose }: { project: 
   const invoiced = invoices.reduce((a, i) => a + i.amount, 0)
   const paid = invoices.filter((i) => i.status === 'paid').reduce((a, i) => a + i.amount, 0)
 
-  const TABS: { id: Tab; label: string; icon: typeof Info; count?: number }[] = [
-    { id: 'details', label: 'Details', icon: Info },
+  const ALL_TABS: { id: Tab; label: string; icon: typeof Info; count?: number; mobileOnly?: boolean }[] = [
+    { id: 'overzicht', label: 'Overzicht', icon: Info, mobileOnly: true },
     { id: 'taken', label: 'Taken', icon: ListChecks, count: tasks.filter((t) => !t.done).length },
     { id: 'mijlpalen', label: 'Mijlpalen', icon: Flag, count: milestones.filter((m) => !m.done).length },
     { id: 'uren', label: 'Uren', icon: Timer },
     { id: 'facturen', label: 'Facturen', icon: FileText, count: invoices.length },
+    { id: 'gesprek', label: 'Gesprek', icon: Mic },
     { id: 'activiteit', label: 'Activiteit', icon: Sparkles },
   ]
+  // Desktop keeps the overview permanently visible in the left column instead
+  // of as a tab — a Notion-style "properties panel" that never disappears
+  // while you flip between tasks/hours/invoices.
+  const TABS = isMobile ? ALL_TABS : ALL_TABS.filter((t) => !t.mobileOnly)
 
   return (
     <>
-      <SheetShell onClose={onClose} panelClassName="md:max-w-xl md:max-h-[92dvh] max-h-[94dvh]">
-
+      <SheetShell
+        onClose={onClose}
+        panelClassName="md:max-w-3xl md:max-h-[92dvh] max-h-[94dvh]"
+        fullScreenMobile
+      >
         {/* Header */}
         <div className="flex items-start gap-3 p-5 pb-3 border-b border-line shrink-0">
           <span className="h-11 w-11 rounded-3xl flex items-center justify-center shrink-0" style={{ background: `${iconColor}28` }}>
@@ -101,27 +112,36 @@ export default function ProjectDetail({ project: initial, onClose }: { project: 
           <Stat label="Voortgang" value={`${Math.round(computed * 100)}%`} />
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 px-3 py-2 overflow-x-auto border-b border-line shrink-0">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`chip whitespace-nowrap ${tab === t.id ? 'bg-forest text-white' : 'bg-surface border border-line text-muted'}`}
-            >
-              <t.icon className="h-3.5 w-3.5" /> {t.label}{t.count ? ` ·${t.count}` : ''}
-            </button>
-          ))}
-        </div>
+        {/* Desktop: permanent properties sidebar + tabbed content, side by side.
+            Mobile: single column, "Overzicht" is just another tab. */}
+        <div className="flex-1 overflow-hidden flex flex-col md:grid md:grid-cols-[280px_1fr] md:divide-x md:divide-line min-h-0">
+          <aside className="hidden md:flex md:flex-col md:overflow-y-auto p-4">
+            <ProjectOverview project={project} invoiced={invoiced} paid={paid} tasks={tasks} milestones={milestones} />
+          </aside>
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {tab === 'details' && <Details project={project} invoiced={invoiced} paid={paid} />}
-          {tab === 'taken' && <Tasks projectId={project.id} tasks={tasks} />}
-          {tab === 'mijlpalen' && <Milestones projectId={project.id} milestones={milestones} />}
-          {tab === 'uren' && <Hours projectId={project.id} />}
-          {tab === 'facturen' && <Invoices projectId={project.id} invoices={invoices} />}
-          {tab === 'activiteit' && <Activity projectId={project.id} />}
+          <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
+            <div className="flex gap-1 px-3 py-2 overflow-x-auto border-b border-line shrink-0">
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTab(t.id)}
+                  className={`chip whitespace-nowrap ${tab === t.id ? 'bg-forest text-white' : 'bg-surface border border-line text-muted'}`}
+                >
+                  <t.icon className="h-3.5 w-3.5" /> {t.label}{t.count ? ` ·${t.count}` : ''}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4">
+              {tab === 'overzicht' && <ProjectOverview project={project} invoiced={invoiced} paid={paid} tasks={tasks} milestones={milestones} />}
+              {tab === 'taken' && <Tasks projectId={project.id} tasks={tasks} />}
+              {tab === 'mijlpalen' && <Milestones projectId={project.id} milestones={milestones} />}
+              {tab === 'uren' && <Hours projectId={project.id} />}
+              {tab === 'facturen' && <Invoices projectId={project.id} invoices={invoices} />}
+              {tab === 'gesprek' && <Transcript project={project} tasks={tasks} />}
+              {tab === 'activiteit' && <Activity projectId={project.id} />}
+            </div>
+          </div>
         </div>
       </SheetShell>
 
@@ -147,10 +167,46 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
-// ── Details ─────────────────────────────────────────────────────────────────
-function Details({ project, invoiced, paid }: { project: Project; invoiced: number; paid: number }) {
+// ── Overview: visual scope/timeline/deliverables + the project's timer ──────
+function ProjectOverview({
+  project, invoiced, paid, tasks, milestones,
+}: { project: Project; invoiced: number; paid: number; tasks: ProjectTask[]; milestones: ProjectMilestone[] }) {
+  const activeTimer = useStore((s) => s.activeTimer)
+  const { startTimer, stopTimer } = useStore()
+  const isTimerForThis = activeTimer?.projectId === project.id
+  const doneTasks = tasks.filter((t) => t.done).length
+  const taskPct = tasks.length ? doneTasks / tasks.length : 0
+  const budgetPct = project.value > 0 ? invoiced / project.value : 0
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      <div className="flex items-center gap-4">
+        <RingProgress pct={taskPct} color="#6FA07C" />
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">{doneTasks}/{tasks.length} taken afgerond</div>
+          <div className="text-xs text-faint mt-0.5">{eur(invoiced)} gefactureerd van {eur(project.value)}</div>
+        </div>
+      </div>
+      {project.value > 0 && (
+        <div className="h-1.5 w-full rounded-full bg-line overflow-hidden">
+          <div className="h-full rounded-full bg-parkingyou-deep transition-all" style={{ width: `${Math.min(100, Math.max(2, budgetPct * 100))}%` }} />
+        </div>
+      )}
+
+      <button
+        onClick={() => (isTimerForThis ? stopTimer() : startTimer(project.id, project.name))}
+        className={`w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${isTimerForThis ? 'bg-cross/15 text-cross-deep' : 'bg-forest text-white'}`}
+      >
+        {isTimerForThis ? <><Square className="h-4 w-4" /> Timer stoppen</> : <><Timer className="h-4 w-4" /> Timer starten</>}
+      </button>
+      {activeTimer && !isTimerForThis && (
+        <p className="text-[11px] text-faint text-center -mt-1">Loopt nu voor “{activeTimer.projectName}” — starten hier stopt en logt die eerst.</p>
+      )}
+
+      {(project.startDate || project.deadline || milestones.length > 0) && (
+        <Block title="Tijdlijn"><ProjectTimelineBar project={project} milestones={milestones} /></Block>
+      )}
+
       <div className="rounded-2xl bg-surface border border-line overflow-hidden">
         <Row label="Type" value={project.type?.length ? project.type.join(' · ') : '–'} />
         <Row label="Startdatum" value={fmtDate(project.startDate ?? null)} />
@@ -175,6 +231,62 @@ function Details({ project, invoiced, paid }: { project: Project; invoiced: numb
       {project.notes && (
         <Block title="Notities"><p className="text-sm text-ink-soft whitespace-pre-wrap leading-relaxed">{project.notes}</p></Block>
       )}
+    </div>
+  )
+}
+
+/** Horizontal start→deadline bar with milestone dots + a "today" marker; falls back to a plain list when there's no start/deadline to plot against. */
+function ProjectTimelineBar({ project, milestones }: { project: Project; milestones: ProjectMilestone[] }) {
+  const start = project.startDate ? new Date(`${project.startDate}T00:00:00`) : null
+  const end = project.deadline ? new Date(`${project.deadline}T00:00:00`) : null
+
+  if (!start || !end || end.getTime() <= start.getTime()) {
+    if (!milestones.length) return null
+    const sorted = [...milestones].sort((a, b) => (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999'))
+    return (
+      <div className="space-y-1.5">
+        {sorted.map((m) => (
+          <div key={m.id} className="flex items-center gap-2 text-xs">
+            <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: m.done ? '#6FA07C' : '#C8C8CC' }} />
+            <span className="flex-1 truncate">{m.title}</span>
+            <span className="text-faint shrink-0">{fmtDate(m.dueDate ?? null)}</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  const span = end.getTime() - start.getTime()
+  const today = new Date(`${TODAY}T00:00:00`)
+  const todayPct = Math.min(1, Math.max(0, (today.getTime() - start.getTime()) / span))
+
+  return (
+    <div>
+      <div className="relative h-2 rounded-full bg-line mt-1">
+        <div className="absolute inset-y-0 left-0 rounded-full bg-forest/40" style={{ width: `${todayPct * 100}%` }} />
+        {milestones.map((m) => {
+          if (!m.dueDate) return null
+          const d = new Date(`${m.dueDate}T00:00:00`)
+          const pct = Math.min(1, Math.max(0, (d.getTime() - start.getTime()) / span))
+          return (
+            <span
+              key={m.id}
+              title={m.title}
+              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-3 w-3 rounded-full border-2 border-canvas"
+              style={{ left: `${pct * 100}%`, background: m.done ? '#6FA07C' : '#C6A05B' }}
+            />
+          )
+        })}
+        <span
+          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-4 w-1 rounded-full bg-ink"
+          style={{ left: `${todayPct * 100}%` }}
+          title="Vandaag"
+        />
+      </div>
+      <div className="flex justify-between text-[11px] text-faint mt-1.5">
+        <span>{fmtDate(project.startDate ?? null)}</span>
+        <span>{fmtDate(project.deadline)}</span>
+      </div>
     </div>
   )
 }
@@ -481,6 +593,98 @@ function Invoices({ projectId, invoices }: { projectId: string; invoices: Invoic
           )
         })}
       </div>
+    </div>
+  )
+}
+
+// ── Meeting transcript ────────────────────────────────────────────────────────
+function Transcript({ project, tasks }: { project: Project; tasks: ProjectTask[] }) {
+  const { addProjectTask, updateProject, logActivity } = useStore()
+  const [raw, setRaw] = useState('')
+  const [analyzing, setAnalyzing] = useState(false)
+  const [summary, setSummary] = useState('')
+  const [newTasks, setNewTasks] = useState<string[]>([])
+  const [notesToAdd, setNotesToAdd] = useState('')
+  const [fromBrain, setFromBrain] = useState(true)
+  const [applied, setApplied] = useState(false)
+
+  const openTasks = useMemo(() => tasks.filter((t) => !t.done), [tasks])
+
+  async function analyze() {
+    if (!raw.trim()) return
+    setAnalyzing(true)
+    setApplied(false)
+    try {
+      const result = await runTranscriptAnalysis(raw.trim(), project, openTasks)
+      setSummary(result.summary)
+      setNewTasks(result.newTasks)
+      setNotesToAdd(result.notesToAdd)
+      setFromBrain(result.fromBrain)
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  function apply() {
+    newTasks.forEach((name) => {
+      if (name.trim()) addProjectTask(project.id, { name: name.trim(), done: false })
+    })
+    if (notesToAdd.trim()) {
+      const heading = `--- Gesprek ${fmtDate(TODAY)} ---\n${notesToAdd.trim()}`
+      updateProject(project.id, { notes: project.notes ? `${project.notes}\n\n${heading}` : heading })
+    }
+    if (summary.trim()) logActivity(project.id, `📞 Gespreksverslag (${fmtDate(TODAY)}): ${summary.trim()}`)
+    setApplied(true)
+  }
+
+  function reset() {
+    setRaw(''); setSummary(''); setNewTasks([]); setNotesToAdd(''); setApplied(false)
+  }
+
+  return (
+    <div className="space-y-4">
+      <Field label="Transcript" hint="plak de tekst van een call- of videomeeting-transcript">
+        <TextArea value={raw} onChange={(e) => setRaw(e.target.value)} rows={8} placeholder="Plak hier het transcript…" className="text-sm" />
+      </Field>
+      <button
+        onClick={analyze}
+        disabled={!raw.trim() || analyzing}
+        className="w-full py-2.5 rounded-xl bg-forest text-white text-sm font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
+      >
+        {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+        {analyzing ? 'Analyseren…' : 'Analyseren met AI'}
+      </button>
+
+      {(summary || newTasks.length > 0 || notesToAdd) && (
+        <div className="rounded-2xl bg-surface border border-line p-4 space-y-3">
+          {!fromBrain && <p className="text-[11px] text-faint">Zonder brein beschikbaar — samenvatting is een ruwe weergave, check en vul aan.</p>}
+          <Field label="Samenvatting">
+            <TextArea value={summary} onChange={(e) => setSummary(e.target.value)} rows={4} className="text-sm" />
+          </Field>
+          <Field label="Nieuwe taken" hint="één per regel">
+            <TextArea
+              value={newTasks.join('\n')}
+              onChange={(e) => setNewTasks(e.target.value.split('\n').map((t) => t.trim()).filter(Boolean))}
+              rows={4}
+              className="text-sm"
+            />
+          </Field>
+          <Field label="Toevoegen aan notities">
+            <TextArea value={notesToAdd} onChange={(e) => setNotesToAdd(e.target.value)} rows={4} className="text-sm" />
+          </Field>
+
+          {applied ? (
+            <div className="flex items-center gap-2">
+              <span className="btn bg-buurtkaart/15 text-buurtkaart-deep cursor-default flex-1 justify-center"><Check className="h-4 w-4" /> Toegepast</span>
+              <button onClick={reset} className="btn-ghost">Nieuw gesprek</button>
+            </div>
+          ) : (
+            <button onClick={apply} className="w-full py-2.5 rounded-xl bg-forest text-white text-sm font-semibold">
+              Toepassen op project
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

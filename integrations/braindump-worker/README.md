@@ -1,8 +1,15 @@
 # OSLIFE · Braindump media worker
 
-The small service that turns shared **video/audio** (YouTube, Instagram reels,
-shared media files) into a Markdown note. It does the one thing a Supabase Edge
-Function can't: reliably **download media (yt-dlp)** and **run ffmpeg**.
+The small service that turns shared **video/audio** (Instagram reels, shared
+media files, and YouTube videos with no captions) into a Markdown note. It
+does the one thing a Supabase Edge Function can't: reliably **download media
+(yt-dlp)** and **run ffmpeg**.
+
+Most YouTube videos never reach this worker at all: `braindump-ingest` fetches
+title/channel/thumbnail via oEmbed and the transcript via YouTube's own
+caption tracks directly (`supabase/functions/_shared/youtube.ts`) — free, no
+API key, no yt-dlp, no cookies. Only a video with **no captions whatsoever**
+falls through to this worker's audio+Whisper path below.
 
 ```
 braindump-ingest (edge fn)  ──POST /transcribe──▶  this worker

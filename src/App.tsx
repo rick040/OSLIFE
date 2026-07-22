@@ -30,6 +30,7 @@ import RedesignDemo from './design-demo/RedesignDemo'
 import LoopExplainer from './components/LoopExplainer'
 import SettingsModal from './components/SettingsModal'
 import AppGrid from './components/AppGrid'
+import SuggestionSplash from './components/SuggestionSplash'
 import { ConfirmDialog } from './components/ui'
 import { AppShell } from './components/layout/app-shell'
 import { type View } from './nav'
@@ -129,6 +130,7 @@ export default function App() {
       {showLoops && <LoopExplainer onClose={() => setShowLoops(false)} />}
       {showGrid && <AppGrid active={view} onNav={(v) => setView(v)} onClose={() => setShowGrid(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      <SuggestionSplash />
       {confirmReset && (
         <ConfirmDialog
           title={confirmReset === 'full' ? 'Reset the demo to its seeded state?' : 'Reset the demo?'}

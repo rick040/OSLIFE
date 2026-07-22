@@ -12,35 +12,35 @@ import type { Agent } from './types'
 import type { ClientIntakeDraft } from '../cards'
 import type { Channel, Client } from '../../types'
 
-function guessChannel(text: string): Channel {
+export function guessChannel(text: string): Channel {
   const t = text.toLowerCase()
   if (t.includes('fiverr')) return 'fiverr'
   if (/\[\d{1,2}[/-]\d{1,2}[/-]\d{2,4},?\s*\d{1,2}:\d{2}/.test(text) || /\d{1,2}:\d{2}\s*-\s*[\w ]+:/.test(text)) return 'whatsapp'
   return 'email'
 }
 
-function guessLanguage(text: string): 'nl' | 'en' {
+export function guessLanguage(text: string): 'nl' | 'en' {
   const t = ` ${text.toLowerCase()} `
   const nlHits = [' de ', ' het ', ' een ', ' ik ', ' jij ', ' wij ', ' niet ', ' graag ', ' alsjeblieft ', 'hoi ', ' hallo'].filter((w) => t.includes(w)).length
   const enHits = [' the ', ' hello', ' hi ', ' please', ' thanks', ' would ', ' could you', ' i am ', " i'm "].filter((w) => t.includes(w)).length
   return enHits > nlHits ? 'en' : 'nl'
 }
 
-function extractEmail(text: string): string | null {
+export function extractEmail(text: string): string | null {
   const m = text.match(/[\w.+-]+@[\w-]+\.[\w.-]+/)
   // trailing sentence punctuation ("...test@example.com. Thanks!") isn't part
   // of the address — strip it rather than swallowing it into the match.
   return m ? m[0].replace(/[.,;:!?]+$/, '') : null
 }
 
-function extractBudget(text: string): number | null {
+export function extractBudget(text: string): number | null {
   const m = text.match(/(?:€|eur)\s?([\d.,]{2,})/i) ?? text.match(/([\d.,]{2,})\s?(?:€|eur)/i)
   if (!m) return null
   const n = Number(m[1].replace(/\./g, '').replace(',', '.'))
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
-function guessClientName(text: string): string {
+export function guessClientName(text: string): string {
   const m = text.match(/\b(?:ik ben|mijn naam is|this is|my name is)\s+([A-Z][\w'-]+(?:\s+[A-Z][\w'-]+)?)/i)
   return m ? m[1].trim() : 'Nieuwe klant'
 }

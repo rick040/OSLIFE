@@ -1,10 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { fmtDate } from '../domains'
 import { DomainChip, Empty, Overlay } from '../components/ui'
 import { Markdown } from '../components/BraindumpCard'
 import type { WikiEntry } from '../types'
+import { CATEGORY_META, type LearningCategory } from '../heyra/learning'
 import { BookOpen, Check, X, ExternalLink, Sparkles } from 'lucide-react'
+
+function CategoryChip({ category }: { category: LearningCategory | null }) {
+  if (!category) return null
+  const meta = CATEGORY_META[category]
+  return (
+    <span className="chip text-[10px] shrink-0" style={{ background: `${meta.hex}22`, color: meta.hex }}>
+      {meta.label}
+    </span>
+  )
+}
 
 function WikiSuggestionCard({ entry, onResolve }: {
   entry: WikiEntry
@@ -22,7 +33,10 @@ function WikiSuggestionCard({ entry, onResolve }: {
           <Sparkles className="h-3.5 w-3.5 text-faint shrink-0" />
           <span className="text-sm font-medium text-ink truncate">{entry.title}</span>
         </div>
-        {entry.domain && <DomainChip domain={entry.domain} small />}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <CategoryChip category={entry.category} />
+          {entry.domain && <DomainChip domain={entry.domain} small />}
+        </div>
       </div>
 
       <div>
@@ -60,7 +74,8 @@ function WikiCard({ entry, onOpen }: { entry: WikiEntry; onOpen: () => void }) {
       onClick={onOpen}
       className="card p-3 text-left flex flex-col gap-1.5 hover:border-buurtkaart/40 transition-colors"
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center gap-1.5">
+        <CategoryChip category={entry.category} />
         {entry.domain && <DomainChip domain={entry.domain} small />}
         <span className="text-[11px] text-faint ml-auto">{fmtDate(entry.createdAt)}</span>
       </div>
@@ -87,7 +102,10 @@ function WikiDetail({ entry, onClose }: { entry: WikiEntry; onClose: () => void 
       </div>
 
       <div className="p-4 space-y-4">
-        <h2 className="text-lg font-semibold text-ink">{entry.title}</h2>
+        <div className="flex items-start justify-between gap-2">
+          <h2 className="text-lg font-semibold text-ink">{entry.title}</h2>
+          <CategoryChip category={entry.category} />
+        </div>
 
         <div className="rounded-xl bg-sunken border border-line p-3">
           <p className="text-[10px] uppercase tracking-wider text-faint mb-1">Kernpunt</p>
@@ -126,11 +144,17 @@ function WikiDetail({ entry, onClose }: { entry: WikiEntry; onClose: () => void 
 export default function Kennisbank() {
   const { wikiEntries, resolveWikiEntry, loadWikiEntries } = useStore()
   const [openEntry, setOpenEntry] = useState<WikiEntry | null>(null)
+  const [categoryFilter, setCategoryFilter] = useState<LearningCategory | 'all'>('all')
 
   useEffect(() => { void loadWikiEntries() }, [loadWikiEntries])
 
   const suggested = wikiEntries.filter((e) => e.status === 'suggested')
   const confirmed = wikiEntries.filter((e) => e.status === 'confirmed')
+  const confirmedCategoriesPresent = useMemo(
+    () => Array.from(new Set(confirmed.map((e) => e.category).filter((c): c is LearningCategory => c != null))),
+    [confirmed],
+  )
+  const visibleConfirmed = categoryFilter === 'all' ? confirmed : confirmed.filter((e) => e.category === categoryFilter)
   const openLiveEntry = openEntry ? confirmed.find((e) => e.id === openEntry.id) ?? openEntry : null
 
   return (
@@ -163,11 +187,37 @@ export default function Kennisbank() {
         {confirmed.length === 0 ? (
           <Empty>Nog niets in je kennisbank. Deel iets interessants naar Vastleggen — Claude stelt zelf voor wat het waard is.</Empty>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 animate-fade-up">
-            {confirmed.map((entry) => (
-              <WikiCard key={entry.id} entry={entry} onOpen={() => setOpenEntry(entry)} />
-            ))}
-          </div>
+          <>
+            {confirmedCategoriesPresent.length > 1 && (
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  onClick={() => setCategoryFilter('all')}
+                  className={`chip text-[11px] ${categoryFilter === 'all' ? 'bg-forest/15 text-forest' : 'bg-line text-muted'}`}
+                >
+                  Alle ({confirmed.length})
+                </button>
+                {confirmedCategoriesPresent.map((cat) => {
+                  const meta = CATEGORY_META[cat]
+                  const count = confirmed.filter((e) => e.category === cat).length
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setCategoryFilter(cat)}
+                      className="chip text-[11px]"
+                      style={categoryFilter === cat ? { background: `${meta.hex}22`, color: meta.hex } : undefined}
+                    >
+                      {meta.label} ({count})
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 animate-fade-up">
+              {visibleConfirmed.map((entry) => (
+                <WikiCard key={entry.id} entry={entry} onOpen={() => setOpenEntry(entry)} />
+              ))}
+            </div>
+          </>
         )}
       </div>
 
