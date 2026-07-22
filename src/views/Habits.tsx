@@ -56,24 +56,27 @@ export default function Habits() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="flex flex-col gap-7 max-w-3xl mx-auto">
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Repeat className="h-5 w-5 text-buurtkaart" /> Gewoontes
-          </h1>
-          <p className="text-sm text-muted mt-1">Dagelijks afvinken, inzicht in je consistentie.</p>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Repeat className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">Gewoontes</h1>
+            <p className="text-sm text-muted mt-0.5">Dagelijks afvinken, inzicht in je consistentie.</p>
+          </div>
         </div>
-        <button className="btn-primary !py-1.5" onClick={() => setForm((f) => !f)}>
+        <button className="btn-primary !py-2" onClick={() => setForm((f) => !f)}>
           <Plus className="h-4 w-4" /> Nieuw
         </button>
       </div>
 
       {form && (
-        <form onSubmit={submit} className="card p-4 flex flex-wrap gap-2 items-center">
-          <input value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={2} placeholder="🙂" className="w-14 text-center rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none" />
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Naam (bv. Water drinken)" className="flex-1 min-w-[160px] rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none focus:border-prjct/60" />
-          <button type="submit" className="btn-primary !py-1.5"><Plus className="h-4 w-4" /> Toevoegen</button>
+        <form onSubmit={submit} className="card p-4 flex flex-wrap gap-2.5 items-center">
+          <input value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={2} placeholder="🙂" className="input w-16 text-center" />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Naam (bv. Water drinken)" className="input flex-1 min-w-[160px]" />
+          <button type="submit" className="btn-primary !py-2"><Plus className="h-4 w-4" /> Toevoegen</button>
         </form>
       )}
 
@@ -82,21 +85,21 @@ export default function Habits() {
       ) : (
         <>
           {/* Today summary + checklist */}
-          <div className="card p-4">
+          <div className="card p-5">
             <div className="flex items-baseline justify-between">
-              <div className="text-lg font-semibold">{doneToday} van {habits.length} vandaag</div>
+              <div className="text-lg font-medium text-ink">{doneToday} van {habits.length} vandaag</div>
               <div className="text-xs text-faint">{pct}%</div>
             </div>
-            <div className="h-1.5 w-full rounded-full bg-line overflow-hidden mt-2 mb-4">
-              <div className="h-full rounded-full bg-buurtkaart transition-all duration-500" style={{ width: `${pct}%` }} />
+            <div className="h-1.5 w-full rounded-full bg-line overflow-hidden mt-3 mb-5">
+              <div className="h-full rounded-full bg-forest transition-all duration-500" style={{ width: `${pct}%` }} />
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2.5">
               {habits.map((h) => (
                 <button
                   key={h.id}
                   onClick={() => tickHabit(h.id)}
-                  className={`w-full flex items-center gap-3 rounded-2xl px-3 py-2.5 border transition-colors ${
-                    h.doneToday ? 'bg-buurtkaart/10 border-buurtkaart/30' : 'bg-surface border-line hover:bg-sunken'
+                  className={`w-full flex items-center gap-3 rounded-2xl px-4 py-3 transition-colors ${
+                    h.doneToday ? 'bg-buurtkaart/12' : 'bg-sunken hover:bg-line'
                   }`}
                 >
                   <span className="text-lg shrink-0">{h.emoji}</span>
@@ -106,7 +109,7 @@ export default function Habits() {
                   )}
                   <span
                     className={`h-6 w-6 rounded-full flex items-center justify-center shrink-0 ${
-                      h.doneToday ? 'text-white' : 'border border-line text-transparent'
+                      h.doneToday ? 'text-white' : 'border border-line-strong text-transparent'
                     }`}
                     style={h.doneToday ? { background: h.color ?? '#34D399' } : undefined}
                   >
@@ -118,7 +121,7 @@ export default function Habits() {
           </div>
 
           {/* Week chart */}
-          <div className="card p-4">
+          <div className="card p-5">
             <SectionTitle hint="Aantal afgevinkte gewoontes per dag, afgelopen 7 dagen.">Deze week</SectionTitle>
             <ResponsiveContainer width="100%" height={150}>
               <BarChart data={weekData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
@@ -126,13 +129,13 @@ export default function Habits() {
                 <XAxis dataKey="day" tick={AXIS_TICK_11} axisLine={false} tickLine={false} />
                 <YAxis allowDecimals={false} domain={[0, habits.length]} tick={AXIS_TICK_10} axisLine={false} tickLine={false} />
                 <Tooltip
-                  cursor={{ fill: '#F4F5EE' }}
+                  cursor={{ fill: '#2a2a2a' }}
                   contentStyle={CHART_TIP_BARE}
                   formatter={(v: number) => [`${v}/${habits.length}`, 'afgevinkt']}
                 />
                 <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                   {weekData.map((d) => (
-                    <Cell key={d.iso} fill={d.count === habits.length ? '#34431F' : '#34D399'} />
+                    <Cell key={d.iso} fill={d.count === habits.length ? '#34D399' : '#3a3a3a'} />
                   ))}
                 </Bar>
               </BarChart>
@@ -141,18 +144,18 @@ export default function Habits() {
 
           {/* 30-day heatmap for selected habit */}
           {active && (
-            <div className="card p-4">
-              <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+            <div className="card p-5">
+              <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
                 <SectionTitle>30 dagen · {active.emoji} {active.name}</SectionTitle>
                 <span className="chip bg-sunken text-muted flex items-center gap-1"><TrendingUp className="h-3 w-3" /> {completion30(active)}% voltooid</span>
               </div>
               {habits.length > 1 && (
-                <div className="flex flex-wrap gap-1.5 mb-3">
+                <div className="flex flex-wrap gap-1.5 mb-4">
                   {habits.map((h) => (
                     <button
                       key={h.id}
                       onClick={() => setSel(h.id)}
-                      className={`chip ${h.id === active.id ? 'bg-forest text-white' : 'bg-surface border border-line text-muted'}`}
+                      className={`chip ${h.id === active.id ? 'bg-ink text-canvas' : 'bg-sunken text-muted'}`}
                     >
                       {h.emoji} {h.name.split(' ')[0]}
                     </button>
@@ -169,7 +172,7 @@ export default function Habits() {
                       title={`${iso}: ${done ? 'gedaan' : 'gemist'}`}
                       className="aspect-square rounded-md"
                       style={{
-                        background: done ? active.color ?? '#34D399' : '#F4F5EE',
+                        background: done ? active.color ?? '#34D399' : '#262626',
                         outline: isToday ? `2px solid ${active.color ?? '#34D399'}` : 'none',
                         outlineOffset: 1,
                       }}
@@ -177,7 +180,7 @@ export default function Habits() {
                   )
                 })}
               </div>
-              <div className="flex justify-between text-[11px] text-faint mt-2">
+              <div className="flex justify-between text-[11px] text-faint mt-3">
                 <span>{last30[0].slice(5)}</span>
                 <span>vandaag</span>
               </div>
@@ -185,24 +188,24 @@ export default function Habits() {
           )}
 
           {/* Overview list */}
-          <div>
+          <div className="flex flex-col gap-3">
             <SectionTitle>Overzicht</SectionTitle>
-            <div className="card divide-y divide-line">
+            <div className="card p-0 divide-y divide-line">
               {habits.map((h) => {
                 const c = completion30(h)
                 return (
-                  <div key={h.id} className="p-3.5">
-                    <div className="flex items-center gap-2.5 mb-2">
+                  <div key={h.id} className="p-4">
+                    <div className="flex items-center gap-2.5 mb-2.5">
                       <span className="h-2 w-2 rounded-full shrink-0" style={{ background: h.color ?? '#34D399' }} />
                       <span className="text-lg shrink-0">{h.emoji}</span>
-                      <button onClick={() => setSel(h.id)} className="flex-1 text-left text-sm font-medium truncate hover:text-forest">{h.name}</button>
+                      <button onClick={() => setSel(h.id)} className="flex-1 text-left text-sm font-medium truncate hover:text-ink">{h.name}</button>
                       {h.streak > 0 && <span className="text-[11px] text-personal-deep flex items-center gap-0.5"><Flame className="h-3 w-3" /> {h.streak}</span>}
                       <button onClick={() => deleteHabit(h.id)} className="text-faint hover:text-cross p-1 shrink-0" aria-label="Verwijder"><X className="h-3.5 w-3.5" /></button>
                     </div>
                     <div className="h-1 rounded-full bg-line overflow-hidden">
                       <div className="h-full rounded-full transition-all duration-500" style={{ width: `${c}%`, background: h.color ?? '#34D399' }} />
                     </div>
-                    <div className="text-[11px] text-faint mt-1">{c}% in 30 dagen</div>
+                    <div className="text-[11px] text-faint mt-1.5">{c}% in 30 dagen</div>
                   </div>
                 )
               })}
