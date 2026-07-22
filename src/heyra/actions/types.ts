@@ -85,3 +85,30 @@ export interface ActionCard {
   searchResults?: SearchCardData | null
   createdAt: string
 }
+
+/**
+ * One recurring "extra" field for a given action kind — a values-key
+ * proposeAction.ts saw that its hard-coded buildFields() template doesn't
+ * already cover. Only the SHAPE (label/type) is cached, keyed stably once
+ * first seen, never a value — matching the same "no data, no invented
+ * series" rule buildFields() itself follows. `seenCount` is how caching
+ * actually pays off here: buildFields()'s baseline is fixed code, not
+ * model-generated, so there's no per-call layout-generation cost to save —
+ * what this cache buys is a STABLE label/type for a recurring extra field
+ * instead of re-guessing it every time, and a record of what's recurring.
+ */
+export interface CardTemplateExtraField {
+  key: string
+  label: string
+  type: ActionFieldType
+  seenCount: number
+}
+
+export interface CardTemplate {
+  id: string
+  templateKey: string
+  kind: ActionKind
+  extraFields: CardTemplateExtraField[]
+  useCount: number
+  lastUsedAt: string
+}

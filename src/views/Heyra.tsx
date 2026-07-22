@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useStore } from '../store'
 import { SKILLS, type AgentId } from '../heyra/skills'
-import { contextualSuggestions, followUpSuggestions, type Topic } from '../heyra/suggestions'
+import { contextualSuggestions, followUpSuggestions, actionFollowUpSuggestion, type Topic } from '../heyra/suggestions'
 import { routeMessage } from '../heyra/router'
-import { emptyMemory, remember, type ConversationMemory } from '../heyra/memory'
+import { emptyMemory, remember, rememberSuggestions, type ConversationMemory } from '../heyra/memory'
 import type { LearnedFact } from '../heyra/learning'
 import type { SearchCardData, ChartCardData, ClientIntakeDraft, IdeaCaptureDraft } from '../heyra/cards'
 import { DomainChip, SentimentChip, KindChip } from '../components/ui'
@@ -70,14 +70,20 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
   // payments, inbox, habits, Kyra and goals — whatever actually needs
   // attention today. Recomputed whenever the underlying data changes.
   const openingSuggestions = useMemo(
-    () => contextualSuggestions(store),
+    () => contextualSuggestions(store, memoryRef.current.recentSuggestions),
     [store.projects, store.threads, store.payments, store.emails, store.habits, store.dogReminders, store.clients, store.checkins, store.goals, store.milestones],
   )
   const [suggestions, setSuggestions] = useState<string[]>(openingSuggestions)
   const conversationStarted = msgs.length > 1
 
+  /** setSuggestions() + records what was shown, so the next pass can deprioritize repeats — every suggestion update should go through this, not setSuggestions directly. */
+  function showSuggestions(list: string[]) {
+    setSuggestions(list)
+    memoryRef.current = rememberSuggestions(memoryRef.current, list)
+  }
+
   useEffect(() => {
-    if (!conversationStarted) setSuggestions(openingSuggestions)
+    if (!conversationStarted) showSuggestions(openingSuggestions)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openingSuggestions, conversationStarted])
 
@@ -186,6 +192,13 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
     patchCard(msgId, card.id, { status: 'confirmed' })
     const outcome = await dispatchAction(store, card)
     patchCard(msgId, card.id, outcome.ok ? { status: 'dispatched' } : { status: 'failed', error: outcome.error })
+
+    // A just-completed action is a stronger next-step signal than the generic
+    // topic follow-ups — surface it alongside whatever's already suggested.
+    if (outcome.ok) {
+      const followUp = actionFollowUpSuggestion(card.kind, card.entity?.label)
+      if (followUp) showSuggestions([followUp, ...suggestions.filter((s) => s !== followUp)].slice(0, 4))
+    }
   }
 
   function cancelCard(msgId: string, card: ActionCard) {
@@ -259,14 +272,19 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
             : x,
         ),
       )
-      setSuggestions(
-        followUpSuggestions(result.topic, store, {
-          domain: item.domain,
-          projectName: result.project?.name,
-          searchQuery: result.search?.query,
-          chartTitle: result.chart?.title,
-          clientName: result.clientIntake?.clientName,
-        }),
+      showSuggestions(
+        followUpSuggestions(
+          result.topic,
+          store,
+          {
+            domain: item.domain,
+            projectName: result.project?.name,
+            searchQuery: result.search?.query,
+            chartTitle: result.chart?.title,
+            clientName: result.clientIntake?.clientName,
+          },
+          memoryRef.current.recentSuggestions,
+        ),
       )
 
       // Learn as we speak: distil any durable fact from this exchange in the

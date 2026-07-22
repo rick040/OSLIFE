@@ -52,6 +52,7 @@ import type {
 } from '../types'
 import { today, habitStreak } from '../domains'
 import { CATEGORY_META, type LearnedFact, type LearningCategory } from '../heyra/learning'
+import type { CardTemplate, CardTemplateExtraField } from '../heyra/actions/types'
 
 // New oslife project (nhyunnnmdcmojvkxrbpl, eu-west-1).
 // Set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY in .env.local
@@ -1391,6 +1392,44 @@ export async function persistLearnedFacts(facts: LearnedFact[]): Promise<void> {
     .from('heyra_memory')
     .upsert({ user_id, facts, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
   warnWrite('heyra_memory', error)
+}
+
+// ── HEYRA card templates — cached extra fields per action kind ──────────────
+
+export async function fetchCardTemplates(): Promise<CardTemplate[]> {
+  return fetchRows(
+    'card_templates',
+    'id,template_key,kind,layout,use_count,last_used_at',
+    { column: 'last_used_at', ascending: false },
+    (r) => ({
+      id: r.id as string,
+      templateKey: r.template_key as string,
+      kind: r.kind as CardTemplate['kind'],
+      extraFields: Array.isArray((r.layout as { extraFields?: unknown })?.extraFields)
+        ? ((r.layout as { extraFields: CardTemplateExtraField[] }).extraFields)
+        : [],
+      useCount: (r.use_count as number) ?? 0,
+      lastUsedAt: (r.last_used_at as string) ?? '',
+    }),
+  )
+}
+
+/** Full upsert of one template row — the caller (store.recordCardTemplateUsage) computes the merged extraFields client-side, so this is a plain replace, not a partial patch. */
+export async function upsertCardTemplate(template: Omit<CardTemplate, 'id' | 'lastUsedAt'>): Promise<void> {
+  const user_id = await currentUserId()
+  if (!user_id) return
+  const { error } = await supabase.from('card_templates').upsert(
+    {
+      user_id,
+      template_key: template.templateKey,
+      kind: template.kind,
+      layout: { extraFields: template.extraFields },
+      use_count: template.useCount,
+      last_used_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,template_key' },
+  )
+  warnWrite('card_templates', error)
 }
 
 // ── Screen time (if available) ────────────────────────────────────────────────

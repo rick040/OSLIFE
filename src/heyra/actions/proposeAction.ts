@@ -5,14 +5,21 @@
 // card. Entity resolution (resolveEntity.ts) and field values/previous values
 // both come straight from live `store` data, matching the "no data, no
 // invented series" honesty rule used throughout heyra/cards.ts. This also
-// keeps the tool schema small and cheap, and sets up Phase 4's card-template
-// cache naturally: the FIELD SHAPE per kind is a fixed template (buildFields
-// below), only the proposed new values differ call to call.
+// keeps the tool schema small and cheap: the FIELD SHAPE per kind is a fixed
+// template (buildFields below), not something the model invents per call.
+//
+// Card-template caching: when `values` carries a key buildFields()'s baseline
+// doesn't cover (e.g. a discount on an invoice), it's never silently dropped
+// — withExtraFields() below always unions it onto the card — but its
+// label/type only gets GUESSED once. Every later occurrence of that same key
+// for the same kind reuses the cached label/type (card_templates table, via
+// store.recordCardTemplateUsage) instead of re-guessing it, and seenCount
+// tracks how often it recurs.
 
 import { askBrainTool, type BrainTool } from '../brainClient'
 import { resolveProject, resolveClient, resolveTask, resolveInvoiceForProject } from './resolveEntity'
 import type { useStore } from '../../store'
-import type { ActionCard, ActionField, ActionKind, EntityRef } from './types'
+import type { ActionCard, ActionField, ActionKind, CardTemplate, EntityRef } from './types'
 
 type Store = ReturnType<typeof useStore.getState>
 
@@ -86,6 +93,43 @@ function isProposableKind(v: unknown): v is ProposableKind {
 
 function field(key: string, label: string, type: ActionField['type'], value: unknown, opts: Partial<ActionField> = {}): ActionField {
   return { key, label, type, value, editable: true, ...opts }
+}
+
+/** First-time guess at a label/type for a values-key buildFields() doesn't already cover — only ever used once per key per kind; every later occurrence reuses whatever card_templates cached from the first guess (see withExtraFields). */
+function guessFieldMeta(key: string, value: unknown): { label: string; type: ActionField['type'] } {
+  const label = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase())
+  if (typeof value === 'number') return { label, type: 'number' }
+  if (typeof value === 'boolean') return { label, type: 'boolean' }
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return { label, type: 'date' }
+  return { label, type: 'text' }
+}
+
+/**
+ * Unions any `values` key the baseline template doesn't cover onto the card
+ * (never silently dropped) and resolves each one's label/type from the
+ * cached template when it's recurred before, falling back to a one-time
+ * guess otherwise. Returns which keys were newly seen/reused so the caller
+ * can persist the (possibly updated) cache — cheap, no store write on the
+ * common case where nothing extra was said.
+ */
+function withExtraFields(
+  kind: ProposableKind,
+  values: Record<string, unknown>,
+  baseline: ActionField[],
+  cached: CardTemplate | undefined,
+): { fields: ActionField[]; seen: { key: string; label: string; type: ActionField['type'] }[] } {
+  const covered = new Set(baseline.map((f) => f.key))
+  const extraKeys = Object.keys(values).filter((k) => !covered.has(k))
+  if (!extraKeys.length) return { fields: baseline, seen: [] }
+
+  const seen: { key: string; label: string; type: ActionField['type'] }[] = []
+  const extraFields = extraKeys.map((key) => {
+    const remembered = cached?.extraFields.find((f) => f.key === key)
+    const { label, type } = remembered ?? guessFieldMeta(key, values[key])
+    seen.push({ key, label, type })
+    return field(key, label, type, values[key])
+  })
+  return { fields: [...baseline, ...extraFields], seen }
 }
 
 /** Builds the ActionCard's fields from LIVE store data + the model's proposed new values — never from model-guessed current state. One builder per proposable kind, mirroring registry.ts's one-handler-per-kind shape. Returns null when a required entity/value is missing. */
@@ -227,7 +271,18 @@ export async function proposeAction(input: string, store: Store): Promise<Action
   const fields = entity ? buildFields(raw.kind, store, entity, values) : entityRequired ? null : buildFields(raw.kind, store, null, values)
   if (!fields && candidates.length === 0) return null
 
-  const hasDiff = (fields ?? []).some((f) => f.previousValue !== undefined && f.previousValue !== f.value)
+  // Union any values-key the baseline template didn't cover onto the card —
+  // never silently dropped — reusing a cached label/type when this key has
+  // recurred before for this kind (see withExtraFields).
+  let finalFields = fields ?? []
+  if (fields) {
+    const cached = store.cardTemplates.find((t) => t.templateKey === raw.kind)
+    const { fields: withExtra, seen } = withExtraFields(raw.kind, values, fields, cached)
+    finalFields = withExtra
+    if (seen.length) store.recordCardTemplateUsage(raw.kind, raw.kind, seen)
+  }
+
+  const hasDiff = finalFields.some((f) => f.previousValue !== undefined && f.previousValue !== f.value)
 
   return {
     id: crypto.randomUUID(),
@@ -237,7 +292,7 @@ export async function proposeAction(input: string, store: Store): Promise<Action
     description: raw.description?.trim() || null,
     entity,
     candidates: candidates.length ? candidates : undefined,
-    fields: fields ?? [],
+    fields: finalFields,
     mutating: true,
     status: 'proposed',
     renderHint: hasDiff ? 'diff' : 'list',
