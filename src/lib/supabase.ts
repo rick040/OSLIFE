@@ -14,6 +14,7 @@ import type {
   DogEntry,
   Block,
   Thread,
+  Priority,
   Pattern,
   Project,
   ProjectStatus,
@@ -169,6 +170,12 @@ async function fetchRows<T>(
 }
 
 // ── Brain state (threads + patterns) — one jsonb row per user ───────────────────
+// `patterns` still lives here. `threads` is being migrated to the `tasks` table
+// below (one row per task instead of a whole-blob rewrite on every edit) —
+// persistBrainState()/fetchBrainState() stay in place during the transition
+// (loadLiveData() reads both sources for one release) and this function still
+// accepts `threads` so any leftover caller isn't broken, but store.ts no longer
+// calls it with real thread data — see fetchTasks()/insertTaskRow() etc.
 
 export async function persistBrainState(threads: Thread[], patterns: Pattern[]): Promise<void> {
   const user_id = await currentUserId()
@@ -177,6 +184,57 @@ export async function persistBrainState(threads: Thread[], patterns: Pattern[]):
     .from('brain_state')
     .upsert({ user_id, threads, patterns, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
   warnWrite('brain_state', error)
+}
+
+// ── Tasks — one row per task (replaces brain_state.threads) ─────────────────────
+
+export async function fetchTasks(): Promise<Thread[]> {
+  return fetchRows(
+    'tasks',
+    'id,domain,title,owed_to,due,status,priority,notes,created_at',
+    { column: 'created_at', ascending: false },
+    (r) => ({
+      id: r.id as string,
+      domain: r.domain as Domain,
+      title: r.title as string,
+      owedTo: (r.owed_to as string) ?? 'self (HEYRA)',
+      due: (r.due as string) ?? null,
+      status: (r.status as Thread['status']) ?? 'open',
+      createdAt: (r.created_at as string) ?? new Date().toISOString(),
+      priority: (r.priority as Priority) ?? null,
+      notes: (r.notes as string) ?? null,
+    }),
+  )
+}
+
+export async function insertTaskRow(t: Omit<Thread, 'id'>): Promise<string | null> {
+  return insertRow('tasks', {
+    domain: t.domain,
+    title: t.title,
+    owed_to: t.owedTo,
+    due: t.due,
+    status: t.status,
+    priority: t.priority ?? null,
+    notes: t.notes ?? null,
+  })
+}
+
+const TASK_COLS: Record<string, string> = {
+  domain: 'domain',
+  title: 'title',
+  owedTo: 'owed_to',
+  due: 'due',
+  status: 'status',
+  priority: 'priority',
+  notes: 'notes',
+}
+
+export async function updateTaskRow(id: string, patch: Partial<Thread>): Promise<void> {
+  await updateRow('tasks', id, patch, TASK_COLS)
+}
+
+export async function deleteTaskRow(id: string): Promise<void> {
+  return deleteRow('tasks', id)
 }
 
 // ── Payments ────────────────────────────────────────────────────────────────────

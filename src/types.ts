@@ -137,6 +137,8 @@ export interface Thread {
   due: string | null // ISO date
   status: 'open' | 'closed'
   createdAt: string
+  priority?: Priority | null
+  notes?: string | null
 }
 
 export interface Pattern {

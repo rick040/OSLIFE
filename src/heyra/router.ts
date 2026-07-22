@@ -22,9 +22,16 @@ import { runSignalAgent } from './agents/signalAgent'
 import { runBriefingAgent } from './agents/briefingAgent'
 import { runChatAgent } from './agents/chatAgent'
 import { runAssistantAgent } from './agents/assistantAgent'
+import { proposeAction } from './actions/proposeAction'
 import type { AgentResult, Agent, Store } from './agents/types'
 import type { AgentId } from './skills'
 import type { StructuredItem } from '../types'
+
+// A message classified as a transaction ("de factuur is betaald") or an event
+// ("project X is klaar") plausibly describes something HEYRA should act on —
+// everything else (notes, vents, links, questions) never triggers the extra
+// propose_action brain call, so this stays cheap on the common case.
+const ACTION_TRIGGER_KINDS: StructuredItem['kind'][] = ['transaction', 'event']
 
 const BRIEFING_RE = /briefing|dagbriefing|hoe sta ik ervoor|samenvatting van (mijn )?dag|overzicht van (mijn )?dag/
 const ENERGY_RE = /moe|slaap|energie|uitgeput|tired/
@@ -162,10 +169,22 @@ export async function routeMessage(
   const agentCtx = { store: ctx.store, memory: ctx.memory, item }
   let result = await AGENTS[detection.agent](input, agentCtx)
 
+  let agent = detection.agent
+  let trigger = detection.trigger
   if (detection.agent === 'project' && !result.text) {
     result = await runChatAgent(input, agentCtx)
-    return { agent: 'chat', trigger: null, result, item, openThread, fromBrain: detection.fromBrain }
+    agent = 'chat'
+    trigger = null
   }
 
-  return { agent: detection.agent, trigger: detection.trigger, result, item, openThread, fromBrain: detection.fromBrain }
+  // Independent of which agent answered conversationally: a transaction/event
+  // classification may ALSO describe a concrete action HEYRA can propose
+  // (mark an invoice paid, close a task, ...) — attach it alongside whatever
+  // the agent already said rather than replacing it.
+  if (ACTION_TRIGGER_KINDS.includes(item.kind)) {
+    const card = await proposeAction(input, ctx.store)
+    if (card) result = { ...result, cards: [...(result.cards ?? []), card] }
+  }
+
+  return { agent, trigger, result, item, openThread, fromBrain: detection.fromBrain }
 }
