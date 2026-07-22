@@ -10,16 +10,29 @@
  * honesty rule from reflect.ts stays enforced by the caller, not the proxy.
  *
  * Request body:
- *   { "system": "<agent system prompt>", "prompt": "<grounded user prompt>", "maxTokens"?: number }
+ *   { "system": "<agent system prompt>", "prompt": "<grounded user prompt>", "maxTokens"?: number,
+ *     "tools"?: AnthropicTool[], "toolChoice"?: {"type":"tool","name":string} | {"type":"auto"} }
  *
- * Response: { "text": "<reply>" } or { "error": "<message>" }
+ * `tools`/`toolChoice` are forwarded to Anthropic verbatim — this stays a thin
+ * proxy with no business logic; the caller (proposeAction.ts) owns the tool
+ * schema and what to do with the result.
+ *
+ * Response: { "text"?: "<reply>", "toolUse"?: {"name": string, "input": object} } or { "error": "<message>" }
  *
  * Deploy:
  *   supabase functions deploy heyra-brain --project-ref nhyunnnmdcmojvkxrbpl
  * Secrets required: ANTHROPIC_API_KEY.
  */
 
-import { ANTHROPIC_API, MODEL, anthropicHeaders, extractText } from "../_shared/anthropic.ts";
+import {
+  ANTHROPIC_API,
+  MODEL,
+  anthropicHeaders,
+  extractText,
+  extractToolUse,
+  type AnthropicTool,
+  type AnthropicToolChoice,
+} from "../_shared/anthropic.ts";
 import { CORS, bearerToken, corsPreflight, jsonResponder } from "../_shared/http.ts";
 
 const DEFAULT_MAX_TOKENS = 700;
@@ -30,6 +43,8 @@ interface BrainRequest {
   system?: string;
   prompt?: string;
   maxTokens?: number;
+  tools?: AnthropicTool[];
+  toolChoice?: AnthropicToolChoice;
 }
 
 Deno.serve(async (req) => {
@@ -51,7 +66,7 @@ Deno.serve(async (req) => {
     return json({ error: "Invalid JSON" }, 400);
   }
 
-  const { system, prompt, maxTokens } = body;
+  const { system, prompt, maxTokens, tools, toolChoice } = body;
   if (!prompt || typeof prompt !== "string") {
     return json({ error: "prompt is required" }, 400);
   }
@@ -65,6 +80,8 @@ Deno.serve(async (req) => {
         max_tokens: Math.min(Math.max(maxTokens ?? DEFAULT_MAX_TOKENS, 64), 2000),
         system: typeof system === "string" && system.trim() ? system : undefined,
         messages: [{ role: "user", content: prompt }],
+        tools: Array.isArray(tools) && tools.length ? tools : undefined,
+        tool_choice: Array.isArray(tools) && tools.length ? (toolChoice ?? { type: "auto" }) : undefined,
       }),
     });
 
@@ -75,9 +92,10 @@ Deno.serve(async (req) => {
 
     const data = await res.json();
     const text = extractText(data.content);
+    const toolUse = extractToolUse(data.content);
 
-    if (!text) return json({ error: "Empty response from model" }, 502);
-    return json({ text });
+    if (!text && !toolUse) return json({ error: "Empty response from model" }, 502);
+    return json({ text: text || undefined, toolUse: toolUse ?? undefined });
   } catch (err) {
     return json({ error: `Anthropic call failed: ${String(err)}` }, 502);
   }
