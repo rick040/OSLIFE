@@ -43,23 +43,23 @@
 }
 
 /* ── Phase 1 — type scale ─────────────────────────────────────────────────
-   Semibold (600) is the ceiling everywhere except giant hero numbers (700) —
-   bold/800 reads heavy and generic. Clarity comes from size and color
-   contrast, not weight. ───────────────────────────────────────────────── */
+   Medium (500) is the ceiling almost everywhere; hero numbers get 600 as
+   the one exception. Bold reads heavy and generic — clarity comes from
+   size, color, and spacing, not weight. ────────────────────────────────── */
 .v3-display {
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   line-height: 1;
 }
 .v3-heading {
   font-size: 1.125rem;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.01em;
 }
 .v3-micro-label {
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: hsl(var(--v3-text-secondary));
@@ -156,7 +156,7 @@ a.v3-card:active {
 }
 .v3-hero-number sub {
   font-size: 1.5rem;
-  font-weight: 600;
+  font-weight: 500;
   vertical-align: baseline;
   margin-left: 2px;
 }
@@ -336,7 +336,7 @@ a.v3-card:active {
   align-items: center;
   gap: 0.35rem;
   font-size: 0.68rem;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -438,7 +438,7 @@ a.v3-card:active {
 }
 .v3-greeting-name {
   font-size: 2.1rem;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.01em;
 }
 .v3-greeting-sentence {
@@ -448,7 +448,7 @@ a.v3-card:active {
 }
 .v3-greeting-sentence b {
   color: hsl(var(--v3-text-primary));
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* ── Day picker ────────────────────────────────────────────────────────── */
@@ -472,7 +472,7 @@ a.v3-card:active {
 }
 .v3-day-cell b {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 500;
   color: hsl(var(--v3-text-primary));
 }
 .v3-day-cell[data-active='true'] {
@@ -560,7 +560,7 @@ a.v3-card:active {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
+  font-weight: 500;
   color: #0a0a0a;
   flex-shrink: 0;
 }
@@ -619,7 +619,7 @@ a.v3-card:active {
 }
 .v3-detail-title {
   font-size: 1.2rem;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: -0.01em;
   line-height: 1.3;
 }
@@ -648,6 +648,242 @@ a.v3-card:active {
 .v3-detail-actionbar-meta {
   font-size: 0.78rem;
   color: hsl(var(--v3-text-secondary));
+}
+
+/* ── Generic icon badge (reused by suggestion/knowledge/AI cards) ────────── */
+.v3-icon-badge {
+  height: 34px;
+  width: 34px;
+  border-radius: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: hsl(var(--v3-bg-elevated));
+  color: hsl(var(--v3-text-secondary));
+}
+
+/* ── AI suggestion card — icon + text + accept/dismiss ────────────────────── */
+.v3-suggestion-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.v3-suggestion-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+.v3-suggestion-btn {
+  height: 30px;
+  width: 30px;
+  border-radius: 999px;
+  border: none;
+  background: hsl(var(--v3-bg-elevated));
+  color: hsl(var(--v3-text-secondary));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+}
+.v3-suggestion-btn[data-tone='accept']:hover {
+  background: hsl(var(--v3-success-fill));
+  color: hsl(var(--v3-success-text));
+}
+.v3-suggestion-btn[data-tone='dismiss']:hover {
+  background: hsl(var(--v3-danger-fill));
+  color: hsl(var(--v3-danger-text));
+}
+
+/* ── Knowledge card (memory / notes) ─────────────────────────────────────── */
+.v3-knowledge-snippet {
+  font-size: 0.82rem;
+  color: hsl(var(--v3-text-secondary));
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.v3-knowledge-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.15rem;
+}
+
+/* ── Add / quick-action card — dashed border, centered ───────────────────── */
+.v3-add-card {
+  border: 1.5px dashed hsl(var(--v3-text-secondary) / 0.3);
+  border-radius: var(--v3-radius-card);
+  background: transparent;
+  color: hsl(var(--v3-text-secondary));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  width: 100%;
+  cursor: pointer;
+  transition: border-color 120ms ease-out, color 120ms ease-out, background-color 120ms ease-out;
+}
+.v3-add-card:hover {
+  border-color: hsl(var(--v3-text-secondary) / 0.55);
+  color: hsl(var(--v3-text-primary));
+  background: hsl(var(--v3-bg-surface));
+}
+.v3-add-card-icon {
+  height: 34px;
+  width: 34px;
+  border-radius: 999px;
+  background: hsl(var(--v3-bg-elevated));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Notification / log center — full-screen overlay ──────────────────────── */
+.v3-notif-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: hsl(0 0% 0% / 0.6);
+  backdrop-filter: blur(6px);
+  display: flex;
+  justify-content: center;
+  padding: 3vh 1rem;
+  overflow-y: auto;
+}
+.v3-notif-panel {
+  width: 100%;
+  max-width: 440px;
+  height: fit-content;
+  max-height: 94vh;
+  background: hsl(var(--v3-bg-surface));
+  border-radius: var(--v3-radius-card);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.v3-notif-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.v3-notif-close {
+  height: 30px;
+  width: 30px;
+  border-radius: 999px;
+  border: none;
+  background: hsl(var(--v3-bg-elevated));
+  color: hsl(var(--v3-text-primary));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.v3-notif-list {
+  overflow-y: auto;
+  padding: 0.5rem 0.5rem 1rem;
+}
+.v3-notif-group-label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: hsl(var(--v3-text-secondary));
+  padding: 0.9rem 0.75rem 0.4rem;
+}
+.v3-notif-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 1rem;
+}
+.v3-notif-row[data-unread='true'] {
+  background: hsl(var(--v3-bg-elevated) / 0.6);
+}
+.v3-notif-dot {
+  height: 7px;
+  width: 7px;
+  border-radius: 999px;
+  background: hsl(var(--v3-info-text));
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+.v3-notif-dot[data-visible='false'] {
+  background: transparent;
+}
+
+/* ── Weekly bar chart card ─────────────────────────────────────────────────── */
+.v3-weekbar-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.4rem;
+  height: 96px;
+}
+.v3-weekbar-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex: 1;
+  height: 100%;
+}
+.v3-weekbar-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.v3-weekbar-bar {
+  width: 60%;
+  border-radius: 999px 999px 4px 4px;
+  background: hsl(var(--v3-bg-elevated));
+}
+.v3-weekbar-bar[data-today='true'] {
+  background: hsl(var(--v3-success-text));
+}
+.v3-weekbar-label {
+  font-size: 0.68rem;
+  color: hsl(var(--v3-text-secondary));
+}
+
+/* ── Legend row (donut / chart companion) ──────────────────────────────────── */
+.v3-legend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+}
+.v3-legend-key {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.82rem;
+  color: hsl(var(--v3-text-secondary));
+}
+.v3-legend-dot {
+  height: 8px;
+  width: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.v3-legend-value {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: hsl(var(--v3-text-primary));
+  font-variant-numeric: tabular-nums;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react'
+import { Check, X, Sparkles, Link2, Plus, Bell } from 'lucide-react'
 
 /**
  * RICK-OS v3 component library — every card/badge/toggle primitive the
@@ -150,9 +150,9 @@ export function ListRow({
 }) {
   return (
     <div className="v3-list-row">
-      <p className="text-sm font-semibold flex-1 min-w-0 truncate">{title}</p>
+      <p className="text-sm font-medium flex-1 min-w-0 truncate">{title}</p>
       {tag && <TagPill label={tag} tone={tagTone} />}
-      <span className="text-sm font-semibold tabular-nums" style={{ color: 'hsl(var(--v3-text-primary))' }}>
+      <span className="text-sm font-medium tabular-nums" style={{ color: 'hsl(var(--v3-text-primary))' }}>
         {trailing}
       </span>
     </div>
@@ -175,7 +175,7 @@ export function GoalRow({
   return (
     <div className="v3-goal-row">
       <span className="v3-goal-check" />
-      <span className="text-sm font-semibold w-28 shrink-0 truncate">{label}</span>
+      <span className="text-sm font-medium w-28 shrink-0 truncate">{label}</span>
       <div className="v3-segments">
         {Array.from({ length: segments }).map((_, i) => (
           <span key={i} className="v3-segment" data-filled={i < filled} />
@@ -318,7 +318,7 @@ export function Donut({
         />
       </svg>
       {label && (
-        <span className="absolute inset-0 flex items-center justify-center text-sm font-semibold tabular-nums">
+        <span className="absolute inset-0 flex items-center justify-center text-sm font-medium tabular-nums">
           {label}
         </span>
       )}
@@ -484,6 +484,258 @@ export function IconRail({
           {i.icon}
         </div>
       ))}
+    </div>
+  )
+}
+
+/** AI suggestion card — a proposal the user can accept or dismiss with one tap. */
+export function SuggestionCard({
+  title,
+  subtitle,
+  onAccept,
+  onDismiss,
+}: {
+  title: string
+  subtitle?: string
+  onAccept?: () => void
+  onDismiss?: () => void
+}) {
+  return (
+    <div className="v3-suggestion-card">
+      <span className="v3-icon-badge">
+        <Sparkles className="h-4 w-4" />
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="v3-micro-label mb-1">AI suggestion</p>
+        <p className="text-sm font-medium leading-snug">{title}</p>
+        {subtitle && (
+          <p className="text-xs mt-0.5" style={{ color: 'hsl(var(--v3-text-secondary))' }}>
+            {subtitle}
+          </p>
+        )}
+      </div>
+      <div className="v3-suggestion-actions">
+        <button className="v3-suggestion-btn" data-tone="accept" onClick={onAccept} aria-label="Accept">
+          <Check className="h-3.5 w-3.5" />
+        </button>
+        <button className="v3-suggestion-btn" data-tone="dismiss" onClick={onDismiss} aria-label="Dismiss">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** Knowledge / memory card — a note preview with tags and a backlink count. */
+export function KnowledgeCard({
+  title,
+  snippet,
+  tags,
+  backlinks,
+  updated,
+}: {
+  title: string
+  snippet: string
+  tags: { label: string; tone?: Tone }[]
+  backlinks: number
+  updated: string
+}) {
+  return (
+    <button className="v3-card flex flex-col gap-2 !p-4">
+      <p className="text-sm font-medium">{title}</p>
+      <p className="v3-knowledge-snippet">{snippet}</p>
+      <div className="flex flex-wrap gap-1.5 mt-1">
+        {tags.map((t) => (
+          <TagPill key={t.label} label={t.label} tone={t.tone} />
+        ))}
+      </div>
+      <div className="v3-knowledge-footer">
+        <span className="text-xs" style={{ color: 'hsl(var(--v3-text-secondary))' }}>
+          {updated}
+        </span>
+        <span className="inline-flex items-center gap-1 text-xs" style={{ color: 'hsl(var(--v3-text-secondary))' }}>
+          <Link2 className="h-3 w-3" />
+          {backlinks}
+        </span>
+      </div>
+    </button>
+  )
+}
+
+/** Dashed "add" card — quick-create slot (add task, add goal, connect an account). */
+export function AddCard({ label, icon, onClick }: { label: string; icon?: React.ReactNode; onClick?: () => void }) {
+  return (
+    <button className="v3-add-card" onClick={onClick}>
+      <span className="v3-add-card-icon">{icon ?? <Plus className="h-4 w-4" />}</span>
+      <span className="text-sm font-medium">{label}</span>
+    </button>
+  )
+}
+
+export interface NotificationItem {
+  icon: React.ReactNode
+  text: string
+  time: string
+  unread?: boolean
+}
+
+export interface NotificationGroup {
+  label: string
+  items: NotificationItem[]
+}
+
+/** Full-screen notification / log center overlay — grouped list + mark-all-read. */
+export function NotificationCenter({
+  open,
+  onClose,
+  groups,
+}: {
+  open: boolean
+  onClose: () => void
+  groups: NotificationGroup[]
+}) {
+  if (!open) return null
+  return (
+    <div className="v3-notif-overlay" onClick={onClose}>
+      <div className="v3-notif-panel" onClick={(e) => e.stopPropagation()}>
+        <div className="v3-notif-header">
+          <div className="flex items-center gap-2">
+            <Bell className="h-4 w-4" />
+            <p className="v3-heading">Notifications</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button className="v3-btn v3-btn-ghost !h-8 !px-3 text-xs">Mark all read</button>
+            <button className="v3-notif-close" onClick={onClose} aria-label="Close">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        <div className="v3-notif-list">
+          {groups.map((g) => (
+            <div key={g.label}>
+              <p className="v3-notif-group-label">{g.label}</p>
+              {g.items.map((item, i) => (
+                <div key={i} className="v3-notif-row" data-unread={item.unread}>
+                  <span className="v3-icon-badge">{item.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm leading-snug">{item.text}</p>
+                    <p className="text-xs mt-0.5" style={{ color: 'hsl(var(--v3-text-secondary))' }}>
+                      {item.time}
+                    </p>
+                  </div>
+                  <span className="v3-notif-dot" data-visible={!!item.unread} />
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Weekly bar chart — 7 day columns, e.g. sleep hours or workout load. */
+export function WeekBarChart({
+  data,
+}: {
+  data: { label: string; value: number; today?: boolean }[]
+}) {
+  const max = Math.max(...data.map((d) => d.value), 1)
+  return (
+    <div className="v3-weekbar-row">
+      {data.map((d) => (
+        <div key={d.label} className="v3-weekbar-col">
+          <div className="v3-weekbar-track">
+            <div className="v3-weekbar-bar" data-today={d.today} style={{ height: `${(d.value / max) * 100}%` }} />
+          </div>
+          <span className="v3-weekbar-label">{d.label}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Area sparkline — a filled variant of Sparkline for "detailed graph" cards. */
+export function AreaSparkline({ points, color = 'hsl(var(--v3-info-text))' }: { points: number[]; color?: string }) {
+  const max = Math.max(...points)
+  const min = Math.min(...points)
+  const range = max - min || 1
+  const w = 100
+  const h = 40
+  const step = w / (points.length - 1)
+  const line = points.map((p, i) => [i * step, h - ((p - min) / range) * h])
+  const linePath = line.map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x} ${y}`).join(' ')
+  const areaPath = `${linePath} L ${w} ${h} L 0 ${h} Z`
+  const gradId = 'v3-area-grad'
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-16" preserveAspectRatio="none">
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+          <stop offset="100%" stopColor={color} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <path d={areaPath} fill={`url(#${gradId})`} stroke="none" />
+      <path d={linePath} fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/** Donut + legend — ring on the left, breakdown rows on the right (e.g. browser share). */
+export function DonutLegend({
+  items,
+  centerLabel,
+}: {
+  items: { label: string; value: number; color: string }[]
+  centerLabel?: string
+}) {
+  const total = items.reduce((s, i) => s + i.value, 0)
+  let offset = 0
+  const size = 120
+  const stroke = 14
+  const r = (size - stroke) / 2
+  const c = 2 * Math.PI * r
+  return (
+    <div className="flex items-center gap-5">
+      <div className="relative shrink-0" style={{ height: size, width: size }}>
+        <svg viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+          {items.map((item) => {
+            const pct = total > 0 ? item.value / total : 0
+            const dash = `${pct * c} ${c - pct * c}`
+            const dashoffset = -offset * c
+            offset += pct
+            return (
+              <circle
+                key={item.label}
+                cx={size / 2}
+                cy={size / 2}
+                r={r}
+                stroke={item.color}
+                strokeWidth={stroke}
+                fill="none"
+                strokeDasharray={dash}
+                strokeDashoffset={dashoffset}
+              />
+            )
+          })}
+        </svg>
+        {centerLabel && (
+          <span className="absolute inset-0 flex items-center justify-center text-lg font-medium tabular-nums">
+            {centerLabel}
+          </span>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        {items.map((item) => (
+          <div key={item.label} className="v3-legend-row">
+            <span className="v3-legend-key">
+              <span className="v3-legend-dot" style={{ background: item.color }} />
+              {item.label}
+            </span>
+            <span className="v3-legend-value">{total > 0 ? Math.round((item.value / total) * 100) : 0}%</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

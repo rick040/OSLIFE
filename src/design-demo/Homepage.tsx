@@ -85,7 +85,7 @@ export default function Homepage() {
           {MODULES.map((m) => (
             <button key={m.key} className="v3-card flex flex-col items-center gap-2 !py-4">
               <m.icon className="h-5 w-5" />
-              <span className="text-xs font-semibold">{m.label}</span>
+              <span className="text-xs font-medium">{m.label}</span>
             </button>
           ))}
         </div>

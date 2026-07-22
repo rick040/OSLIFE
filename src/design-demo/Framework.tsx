@@ -36,7 +36,7 @@ export default function Framework() {
                 className="h-16 rounded-2xl"
                 style={{ background: s.hex, border: s.hex === '#141416' ? '1px solid rgba(255,255,255,0.1)' : undefined }}
               />
-              <p className="text-xs font-semibold">{s.name}</p>
+              <p className="text-xs font-medium">{s.name}</p>
               <p className="text-[11px] font-mono" style={{ color: 'hsl(var(--v3-text-secondary))' }}>
                 {s.hex}
               </p>
@@ -51,12 +51,12 @@ export default function Framework() {
           {SEMANTIC.map((s) => (
             <div key={s.name} className="flex flex-col gap-2">
               <div
-                className="h-16 rounded-2xl flex items-center justify-center text-sm font-semibold"
+                className="h-16 rounded-2xl flex items-center justify-center text-sm font-medium"
                 style={{ background: s.fillHex, color: s.textHex }}
               >
                 Aa
               </div>
-              <p className="text-xs font-semibold capitalize">{s.name}</p>
+              <p className="text-xs font-medium capitalize">{s.name}</p>
               <p className="text-[11px] font-mono" style={{ color: 'hsl(var(--v3-text-secondary))' }}>
                 {s.fillHex} / {s.textHex}
               </p>
@@ -73,19 +73,19 @@ export default function Framework() {
               1,302
             </p>
             <p className="text-xs mt-1" style={{ color: 'hsl(var(--v3-text-secondary))' }}>
-              Display — hero numbers · 700 weight (ceiling) · tabular-nums · tracking -0.01em
+              Display — hero numbers · 600 weight (ceiling) · tabular-nums · tracking -0.01em
             </p>
           </div>
           <div>
             <p className="v3-heading">Section heading</p>
             <p className="text-xs mt-1" style={{ color: 'hsl(var(--v3-text-secondary))' }}>
-              Heading — card titles · 600 weight · 18px
+              Heading — card titles · 500 weight · 18px
             </p>
           </div>
           <div>
             <p className="v3-micro-label">Micro label</p>
             <p className="text-xs mt-1" style={{ color: 'hsl(var(--v3-text-secondary))' }}>
-              Micro-label — eyebrows/units · 600 weight · 10px · uppercase · tracked 0.1em
+              Micro-label — eyebrows/units · 500 weight · 10px · uppercase · tracked 0.1em
             </p>
           </div>
           <div>
@@ -101,21 +101,21 @@ export default function Framework() {
         <p className="v3-micro-label mb-4">Shape & elevation</p>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <p className="font-semibold mb-1">Card radius</p>
+            <p className="font-medium mb-1">Card radius</p>
             <p style={{ color: 'hsl(var(--v3-text-secondary))' }}>26px — every card, hero, and duo-cell</p>
           </div>
           <div>
-            <p className="font-semibold mb-1">Pill radius</p>
+            <p className="font-medium mb-1">Pill radius</p>
             <p style={{ color: 'hsl(var(--v3-text-secondary))' }}>full — badges, tabs, task/goal rows</p>
           </div>
           <div>
-            <p className="font-semibold mb-1">Elevation</p>
+            <p className="font-medium mb-1">Elevation</p>
             <p style={{ color: 'hsl(var(--v3-text-secondary))' }}>
               Two flat layers only (surface, elevated) — no drop shadows. Depth comes from layered fills, not blur.
             </p>
           </div>
           <div>
-            <p className="font-semibold mb-1">Motion</p>
+            <p className="font-medium mb-1">Motion</p>
             <p style={{ color: 'hsl(var(--v3-text-secondary))' }}>
               120–150ms ease-out, state-change only. No bounce, no entrance choreography.
             </p>

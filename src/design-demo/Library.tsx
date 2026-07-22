@@ -68,11 +68,11 @@ export default function Library() {
             <PriorityBar level="low" />
           </Swatch>
           <Swatch label="Urgency dot + label">
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'hsl(var(--v3-danger-text))' }}>
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium" style={{ color: 'hsl(var(--v3-danger-text))' }}>
               <UrgencyDot tone="danger" />
               OVER 20 MINUTEN
             </span>
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold" style={{ color: 'hsl(var(--v3-success-text))' }}>
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium" style={{ color: 'hsl(var(--v3-success-text))' }}>
               <UrgencyDot tone="success" />5 UUR
             </span>
           </Swatch>
@@ -235,7 +235,7 @@ export default function Library() {
           Any card can expand into a slide-up (mobile) / centered modal (desktop) that reuses the greeting-header
           pattern at its top, then continues in the same card language at full size.
         </p>
-        <button className="v3-card-elevated p-3 flex items-center justify-between w-full text-sm font-semibold">
+        <button className="v3-card-elevated p-3 flex items-center justify-between w-full text-sm font-medium">
           Expand "ParkingYou" for full context
           <ChevronRight className="h-4 w-4" style={{ color: 'hsl(var(--v3-text-secondary))' }} />
         </button>
