@@ -862,6 +862,7 @@ export const useStore = create<State>()(
         if (rawText) meta.rawText = rawText
         if (input.storagePath) meta.storagePath = input.storagePath
         if (input.domain) meta.domainHint = input.domain
+        if (input.sourceTag) meta.source = input.sourceTag
 
         const row = await insertBraindumpEntry({
           sourceKind: input.sourceKind,

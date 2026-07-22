@@ -15,9 +15,10 @@ import ProjectCard from '../components/ProjectCard'
 import ClientIntakeCard, { type ClientIntakeCommitOptions, type ClientIntakeResult } from '../components/ClientIntakeCard'
 import IdeaCaptureCard from '../components/IdeaCaptureCard'
 import ActionCardView from '../components/ActionCardView'
+import VoiceInputPanel from '../components/VoiceInputPanel'
 import { dispatchAction } from '../heyra/actions/registry'
 import type { ActionCard, EntityRef } from '../heyra/actions/types'
-import { Send, Sparkles, Database, Mic, MicOff, Wand2, Lightbulb, Brain } from 'lucide-react'
+import { Send, Sparkles, Database, Mic, Wand2, Lightbulb, Brain } from 'lucide-react'
 
 interface Msg {
   id: string
@@ -42,9 +43,6 @@ interface Msg {
   learned?: LearnedFact[]
 }
 
-// Minimal typings for the Web Speech API (not in TS lib by default).
-type SpeechRec = { start: () => void; stop: () => void; onresult: ((e: any) => void) | null; onend: (() => void) | null; lang: string; interimResults: boolean; continuous: boolean }
-
 // A brain-routed reply can take a few sequential round-trips (routing, the
 // agent's own answer, semantic recall) — a static "..." reads as "did this
 // break?" past a couple of seconds. Cheap, honest staging: we don't know the
@@ -54,10 +52,9 @@ const PENDING_LABELS = ['Denkt na…', 'Zoekt in je geheugen…', 'Bijna klaar�
 export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
   const store = useStore()
   const [input, setInput] = useState('')
-  const [listening, setListening] = useState(false)
+  const [voicePanelOpen, setVoicePanelOpen] = useState(false)
   const [pendingLabel, setPendingLabel] = useState(PENDING_LABELS[0])
   const pendingTimers = useRef<number[]>([])
-  const recRef = useRef<SpeechRec | null>(null)
   const memoryRef = useRef<ConversationMemory>(emptyMemory())
   const [msgs, setMsgs] = useState<Msg[]>([
     {
@@ -92,30 +89,7 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
 
   const speechSupported =
     typeof window !== 'undefined' &&
-    ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
-
-  function toggleMic() {
-    if (!speechSupported) return
-    if (listening) {
-      recRef.current?.stop()
-      return
-    }
-    const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    const rec: SpeechRec = new Ctor()
-    rec.lang = 'nl-NL'
-    rec.interimResults = true
-    rec.continuous = false
-    rec.onresult = (e: any) => {
-      const text = Array.from(e.results)
-        .map((r: any) => r[0].transcript)
-        .join('')
-      setInput(text)
-    }
-    rec.onend = () => setListening(false)
-    recRef.current = rec
-    setListening(true)
-    rec.start()
-  }
+    Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
 
   function addTaskFromCard(msgId: string, draft: TaskDraft) {
     store.addTask(draft)
@@ -235,7 +209,7 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
     pendingTimers.current = []
   }
 
-  async function send(text: string) {
+  async function send(text: string, opts?: { viaVoice?: boolean }) {
     const clean = text.trim()
     if (!clean) return
     setInput('')
@@ -307,6 +281,21 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
           }
         })
         .catch(() => {})
+
+      // Voice turns get a second, DURABLE log beyond the distilled facts above:
+      // the raw exchange goes into the braindump/embeddings pipeline (tagged
+      // heyra-voice) so it's fully recall-searchable via search_memory(), not
+      // just reduced to whatever fact extractFacts() happened to keep.
+      // Best-effort — never affects the reply that already rendered.
+      if (opts?.viaVoice) {
+        void store.braindumpCapture({
+          sourceKind: 'text',
+          title: 'HEYRA (spraak)',
+          text: `Rick (spraak): ${clean}\n\nHEYRA: ${result.text}`,
+          domain: item.domain,
+          sourceTag: 'heyra-voice',
+        })
+      }
     } catch {
       // Give the text back — losing what you just typed on a failed send is a
       // real dead-end, especially for a longer thought dumped in one go.
@@ -487,23 +476,30 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
         {speechSupported && (
           <button
             type="button"
-            onClick={toggleMic}
-            className={`btn px-3 ${listening ? 'bg-cross text-white animate-pulse-ring' : 'btn-ghost'}`}
-            aria-label={listening ? 'Stop opname' : 'Spraakinvoer'}
+            onClick={() => setVoicePanelOpen(true)}
+            className="btn px-3 btn-ghost"
+            aria-label="Spraakinvoer"
           >
-            {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            <Mic className="h-4 w-4" />
           </button>
         )}
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={listening ? 'Luisteren…' : 'Vraag, vent, of dump een gedachte…'}
+          placeholder="Vraag, vent, of dump een gedachte…"
           className="flex-1 rounded-xl bg-surface border border-line px-4 py-3 text-sm outline-none focus:border-prjct/60"
         />
         <button type="submit" className="btn-primary px-4" disabled={!input.trim()}>
           <Send className="h-4 w-4" />
         </button>
       </form>
+
+      {voicePanelOpen && (
+        <VoiceInputPanel
+          onSend={(text) => void send(text, { viaVoice: true })}
+          onClose={() => setVoicePanelOpen(false)}
+        />
+      )}
     </div>
   )
 }
