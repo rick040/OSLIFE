@@ -77,10 +77,7 @@ export default function Vitals() {
         <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
           <Activity className="h-5 w-5 text-ink-soft" />
         </span>
-        <div>
-          <h1 className="text-xl font-medium text-ink">Gezondheid</h1>
-          <p className="text-sm text-muted mt-0.5">Lichaam, stemming en gedrag — stappen, slaap, hartslag, schermtijd en agenda-druk in één overzicht.</p>
-        </div>
+        <h1 className="text-xl font-medium text-ink">Gezondheid</h1>
       </div>
 
       <CheckinCard />

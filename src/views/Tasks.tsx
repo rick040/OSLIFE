@@ -182,9 +182,7 @@ export default function Tasks() {
         </span>
         <div>
           <h1 className="text-xl font-medium text-ink">Taken</h1>
-          <p className="text-muted text-sm mt-0.5">
-            {stats.personal} persoonlijk · {stats.work} werk — beheer, bewerk of verwijder rechtstreeks.
-          </p>
+          <p className="text-muted text-sm mt-0.5">{stats.personal} persoonlijk · {stats.work} werk</p>
         </div>
       </div>
 

@@ -62,10 +62,7 @@ export default function Habits() {
           <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
             <Repeat className="h-5 w-5 text-ink-soft" />
           </span>
-          <div>
-            <h1 className="text-xl font-medium text-ink">Gewoontes</h1>
-            <p className="text-sm text-muted mt-0.5">Dagelijks afvinken, inzicht in je consistentie.</p>
-          </div>
+          <h1 className="text-xl font-medium text-ink">Gewoontes</h1>
         </div>
         <button className="btn-primary !py-2" onClick={() => setForm((f) => !f)}>
           <Plus className="h-4 w-4" /> Nieuw

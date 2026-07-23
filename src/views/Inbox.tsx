@@ -432,10 +432,7 @@ export default function Inbox() {
           </span>
           <div>
             <h1 className="text-xl font-medium text-ink">Inbox</h1>
-            <p className="text-sm text-muted mt-0.5">
-              De mails die er nu toe doen, uit je Gmail.{' '}
-              {totalUnread > 0 ? `${totalUnread} ongelezen.` : 'Alles gelezen.'}
-            </p>
+            {totalUnread > 0 && <p className="text-sm text-muted mt-0.5">{totalUnread} ongelezen</p>}
           </div>
         </div>
         {totalUnread > 0 && (

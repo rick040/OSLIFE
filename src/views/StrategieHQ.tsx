@@ -71,12 +71,7 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
           <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
             <Lightbulb className="h-5 w-5 text-ink-soft" />
           </span>
-          <div>
-            <h1 className="text-xl font-medium text-ink">Strategie HQ</h1>
-            <p className="text-sm text-muted mt-0.5">
-              Al je business ideeën — uitgewerkt door HEYRA tot een volledige analyse.
-            </p>
-          </div>
+          <h1 className="text-xl font-medium text-ink">Strategie HQ</h1>
         </div>
         <button onClick={() => setNewOpen(true)} className="btn-primary !py-2 text-sm shrink-0">
           <Plus className="h-4 w-4" /> Nieuw idee

@@ -149,13 +149,7 @@ export default function Reflect() {
           <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
             <Brain className="h-5 w-5 text-ink-soft" />
           </span>
-          <div>
-            <h1 className="text-xl font-medium text-ink">Reflect</h1>
-            <p className="text-sm text-muted mt-0.5 max-w-xl">
-              De laag die je <span className="text-ink">volledige</span> geheugen over alle domeinen tegelijk leest.
-              Vindt verbanden die geen enkele losse tracker kan zien, en schrijft verfijnde patronen terug.
-            </p>
-          </div>
+          <h1 className="text-xl font-medium text-ink">Reflect</h1>
         </div>
         <button className="btn-primary" onClick={runNightlyReflect}>
           <Play className="h-4 w-4" /> Nachtelijke reflectie uitvoeren

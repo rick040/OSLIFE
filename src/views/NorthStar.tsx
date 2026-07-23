@@ -208,10 +208,7 @@ export default function NorthStar() {
           </span>
           <div>
             <h1 className="text-xl font-medium text-ink">North Star</h1>
-            <p className="text-sm text-muted mt-0.5 max-w-xl">
-              Je leven op hoog niveau: de doelen die ertoe doen en de mijlpalen ernaartoe.
-              {totalMs > 0 && ` ${doneMs}/${totalMs} mijlpalen gehaald.`}
-            </p>
+            {totalMs > 0 && <p className="text-sm text-muted mt-0.5">{doneMs}/{totalMs} mijlpalen gehaald</p>}
           </div>
         </div>
         <div className="flex items-center gap-2">

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
-import { Empty } from '../components/ui'
-import { UserPlus, MessageCircle, Trash2, AlertCircle, Users } from 'lucide-react'
+import { Empty, Overlay } from '../components/ui'
+import { UserPlus, MessageCircle, Trash2, AlertCircle, Users, X } from 'lucide-react'
 import type { PersonKind } from '../types'
 
 const KIND_LABEL: Record<PersonKind, string> = {
@@ -18,6 +18,7 @@ function daysSince(iso: string | null): number | null {
 
 export default function Relaties() {
   const { people, interactions, addPerson, deletePerson, logInteraction } = useStore()
+  const [showAdd, setShowAdd] = useState(false)
   const [name, setName] = useState('')
   const [kind, setKind] = useState<PersonKind>('network')
   const [email, setEmail] = useState('')
@@ -45,38 +46,43 @@ export default function Relaties() {
       tier: 'normaal',
     })
     setName(''); setEmail(''); setKind('network')
+    setShowAdd(false)
   }
 
   return (
     <div className="flex flex-col gap-7 max-w-3xl mx-auto">
-      <div className="flex items-center gap-3">
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
-          <Users className="h-5 w-5 text-ink-soft" />
-        </span>
-        <div>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Users className="h-5 w-5 text-ink-soft" />
+          </span>
           <h1 className="text-xl font-medium text-ink">Relaties</h1>
-          <p className="text-sm text-muted mt-0.5">
-            Wie verwaarloos je? Leg mensen vast, log contact, en zie wie je te lang niet sprak of
-            wie nog een reactie van je wacht.
-          </p>
         </div>
+        <button onClick={() => setShowAdd(true)} className="btn-primary">
+          <UserPlus className="h-4 w-4" /> Persoon
+        </button>
       </div>
 
-      <div className="card p-4 space-y-3">
-        <div className="flex items-center gap-2 text-sm font-medium"><UserPlus className="h-4 w-4 text-ink-soft" /> Persoon toevoegen</div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Naam" className="input" />
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail (voor mail-matching)" className="input" />
-        </div>
-        <div className="flex items-center gap-2">
-          <select value={kind} onChange={(e) => setKind(e.target.value as PersonKind)} className="input">
+      {showAdd && (
+        <Overlay tone="black" onClose={() => setShowAdd(false)} panelClassName="card w-full max-w-md p-5 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-medium">Persoon toevoegen</div>
+            <button onClick={() => setShowAdd(false)} className="text-faint hover:text-ink p-1 shrink-0" aria-label="Sluiten">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Naam" className="input" autoFocus />
+            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail (voor mail-matching)" className="input" />
+          </div>
+          <select value={kind} onChange={(e) => setKind(e.target.value as PersonKind)} className="input w-full">
             {(['network', 'business', 'both'] as PersonKind[]).map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
           </select>
-          <button onClick={submit} disabled={!name.trim()} className="btn-primary ml-auto">
+          <button onClick={submit} disabled={!name.trim()} className="btn-primary w-full">
             <UserPlus className="h-4 w-4" /> Toevoegen
           </button>
-        </div>
-      </div>
+        </Overlay>
+      )}
 
       {people.length === 0 ? (
         <Empty>Nog geen mensen vastgelegd. Voeg iemand toe om contact te gaan volgen.</Empty>

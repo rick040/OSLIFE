@@ -147,14 +147,7 @@ export default function DayBuilder() {
           <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
             <CalendarRange className="h-5 w-5 text-ink-soft" />
           </span>
-          <div>
-            <h1 className="text-xl font-medium text-ink">Dagplanner</h1>
-            <p className="text-sm text-muted mt-0.5 max-w-xl">
-              Een optimaal plan voor vandaag en de rest van de week, gebouwd rond je{' '}
-              <span className="text-ink">agenda-afspraken</span>, je <span className="text-ink">routines</span> en je
-              aangeleerde focuspiek. Vergrendel de blokken die kloppen of zet ze in Google Agenda.
-            </p>
-          </div>
+          <h1 className="text-xl font-medium text-ink">Dagplanner</h1>
         </div>
         <button className="btn-primary" onClick={generateWeekPlan} disabled={planningWeek}>
           {planningWeek ? (

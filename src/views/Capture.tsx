@@ -1,11 +1,11 @@
 import { useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
-import { SectionTitle, Empty, DomainChip } from '../components/ui'
+import { SectionTitle, Empty, DomainChip, Overlay } from '../components/ui'
 import { BraindumpCard, BraindumpDetail, SOURCE_LABEL } from '../components/BraindumpCard'
 import { detectTextShare } from '../lib/braindump'
 import { parseClaudeExport } from '../lib/claudeImport'
 import type { BraindumpEntry, BraindumpSourceKind, Domain } from '../types'
-import { Inbox, Search, Share2, Loader2, Upload, Sparkles } from 'lucide-react'
+import { Inbox, Search, Share2, Loader2, Upload, Sparkles, X } from 'lucide-react'
 
 const DOMAINS: Domain[] = ['parkingyou', 'prjct', 'buurtkaart', 'personal', 'cross']
 
@@ -47,6 +47,8 @@ export default function Capture() {
     }
   }
 
+  const [showClaudeImport, setShowClaudeImport] = useState(false)
+
   // filters
   const [q, setQ] = useState('')
   const [kindFilter, setKindFilter] = useState<BraindumpSourceKind | 'all'>('all')
@@ -85,17 +87,16 @@ export default function Capture() {
 
   return (
     <div className="max-w-5xl mx-auto flex flex-col gap-7">
-      <div className="flex items-center gap-3">
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
-          <Inbox className="h-5 w-5 text-ink-soft" />
-        </span>
-        <div>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Inbox className="h-5 w-5 text-ink-soft" />
+          </span>
           <h1 className="text-xl font-medium text-ink">Braindump</h1>
-          <p className="text-sm text-muted mt-0.5">
-            Één ingang. Gooi alles erin — een gedachte, link, afbeelding, PDF of video. Het systeem maakt er
-            een lichte notitie van die HEYRA en OSLife als context gebruiken.
-          </p>
         </div>
+        <button className="btn-ghost" onClick={() => setShowClaudeImport(true)}>
+          <Sparkles className="h-4 w-4" /> Importeer Claude-chats
+        </button>
       </div>
 
       {/* quick capture */}
@@ -118,23 +119,27 @@ export default function Capture() {
         </div>
       </div>
 
-      {/* Claude-chat import — brings your past claude.ai conversations in as knowledge */}
-      <div className="card p-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-medium flex items-center gap-1.5">
-            <Sparkles className="h-4 w-4 text-prjct" /> Importeer je Claude-chats
-          </p>
-          <p className="text-[11px] text-faint mt-0.5">
+      {showClaudeImport && (
+        <Overlay tone="black" onClose={() => setShowClaudeImport(false)} panelClassName="card w-full max-w-md p-5 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm font-medium flex items-center gap-1.5">
+              <Sparkles className="h-4 w-4 text-prjct" /> Importeer je Claude-chats
+            </p>
+            <button onClick={() => setShowClaudeImport(false)} className="text-faint hover:text-ink p-1 shrink-0" aria-label="Sluiten">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <p className="text-xs text-faint">
             Exporteer je data op claude.ai (Instellingen → Privacy) en kies hier <code>conversations.json</code>.
             HEYRA kan ze daarna doorzoeken en eruit antwoorden.
           </p>
-          {importMsg && <p className="text-xs text-muted mt-1.5">{importMsg}</p>}
-        </div>
-        <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onImportFile} />
-        <button className="btn-ghost whitespace-nowrap" onClick={() => fileRef.current?.click()} disabled={importing}>
-          {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Bestand kiezen
-        </button>
-      </div>
+          {importMsg && <p className="text-xs text-muted">{importMsg}</p>}
+          <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onImportFile} />
+          <button className="btn-ghost w-full" onClick={() => fileRef.current?.click()} disabled={importing}>
+            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Bestand kiezen
+          </button>
+        </Overlay>
+      )}
 
       {/* filters */}
       <div className="space-y-3">
