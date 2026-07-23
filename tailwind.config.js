@@ -116,6 +116,17 @@ export default {
           from: { height: 'var(--radix-accordion-content-height)' },
           to: { height: '0' },
         },
+        // HeyraOrb — idle is a slow, calm breathe; thinking is faster and
+        // reaches a brighter peak so the orb visibly "comes alive" while a
+        // brain call is in flight, without needing a JS animation library.
+        'orb-breathe': {
+          '0%, 100%': { transform: 'scale(1)', opacity: '0.85' },
+          '50%': { transform: 'scale(1.06)', opacity: '1' },
+        },
+        'orb-think': {
+          '0%, 100%': { transform: 'scale(1) rotate(0deg)', opacity: '0.9' },
+          '50%': { transform: 'scale(1.12) rotate(8deg)', opacity: '1' },
+        },
       },
       animation: {
         'fade-up': 'fade-up 0.4s ease-out both',
@@ -123,6 +134,8 @@ export default {
         'flow-dash': 'flow-dash 1s linear infinite',
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
+        'orb-breathe': 'orb-breathe 4.5s ease-in-out infinite',
+        'orb-think': 'orb-think 1.6s ease-in-out infinite',
       },
     },
   },
