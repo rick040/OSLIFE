@@ -18,3 +18,8 @@ export const eurK = (n: number | null | undefined) => {
   if (Math.abs(n) >= 1000) return `€${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`
   return `€${n.toLocaleString('nl-NL')}`
 }
+
+/** Goal.metric is a free string ("EUR", "steps", "clients", "kg", …) — only
+ * format as currency when it actually is one; every other metric is just a
+ * plain localized number. */
+export const fmtGoalValue = (n: number, metric: string) => (metric === 'EUR' ? eur0(n) : n.toLocaleString('nl-NL'))

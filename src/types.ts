@@ -1,5 +1,7 @@
 // ── Core domain model for OSLIFE ─────────────────────────────────────────────
 
+import type { LearningCategory } from './heyra/learning'
+
 export type Domain = 'parkingyou' | 'prjct' | 'buurtkaart' | 'personal' | 'cross'
 
 export type ItemKind =
@@ -83,6 +85,12 @@ export type WikiStatus = 'suggested' | 'confirmed' | 'rejected'
  * `suggested` during ingest; the user confirms/rejects it in the Kennisbank
  * view. Only `confirmed` entries get materialised as a real .md file in the
  * vault. Mirrors InferredItem's suggest-then-confirm shape.
+ *
+ * `category` sorts the learning itself (life lesson, way of living, business
+ * system/practice, implementation idea, pet) — set by Claude at ingest time.
+ * On confirm, store.resolveWikiEntry() turns the takeaway into a permanent
+ * LearnedFact under this same category (src/heyra/learning.ts), so HEYRA's
+ * advice keeps drawing on it long after the Kennisbank card scrolls by.
  */
 export interface WikiEntry {
   id: string
@@ -92,6 +100,7 @@ export interface WikiEntry {
   transcript: string
   takeaway: string
   application: string
+  category: LearningCategory | null
   domain: Domain | null
   tags: string[]
   sourceUrl: string | null
@@ -109,6 +118,8 @@ export interface BraindumpInput {
   storagePath?: string | null
   /** Optional user hint at capture time. */
   domain?: Domain | null
+  /** Written to meta.source — e.g. 'heyra-voice' so a raw voice exchange is distinguishable from a typed one in Geheugen/search_memory() results, without a dedicated column. */
+  sourceTag?: string
 }
 
 // ── Layer 3: REMEMBER (three separate stores) ────────────────────────────────
@@ -128,6 +139,8 @@ export interface Thread {
   due: string | null // ISO date
   status: 'open' | 'closed'
   createdAt: string
+  priority?: Priority | null
+  notes?: string | null
 }
 
 export interface Pattern {
@@ -307,6 +320,57 @@ export interface HealthCondition {
   status: HealthConditionStatus
   notes: string | null
   tier: Tier
+}
+
+/**
+ * A scheduled medication reminder (PM-072 Fase 2). reminderTimes fires a
+ * Telegram message every day at each time — there's no native Android app for
+ * AlarmManager, so this reuses the existing notify-tick/Telegram channel.
+ */
+export interface Medication {
+  id: string
+  healthConditionId: string | null
+  name: string
+  dosage: string | null
+  scheduleNote: string | null
+  reminderTimes: string[] // 'HH:MM', local/Amsterdam time
+  active: boolean
+  tier: Tier
+}
+
+/**
+ * A per-category monthly spending cap (generic pattern engine, R11). Created
+ * automatically when confirming a `budget_cap_suggestion` inference, but
+ * editable afterwards like any other setting — the rule only proposes the
+ * starting number.
+ */
+export interface BudgetCap {
+  id: string
+  category: string
+  monthlyMax: number
+  active: boolean
+  sourceRuleId: string | null
+  tier: Tier
+}
+
+/**
+ * A versioned entry in Rick's living profile — the confirm-gated replacement
+ * path for what `heyra_memory`/LearnedFact does today (see heyra/learning.ts):
+ * every new value for the same `key` supersedes the previous one instead of
+ * silently overwriting it, so the profile has an audit trail. Only the
+ * current (non-superseded) version is fetched into the store.
+ */
+export interface ProfileFact {
+  id: string
+  key: string
+  label: string
+  value: Record<string, unknown>
+  version: number
+  confidence: number
+  sourceRuleId: string | null
+  sourceIds: string[]
+  tier: Tier
+  createdAt: string
 }
 
 // ── Memory & retrieval (PM-201 Slice 3) ───────────────────────────────────────
@@ -520,6 +584,13 @@ export interface HourEntry {
 /** Owner-scoped app settings — a single row per user (global hourly rate, …). */
 export interface AppSettings {
   hourlyRate: number // EUR per hour, used to invoice unbilled hours
+}
+
+/** A running project-hours stopwatch — client-only (persisted to localStorage via the store's persist middleware), never synced to Supabase. Stopping it writes a real HourEntry. */
+export interface ActiveTimer {
+  projectId: string
+  projectName: string
+  startedAt: string // ISO
 }
 
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'overdue'

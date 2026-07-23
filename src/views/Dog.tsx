@@ -34,27 +34,27 @@ import {
 } from 'lucide-react'
 
 const KIND: Record<DogKind, { label: string; icon: typeof Bone; hex: string }> = {
-  walk:     { label: 'Wandeling',  icon: Footprints,   hex: '#6FA07C' },
-  food:     { label: 'Eten',       icon: Bone,          hex: '#C6A05B' },
-  water:    { label: 'Water',      icon: Droplet,       hex: '#6E8CA8' },
-  pee:      { label: 'Plas',       icon: Droplet,       hex: '#C6A05B' },
-  poop:     { label: 'Poep',       icon: Sparkles,      hex: '#9385B0' },
-  play:     { label: 'Spelen',     icon: Sparkles,      hex: '#C58392' },
-  treat:    { label: 'Snack',      icon: Bone,          hex: '#C6A05B' },
-  training: { label: 'Training',   icon: Dumbbell,      hex: '#6E8CA8' },
-  vet:      { label: 'Dierenarts', icon: Stethoscope,   hex: '#C58392' },
-  weight:   { label: 'Gewicht',    icon: Scale,         hex: '#9385B0' },
-  note:     { label: 'Notitie',    icon: Camera,        hex: '#5C6150' },
+  walk:     { label: 'Wandeling',  icon: Footprints,   hex: '#34D399' },
+  food:     { label: 'Eten',       icon: Bone,          hex: '#FBBF24' },
+  water:    { label: 'Water',      icon: Droplet,       hex: '#60A5FA' },
+  pee:      { label: 'Plas',       icon: Droplet,       hex: '#FBBF24' },
+  poop:     { label: 'Poep',       icon: Sparkles,      hex: '#A78BFA' },
+  play:     { label: 'Spelen',     icon: Sparkles,      hex: '#F87171' },
+  treat:    { label: 'Snack',      icon: Bone,          hex: '#FBBF24' },
+  training: { label: 'Training',   icon: Dumbbell,      hex: '#60A5FA' },
+  vet:      { label: 'Dierenarts', icon: Stethoscope,   hex: '#F87171' },
+  weight:   { label: 'Gewicht',    icon: Scale,         hex: '#A78BFA' },
+  note:     { label: 'Notitie',    icon: Camera,        hex: '#8c8c8c' },
 }
 
 const QUICK: DogKind[] = ['walk', 'food', 'water', 'pee', 'poop', 'play', 'treat', 'training', 'vet']
 
 const MED_META: Record<DogMedicalType, { label: string; icon: typeof Syringe; hex: string }> = {
-  vaccine:   { label: 'Enting',      icon: Syringe,     hex: '#6FA07C' },
-  vet:       { label: 'Dierenarts',  icon: Stethoscope, hex: '#C58392' },
-  medication:{ label: 'Medicatie',   icon: Pill,        hex: '#6E8CA8' },
-  condition: { label: 'Conditie',    icon: HeartPulse,  hex: '#C6A05B' },
-  weight:    { label: 'Gewicht',     icon: Scale,       hex: '#9385B0' },
+  vaccine:   { label: 'Enting',      icon: Syringe,     hex: '#34D399' },
+  vet:       { label: 'Dierenarts',  icon: Stethoscope, hex: '#F87171' },
+  medication:{ label: 'Medicatie',   icon: Pill,        hex: '#60A5FA' },
+  condition: { label: 'Conditie',    icon: HeartPulse,  hex: '#FBBF24' },
+  weight:    { label: 'Gewicht',     icon: Scale,       hex: '#A78BFA' },
 }
 
 const POOP_LABELS: Record<number, string> = {
@@ -375,14 +375,13 @@ function QuickButton({
   return (
     <button
       {...lp}
-      className="card p-3 flex flex-col items-center gap-1.5 hover:bg-sunken transition-colors active:scale-95 select-none cursor-pointer"
+      className="card p-3.5 flex flex-col items-center gap-2 hover:bg-sunken transition-colors active:scale-95 select-none cursor-pointer"
       style={{ WebkitTouchCallout: 'none', userSelect: 'none' }}
     >
-      <span className="h-10 w-10 rounded-2xl flex items-center justify-center" style={{ background: `${meta.hex}22` }}>
+      <span className="h-11 w-11 rounded-2xl flex items-center justify-center" style={{ background: `${meta.hex}22` }}>
         <Icon className="h-5 w-5" style={{ color: meta.hex }} />
       </span>
       <span className="text-xs font-medium">{meta.label}</span>
-      <span className="text-[9px] text-faint leading-tight">houd vast voor details</span>
     </button>
   )
 }
@@ -446,7 +445,7 @@ export default function Dog() {
     { k: 'walk' as DogKind, label: 'Wandelingen', goal: 3 },
     { k: 'food' as DogKind, label: 'Maaltijden', goal: 2 },
     { k: 'water' as DogKind, label: 'Water', goal: 5 },
-    { label: 'Sanitair', goal: 6, val: count('pee') + count('poop'), hex: '#9385B0', icon: Droplet },
+    { label: 'Sanitair', goal: 6, val: count('pee') + count('poop'), hex: '#A78BFA', icon: Droplet },
   ]
 
   const ageYears = Math.floor(daysBetween(dogProfile.birthdate, TODAY) / 365)
@@ -485,7 +484,7 @@ export default function Dog() {
   const todaySorted = [...today].sort((a, b) => b.at.localeCompare(a.at))
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="flex flex-col gap-7 max-w-3xl mx-auto">
       {/* Modals */}
       {detailKind && (
         <EntryModal
@@ -572,7 +571,7 @@ export default function Dog() {
           </button>
         </div>
         {todaySorted.length === 0 ? (
-          <Empty>Nog niks gelogd vandaag. Tik een knop hierboven of houd vast voor details.</Empty>
+          <Empty>Nog niks gelogd vandaag. Tik een knop hierboven om te loggen.</Empty>
         ) : (
           <div className="card divide-y divide-line">
             {todaySorted.map((e) => (
@@ -596,11 +595,11 @@ export default function Dog() {
           </div>
           <ResponsiveContainer width="100%" height={150}>
             <LineChart data={weights} margin={{ top: 6, right: 10, left: -16, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" vertical={false} />
               <XAxis dataKey="date" tick={AXIS_TICK_11} axisLine={false} tickLine={false} />
               <YAxis domain={[8, 10]} tick={AXIS_TICK_10} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={CHART_TIP_BARE} formatter={(v: number) => [`${v} kg`, 'gewicht']} />
-              <Line type="monotone" dataKey="kg" stroke="#9385B0" strokeWidth={2.5} dot={{ r: 3, fill: '#9385B0' }} />
+              <Line type="monotone" dataKey="kg" stroke="#A78BFA" strokeWidth={2.5} dot={{ r: 3, fill: '#A78BFA' }} />
             </LineChart>
           </ResponsiveContainer>
         </div>

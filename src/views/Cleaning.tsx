@@ -65,7 +65,7 @@ export default function Cleaning() {
   const week = useMemo(() => weekOf(TODAY), [])
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto pb-16">
+    <div className="flex flex-col gap-7 max-w-3xl mx-auto pb-16">
       {/* ── Header: today's zone + gamification stats ─────────────────────── */}
       <div className="card p-4">
         <div className="flex items-start justify-between gap-3">

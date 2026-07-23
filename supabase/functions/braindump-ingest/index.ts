@@ -45,6 +45,18 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 const VALID_DOMAINS = ["parkingyou", "prjct", "buurtkaart", "personal", "cross"];
 const VALID_KINDS = ["task", "note", "vent", "link", "voice", "transaction", "event", "health", "email", "idea"];
 const VALID_SENTIMENTS = ["positive", "neutral", "negative", "stressed"];
+// Kennisbank/wiki learning taxonomy — must match the check constraint on
+// wiki_entries.category (20260721020000_wiki_entries_category.sql) and
+// LearningCategory in src/heyra/learning.ts. On confirm, the takeaway becomes
+// a permanent LearnedFact under this same category (store.ts resolveWikiEntry).
+const VALID_LEARNING_CATEGORIES = [
+  "life_lesson",
+  "way_of_living",
+  "business_system",
+  "business_practice",
+  "implementation",
+  "pet",
+];
 
 const json = jsonResponder(CORS);
 
@@ -62,16 +74,23 @@ Geef ALLEEN een fenced \`\`\`json blok terug met exact deze velden:
   "tags": ["3-6 korte trefwoorden, lowercase"],
   "fields": { "amount": number, "currency": "EUR", "dueDate": "YYYY-MM-DD", "sender": "naam" } of null,
   "markdown": "de notitie in Markdown",
-  "wiki": { "takeaway": "...", "application": "..." } of null
+  "wiki": { "category": "...", "takeaway": "...", "application": "..." } of null
 }
 
 De "markdown" is lichtgewicht maar volledig: begin met een # titel, dan een korte samenvatting, dan de kernpunten als bullets. Bij een afbeelding: beschrijf wat te zien is en neem gelezen tekst (OCR) op. Bij een artikel/PDF: vat de belangrijkste punten samen. Neem de bronlink onderaan op als die er is. domain: parkingyou/prjct/buurtkaart zijn de bedrijven van de gebruiker, personal = privé, cross = meerdere.
 
 "fields" is alleen voor een rekening/bon/factuur: vul 'm met wat je letterlijk ziet (bedrag, valuta, vervaldatum, afzender/leverancier). Verzin nooit een bedrag of datum die je niet ziet — laat het veld dan gewoon weg. Bij alles wat geen rekening is: "fields": null.
 
-"wiki" is alleen voor content die een concreet, herbruikbaar idee of inzicht bevat dat Rick mogelijk wil implementeren — bijvoorbeeld een interessante Instagram-post over een aanpak/tool/groeistrategie, een slim stukje workflow, een businessmodel-truc. Dit is bewust selectief: de meeste braindumps (persoonlijke notities, taken, venten, routine-linkjes, transacties) krijgen GEEN wiki-veld — laat het dan gewoon "wiki": null. Alleen als het item duidelijk het karakter heeft van "dit is een idee/inzicht om te bewaren en ooit toe te passen", vul je 'm:
-  - "takeaway": één tot twee zinnen, de kern van het idee/inzicht (niet de hele inhoud herhalen).
-  - "application": concreet en specifiek hoe dit zou kunnen toepassen op Rick — zijn eigen bedrijven (ParkingYou, PRJCT Agency, Geldrop Buurtkaart), lopende projecten, of een nieuw soort project dat dit idee zou kunnen inspireren. Geen vage algemeenheden ("dit kun je toepassen op je bedrijf") — noem een concreet aanknopingspunt.
+"wiki" is alleen voor content die een concreet, herbruikbaar idee, inzicht of les bevat die Rick mogelijk wil onthouden of implementeren — bijvoorbeeld een interessante Instagram-post over een aanpak/tool/groeistrategie, een slim stukje workflow, een businessmodel-truc, een levensles, of een tip/product voor de hond. Dit is bewust selectief: de meeste braindumps (persoonlijke notities, taken, venten, routine-linkjes, transacties) krijgen GEEN wiki-veld — laat het dan gewoon "wiki": null. Alleen als het item duidelijk het karakter heeft van "dit is een idee/inzicht om te bewaren en ooit toe te passen", vul je 'm:
+  - "category": één van ${VALID_LEARNING_CATEGORIES.join(", ")} — kies de beste match:
+      - life_lesson: een persoonlijke levensles of inzicht over hoe je denkt, leeft of reageert
+      - way_of_living: een gewoonte, routine of manier van leven (gezondheid, huishouden, mindset, dagritme)
+      - business_system: een systeem, proces of tool om een bedrijf te runnen (bijv. workflow-automatisering, CRM-aanpak, rapportagestructuur)
+      - business_practice: een concrete zakelijke tactiek of gewoonte (bijv. prijsstrategie, salesaanpak, marketingtruc)
+      - implementation: een concreet idee over hoe je iets nieuws bouwt, lanceert of implementeert
+      - pet: iets over de hond/huisdier — een product, tip, aanpak of aandachtspunt
+  - "takeaway": één tot twee zinnen, de kern van het idee/inzicht/les (niet de hele inhoud herhalen).
+  - "application": concreet en specifiek hoe dit zou kunnen toepassen op Rick — zijn eigen bedrijven (ParkingYou, PRJCT Agency, Geldrop Buurtkaart), lopende projecten, zijn persoonlijk leven of zijn hond, of een nieuw soort project dat dit idee zou kunnen inspireren. Geen vage algemeenheden ("dit kun je toepassen op je bedrijf") — noem een concreet aanknopingspunt.
 Bij twijfel: "wiki": null. Beter een goede suggestie missen dan de kennisbank vervuilen met ruis.
 
 Belangrijk tegen verzinsels: als de gedeelde content aangeeft dat er GEEN echte inhoud beschikbaar is (bijvoorbeeld een video zonder transcript, of een pagina die niet kon worden opgehaald) — verzin dan nooit een inhoudelijke samenvatting of kernpunten die er niet zijn. Schrijf in dat geval alleen een minimale notitie met wat je wél zeker weet (titel, kanaal/auteur, bron) en zeg er expliciet bij dat er geen inhoud beschikbaar was. Een korte eerlijke notitie is altijd beter dan een overtuigend klinkende, verzonnen samenvatting.`;
@@ -95,7 +114,7 @@ Geef ALLEEN een fenced \`\`\`json blok terug met exact deze velden:
   "tags": ["3-6 korte trefwoorden, lowercase"],
   "fields": null,
   "markdown": "de volledige notitie in Markdown",
-  "wiki": { "takeaway": "...", "application": "..." } of null
+  "wiki": { "category": "...", "takeaway": "...", "application": "..." } of null
 }
 
 Structuur van "markdown" (pas toe waar relevant, sla over wat niet van toepassing is):
@@ -106,7 +125,7 @@ Structuur van "markdown" (pas toe waar relevant, sla over wat niet van toepassin
 - Sluit af met een bronregel: "Bron: [kanaal] (YouTube) | <url>".
 Bij twijfel over lengte: liever te grondig dan te oppervlakkig — dit mag een lange notitie zijn, in tegenstelling tot andere braindump-types.
 
-"wiki": zelfde selectiecriterium als anders — alleen bij een concreet, herbruikbaar idee/inzicht dat Rick zou kunnen toepassen op zijn bedrijven (ParkingYou, PRJCT Agency, Geldrop Buurtkaart) of projecten; anders null.`;
+"wiki": zelfde selectiecriterium en categorieën als hierboven — alleen bij een concreet, herbruikbaar idee/inzicht/les die Rick zou kunnen toepassen op zijn bedrijven (ParkingYou, PRJCT Agency, Geldrop Buurtkaart), zijn leven of zijn hond; anders null.`;
 
 interface ContentBlock {
   type: string;
@@ -115,6 +134,7 @@ interface ContentBlock {
 }
 
 interface WikiSuggestion {
+  category: string | null;
   takeaway: string;
   application: string;
 }
@@ -137,7 +157,9 @@ function sanitizeWiki(raw: unknown): WikiSuggestion | null {
   const takeaway = String((raw as Record<string, unknown>).takeaway ?? "").trim();
   const application = String((raw as Record<string, unknown>).application ?? "").trim();
   if (!takeaway || !application) return null;
-  return { takeaway, application };
+  const rawCategory = String((raw as Record<string, unknown>).category ?? "");
+  const category = VALID_LEARNING_CATEGORIES.includes(rawCategory) ? rawCategory : null;
+  return { category, takeaway, application };
 }
 
 /** Keep only the known, well-typed keys a bill/receipt capture can carry. */
@@ -515,6 +537,7 @@ Deno.serve(async (req) => {
         transcript: res.note.markdown,
         takeaway: res.note.wiki.takeaway,
         application: res.note.wiki.application,
+        category: res.note.wiki.category,
         domain: res.note.domain,
         tags: res.note.tags,
         source_url: url,

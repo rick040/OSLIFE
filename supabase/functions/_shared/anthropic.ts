@@ -28,6 +28,30 @@ export function extractText(content: unknown): string {
     .trim();
 }
 
+/** A tool definition in Anthropic's Messages API `tools` param — JSON Schema input, forwarded verbatim from the caller. */
+export interface AnthropicTool {
+  name: string;
+  description?: string;
+  input_schema: Record<string, unknown>;
+}
+
+export type AnthropicToolChoice = { type: "tool"; name: string } | { type: "auto" };
+
+export interface AnthropicToolUse {
+  name: string;
+  input: Record<string, unknown>;
+}
+
+/** Pulls the first `tool_use` content block out of a Messages API response, if the model made one. */
+export function extractToolUse(content: unknown): AnthropicToolUse | null {
+  if (!Array.isArray(content)) return null;
+  const block = content.find(
+    (b): b is { type: string; name: string; input: Record<string, unknown> } =>
+      !!b && (b as { type: string }).type === "tool_use",
+  );
+  return block ? { name: block.name, input: block.input } : null;
+}
+
 /** Parse a fenced ```json block (or the first {...} blob) out of model text. Null on failure. */
 export function parseJsonBlock(text: string): Record<string, unknown> | null {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);

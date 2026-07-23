@@ -21,16 +21,16 @@ import Cleaning from './views/Cleaning'
 import Dog from './views/Dog'
 import StrategieHQ from './views/StrategieHQ'
 import Buurtkaart from './views/Buurtkaart'
-import Eyes from './views/Eyes'
-import Dakmeester from './views/Dakmeester'
 import InboxView from './views/Inbox'
 import NorthStar from './views/NorthStar'
 import Mindmap from './views/Mindmap'
 import Relaties from './views/Relaties'
 import HuisAdmin from './views/HuisAdmin'
+import RedesignDemo from './design-demo/RedesignDemo'
 import LoopExplainer from './components/LoopExplainer'
 import SettingsModal from './components/SettingsModal'
 import AppGrid from './components/AppGrid'
+import SuggestionSplash from './components/SuggestionSplash'
 import { ConfirmDialog } from './components/ui'
 import { AppShell } from './components/layout/app-shell'
 import { type View } from './nav'
@@ -39,6 +39,9 @@ export default function App() {
   const [view, setView] = useState<View>('dashboard')
   // PWA Web Share Target lands on /share (see public/sw.js + manifest).
   const [isShare, setIsShare] = useState(() => window.location.pathname === '/share')
+  // Standalone redesign preview (docs/design.md Part 2) — no auth required
+  // so it's reviewable without logging in. See src/design-demo/RedesignDemo.tsx.
+  const isDesignDemo = window.location.pathname === '/design-demo'
   const [showLoops, setShowLoops] = useState(false)
   const [showGrid, setShowGrid] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -84,12 +87,12 @@ export default function App() {
     crm: <CRM />,
     strategiehq: <StrategieHQ onNav={(v) => setView(v)} />,
     buurtkaart: <Buurtkaart />,
-    eyes: <Eyes />,
-    dakmeester: <Dakmeester />,
     dog: <Dog />,
     relaties: <Relaties />,
     huisadmin: <HuisAdmin />,
   }
+
+  if (isDesignDemo) return <RedesignDemo />
 
   if (!authChecked) return (
     <div className="min-h-screen flex items-center justify-center bg-canvas">
@@ -127,6 +130,7 @@ export default function App() {
       {showLoops && <LoopExplainer onClose={() => setShowLoops(false)} />}
       {showGrid && <AppGrid active={view} onNav={(v) => setView(v)} onClose={() => setShowGrid(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      <SuggestionSplash />
       {confirmReset && (
         <ConfirmDialog
           title={confirmReset === 'full' ? 'Reset the demo to its seeded state?' : 'Reset the demo?'}

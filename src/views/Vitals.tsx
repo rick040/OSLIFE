@@ -36,12 +36,15 @@ export default function Vitals() {
 
   if (!today) {
     return (
-      <div className="space-y-6 max-w-4xl mx-auto">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Activity className="h-5 w-5 text-buurtkaart" /> Gezondheid
-          </h1>
-          <p className="text-sm text-muted mt-1">Nog geen sensordata — log wel hoe je je voelt.</p>
+      <div className="flex flex-col gap-7 max-w-4xl mx-auto">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Activity className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">Gezondheid</h1>
+            <p className="text-sm text-muted mt-0.5">Nog geen sensordata — log wel hoe je je voelt.</p>
+          </div>
         </div>
         <CheckinCard />
       </div>
@@ -62,19 +65,22 @@ export default function Vitals() {
     data.length ? data.reduce((a, x) => a + x[k], 0) / data.length : 0
 
   const stat = [
-    { icon: Footprints, label: 'Ø stappen', value: Math.round(avgH('steps')).toLocaleString('nl-NL'), color: 'text-buurtkaart', trend: data.map((x) => x.steps) },
-    { icon: Moon, label: 'Ø slaap', value: avgH('sleep').toFixed(1) + 'u', color: 'text-parkingyou', trend: data.map((x) => x.sleep) },
-    { icon: Heart, label: 'Ø rust-HR', value: Math.round(avgH('hr')) + ' bpm', color: 'text-cross', trend: data.map((x) => x.hr) },
-    { icon: Activity, label: 'Ø actief', value: Math.round(avgH('active')) + ' min', color: 'text-personal', trend: data.map((x) => x.active) },
+    { icon: Footprints, label: 'Ø stappen', value: Math.round(avgH('steps')).toLocaleString('nl-NL'), trend: data.map((x) => x.steps) },
+    { icon: Moon, label: 'Ø slaap', value: avgH('sleep').toFixed(1) + 'u', trend: data.map((x) => x.sleep) },
+    { icon: Heart, label: 'Ø rust-HR', value: Math.round(avgH('hr')) + ' bpm', trend: data.map((x) => x.hr) },
+    { icon: Activity, label: 'Ø actief', value: Math.round(avgH('active')) + ' min', trend: data.map((x) => x.active) },
   ]
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      <div>
-        <h1 className="text-xl font-semibold flex items-center gap-2">
-          <Activity className="h-5 w-5 text-buurtkaart" /> Gezondheid
-        </h1>
-        <p className="text-sm text-muted mt-1">Lichaam, stemming en gedrag — stappen, slaap, hartslag, schermtijd en agenda-druk in één overzicht.</p>
+    <div className="flex flex-col gap-7 max-w-4xl mx-auto">
+      <div className="flex items-center gap-3">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+          <Activity className="h-5 w-5 text-ink-soft" />
+        </span>
+        <div>
+          <h1 className="text-xl font-medium text-ink">Gezondheid</h1>
+          <p className="text-sm text-muted mt-0.5">Lichaam, stemming en gedrag — stappen, slaap, hartslag, schermtijd en agenda-druk in één overzicht.</p>
+        </div>
       </div>
 
       <CheckinCard />
@@ -86,19 +92,19 @@ export default function Vitals() {
         <div className="text-xs font-semibold uppercase tracking-wider mb-2">Vandaag</div>
         <div className="flex flex-wrap items-center justify-around gap-4">
           <div className="flex flex-col items-center gap-1">
-            <Ring value={today.steps / today.stepGoal} size={72} color="stroke-[#16210f]" label={today.steps.toLocaleString('nl-NL')} />
+            <Ring value={today.steps / today.stepGoal} size={72} color="stroke-forest-hi" label={today.steps.toLocaleString('nl-NL')} />
             <span className="text-xs font-medium flex items-center gap-1"><Footprints className="h-3.5 w-3.5" /> doel {today.stepGoal.toLocaleString('nl-NL')}</span>
           </div>
           <div className="flex flex-col items-center gap-1">
-            <Ring value={today.sleepHours / 8} size={72} color="stroke-[#16210f]" label={today.sleepHours + 'u'} />
+            <Ring value={today.sleepHours / 8} size={72} color="stroke-forest-hi" label={today.sleepHours + 'u'} />
             <span className="text-xs font-medium flex items-center gap-1"><Moon className="h-3.5 w-3.5" /> doel 8u</span>
           </div>
           <div className="flex flex-col items-center gap-1">
-            <Ring value={today.energy / 5} size={72} color="stroke-[#16210f]" label={today.energy + '/5'} />
+            <Ring value={today.energy / 5} size={72} color="stroke-forest-hi" label={today.energy + '/5'} />
             <span className="text-xs font-medium flex items-center gap-1"><Zap className="h-3.5 w-3.5" /> energie</span>
           </div>
           <div className="flex flex-col items-center gap-1">
-            <Ring value={today.mood / 5} size={72} color="stroke-[#16210f]" label={today.mood + '/5'} />
+            <Ring value={today.mood / 5} size={72} color="stroke-forest-hi" label={today.mood + '/5'} />
             <span className="text-xs font-medium flex items-center gap-1"><Smile className="h-3.5 w-3.5" /> stemming</span>
           </div>
           <div className="flex flex-col items-center justify-center">
@@ -116,10 +122,10 @@ export default function Vitals() {
           return (
             <div key={s.label} className="card relative p-3">
               <span className="absolute right-3 top-3">
-                <Sparkline values={s.trend} className={s.color} width={40} height={18} />
+                <Sparkline values={s.trend} className="text-ink-soft" width={40} height={18} />
               </span>
-              <span className={`inline-flex h-8 w-8 items-center justify-center rounded-lg ${s.color.replace('text-', 'bg-')}/12`}>
-                <Icon className={`h-4 w-4 ${s.color}`} />
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-sunken">
+                <Icon className="h-4 w-4 text-ink-soft" />
               </span>
               <div className="text-xl font-bold tabular-nums mt-2">{s.value}</div>
               <div className="text-xs text-faint">{s.label} · 14d</div>
@@ -131,19 +137,19 @@ export default function Vitals() {
       {/* steps */}
       <div className="card p-4">
         <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
-          <Footprints className="h-4 w-4 text-buurtkaart" /> Stappen (14 dagen)
+          <Footprints className="h-4 w-4 text-ink-soft" /> Stappen (14 dagen)
         </h3>
         <p className="text-xs text-faint mb-2">Groen = doel gehaald, lijn = dagdoel {today.stepGoal.toLocaleString('nl-NL')}.</p>
         <ResponsiveContainer width="100%" height={180}>
           <BarChart data={data} margin={{ top: 4, right: 4, left: -8, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
             <XAxis dataKey="date" tick={AXIS_TICK_10} />
             <YAxis tick={AXIS_TICK_10} />
             <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [v.toLocaleString('nl-NL'), 'stappen']} />
-            <ReferenceLine y={today.stepGoal} stroke="#6FA07C" strokeDasharray="4 4" />
+            <ReferenceLine y={today.stepGoal} stroke="#34D399" strokeDasharray="4 4" />
             <Bar dataKey="steps" radius={[4, 4, 0, 0]}>
               {data.map((x) => (
-                <Cell key={x.date} fill={x.steps >= today.stepGoal ? '#6FA07C' : '#D4D7C8'} />
+                <Cell key={x.date} fill={x.steps >= today.stepGoal ? '#34D399' : '#333333'} />
               ))}
             </Bar>
           </BarChart>
@@ -154,17 +160,17 @@ export default function Vitals() {
         {/* sleep */}
         <div className="card p-4">
           <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
-            <Moon className="h-4 w-4 text-parkingyou" /> Slaap
+            <Moon className="h-4 w-4 text-ink-soft" /> Slaap
           </h3>
           <p className="text-xs text-faint mb-2">Roze lijn = 6u drempel, daaronder keldert je energie.</p>
           <ResponsiveContainer width="100%" height={170}>
             <LineChart data={data} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis dataKey="date" tick={AXIS_TICK_10} />
               <YAxis domain={[0, 9]} tick={AXIS_TICK_10} />
               <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v}u`, 'slaap']} />
-              <ReferenceLine y={6} stroke="#C58392" strokeDasharray="4 4" />
-              <Line type="monotone" dataKey="sleep" stroke="#6E8CA8" strokeWidth={2} dot={false} />
+              <ReferenceLine y={6} stroke="#F87171" strokeDasharray="4 4" />
+              <Line type="monotone" dataKey="sleep" stroke="#60A5FA" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -172,16 +178,16 @@ export default function Vitals() {
         {/* resting HR */}
         <div className="card p-4">
           <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
-            <Heart className="h-4 w-4 text-cross" /> Rust-hartslag
+            <Heart className="h-4 w-4 text-ink-soft" /> Rust-hartslag
           </h3>
           <p className="text-xs text-faint mb-2">Hoger op slechte nachten, lager bij herstel.</p>
           <ResponsiveContainer width="100%" height={170}>
             <LineChart data={data} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis dataKey="date" tick={AXIS_TICK_10} />
               <YAxis domain={[50, 70]} tick={AXIS_TICK_10} />
               <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v} bpm`, 'rust-HR']} />
-              <Line type="monotone" dataKey="hr" stroke="#C58392" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="hr" stroke="#F87171" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -196,20 +202,20 @@ export default function Vitals() {
 
       <div className="card p-4">
         <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
-          <Smartphone className="h-4 w-4 text-parkingyou" /> Schermtijd & app-gebruik
+          <Smartphone className="h-4 w-4 text-ink-soft" /> Schermtijd & app-gebruik
         </h3>
         <p className="text-xs text-faint mb-2">Focus = werk/creatieve apps, afleiding = social/media. Pickups = telefoon ontgrendeld.</p>
         {screenToday ? (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-              <Kpi icon={Smartphone} color="text-parkingyou" value={fmtMin(Math.round(avg(screenDays.map((s) => s.totalMinutes))))} label="Ø schermtijd · 14d" />
-              <Kpi icon={Hand} color="text-cross" value={Math.round(avg(screenDays.map((s) => s.pickups))).toString()} label="Ø pickups · 14d" />
-              <Kpi icon={Brain} color="text-buurtkaart" value={fmtMin(screenToday.focusMinutes)} label="focus vandaag" />
-              <Kpi icon={Smartphone} color="text-personal" value={fmtMin(screenToday.distractMinutes)} label="afleiding vandaag" />
+              <Kpi icon={Smartphone} value={fmtMin(Math.round(avg(screenDays.map((s) => s.totalMinutes))))} label="Ø schermtijd · 14d" />
+              <Kpi icon={Hand} value={Math.round(avg(screenDays.map((s) => s.pickups))).toString()} label="Ø pickups · 14d" />
+              <Kpi icon={Brain} value={fmtMin(screenToday.focusMinutes)} label="focus vandaag" />
+              <Kpi icon={Smartphone} value={fmtMin(screenToday.distractMinutes)} label="afleiding vandaag" />
             </div>
             <ResponsiveContainer width="100%" height={160}>
               <BarChart data={screenData} margin={{ top: 4, right: 4, left: -8, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
                 <XAxis dataKey="date" tick={AXIS_TICK_10} />
                 <YAxis tick={AXIS_TICK_10} />
                 <Tooltip contentStyle={CHART_TIP} formatter={(v: number, n) => [fmtMin(v), n === 'focus' ? 'focus' : 'afleiding']} />
@@ -240,19 +246,19 @@ export default function Vitals() {
 
       <div className="card p-4">
         <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
-          <CalendarClock className="h-4 w-4 text-cross" /> Agenda-druk
+          <CalendarClock className="h-4 w-4 text-ink-soft" /> Agenda-druk
         </h3>
         <p className="text-xs text-faint mb-2">Roze = dag op/rond een PRJCT/campagne-deadline. 3+ meetings = versnipperde dag.</p>
         <ResponsiveContainer width="100%" height={160}>
           <BarChart data={meetingData} margin={{ top: 4, right: 4, left: -8, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
             <XAxis dataKey="date" tick={AXIS_TICK_10} />
             <YAxis allowDecimals={false} tick={AXIS_TICK_10} />
             <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v} meeting(s)`, 'aantal']} />
-            <ReferenceLine y={3} stroke="#C58392" strokeDasharray="4 4" />
+            <ReferenceLine y={3} stroke="#F87171" strokeDasharray="4 4" />
             <Bar dataKey="count" radius={[4, 4, 0, 0]}>
               {meetingData.map((m) => (
-                <Cell key={m.iso} fill={deadlines.includes(m.iso) ? '#C58392' : '#D4D7C8'} />
+                <Cell key={m.iso} fill={deadlines.includes(m.iso) ? '#F87171' : '#333333'} />
               ))}
             </Bar>
           </BarChart>
@@ -262,10 +268,10 @@ export default function Vitals() {
   )
 }
 
-function Kpi({ icon: Icon, color, value, label }: { icon: typeof Smartphone; color: string; value: string; label: string }) {
+function Kpi({ icon: Icon, value, label }: { icon: typeof Smartphone; value: string; label: string }) {
   return (
     <div className="card p-3">
-      <Icon className={`h-4 w-4 ${color}`} />
+      <Icon className="h-4 w-4 text-ink-soft" />
       <div className="text-lg font-semibold mt-1">{value}</div>
       <div className="text-xs text-faint">{label}</div>
     </div>

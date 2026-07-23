@@ -14,6 +14,7 @@ import type {
   DogEntry,
   Block,
   Thread,
+  Priority,
   Pattern,
   Project,
   ProjectStatus,
@@ -40,6 +41,9 @@ import type {
   Interaction,
   AdminItem,
   HealthCondition,
+  Medication,
+  BudgetCap,
+  ProfileFact,
   MemorySummary,
   MemoryHit,
   BusinessIdea,
@@ -49,7 +53,8 @@ import type {
   BalanceCheckpoint,
 } from '../types'
 import { today, habitStreak } from '../domains'
-import type { LearnedFact } from '../heyra/learning'
+import { CATEGORY_META, type LearnedFact, type LearningCategory } from '../heyra/learning'
+import type { CardTemplate, CardTemplateExtraField } from '../heyra/actions/types'
 
 // New oslife project (nhyunnnmdcmojvkxrbpl, eu-west-1).
 // Set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY in .env.local
@@ -168,6 +173,12 @@ async function fetchRows<T>(
 }
 
 // ── Brain state (threads + patterns) — one jsonb row per user ───────────────────
+// `patterns` still lives here. `threads` is being migrated to the `tasks` table
+// below (one row per task instead of a whole-blob rewrite on every edit) —
+// persistBrainState()/fetchBrainState() stay in place during the transition
+// (loadLiveData() reads both sources for one release) and this function still
+// accepts `threads` so any leftover caller isn't broken, but store.ts no longer
+// calls it with real thread data — see fetchTasks()/insertTaskRow() etc.
 
 export async function persistBrainState(threads: Thread[], patterns: Pattern[]): Promise<void> {
   const user_id = await currentUserId()
@@ -176,6 +187,57 @@ export async function persistBrainState(threads: Thread[], patterns: Pattern[]):
     .from('brain_state')
     .upsert({ user_id, threads, patterns, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
   warnWrite('brain_state', error)
+}
+
+// ── Tasks — one row per task (replaces brain_state.threads) ─────────────────────
+
+export async function fetchTasks(): Promise<Thread[]> {
+  return fetchRows(
+    'tasks',
+    'id,domain,title,owed_to,due,status,priority,notes,created_at',
+    { column: 'created_at', ascending: false },
+    (r) => ({
+      id: r.id as string,
+      domain: r.domain as Domain,
+      title: r.title as string,
+      owedTo: (r.owed_to as string) ?? 'self (HEYRA)',
+      due: (r.due as string) ?? null,
+      status: (r.status as Thread['status']) ?? 'open',
+      createdAt: (r.created_at as string) ?? new Date().toISOString(),
+      priority: (r.priority as Priority) ?? null,
+      notes: (r.notes as string) ?? null,
+    }),
+  )
+}
+
+export async function insertTaskRow(t: Omit<Thread, 'id'>): Promise<string | null> {
+  return insertRow('tasks', {
+    domain: t.domain,
+    title: t.title,
+    owed_to: t.owedTo,
+    due: t.due,
+    status: t.status,
+    priority: t.priority ?? null,
+    notes: t.notes ?? null,
+  })
+}
+
+const TASK_COLS: Record<string, string> = {
+  domain: 'domain',
+  title: 'title',
+  owedTo: 'owed_to',
+  due: 'due',
+  status: 'status',
+  priority: 'priority',
+  notes: 'notes',
+}
+
+export async function updateTaskRow(id: string, patch: Partial<Thread>): Promise<void> {
+  await updateRow('tasks', id, patch, TASK_COLS)
+}
+
+export async function deleteTaskRow(id: string): Promise<void> {
+  return deleteRow('tasks', id)
 }
 
 // ── Payments ────────────────────────────────────────────────────────────────────
@@ -802,7 +864,7 @@ export async function uploadBraindumpFile(file: File | Blob, filename: string): 
 // proposes a `suggested` row when Claude flags an entry as an actionable
 // idea/insight; confirmWikiEntry() resolves it (RPC enforces ownership).
 
-const WIKI_COLS = 'id,created_at,status,title,transcript,takeaway,application,domain,tags,source_url,braindump_entry_id'
+const WIKI_COLS = 'id,created_at,status,title,transcript,takeaway,application,category,domain,tags,source_url,braindump_entry_id'
 
 function mapWikiRow(r: Record<string, unknown>): WikiEntry {
   return {
@@ -813,6 +875,7 @@ function mapWikiRow(r: Record<string, unknown>): WikiEntry {
     transcript: (r.transcript as string) ?? '',
     takeaway: (r.takeaway as string) ?? '',
     application: (r.application as string) ?? '',
+    category: (r.category as LearningCategory) ?? null,
     domain: (r.domain as Domain) ?? null,
     tags: (r.tags as string[]) ?? [],
     sourceUrl: (r.source_url as string) ?? null,
@@ -843,13 +906,14 @@ export async function confirmWikiEntry(id: string, decision: InferenceDecision):
 export async function materializeWikiEntry(entry: WikiEntry): Promise<void> {
   const body = [
     `# ${entry.title}`,
+    entry.category ? `## Categorie\n${CATEGORY_META[entry.category].label}` : '',
     '## Transcript',
     entry.transcript,
     '## Kernpunt',
     entry.takeaway,
     '## Toepassing',
     entry.application,
-  ].join('\n\n')
+  ].filter(Boolean).join('\n\n')
   try {
     await supabase.functions.invoke('materialize-note', {
       body: {
@@ -1330,6 +1394,44 @@ export async function persistLearnedFacts(facts: LearnedFact[]): Promise<void> {
     .from('heyra_memory')
     .upsert({ user_id, facts, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
   warnWrite('heyra_memory', error)
+}
+
+// ── HEYRA card templates — cached extra fields per action kind ──────────────
+
+export async function fetchCardTemplates(): Promise<CardTemplate[]> {
+  return fetchRows(
+    'card_templates',
+    'id,template_key,kind,layout,use_count,last_used_at',
+    { column: 'last_used_at', ascending: false },
+    (r) => ({
+      id: r.id as string,
+      templateKey: r.template_key as string,
+      kind: r.kind as CardTemplate['kind'],
+      extraFields: Array.isArray((r.layout as { extraFields?: unknown })?.extraFields)
+        ? ((r.layout as { extraFields: CardTemplateExtraField[] }).extraFields)
+        : [],
+      useCount: (r.use_count as number) ?? 0,
+      lastUsedAt: (r.last_used_at as string) ?? '',
+    }),
+  )
+}
+
+/** Full upsert of one template row — the caller (store.recordCardTemplateUsage) computes the merged extraFields client-side, so this is a plain replace, not a partial patch. */
+export async function upsertCardTemplate(template: Omit<CardTemplate, 'id' | 'lastUsedAt'>): Promise<void> {
+  const user_id = await currentUserId()
+  if (!user_id) return
+  const { error } = await supabase.from('card_templates').upsert(
+    {
+      user_id,
+      template_key: template.templateKey,
+      kind: template.kind,
+      layout: { extraFields: template.extraFields },
+      use_count: template.useCount,
+      last_used_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,template_key' },
+  )
+  warnWrite('card_templates', error)
 }
 
 // ── Screen time (if available) ────────────────────────────────────────────────
@@ -2035,6 +2137,116 @@ export async function fetchHealthConditions(): Promise<HealthCondition[]> {
     status: (r.status as HealthCondition['status']) ?? 'active',
     notes: (r.notes as string) ?? null,
     tier: (r.tier as HealthCondition['tier']) ?? 'geheim',
+  }))
+}
+
+const HEALTH_CONDITION_COLS: Record<string, string> = {
+  label: 'label', status: 'status', notes: 'notes',
+}
+
+/** Baseline-info wizard writes here after PM-072 Fase 2's confirm-gated P1 creates the dossier. */
+export async function updateHealthConditionRow(id: string, patch: Partial<HealthCondition>): Promise<void> {
+  await updateRow('health_condition', id, patch, HEALTH_CONDITION_COLS)
+}
+
+/**
+ * Find the dossier confirm_inference() just created from a confirmed
+ * health_condition_promotion event — the migration appends the event's own id
+ * to `derived_from` specifically so the splashscreen can locate it without
+ * confirm_inference()'s boolean return type having to change.
+ */
+export async function fetchHealthConditionByEventId(eventId: string): Promise<HealthCondition | null> {
+  const { data, error } = await supabase
+    .from('health_condition')
+    .select('id,subject,label,opened_at,status,notes,tier')
+    .contains('derived_from', [eventId])
+    .order('opened_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  warnWrite('health_condition.fetchByEvent', error)
+  if (!data) return null
+  return {
+    id: data.id as string,
+    subject: (data.subject as string) ?? 'rick',
+    label: (data.label as string) ?? '',
+    openedAt: (data.opened_at as string) ?? '',
+    status: (data.status as HealthCondition['status']) ?? 'active',
+    notes: (data.notes as string) ?? null,
+    tier: (data.tier as HealthCondition['tier']) ?? 'geheim',
+  }
+}
+
+// ── Medicatie-herinneringen (PM-072 Fase 2) ───────────────────────────────────
+
+export async function fetchMedications(): Promise<Medication[]> {
+  return fetchRows('medications', 'id,health_condition_id,name,dosage,schedule_note,reminder_times,active,tier', { column: 'name' }, (r) => ({
+    id: r.id as string,
+    healthConditionId: (r.health_condition_id as string) ?? null,
+    name: (r.name as string) ?? '',
+    dosage: (r.dosage as string) ?? null,
+    scheduleNote: (r.schedule_note as string) ?? null,
+    reminderTimes: ((r.reminder_times as string[]) ?? []).map((t) => t.slice(0, 5)),
+    active: (r.active as boolean) ?? true,
+    tier: (r.tier as Medication['tier']) ?? 'geheim',
+  }))
+}
+
+export async function createMedicationRow(m: Omit<Medication, 'id'>): Promise<string | null> {
+  return insertRow('medications', {
+    health_condition_id: m.healthConditionId,
+    name: m.name,
+    dosage: m.dosage,
+    schedule_note: m.scheduleNote,
+    reminder_times: m.reminderTimes,
+    active: m.active,
+  })
+}
+
+// ── Generieke patroon-engine: budgetplafonds + versioneerd profiel ───────────
+// (R11/R12 — zie 20260724000000_pattern_engine_profile.sql). budget_caps
+// wordt aangemaakt door confirm_inference() bij het bevestigen van een
+// budget_cap_suggestion; het maximum blijft daarna hier gewoon aanpasbaar.
+
+export async function fetchBudgetCaps(): Promise<BudgetCap[]> {
+  return fetchRows('budget_caps', 'id,category,monthly_max,active,source_rule_id,tier', { column: 'category' }, (r) => ({
+    id: r.id as string,
+    category: (r.category as string) ?? '',
+    monthlyMax: Number(r.monthly_max) || 0,
+    active: (r.active as boolean) ?? true,
+    sourceRuleId: (r.source_rule_id as string) ?? null,
+    tier: (r.tier as BudgetCap['tier']) ?? 'normaal',
+  }))
+}
+
+const BUDGET_CAP_COLS: Record<string, string> = { monthlyMax: 'monthly_max', active: 'active' }
+
+export async function updateBudgetCapRow(id: string, patch: Partial<BudgetCap>): Promise<void> {
+  await updateRow('budget_caps', id, patch, BUDGET_CAP_COLS)
+}
+
+/**
+ * Only the current (non-superseded) version of every profile fact — the
+ * versioned replacement path for heyra_memory/LearnedFact, starting with
+ * R12's theme detection (see src/types.ts's ProfileFact doc comment).
+ */
+export async function fetchProfileFacts(): Promise<ProfileFact[]> {
+  const { data, error } = await supabase
+    .from('profile_facts')
+    .select('id,key,label,value,version,confidence,source_rule_id,source_ids,tier,created_at')
+    .is('superseded_at', null)
+    .order('created_at', { ascending: false })
+  warnWrite('profile_facts.fetch', error)
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    id: r.id as string,
+    key: r.key as string,
+    label: (r.label as string) ?? '',
+    value: (r.value as Record<string, unknown>) ?? {},
+    version: (r.version as number) ?? 1,
+    confidence: Number(r.confidence) || 0,
+    sourceRuleId: (r.source_rule_id as string) ?? null,
+    sourceIds: (r.source_ids as string[]) ?? [],
+    tier: (r.tier as ProfileFact['tier']) ?? 'normaal',
+    createdAt: (r.created_at as string) ?? '',
   }))
 }
 

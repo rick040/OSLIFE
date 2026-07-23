@@ -22,7 +22,7 @@ export default function DataVizCard({ data }: { data: ChartCardData }) {
                   <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={32} />
                   <Tooltip formatter={(v: number) => [`${v}${data.unit ?? ''}`, '']} />
                   {data.compareLabel && <Legend wrapperStyle={{ fontSize: 11 }} />}
-                  <Line type="monotone" dataKey="value" name="nu" stroke="#9385B0" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="value" name="nu" stroke="#A78BFA" strokeWidth={2} dot={{ r: 3 }} />
                   {data.compareLabel && (
                     <Line type="monotone" dataKey="compareValue" name={data.compareLabel} stroke="#C7C2D6" strokeWidth={2} strokeDasharray="4 3" dot={{ r: 2 }} />
                   )}
@@ -34,7 +34,7 @@ export default function DataVizCard({ data }: { data: ChartCardData }) {
                   <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={32} />
                   <Tooltip formatter={(v: number) => [`${v}${data.unit ?? ''}`, '']} />
                   {data.compareLabel && <Legend wrapperStyle={{ fontSize: 11 }} />}
-                  <Bar dataKey="value" name="nu" fill="#9385B0" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="value" name="nu" fill="#A78BFA" radius={[6, 6, 0, 0]} />
                   {data.compareLabel && <Bar dataKey="compareValue" name={data.compareLabel} fill="#C7C2D6" radius={[6, 6, 0, 0]} />}
                 </BarChart>
               )}

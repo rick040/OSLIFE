@@ -79,35 +79,40 @@ export default function Projects() {
   }, [projects, statusFilter, clientFilter, q, sortKey])
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="flex flex-col gap-7 max-w-5xl mx-auto">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <FolderKanban className="h-5 w-5 text-prjct" /> Projecten
-          </h1>
-          <p className="text-sm text-muted mt-1">Al je projecten op één plek — gekoppeld aan je klanten, van lead tot oplevering.</p>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <FolderKanban className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">Projecten</h1>
+            <p className="text-sm text-muted mt-0.5">Al je projecten op één plek — gekoppeld aan je klanten, van lead tot oplevering.</p>
+          </div>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => setCreatingClient(true)} className="chip bg-surface border border-line text-muted hover:text-ink">
+          <button onClick={() => setCreatingClient(true)} className="btn-ghost !py-2">
             <UserPlus className="h-3.5 w-3.5" /> Klant
           </button>
-          <button onClick={() => setCreatingProject(true)} className="chip bg-forest text-white">
+          <button onClick={() => setCreatingProject(true)} className="btn-primary !py-2">
             <Plus className="h-3.5 w-3.5" /> Project
           </button>
         </div>
       </div>
 
-      {/* KPI grid */}
+      {/* KPI grid — icons stay neutral; the "Achterstallig" alert state is the
+          only place color signals anything, when there's actually something
+          overdue. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Kpi icon={<FolderKanban className="h-4 w-4 text-buurtkaart-deep" />} label="Actief" value={String(activeProjects.length)} sub={`${projects.length} totaal`} tint="bg-buurtkaart/12" />
-        <Kpi icon={<Wallet className="h-4 w-4 text-parkingyou-deep" />} label="Pipeline" value={eur(pipeline)} sub="nog te factureren" tint="bg-parkingyou/12" />
-        <Kpi icon={<AlertTriangle className="h-4 w-4 text-cross-deep" />} label="Achterstallig" value={String(overdue.length)} sub={overdue.length ? 'over deadline' : 'alles op schema'} alert={overdue.length > 0} />
-        <Kpi icon={<CheckCircle2 className="h-4 w-4 text-prjct-deep" />} label="Opgeleverd" value={eur(delivered)} sub={`${projects.filter((p) => p.status === 'done').length} projecten`} tint="bg-prjct/12" />
+        <Kpi icon={<FolderKanban className="h-4 w-4 text-ink-soft" />} label="Actief" value={String(activeProjects.length)} sub={`${projects.length} totaal`} />
+        <Kpi icon={<Wallet className="h-4 w-4 text-ink-soft" />} label="Pipeline" value={eur(pipeline)} sub="nog te factureren" />
+        <Kpi icon={<AlertTriangle className="h-4 w-4 text-ink-soft" />} label="Achterstallig" value={String(overdue.length)} sub={overdue.length ? 'over deadline' : 'alles op schema'} alert={overdue.length > 0} />
+        <Kpi icon={<CheckCircle2 className="h-4 w-4 text-ink-soft" />} label="Opgeleverd" value={eur(delivered)} sub={`${projects.filter((p) => p.status === 'done').length} projecten`} />
       </div>
 
       {/* Search + client filter */}
-      <div className="flex gap-2 flex-wrap">
-        <div className="flex-1 min-w-[180px] flex items-center gap-2 bg-sunken rounded-xl px-3 py-2">
+      <div className="flex gap-2.5 flex-wrap">
+        <div className="flex-1 min-w-[180px] flex items-center gap-2 bg-sunken rounded-xl px-4 py-2.5">
           <Search className="h-4 w-4 text-faint shrink-0" />
           <input
             value={query}
@@ -120,13 +125,13 @@ export default function Projects() {
           <select
             value={clientFilter}
             onChange={(e) => setClientFilter(e.target.value)}
-            className="text-sm bg-sunken rounded-xl px-3 py-2 border border-line focus:outline-none focus:border-forest text-ink-soft"
+            className="text-sm bg-sunken rounded-xl px-4 py-2.5 outline-none text-ink-soft"
           >
             <option value="">Alle klanten</option>
             {clientsWithProjects.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         )}
-        <div className="flex items-center gap-1.5 bg-sunken rounded-xl px-3 py-2">
+        <div className="flex items-center gap-1.5 bg-sunken rounded-xl px-4 py-2.5">
           <ArrowUpDown className="h-3.5 w-3.5 text-faint shrink-0" />
           <select
             value={sortKey}

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { TODAY, DOMAIN_META, daysBetween } from '../domains'
 import { dueLabel } from '../lib/dates'
-import { DomainChip, SectionTitle, Empty } from '../components/ui'
+import { DomainChip, Empty } from '../components/ui'
 import { parseTaskDraft } from '../heyra/skills'
 import type { Domain, Thread } from '../types'
 import {
@@ -39,11 +39,11 @@ function TaskRow({ task }: { task: Thread }) {
   }
 
   return (
-    <div className="card p-3 space-y-2">
+    <div className="card p-4">
       {editing ? (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-3">
           <input value={title} onChange={(e) => setTitle(e.target.value)} className="input w-full" placeholder="Taak" />
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2.5">
             <input type="date" value={due} onChange={(e) => setDue(e.target.value)} className="input" />
             <select value={domain} onChange={(e) => setDomain(e.target.value as Domain)} className="input">
               {ALL_DOMAINS.map((d) => (
@@ -67,25 +67,25 @@ function TaskRow({ task }: { task: Thread }) {
                 {dueInfo.label}
               </span>
             </div>
-            <p className={`text-sm mt-0.5 truncate ${task.status === 'closed' ? 'text-faint line-through' : 'text-ink'}`}>{task.title}</p>
-            <p className="text-[11px] text-faint">→ {task.owedTo}</p>
+            <p className={`text-sm mt-1 truncate ${task.status === 'closed' ? 'text-faint line-through' : 'text-ink'}`}>{task.title}</p>
+            <p className="text-[11px] text-faint mt-0.5">→ {task.owedTo}</p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {task.status === 'open' ? (
               <>
-                <button className="text-faint hover:text-ink p-1.5 rounded-lg hover:bg-sunken" onClick={() => setEditing(true)} aria-label="Bewerken">
+                <button className="text-faint hover:text-ink p-2 rounded-lg hover:bg-sunken" onClick={() => setEditing(true)} aria-label="Bewerken">
                   <Pencil className="h-4 w-4" />
                 </button>
-                <button className="text-faint hover:text-buurtkaart-deep p-1.5 rounded-lg hover:bg-sunken" onClick={() => store.closeThread(task.id)} aria-label="Afronden">
+                <button className="text-faint hover:text-buurtkaart-deep p-2 rounded-lg hover:bg-sunken" onClick={() => store.closeThread(task.id)} aria-label="Afronden">
                   <CheckCircle2 className="h-4 w-4" />
                 </button>
               </>
             ) : (
-              <button className="text-faint hover:text-ink p-1.5 rounded-lg hover:bg-sunken" onClick={() => store.reopenThread(task.id)} aria-label="Heropenen">
+              <button className="text-faint hover:text-ink p-2 rounded-lg hover:bg-sunken" onClick={() => store.reopenThread(task.id)} aria-label="Heropenen">
                 <RotateCcw className="h-4 w-4" />
               </button>
             )}
-            <button className="text-faint hover:text-cross-deep p-1.5 rounded-lg hover:bg-sunken" onClick={() => store.deleteThread(task.id)} aria-label="Verwijderen">
+            <button className="text-faint hover:text-cross-deep p-2 rounded-lg hover:bg-sunken" onClick={() => store.deleteThread(task.id)} aria-label="Verwijderen">
               <Trash2 className="h-4 w-4" />
             </button>
           </div>
@@ -118,28 +118,26 @@ function TaskColumn({ column }: { column: Column }) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-4">
       <div>
-        <SectionTitle hint={column.hint}>{column.label} · {open.length} open</SectionTitle>
+        <p className="text-[11px] font-medium uppercase tracking-wider text-muted">{column.label} · {open.length} open</p>
+        <p className="text-xs text-faint mt-0.5">{column.hint}</p>
       </div>
 
-      <form
-        onSubmit={(e) => { e.preventDefault(); addQuick() }}
-        className="flex gap-2"
-      >
+      <form onSubmit={(e) => { e.preventDefault(); addQuick() }} className="flex gap-2">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Nieuwe taak…"
-          className="flex-1 rounded-xl bg-surface border border-line px-3 py-2 text-sm outline-none focus:border-prjct/60"
+          className="input flex-1"
         />
-        <button type="submit" className="btn-primary !px-3" disabled={!input.trim()}>
+        <button type="submit" className="btn-primary !px-4" disabled={!input.trim()}>
           <Plus className="h-4 w-4" />
         </button>
       </form>
 
       {open.length ? (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2.5">
           {open.map((t) => <TaskRow key={t.id} task={t} />)}
         </div>
       ) : (
@@ -156,7 +154,7 @@ function TaskColumn({ column }: { column: Column }) {
             Afgerond ({done.length})
           </button>
           {showDone && (
-            <div className="space-y-2 mt-2">
+            <div className="flex flex-col gap-2.5 mt-3">
               {done.map((t) => <TaskRow key={t.id} task={t} />)}
             </div>
           )}
@@ -177,22 +175,22 @@ export default function Tasks() {
   }, [open])
 
   return (
-    <div className="space-y-6">
-      <div className="animate-fade-up">
-        <div className="flex items-center gap-2">
-          <CheckSquare className="h-5 w-5 text-forest" />
-          <h1 className="text-xl font-semibold">Taken</h1>
+    <div className="flex flex-col gap-7">
+      <div className="flex items-center gap-3">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+          <CheckSquare className="h-5 w-5 text-ink-soft" />
+        </span>
+        <div>
+          <h1 className="text-xl font-medium text-ink">Taken</h1>
+          <p className="text-muted text-sm mt-0.5">
+            {stats.personal} persoonlijk · {stats.work} werk — beheer, bewerk of verwijder rechtstreeks.
+          </p>
         </div>
-        <p className="text-muted text-sm mt-1">
-          {stats.personal} persoonlijk · {stats.work} werk — beheer, bewerk of verwijder rechtstreeks.
-        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {COLUMNS.map((c) => (
-          <div key={c.key} className="animate-fade-up">
-            <TaskColumn column={c} />
-          </div>
+          <TaskColumn key={c.key} column={c} />
         ))}
       </div>
     </div>

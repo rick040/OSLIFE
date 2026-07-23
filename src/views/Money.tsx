@@ -59,6 +59,8 @@ export default function Money() {
     addGoal,
     updateGoal,
     deleteGoal,
+    budgetCaps,
+    updateBudgetCap,
   } = useStore()
 
   const fileRef = useRef<HTMLInputElement>(null)
@@ -174,6 +176,8 @@ export default function Money() {
             coach={financeCoach}
             coachLoading={financeCoachLoading}
             onRefreshCoach={refreshFinanceCoach}
+            budgetCaps={budgetCaps}
+            onUpdateBudgetCap={updateBudgetCap}
           />
         </TabsContent>
 

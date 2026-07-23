@@ -200,16 +200,19 @@ export default function NorthStar() {
   const doneMs = milestones.filter((m) => m.done).length
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Target className="h-5 w-5 text-prjct" /> North Star
-          </h1>
-          <p className="text-sm text-muted mt-1 max-w-xl">
-            Je leven op hoog niveau: de doelen die ertoe doen en de mijlpalen ernaartoe.
-            {totalMs > 0 && ` ${doneMs}/${totalMs} mijlpalen gehaald.`}
-          </p>
+    <div className="flex flex-col gap-7 max-w-3xl mx-auto">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Target className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">North Star</h1>
+            <p className="text-sm text-muted mt-0.5 max-w-xl">
+              Je leven op hoog niveau: de doelen die ertoe doen en de mijlpalen ernaartoe.
+              {totalMs > 0 && ` ${doneMs}/${totalMs} mijlpalen gehaald.`}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -222,9 +225,9 @@ export default function NorthStar() {
             disabled={proposingGoals}
           >
             {proposingGoals ? (
-              <span className="h-4 w-4 rounded-full border-2 border-cross border-t-transparent animate-spin" />
+              <span className="h-4 w-4 rounded-full border-2 border-prjct border-t-transparent animate-spin" />
             ) : (
-              <Sparkles className="h-4 w-4 text-cross" />
+              <Sparkles className="h-4 w-4 text-prjct" />
             )}
             {proposingGoals ? 'Denkt na…' : 'HEYRA-voorstellen'}
           </button>
@@ -247,7 +250,7 @@ export default function NorthStar() {
       )}
 
       {lastGoalProposalError && !proposingGoals && (
-        <div className="card p-3 text-sm text-orange-700 bg-orange-500/10 border-orange-500/30">{lastGoalProposalError}</div>
+        <div className="card p-3 text-sm text-personal-deep bg-personal/10">{lastGoalProposalError}</div>
       )}
       {!lastGoalProposalError && proposalAttempted && !proposingGoals && goalProposals.length === 0 && (
         <div className="card p-3 text-sm text-muted bg-sunken">
@@ -259,7 +262,7 @@ export default function NorthStar() {
       {/* HEYRA-proposed goals */}
       {goalProposals.length > 0 && (
         <div className="space-y-3">
-          <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-cross">
+          <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-prjct">
             <Sparkles className="h-3.5 w-3.5" /> Voorgesteld door HEYRA
           </div>
           {goalProposals.map((p) => (

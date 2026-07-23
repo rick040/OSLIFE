@@ -14,9 +14,9 @@ export interface DashNudge {
 }
 
 const TONE: Record<NudgeTone, { hex: string; icon: LucideIcon }> = {
-  urgent: { hex: '#C58392', icon: AlertTriangle },
-  attention: { hex: '#C6A05B', icon: Bell },
-  calm: { hex: '#6FA07C', icon: Sparkles },
+  urgent: { hex: '#F87171', icon: AlertTriangle },
+  attention: { hex: '#FBBF24', icon: Bell },
+  calm: { hex: '#34D399', icon: Sparkles },
 }
 
 /**

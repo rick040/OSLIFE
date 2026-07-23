@@ -49,33 +49,32 @@ export default {
           ring: 'hsl(var(--sidebar-ring))',
         },
 
-        // ── OSLIFE neutrals (now var-driven so views adapt to dark) ─────────
+        // ── OSLIFE neutrals — deep obsidian, dark-only ───────────────────────
         canvas: 'hsl(var(--canvas))', // app background
         surface: 'hsl(var(--surface))', // cards
-        sunken: 'hsl(var(--sunken))', // insets, ghost buttons, hover
+        sunken: 'hsl(var(--sunken))', // insets, ghost buttons, hover/elevated
         line: 'hsl(var(--line))', // hairlines, tracks, dividers
         'line-strong': 'hsl(var(--line-strong))', // emphasized edge — hover/active affordance
         scrim: 'hsl(var(--scrim))', // modal overlay base
 
-        // ── text (warm ramp, var-driven) ────────────────────────────────────
+        // ── text ─────────────────────────────────────────────────────────
         ink: { DEFAULT: 'hsl(var(--ink))', soft: 'hsl(var(--ink-soft))' },
         muted: 'hsl(var(--muted-foreground))',
         faint: 'hsl(var(--faint))',
 
-        // ── brand (var-driven; lightened in dark for legibility) ────────────
+        // ── brand accent (icons/progress/focus — buttons use the ink/canvas
+        // inverse instead, see .btn-primary in index.css) ───────────────────
         forest: { DEFAULT: 'hsl(var(--forest))', hi: 'hsl(var(--forest-hi))' },
         lime: { DEFAULT: 'hsl(var(--lime))', hi: 'hsl(var(--lime-hi))' },
 
-        // ── domains (muted, sophisticated; .deep = readable text) ───────────
-        // .deep is var-driven and flips per mode: a dark, saturated stop in
-        // light mode (readable on the pastel bg-{domain}/12 tint) inverts to
-        // a light pastel of the same hue in dark mode — a dark-mode card
-        // would otherwise render dark-on-dark text if .deep stayed locked.
-        parkingyou: { DEFAULT: '#6E8CA8', deep: 'var(--parkingyou-deep)' },
-        prjct: { DEFAULT: '#9385B0', deep: 'var(--prjct-deep)' },
-        buurtkaart: { DEFAULT: '#6FA07C', deep: 'var(--buurtkaart-deep)' },
-        personal: { DEFAULT: '#C6A05B', deep: 'var(--personal-deep)' },
-        cross: { DEFAULT: '#C58392', deep: 'var(--cross-deep)' },
+        // ── domains — luminescent glyph + text, never a saturated card fill.
+        // `deep` is the lighter tint (one step up the same Tailwind ramp)
+        // used as readable text/border on a domain-tinted pill.
+        parkingyou: { DEFAULT: '#60A5FA', deep: 'var(--parkingyou-deep)' },
+        prjct: { DEFAULT: '#A78BFA', deep: 'var(--prjct-deep)' },
+        buurtkaart: { DEFAULT: '#34D399', deep: 'var(--buurtkaart-deep)' },
+        personal: { DEFAULT: '#FBBF24', deep: 'var(--personal-deep)' },
+        cross: { DEFAULT: '#F87171', deep: 'var(--cross-deep)' },
       },
       fontFamily: {
         // Figtree — warmer, rounder terminals than Inter; matches the app's
@@ -90,9 +89,8 @@ export default {
         sm: 'calc(var(--radius) - 4px)',
       },
       boxShadow: {
-        // theme-aware (see --shadow-* in index.css): dark mode swaps in
-        // deeper drops + an inset rim highlight so cards lift off a dark
-        // canvas instead of reading flat.
+        // see --shadow-* in index.css: cards are flat (none) by design —
+        // only floating overlays (modals/sheets) keep shadow-pop.
         card: 'var(--shadow-card)',
         'card-lg': 'var(--shadow-card-lg)',
         pop: 'var(--shadow-pop)',
@@ -103,9 +101,9 @@ export default {
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
         'pulse-ring': {
-          '0%': { boxShadow: '0 0 0 0 rgba(197,131,146,0.4)' },
-          '70%': { boxShadow: '0 0 0 10px rgba(197,131,146,0)' },
-          '100%': { boxShadow: '0 0 0 0 rgba(197,131,146,0)' },
+          '0%': { boxShadow: '0 0 0 0 rgba(248,113,113,0.4)' },
+          '70%': { boxShadow: '0 0 0 10px rgba(248,113,113,0)' },
+          '100%': { boxShadow: '0 0 0 0 rgba(248,113,113,0)' },
         },
         'flow-dash': {
           to: { strokeDashoffset: '-20' },
@@ -118,6 +116,17 @@ export default {
           from: { height: 'var(--radix-accordion-content-height)' },
           to: { height: '0' },
         },
+        // HeyraOrb — idle is a slow, calm breathe; thinking is faster and
+        // reaches a brighter peak so the orb visibly "comes alive" while a
+        // brain call is in flight, without needing a JS animation library.
+        'orb-breathe': {
+          '0%, 100%': { transform: 'scale(1)', opacity: '0.85' },
+          '50%': { transform: 'scale(1.06)', opacity: '1' },
+        },
+        'orb-think': {
+          '0%, 100%': { transform: 'scale(1) rotate(0deg)', opacity: '0.9' },
+          '50%': { transform: 'scale(1.12) rotate(8deg)', opacity: '1' },
+        },
       },
       animation: {
         'fade-up': 'fade-up 0.4s ease-out both',
@@ -125,6 +134,8 @@ export default {
         'flow-dash': 'flow-dash 1s linear infinite',
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
+        'orb-breathe': 'orb-breathe 4.5s ease-in-out infinite',
+        'orb-think': 'orb-think 1.6s ease-in-out infinite',
       },
     },
   },

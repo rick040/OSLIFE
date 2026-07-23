@@ -18,13 +18,17 @@ import { Markdown } from '../components/BraindumpCard'
 const STATUS_LABEL: Record<IdeaLifecycleStatus, string> = {
   idea: 'Idee', active: 'Actief', parked: 'Geparkeerd', archived: 'Gearchiveerd',
 }
+// Light pastel stops — these are chip text colors read against their own
+// ~12%-alpha tinted background, so they need to stay light on the dark
+// canvas (the same "-deep" convention as the domain tokens), not the dark
+// saturated stops a light-mode card would have used.
 const STATUS_HEX: Record<IdeaLifecycleStatus, string> = {
-  idea: '#8C9080', active: '#3F7E52', parked: '#B98A2E', archived: '#5C6150',
+  idea: '#a3a3a3', active: '#6ee7b7', parked: '#fcd34d', archived: '#8c8c8c',
 }
 const IMPACT_LABEL: Record<ImpactLevel, string> = { low: 'laag', medium: 'gemiddeld', high: 'hoog' }
 /** Risk impact: high = bad (red). Opportunity potential: high = good (green). */
-const RISK_HEX: Record<ImpactLevel, string> = { low: '#3F7E52', medium: '#B98A2E', high: '#B94A3F' }
-const POTENTIAL_HEX: Record<ImpactLevel, string> = { low: '#8C9080', medium: '#B98A2E', high: '#3F7E52' }
+const RISK_HEX: Record<ImpactLevel, string> = { low: '#6ee7b7', medium: '#fcd34d', high: '#fca5a5' }
+const POTENTIAL_HEX: Record<ImpactLevel, string> = { low: '#a3a3a3', medium: '#fcd34d', high: '#6ee7b7' }
 
 function feasibilityStroke(score: number | null): string {
   if (score === null) return 'stroke-line'
@@ -61,14 +65,18 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
   const detail = detailId ? businessIdeas.find((i) => i.id === detailId) ?? null : null
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-faint">Strategie</div>
-          <h1 className="text-3xl font-bold tracking-tight leading-none">HQ.</h1>
-          <p className="text-sm text-muted mt-1.5">
-            Al je business ideeën — uitgewerkt door HEYRA tot een volledige analyse.
-          </p>
+    <div className="flex flex-col gap-7 max-w-3xl mx-auto">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Lightbulb className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">Strategie HQ</h1>
+            <p className="text-sm text-muted mt-0.5">
+              Al je business ideeën — uitgewerkt door HEYRA tot een volledige analyse.
+            </p>
+          </div>
         </div>
         <button onClick={() => setNewOpen(true)} className="btn-primary !py-2 text-sm shrink-0">
           <Plus className="h-4 w-4" /> Nieuw idee
@@ -151,7 +159,7 @@ function IdeaCard({ idea, onOpen }: { idea: BusinessIdea; onOpen: () => void }) 
           {busy ? (
             <Loader2 className="h-5 w-5 animate-spin text-buurtkaart" />
           ) : (
-            <AlertTriangle className="h-5 w-5 text-orange-600" />
+            <AlertTriangle className="h-5 w-5 text-personal-deep" />
           )}
         </div>
       )}
@@ -429,7 +437,7 @@ function IdeaDetailModal({
             <h2 className="text-xl font-bold tracking-tight leading-snug">{idea.title}</h2>
 
             {idea.elaborationStatus === 'failed' && (
-              <div className="rounded-xl bg-orange-500/10 border border-orange-500/30 p-3 text-sm text-orange-700 flex items-start gap-2">
+              <div className="rounded-xl bg-personal/10 p-3 text-sm text-personal-deep flex items-start gap-2">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                 <div className="flex-1">
                   <p className="font-medium">Uitwerken mislukt</p>
@@ -506,7 +514,7 @@ function IdeaDetailModal({
                           <BarChart data={financeData} layout="vertical" margin={{ top: 0, right: 16, left: 8, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" horizontal={false} className="stroke-line" />
                             <XAxis type="number" tick={AXIS_TICK_10} tickFormatter={(v) => eur(v)} />
-                            <YAxis type="category" dataKey="name" width={70} tick={{ fill: '#5C6150', fontSize: 11 }} />
+                            <YAxis type="category" dataKey="name" width={70} tick={{ fill: '#8c8c8c', fontSize: 11 }} />
                             <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => eur(v)} />
                             <Bar dataKey="omzet" radius={[0, 4, 4, 0]} fill={DOMAIN_HEX[idea.domain]} />
                           </BarChart>
@@ -554,7 +562,7 @@ function IdeaDetailModal({
                     <div className="grid grid-cols-2 gap-2">
                       <SwotQuadrant title="Sterktes" items={idea.swot.strengths} hex="#3F7E52" />
                       <SwotQuadrant title="Zwaktes" items={idea.swot.weaknesses} hex="#B94A3F" />
-                      <SwotQuadrant title="Kansen" items={idea.swot.opportunities} hex="#6E8CA8" />
+                      <SwotQuadrant title="Kansen" items={idea.swot.opportunities} hex="#60A5FA" />
                       <SwotQuadrant title="Bedreigingen" items={idea.swot.threats} hex="#B98A2E" />
                     </div>
                   </div>
@@ -582,7 +590,7 @@ function IdeaDetailModal({
 
       {!editing && (
         <div className="sticky bottom-0 bg-canvas/90 backdrop-blur border-t border-line px-4 py-3 flex justify-end">
-          <button onClick={() => setConfirmDelete(true)} className="btn-ghost !py-1.5 text-xs text-orange-600">
+          <button onClick={() => setConfirmDelete(true)} className="btn-ghost !py-1.5 text-xs text-cross-deep">
             <Trash2 className="h-3.5 w-3.5" /> Verwijderen
           </button>
         </div>

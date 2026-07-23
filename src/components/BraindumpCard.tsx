@@ -72,7 +72,7 @@ export function BraindumpCard({ entry, onOpen }: { entry: BraindumpEntry; onOpen
         )}
         {entry.status === 'failed' && (
           <span className="absolute top-2 right-2 rounded-lg bg-canvas/85 backdrop-blur p-1" title={entry.error ?? 'Mislukt'}>
-            <AlertTriangle className="h-3.5 w-3.5 text-orange-600" />
+            <AlertTriangle className="h-3.5 w-3.5 text-personal-deep" />
           </span>
         )}
         {entry.status === 'duplicate' && (
@@ -133,7 +133,7 @@ export function BraindumpDetail({
           )}
 
           {entry.status === 'failed' && (
-            <div className="rounded-xl bg-orange-500/10 border border-orange-500/30 p-3 text-sm text-orange-700 flex items-start gap-2">
+            <div className="rounded-xl bg-personal/10 p-3 text-sm text-personal-deep flex items-start gap-2">
               <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
               <div className="flex-1">
                 <p className="font-medium">Verwerken mislukt</p>
@@ -181,7 +181,7 @@ export function BraindumpDetail({
           )}
           <button
             onClick={() => { onDelete(entry.id); onClose() }}
-            className="btn-ghost !py-1.5 text-xs text-orange-600 ml-auto"
+            className="btn-ghost !py-1.5 text-xs text-cross-deep ml-auto"
           >
             <Trash2 className="h-3.5 w-3.5" /> Verwijderen
           </button>

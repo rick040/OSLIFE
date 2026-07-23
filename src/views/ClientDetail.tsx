@@ -32,7 +32,7 @@ export default function ClientDetail({ client: initial, onClose }: { client: Cli
   const [openProject, setOpenProject] = useState<Project | null>(null)
   const [confirmDel, setConfirmDel] = useState(false)
 
-  const color = CLIENT_HEX[client.clientStatus ?? 'Past'] ?? '#8C9080'
+  const color = CLIENT_HEX[client.clientStatus ?? 'Past'] ?? '#a3a3a3'
   const totalValue = clientProjects.reduce((a, p) => a + (p.value ?? 0), 0)
 
   return (

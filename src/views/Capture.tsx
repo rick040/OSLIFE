@@ -84,15 +84,18 @@ export default function Capture() {
   const openLive = open ? braindumpEntries.find((e) => e.id === open.id) ?? open : null
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold flex items-center gap-2">
-          <Inbox className="h-5 w-5 text-buurtkaart" /> Braindump
-        </h1>
-        <p className="text-sm text-muted mt-1">
-          Één ingang. Gooi alles erin — een gedachte, link, afbeelding, PDF of video. Het systeem maakt er
-          een lichte notitie van die HEYRA en OSLife als context gebruiken.
-        </p>
+    <div className="max-w-5xl mx-auto flex flex-col gap-7">
+      <div className="flex items-center gap-3">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+          <Inbox className="h-5 w-5 text-ink-soft" />
+        </span>
+        <div>
+          <h1 className="text-xl font-medium text-ink">Braindump</h1>
+          <p className="text-sm text-muted mt-0.5">
+            Één ingang. Gooi alles erin — een gedachte, link, afbeelding, PDF of video. Het systeem maakt er
+            een lichte notitie van die HEYRA en OSLife als context gebruiken.
+          </p>
+        </div>
       </div>
 
       {/* quick capture */}

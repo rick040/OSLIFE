@@ -10,33 +10,33 @@ import {
   Network, Zap, Lightbulb, Eye, X, Plus, Minus, Maximize2, Minimize2, Layers, Tag, GitFork,
 } from 'lucide-react'
 
-// ── light branded palette (matches app design system) ─────────────────────
-const BG     = '#F4F5EE'
-const DOT    = '#C8CDB8'
+// ── dark branded palette (matches app design system) ───────────────────────
+const BG     = '#0a0a0a'
+const DOT    = '#262626'
 const CAT_COL: Record<CatId, string> = {
-  work:   '#6E8CA8',
-  money:  '#6FA07C',
-  health: '#C58392',
-  habits: '#C6A05B',
-  goals:  '#9385B0',
-  mind:   '#5C8050',
+  work:   '#60A5FA',
+  money:  '#34D399',
+  health: '#F87171',
+  habits: '#FBBF24',
+  goals:  '#A78BFA',
+  mind:   '#84CC16',
 }
 const CAT_LABEL: Record<CatId, string> = {
   work: 'WORK', money: 'MONEY', health: 'HEALTH', habits: 'HABITS', goals: 'GOALS', mind: 'MIND',
 }
-const EDGE_DIM  = '#D8DDD0'
-const EDGE_LIT  = '#A8B4A0'
-const CROSS_DIM = '#BCC8D8'
-const CROSS_HI  = '#6E8CA8'
-const INK       = '#1B1D17'
-const MUTED     = '#5C6150'
-const FAINT     = '#8C9080'
+const EDGE_DIM  = '#262626'
+const EDGE_LIT  = '#525252'
+const CROSS_DIM = '#334155'
+const CROSS_HI  = '#60A5FA'
+const INK       = '#f5f5f5'
+const MUTED     = '#a3a3a3'
+const FAINT     = '#8c8c8c'
 const HALO      = BG
 
 const TONE: Record<string, { bg: string; border: string; accent: string; icon: typeof Zap; label: string }> = {
-  action:  { bg: '#EFF3F8', border: '#BFD0E0', accent: '#3F586E', icon: Zap,       label: 'actie' },
-  insight: { bg: '#F3F1F8', border: '#C8C0DC', accent: '#5C4F79', icon: Lightbulb, label: 'inzicht' },
-  watch:   { bg: '#FAF4EC', border: '#DDD0B8', accent: '#856325', icon: Eye,       label: 'let op' },
+  action:  { bg: '#1a2733', border: '#2d4356', accent: '#93c5fd', icon: Zap,       label: 'actie' },
+  insight: { bg: '#211f2e', border: '#3a3550', accent: '#c4b5fd', icon: Lightbulb, label: 'inzicht' },
+  watch:   { bg: '#2b2410', border: '#4a3f1a', accent: '#fcd34d', icon: Eye,       label: 'let op' },
 }
 
 const dotR = (n: BNode) => n.kind === 'category' ? 10 : n.kind === 'entity' ? 6 : 4
@@ -325,8 +325,11 @@ export default function Mindmap() {
     <div className={outer}>
       {/* header */}
       <div className={`flex items-center justify-between gap-3 ${fullscreen ? 'px-4 pt-3 shrink-0' : ''}`}>
-        <h1 className="text-xl font-semibold flex items-center gap-2">
-          <Network className="h-5 w-5 text-forest" /> Second brain
+        <h1 className="text-xl font-medium text-ink flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Network className="h-5 w-5 text-ink-soft" />
+          </span>
+          Second brain
         </h1>
         <button
           onClick={() => setFullscreen((f) => !f)}
@@ -352,12 +355,12 @@ export default function Mindmap() {
                 className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium border transition-all"
                 style={{
                   background: hidden ? 'transparent' : col + '18',
-                  borderColor: hidden ? '#D8DDD0' : col + '60',
+                  borderColor: hidden ? EDGE_DIM : col + '60',
                   color: hidden ? FAINT : col,
                   opacity: hidden ? 0.6 : 1,
                 }}
               >
-                <span className="h-1.5 w-1.5 rounded-full" style={{ background: hidden ? '#C0C8B0' : col }} />
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: hidden ? '#4a4a4a' : col }} />
                 {CAT_LABEL[c.id]}
                 {!hidden && expanded.size > 0 && cnt > 0 && (
                   <span className="ml-0.5 opacity-60">{cnt}</span>
@@ -373,9 +376,9 @@ export default function Mindmap() {
             onClick={() => setShowCross((v) => !v)}
             className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium border transition-all"
             style={{
-              background: showCross ? '#6E8CA818' : 'transparent',
-              borderColor: showCross ? '#6E8CA860' : '#D8DDD0',
-              color: showCross ? '#3F586E' : FAINT,
+              background: showCross ? '#60A5FA18' : 'transparent',
+              borderColor: showCross ? '#60A5FA60' : EDGE_DIM,
+              color: showCross ? '#93c5fd' : FAINT,
             }}
           >
             <GitFork className="h-3 w-3" /> Cross
@@ -385,9 +388,9 @@ export default function Mindmap() {
             onClick={() => setAllLabels((v) => !v)}
             className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium border transition-all"
             style={{
-              background: allLabels ? '#34431F18' : 'transparent',
-              borderColor: allLabels ? '#34431F60' : '#D8DDD0',
-              color: allLabels ? '#34431F' : FAINT,
+              background: allLabels ? '#34D39918' : 'transparent',
+              borderColor: allLabels ? '#34D39960' : EDGE_DIM,
+              color: allLabels ? '#6ee7b7' : FAINT,
             }}
           >
             <Tag className="h-3 w-3" /> Labels
@@ -508,7 +511,7 @@ export default function Mindmap() {
                 || (highlight?.has(n.id) ?? false) || showRecordLabels
               const fs = n.kind === 'category' ? 12.5 : n.kind === 'entity' ? 11 : 10
               const fw = n.kind === 'category' ? 700 : n.kind === 'entity' ? 600 : 400
-              const fc = n.kind === 'category' ? INK : n.kind === 'entity' ? '#44483A' : MUTED
+              const fc = n.kind === 'category' ? INK : n.kind === 'entity' ? '#d4d4d4' : MUTED
               return (
                 <g key={n.id} transform={`translate(${sp.x},${sp.y})`}
                   opacity={dimmed && !lit ? 0.12 : 1}
@@ -516,7 +519,7 @@ export default function Mindmap() {
                 >
                   {isSel && <circle r={r + 9} fill={col} opacity={0.1} filter="url(#glow-sel)" />}
                   {n.kind === 'category' && <circle r={r + 4} fill="none" stroke={col} strokeWidth={0.8} opacity={0.2} />}
-                  {alert && !isSel && <circle r={r + 4} fill="none" stroke="#C58392" strokeWidth={1} opacity={0.55} />}
+                  {alert && !isSel && <circle r={r + 4} fill="none" stroke="#F87171" strokeWidth={1} opacity={0.55} />}
                   {collapsed && <circle r={r + 4} fill="none" stroke={col} strokeWidth={0.7} strokeDasharray="2 3" opacity={0.35} />}
                   {(n.kind === 'category' || isSel) && <circle r={r} fill={col} opacity={0.15} filter="url(#glow-node)" />}
                   <circle r={r}

@@ -37,6 +37,7 @@ import type {
   HourEntry,
   Invoice,
   ActivityEntry,
+  ActiveTimer,
   VendorTag,
   BraindumpEntry,
   BraindumpInput,
@@ -50,6 +51,9 @@ import type {
   Interaction,
   AdminItem,
   HealthCondition,
+  Medication,
+  BudgetCap,
+  ProfileFact,
   MemorySummary,
   BusinessIdea,
   IdeaSource,
@@ -71,6 +75,7 @@ import { runReflect, computeCorrelations, computeAnomalies, buildNarrativePrompt
 import { askBrain } from './heyra/brainClient'
 import { buildFinanceCoachPrompt } from './finance/financeCoach'
 import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
+import type { CardTemplate, ActionKind, ActionFieldType } from './heyra/actions/types'
 import { proposeGoals as proposeGoalsAI } from './heyra/goals'
 import { buildWeekPlan, weekDates } from './heyra/planner'
 import {
@@ -103,6 +108,10 @@ import {
   insertDayBlock,
   fetchDogEntries,
   fetchBrainState,
+  fetchTasks,
+  insertTaskRow,
+  updateTaskRow,
+  deleteTaskRow,
   fetchLearnedFacts,
   persistLearnedFacts,
   fetchScreenDays,
@@ -200,6 +209,13 @@ import {
   updateAdminItemRow,
   deleteAdminItemRow,
   fetchHealthConditions,
+  fetchHealthConditionByEventId,
+  updateHealthConditionRow,
+  fetchMedications,
+  createMedicationRow,
+  fetchBudgetCaps,
+  updateBudgetCapRow,
+  fetchProfileFacts,
   fetchSummaries,
   forgetRecord as forgetRecordApi,
   fetchBusinessIdeas,
@@ -207,6 +223,8 @@ import {
   updateBusinessIdeaRow,
   deleteBusinessIdeaRow,
   invokeIdeaElaborate,
+  fetchCardTemplates,
+  upsertCardTemplate,
 } from './lib/supabase'
 
 // The single Realtime channel opened by loadLiveData(). Held at module scope so
@@ -251,6 +269,8 @@ interface State {
   projectHours: HourEntry[]
   projectInvoices: Invoice[]
   projectActivity: ActivityEntry[]
+  /** The one project-hours stopwatch that can be running at a time, client-only. */
+  activeTimer: ActiveTimer | null
   goals: Goal[]
   milestones: Milestone[]
   goalProposals: GoalProposal[]
@@ -286,11 +306,19 @@ interface State {
   interactions: Interaction[]
   adminItems: AdminItem[]
   healthConditions: HealthCondition[]
+  medications: Medication[]
+  budgetCaps: BudgetCap[]
+  profileFacts: ProfileFact[]
   summaries: MemorySummary[]
   businessIdeas: BusinessIdea[]
+  /** Cached extra fields per HEYRA action kind (proposeAction.ts) — see recordCardTemplateUsage. */
+  cardTemplates: CardTemplate[]
   settings: AppSettings
   dataSource: 'mock' | 'live'
   isLoading: boolean
+
+  /** Merges newly-seen extra fields (beyond an action kind's hard-coded baseline) into its cached template, incrementing seenCount so a recurring one keeps a stable label/type instead of being re-guessed every time. Best-effort, fire-and-forget persistence. */
+  recordCardTemplateUsage: (templateKey: string, kind: ActionKind, seen: { key: string; label: string; type: ActionFieldType }[]) => void
 
   // HEYRA learns as we speak — distil durable facts from one exchange, merge
   // them into the persisted set and return only the genuinely NEW facts so the
@@ -359,7 +387,11 @@ interface State {
 
   // Inference engine (Slice 1): load the pending review queue and resolve one.
   loadInferences: () => Promise<void>
-  resolveInference: (id: string, decision: InferenceDecision) => Promise<void>
+  /** Returns the newly created health_condition's id when confirming a health_condition_promotion, else null. */
+  resolveInference: (id: string, decision: InferenceDecision) => Promise<string | null>
+  updateHealthCondition: (id: string, patch: Partial<HealthCondition>) => Promise<void>
+  createMedication: (m: Omit<Medication, 'id'>) => Promise<void>
+  updateBudgetCap: (id: string, patch: Partial<BudgetCap>) => Promise<void>
 
   // Kennisbank: load the wiki suggest-queue and resolve one. On confirm, the
   // entry also gets materialised as a real .md file in the vault.
@@ -459,6 +491,12 @@ interface State {
   deleteProjectTask: (id: string) => void
   addHours: (projectId: string, h: Omit<HourEntry, 'id' | 'projectId'>) => void
   deleteHours: (id: string) => void
+  // Project-hours stopwatch — a single running timer, client-only (see
+  // `activeTimer`). Starting one while another runs stops+logs the old one
+  // first so time is never silently lost. Stopping writes a real HourEntry.
+  startTimer: (projectId: string, projectName: string) => void
+  stopTimer: (note?: string) => void
+  discardTimer: () => void
   addInvoice: (projectId: string, inv: Omit<Invoice, 'id' | 'projectId'>) => void
   updateInvoice: (id: string, patch: Partial<Invoice>) => void
   deleteInvoice: (id: string) => void
@@ -564,6 +602,7 @@ const seed = () => ({
   projectHours: [] as HourEntry[],
   projectInvoices: [] as Invoice[],
   projectActivity: [] as ActivityEntry[],
+  activeTimer: null as ActiveTimer | null,
   goals: mock.goals,
   milestones: mock.milestones,
   goalProposals: [] as GoalProposal[],
@@ -596,8 +635,12 @@ const seed = () => ({
   interactions: [] as Interaction[],
   adminItems: [] as AdminItem[],
   healthConditions: [] as HealthCondition[],
+  medications: [] as Medication[],
+  budgetCaps: [] as BudgetCap[],
+  profileFacts: [] as ProfileFact[],
   summaries: [] as MemorySummary[],
   businessIdeas: [] as BusinessIdea[],
+  cardTemplates: [] as CardTemplate[],
   settings: { hourlyRate: 0 } as AppSettings,
   dataSource: 'mock' as const,
   isLoading: true,
@@ -669,6 +712,9 @@ function pushSignal(activity: ActivitySignal[], s: Omit<ActivitySignal, 'id' | '
 /** True for threads derived live from projects/clients (not worth persisting). */
 const isDerivedThreadId = (id: string) => /^thr-(prj|cli)-/.test(id)
 
+/** True for a thread that's a real row in the `tasks` table — a Supabase id that isn't a derived project/client loop. Used to merge tasks-table refetches with brain_state.threads (legacy/derived) without either clobbering the other. */
+const isTaskRow = (t: Thread) => isDbId(t.id) && !isDerivedThreadId(t.id)
+
 /** Only persist closed-state and captured threads — derived ones come from projects. */
 function persistableThreads(threads: Thread[]): Thread[] {
   return threads.filter((t) => t.status === 'closed' || !isDerivedThreadId(t.id))
@@ -702,6 +748,24 @@ const removeFromSlice = (set: StoreSet, slice: IdSliceKey, id: string) =>
 /** Push the persistable brain state (threads + patterns) to Supabase. */
 const persistBrain = (get: () => State) =>
   void persistBrainState(persistableThreads(get().threads), get().patterns)
+
+/**
+ * Routes a thread status/patch write to the right place during the
+ * brain_state.threads → tasks migration:
+ *  - derived (project/client) loops have no `tasks` row — the only place a
+ *    status override survives a reload is brain_state.threads;
+ *  - a real DB task (id already swapped to its Supabase uuid) gets a targeted
+ *    tasks-table write;
+ *  - a real task whose id hasn't been swapped yet (created before this
+ *    migration shipped, still living only in brain_state, or a brand new one
+ *    whose insert hasn't resolved) falls back to persistBrain() so it keeps
+ *    working exactly as before until a backfill moves it into `tasks`.
+ */
+function persistThreadWrite(get: () => State, id: string, writeTask: () => void): void {
+  if (isDerivedThreadId(id)) persistBrain(get)
+  else if (isDbId(id)) writeTask()
+  else persistBrain(get)
+}
 
 /**
  * Object-permanence follow-up: mark a client contacted "now" (optimistic +
@@ -740,12 +804,13 @@ export const useStore = create<State>()(
           createdAt: new Date().toISOString(),
           ...c,
         }
+        const tempThreadId = uid('thr')
         set((s) => {
           // a captured task or vent with a "promise" shape opens a thread (REMEMBER)
           const threads = [...s.threads]
           if (c.kind === 'task' && openThread) {
             threads.unshift({
-              id: uid('thr'),
+              id: tempThreadId,
               domain: c.domain,
               title: c.summary,
               owedTo: 'self (captured)',
@@ -764,8 +829,17 @@ export const useStore = create<State>()(
             }),
           }
         })
-        // a new thread (owed loop) changes the persisted brain state
-        if (c.kind === 'task' && openThread) persistBrain(get)
+        // A new thread (owed loop) is a real task row now — targeted insert
+        // instead of a persistBrain() whole-blob rewrite.
+        if (c.kind === 'task' && openThread) {
+          const t = get().threads.find((x) => x.id === tempThreadId)
+          if (t) {
+            void insertTaskRow({
+              domain: t.domain, title: t.title, owedTo: t.owedTo, due: t.due,
+              status: t.status, createdAt: t.createdAt, priority: t.priority, notes: t.notes,
+            }).then(swapTempId(set, 'threads', tempThreadId))
+          }
+        }
         return item
       },
 
@@ -807,6 +881,7 @@ export const useStore = create<State>()(
         if (rawText) meta.rawText = rawText
         if (input.storagePath) meta.storagePath = input.storagePath
         if (input.domain) meta.domainHint = input.domain
+        if (input.sourceTag) meta.source = input.sourceTag
 
         const row = await insertBraindumpEntry({
           sourceKind: input.sourceKind,
@@ -1012,30 +1087,64 @@ export const useStore = create<State>()(
         void persistLearnedFacts(get().learnedFacts)
       },
 
-      addTask: (draft) => {
-        const id = uid('thr')
-        const due = draft.due ?? null
+      recordCardTemplateUsage: (templateKey, kind, seen) => {
+        if (!seen.length) return
+        const existing = get().cardTemplates.find((t) => t.templateKey === templateKey)
+        const extraFields = [...(existing?.extraFields ?? [])]
+        for (const s of seen) {
+          const i = extraFields.findIndex((f) => f.key === s.key)
+          // A recurring key keeps its FIRST-seen label/type (stable across
+          // occurrences) and just bumps seenCount — a brand-new key is added
+          // with the label/type guessed for this occurrence.
+          if (i >= 0) extraFields[i] = { ...extraFields[i], seenCount: extraFields[i].seenCount + 1 }
+          else extraFields.push({ key: s.key, label: s.label, type: s.type, seenCount: 1 })
+        }
+        const useCount = (existing?.useCount ?? 0) + 1
+        const template: CardTemplate = {
+          id: existing?.id ?? uid('tpl'),
+          templateKey,
+          kind,
+          extraFields,
+          useCount,
+          lastUsedAt: new Date().toISOString(),
+        }
         set((s) => ({
-          threads: [
-            {
-              id,
-              domain: draft.domain,
-              title: draft.title,
-              owedTo: 'self (HEYRA)',
-              due,
-              status: 'open' as const,
-              createdAt: new Date().toISOString(),
-            },
-            ...s.threads,
-          ],
+          cardTemplates: existing
+            ? s.cardTemplates.map((t) => (t.templateKey === templateKey ? template : t))
+            : [template, ...s.cardTemplates],
+        }))
+        void upsertCardTemplate({ templateKey, kind, extraFields, useCount })
+      },
+
+      addTask: (draft) => {
+        const tempId = uid('thr')
+        const due = draft.due ?? null
+        const thread: Thread = {
+          id: tempId,
+          domain: draft.domain,
+          title: draft.title,
+          owedTo: 'self (HEYRA)',
+          due,
+          status: 'open',
+          createdAt: new Date().toISOString(),
+          priority: draft.priority ?? null,
+          notes: draft.notes ?? null,
+        }
+        set((s) => ({
+          threads: [thread, ...s.threads],
           activity: pushSignal(s.activity, {
             text: `Taak toegevoegd via HEYRA → ${DOMAIN_META[draft.domain].label}${draft.due ? ` · deadline ${draft.due.slice(5)}` : ''}`,
             domain: draft.domain,
             loop: 'fast',
           }),
         }))
-        persistBrain(get)
-        return id
+        // Real per-row insert (tasks table) instead of a persistBrain() whole-
+        // blob rewrite — a real DB id gets swapped in once the insert lands.
+        void insertTaskRow({
+          domain: thread.domain, title: thread.title, owedTo: thread.owedTo, due: thread.due,
+          status: thread.status, createdAt: thread.createdAt, priority: thread.priority, notes: thread.notes,
+        }).then(swapTempId(set, 'threads', tempId))
+        return tempId
       },
 
       closeThread: (id) => {
@@ -1048,17 +1157,17 @@ export const useStore = create<State>()(
               : s.activity,
           }
         })
-        persistBrain(get)
+        persistThreadWrite(get, id, () => updateTaskRow(id, { status: 'closed' }))
       },
 
       reopenThread: (id) => {
         patchSlice(set, 'threads', id, { status: 'open' })
-        persistBrain(get)
+        persistThreadWrite(get, id, () => updateTaskRow(id, { status: 'open' }))
       },
 
       updateThread: (id, patch) => {
         patchSlice(set, 'threads', id, patch)
-        persistBrain(get)
+        persistThreadWrite(get, id, () => updateTaskRow(id, patch))
       },
 
       deleteThread: (id) => {
@@ -1069,7 +1178,8 @@ export const useStore = create<State>()(
           return
         }
         removeFromSlice(set, 'threads', id)
-        persistBrain(get)
+        if (isDbId(id)) void deleteTaskRow(id)
+        else persistBrain(get)
       },
 
       tickHabit: (id) => {
@@ -1817,6 +1927,26 @@ export const useStore = create<State>()(
         void deleteHourRow(id)
       },
 
+      startTimer: (projectId, projectName) => {
+        // Switching projects mid-timer shouldn't silently lose the running
+        // time — log it first, same as stopping normally.
+        if (get().activeTimer) get().stopTimer()
+        set({ activeTimer: { projectId, projectName, startedAt: new Date().toISOString() } })
+      },
+
+      stopTimer: (note) => {
+        const timer = get().activeTimer
+        if (!timer) return
+        const elapsedHours = Math.round(((Date.now() - new Date(timer.startedAt).getTime()) / 3600000) * 100) / 100
+        set({ activeTimer: null })
+        // Below ~36s isn't worth a row — most likely an accidental start/stop.
+        if (elapsedHours >= 0.01) {
+          get().addHours(timer.projectId, { date: today(), hours: elapsedHours, note: note?.trim() || 'Timer', billable: true, billed: false })
+        }
+      },
+
+      discardTimer: () => set({ activeTimer: null }),
+
       // ── Invoices ───────────────────────────────────────────────────────────
       addInvoice: (projectId, inv) => {
         const tempId = uid('inv')
@@ -2282,7 +2412,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -2300,11 +2430,16 @@ export const useStore = create<State>()(
             fetchInteractions(),
             fetchAdminItems(),
             fetchHealthConditions(),
+            fetchMedications(),
+            fetchBudgetCaps(),
+            fetchProfileFacts(),
             fetchSummaries(),
             fetchCleaningLog(),
             fetchBusinessIdeas(),
             fetchHoldings(),
             fetchBalanceCheckpoints(),
+            fetchTasks(),
+            fetchCardTemplates(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -2318,7 +2453,14 @@ export const useStore = create<State>()(
             ...(subscriptions.length > 0 && { subscriptions }),
             ...(goals.length > 0 && { goals }),
             ...(dogEntries.length > 0 && { dogEntries }),
-            ...(brainState.threads.length > 0 && { threads: brainState.threads }),
+            // Transition read: real task rows (tasks table) + whatever's still only
+            // in brain_state.threads (derived-loop status overrides, and any
+            // pre-migration captured/HEYRA threads not yet backfilled into tasks).
+            // No id collisions expected — tasks always carry a fresh Supabase uuid —
+            // but dedupe by id defensively in case a backfill double-writes one.
+            ...((tasks.length > 0 || brainState.threads.length > 0) && {
+              threads: [...tasks, ...brainState.threads.filter((t) => !tasks.some((x) => x.id === t.id))],
+            }),
             ...(brainState.patterns.length > 0 && { patterns: brainState.patterns }),
             ...(screenDays.length > 0 && { screenDays }),
             ...(projects.length > 0 && { projects }),
@@ -2348,11 +2490,15 @@ export const useStore = create<State>()(
             interactions,
             adminItems,
             healthConditions,
+            medications,
+            budgetCaps,
+            profileFacts,
             summaries,
             cleaningLog,
             businessIdeas,
             holdings,
             balanceCheckpoints,
+            cardTemplates,
             dataSource: 'live',
             isLoading: false,
           })
@@ -2394,10 +2540,16 @@ export const useStore = create<State>()(
           { table: 'goals', onChange: () => fetchGoals().then((d) => d.length > 0 && set({ goals: d })) },
           { table: 'daily_checkin', onChange: () => fetchCheckins().then((d) => { set({ checkins: d }); get().recomputeBrain() }) },
           { table: 'notification_prefs', onChange: () => fetchNotificationPrefs().then((p) => set({ notificationPrefs: p })) },
-          { table: 'brain_state', onChange: () => fetchBrainState().then((b) => set({
-            ...(b.threads.length > 0 && { threads: b.threads }),
+          { table: 'brain_state', onChange: () => fetchBrainState().then((b) => set((s) => ({
+            // Never let a brain_state refetch clobber the real tasks-table rows
+            // already merged into `threads` — only replace the derived/legacy
+            // portion (see isTaskRow()).
+            ...(b.threads.length > 0 && { threads: [...s.threads.filter(isTaskRow), ...b.threads] }),
             ...(b.patterns.length > 0 && { patterns: b.patterns }),
-          })) },
+          }))) },
+          { table: 'tasks', onChange: () => fetchTasks().then((d) => set((s) => ({
+            threads: [...d, ...s.threads.filter((t) => !isTaskRow(t))],
+          }))) },
           { table: 'clients', onChange: () => fetchClients().then((d) => { if (d.length > 0) { set({ clients: d }); get().recomputeBrain() } }) },
           { table: 'project_milestones', onChange: () => fetchMilestones().then((d) => set({ projectMilestones: d })) },
           { table: 'project_tasks', onChange: () => fetchProjectTaskRows().then((d) => set({ projectTasks: d })) },
@@ -2443,15 +2595,43 @@ export const useStore = create<State>()(
         if (!ok) {
           // Roll back on failure so the user can retry.
           set({ inferences: prev })
-          return
+          return null
         }
-        // A confirmed subscription_candidate created a subscription row — refresh.
         if (decision === 'confirm') {
           const item = prev.find((i) => i.id === id)
+          // A confirmed subscription_candidate created a subscription row — refresh.
           if (item?.type === 'subscription_candidate') {
             void fetchSubscriptions().then((d) => d.length > 0 && set({ subscriptions: d }))
           }
+          // PM-072 Fase 2: a confirmed health_condition_promotion (was P1's
+          // silent auto-insert, now confirm-gated) created a dossier — health_
+          // condition already refreshes via its own Realtime subscription, but
+          // the caller (the app-startup splashscreen) needs this specific new
+          // dossier's id right away to open the baseline-info wizard against.
+          if (item?.type === 'health_condition_promotion') {
+            const created = await fetchHealthConditionByEventId(id)
+            if (created) {
+              set({ healthConditions: [created, ...get().healthConditions.filter((c) => c.id !== created.id)] })
+              return created.id
+            }
+          }
         }
+        return null
+      },
+
+      updateHealthCondition: async (id, patch) => {
+        set({ healthConditions: get().healthConditions.map((c) => (c.id === id ? { ...c, ...patch } : c)) })
+        await updateHealthConditionRow(id, patch)
+      },
+
+      createMedication: async (m) => {
+        const id = await createMedicationRow(m)
+        if (id) set({ medications: [...get().medications, { ...m, id }] })
+      },
+
+      updateBudgetCap: async (id, patch) => {
+        set({ budgetCaps: get().budgetCaps.map((b) => (b.id === id ? { ...b, ...patch } : b)) })
+        await updateBudgetCapRow(id, patch)
       },
 
       loadWikiEntries: async () => {
@@ -2477,6 +2657,25 @@ export const useStore = create<State>()(
           // file — best-effort, never blocks the UI.
           void materializeWikiEntry({ ...entry, status: 'confirmed' })
           void fetchWikiEntries().then((d) => set({ wikiEntries: d }))
+          // Rick confirming a Kennisbank suggestion IS him vouching for it, so
+          // its takeaway graduates into permanent knowledge: a LearnedFact
+          // under the same category, folded into every future HEYRA prompt
+          // via renderLearnedFacts (memoryContext.ts) — same "learn as we
+          // speak" store a chat-derived fact lands in. Only when Claude tagged
+          // a category at ingest time; skip rather than mis-file otherwise.
+          if (entry.category) {
+            const fact: LearnedFact = {
+              id: crypto.randomUUID(),
+              text: entry.takeaway,
+              category: entry.category,
+              createdAt: new Date().toISOString(),
+            }
+            const { merged, added } = mergeFacts(get().learnedFacts, [fact])
+            if (added.length) {
+              set({ learnedFacts: merged })
+              void persistLearnedFacts(merged)
+            }
+          }
         }
       },
 

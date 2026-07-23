@@ -22,7 +22,9 @@ import {
   ChevronRight,
   Plus,
   UserPlus,
+  Sparkles,
 } from 'lucide-react'
+import OnboardingWizard from '../components/OnboardingWizard'
 
 const STATUS_ORDER = ['In uitvoering', 'Gepland', 'Gepauzeerd', 'Opgeleverd'] as const
 
@@ -31,10 +33,25 @@ export default function CRM() {
   const [filter, setFilter] = useState('In uitvoering')
   const [view, setView] = useState<ProjectViewMode>('grid')
   const [showMessages, setShowMessages] = useState(false)
+  const [showOnboarding, setShowOnboarding] = useState(false)
   const {
     setOpenProject, setOpenClient, setCreatingProject, setCreatingClient,
     openClientById, modals,
   } = useProjectBrowserModals(clients)
+
+  function handleOnboardingDone(result: { clientId: string | null; projectId: string | null }) {
+    setShowOnboarding(false)
+    // Read fresh from the store rather than this render's `projects`/`clients`
+    // closure — the create just resolved and may not have re-rendered CRM yet.
+    const fresh = useStore.getState()
+    if (result.projectId) {
+      const p = fresh.projects.find((x) => x.id === result.projectId)
+      if (p) setOpenProject(p)
+    } else if (result.clientId) {
+      const c = fresh.clients.find((x) => x.id === result.clientId)
+      if (c) setOpenClient(c)
+    }
+  }
 
   const unread = messages.filter((m) => m.unread).length
 
@@ -76,30 +93,47 @@ export default function CRM() {
   const shown = filter === 'Alle' ? projects : projects.filter((p) => CRM_STATUS[p.status] === filter)
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
-      <div className="flex items-center gap-2 flex-wrap">
-        <Users className="h-5 w-5 text-prjct" />
-        <h1 className="text-xl font-semibold">CRM</h1>
-        <span className="chip bg-sunken text-muted ml-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-forest" /> {projects.length} projecten · {clients.length} klanten
-        </span>
-        <div className="flex gap-2 ml-auto">
-          <button onClick={() => setCreatingClient(true)} className="chip bg-surface border border-line text-muted hover:text-ink">
+    <div className="flex flex-col gap-7 max-w-4xl mx-auto">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Users className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">CRM</h1>
+            <p className="text-sm text-muted mt-0.5">{projects.length} projecten · {clients.length} klanten</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setCreatingClient(true)} className="btn-ghost !py-2">
             <UserPlus className="h-3.5 w-3.5" /> Klant
           </button>
-          <button onClick={() => setCreatingProject(true)} className="chip bg-forest text-white">
+          <button onClick={() => setCreatingProject(true)} className="btn-primary !py-2">
             <Plus className="h-3.5 w-3.5" /> Project
           </button>
         </div>
       </div>
 
-      {/* Berichten entry */}
-      <button onClick={() => setShowMessages(true)} className="card p-4 w-full flex items-center gap-3 hover:bg-sunken transition-colors text-left">
-        <span className="h-10 w-10 rounded-2xl bg-buurtkaart/15 flex items-center justify-center shrink-0">
-          <MessageCircle className="h-5 w-5 text-buurtkaart-deep" />
+      {/* Onboarding wizard entry — the full flow: paste a client message, let
+          AI draft the project, review every step, commit to the CRM. */}
+      <button onClick={() => setShowOnboarding(true)} className="card p-4 w-full flex items-center gap-3 hover:bg-sunken transition-colors text-left">
+        <span className="h-10 w-10 rounded-2xl bg-sunken flex items-center justify-center shrink-0">
+          <Sparkles className="h-5 w-5 text-ink-soft" />
         </span>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold">Berichten</div>
+          <div className="font-medium text-ink">Klant onboarden</div>
+          <div className="text-xs text-muted">Plak een bericht, laat AI het project opzetten — scope, taken, mijlpalen &amp; voorstel</div>
+        </div>
+        <ChevronRight className="h-4 w-4 text-faint shrink-0" />
+      </button>
+
+      {/* Berichten entry */}
+      <button onClick={() => setShowMessages(true)} className="card p-4 w-full flex items-center gap-3 hover:bg-sunken transition-colors text-left">
+        <span className="h-10 w-10 rounded-2xl bg-sunken flex items-center justify-center shrink-0">
+          <MessageCircle className="h-5 w-5 text-ink-soft" />
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="font-medium text-ink">Berichten</div>
           <div className="text-xs text-muted">E-mail, Fiverr &amp; WhatsApp van klanten</div>
         </div>
         {unread > 0 && <span className="chip bg-cross/15 text-cross-deep">{unread} ongelezen</span>}
@@ -114,10 +148,10 @@ export default function CRM() {
             {followUps.map(({ c, health }) => {
               const m = FOLLOWUP_META[health]
               return (
-                <button key={c.id} onClick={() => setOpenClient(c)} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-surface border border-line hover:bg-sunken transition-colors text-left">
+                <button key={c.id} onClick={() => setOpenClient(c)} className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-sunken hover:bg-surface transition-colors text-left">
                   <span className="h-2 w-2 rounded-full shrink-0" style={{ background: m.hex }} />
                   <span className="text-sm font-medium truncate flex-1">{c.name}</span>
-                  <span className="text-[11px] font-semibold shrink-0" style={{ color: m.hex }}>{m.label}</span>
+                  <span className="text-[11px] font-medium shrink-0" style={{ color: m.hex }}>{m.label}</span>
                 </button>
               )
             })}
@@ -125,12 +159,12 @@ export default function CRM() {
         </div>
       )}
 
-      {/* KPI grid */}
-      <div className="grid grid-cols-2 gap-3">
-        <Kpi icon={<FolderKanban className="h-4 w-4 text-buurtkaart-deep" />} label="Actief" value={String(activeCount)} sub={`${projects.length} totaal`} />
-        <Kpi icon={<Wallet className="h-4 w-4 text-parkingyou-deep" />} label="Pipeline" value={eur(pipeline)} sub="in uitvoering + gepland" />
-        <Kpi icon={<CheckCircle2 className="h-4 w-4 text-prjct-deep" />} label="Opgeleverd" value={eur(delivered)} sub={`${byStatus.get('Opgeleverd')?.count ?? 0} projecten`} />
-        <Kpi icon={<Users className="h-4 w-4 text-cross-deep" />} label="Klanten" value={String(clients.length)} sub={`${activeClients} actief`} />
+      {/* KPI grid — icons stay neutral; color is reserved for real signals. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Kpi icon={<FolderKanban className="h-4 w-4 text-ink-soft" />} label="Actief" value={String(activeCount)} sub={`${projects.length} totaal`} />
+        <Kpi icon={<Wallet className="h-4 w-4 text-ink-soft" />} label="Pipeline" value={eur(pipeline)} sub="in uitvoering + gepland" />
+        <Kpi icon={<CheckCircle2 className="h-4 w-4 text-ink-soft" />} label="Opgeleverd" value={eur(delivered)} sub={`${byStatus.get('Opgeleverd')?.count ?? 0} projecten`} />
+        <Kpi icon={<Users className="h-4 w-4 text-ink-soft" />} label="Klanten" value={String(clients.length)} sub={`${activeClients} actief`} />
       </div>
 
       {/* Pipeline per status */}
@@ -208,6 +242,9 @@ export default function CRM() {
           onClose={() => setShowMessages(false)}
           onReadConversation={markConversationRead}
         />
+      )}
+      {showOnboarding && (
+        <OnboardingWizard onClose={() => setShowOnboarding(false)} onDone={handleOnboardingDone} />
       )}
       {modals}
     </div>

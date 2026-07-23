@@ -1,6 +1,7 @@
 // Shared UI primitives + constants for the native CRM (CRM / Projecten).
 import { useEffect } from 'react'
 import { X, FolderKanban, Clock } from 'lucide-react'
+import { cn } from '../lib/utils'
 import type { ProjectStatus, ClientStatus, Priority, Domain, Project, Client } from '../types'
 import { deadlineInfo } from '../lib/dates'
 import { TODAY } from '../domains'
@@ -30,10 +31,10 @@ export const CRM_STATUS: Record<ProjectStatus, string> = {
   done: 'Opgeleverd',
 }
 export const STATUS_HEX: Record<string, string> = {
-  'In uitvoering': '#6FA07C',
-  Gepland: '#6E8CA8',
-  Gepauzeerd: '#C6A05B',
-  Opgeleverd: '#9385B0',
+  'In uitvoering': '#34D399',
+  Gepland: '#60A5FA',
+  Gepauzeerd: '#FBBF24',
+  Opgeleverd: '#A78BFA',
 }
 export const PROJECT_STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
   { value: 'lead', label: 'Gepland (lead)' },
@@ -44,8 +45,8 @@ export const PROJECT_STATUS_OPTIONS: { value: ProjectStatus; label: string }[] =
 ]
 
 export const CLIENT_HEX: Record<string, string> = {
-  Active: '#6FA07C', Lead: '#6E8CA8', Prospect: '#9385B0',
-  Planned: '#C6A05B', Inactive: '#C58392', Past: '#8C9080',
+  Active: '#34D399', Lead: '#60A5FA', Prospect: '#A78BFA',
+  Planned: '#FBBF24', Inactive: '#F87171', Past: '#a3a3a3',
 }
 export const CLIENT_STATUS_NL: Record<string, string> = {
   Active: 'Actief', Lead: 'Lead', Prospect: 'Prospect',
@@ -53,7 +54,7 @@ export const CLIENT_STATUS_NL: Record<string, string> = {
 }
 export const CLIENT_STATUS_OPTIONS: ClientStatus[] = ['Active', 'Lead', 'Prospect', 'Planned', 'Inactive', 'Past']
 
-export const PRIO_HEX: Record<string, string> = { High: '#C58392', Medium: '#C6A05B', Low: '#8C9080' }
+export const PRIO_HEX: Record<string, string> = { High: '#F87171', Medium: '#FBBF24', Low: '#a3a3a3' }
 export const PRIO_NL: Record<string, string> = { High: 'Hoog', Medium: 'Gemiddeld', Low: 'Laag' }
 export const PRIORITY_OPTIONS: Priority[] = ['High', 'Medium', 'Low']
 
@@ -84,11 +85,14 @@ let openSheetCount = 0
 
 export function SheetShell({
   onClose, children, className = 'md:items-center md:justify-center', panelClassName = 'md:max-w-lg md:max-h-[90dvh] max-h-[92dvh]',
+  fullScreenMobile = false,
 }: {
   onClose: () => void
   children: React.ReactNode
   className?: string
   panelClassName?: string
+  /** Below `md`, fill the viewport edge-to-edge instead of the default bottom-sheet — for detail screens with enough content to want the whole phone screen. Desktop is unaffected. */
+  fullScreenMobile?: boolean
 }) {
   useEffect(() => {
     // Sheets nest (client → project → form). Count open sheets so the body scroll
@@ -107,7 +111,13 @@ export function SheetShell({
   return (
     <div className={`fixed inset-0 z-50 flex flex-col ${className}`}>
       <div className="absolute inset-0 bg-scrim/55 backdrop-blur-md" onClick={onClose} />
-      <div className={`relative mt-auto md:mt-0 w-full ${panelClassName} flex flex-col bg-canvas md:rounded-4xl rounded-t-4xl border border-line shadow-pop overflow-hidden`}>
+      <div
+        className={cn(
+          'relative mt-auto md:mt-0 w-full flex flex-col bg-canvas md:rounded-4xl rounded-t-4xl border border-line shadow-pop overflow-hidden',
+          panelClassName,
+          fullScreenMobile && 'mt-0 h-full max-h-full rounded-none border-0 md:mt-0 md:h-auto md:max-h-[92dvh] md:rounded-4xl md:border',
+        )}
+      >
         {children}
       </div>
     </div>
@@ -191,6 +201,26 @@ export function Kpi({ icon, label, value, sub, alert, tint }: { icon: React.Reac
       </div>
       <div className={`text-2xl font-bold tabular-nums ${alert ? 'text-cross-deep' : ''}`}>{value}</div>
       <div className="text-xs text-faint mt-0.5">{sub}</div>
+    </div>
+  )
+}
+
+/** Small SVG progress ring with the percentage centered inside — used for task/budget completion visuals. */
+export function RingProgress({ pct, size = 56, stroke = 6, color = '#6FA07C' }: { pct: number; size?: number; stroke?: number; color?: string }) {
+  const r = (size - stroke) / 2
+  const c = 2 * Math.PI * r
+  const clamped = Math.min(1, Math.max(0, pct))
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="currentColor" className="text-line" strokeWidth={stroke} />
+        <circle
+          cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+          strokeDasharray={c} strokeDashoffset={c * (1 - clamped)} strokeLinecap="round"
+          className="transition-[stroke-dashoffset] duration-500"
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center text-xs font-bold tabular-nums">{Math.round(clamped * 100)}%</div>
     </div>
   )
 }
@@ -294,7 +324,7 @@ export function ProjectRow({ p, onClick, onClientClick }: { p: Project; onClick:
 }
 
 export function ClientCard({ c, onClick }: { c: Client; onClick: () => void }) {
-  const color = CLIENT_HEX[c.clientStatus ?? 'Past'] ?? '#8C9080'
+  const color = CLIENT_HEX[c.clientStatus ?? 'Past'] ?? '#a3a3a3'
   return (
     <button onClick={onClick} className="card p-3.5 w-40 shrink-0 text-left hover:bg-sunken transition-colors">
       <div className="flex items-center gap-2 mb-2">

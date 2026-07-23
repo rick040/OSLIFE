@@ -54,11 +54,11 @@ export const DOMAIN_META: Record<
 
 /** Raw hex per domain (mid tone), for recharts fills/strokes. */
 export const DOMAIN_HEX: Record<Domain, string> = {
-  parkingyou: '#6E8CA8',
-  prjct: '#9385B0',
-  buurtkaart: '#6FA07C',
-  personal: '#C6A05B',
-  cross: '#C58392',
+  parkingyou: '#60A5FA',
+  prjct: '#A78BFA',
+  buurtkaart: '#34D399',
+  personal: '#FBBF24',
+  cross: '#F87171',
 }
 
 export const KIND_LABEL: Record<ItemKind, string> = {
@@ -77,7 +77,7 @@ export const KIND_LABEL: Record<ItemKind, string> = {
 export const SENTIMENT_META: Record<Sentiment, { label: string; cls: string }> = {
   positive: { label: 'positief', cls: 'bg-buurtkaart/15 text-buurtkaart-deep' },
   neutral: { label: 'neutraal', cls: 'bg-line text-muted' },
-  negative: { label: 'negatief', cls: 'bg-orange-500/15 text-orange-700' },
+  negative: { label: 'negatief', cls: 'bg-personal/15 text-personal-deep' },
   stressed: { label: 'gestrest', cls: 'bg-cross/15 text-cross-deep' },
 }
 

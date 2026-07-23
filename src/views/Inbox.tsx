@@ -96,7 +96,7 @@ function HighlightsPanel({ emails, onFocus }: { emails: EmailItem[]; onFocus: (i
     <div className="card p-4">
       <button onClick={() => setOpen(!open)} className="flex items-center gap-2 w-full text-left">
         {open ? <ChevronDown className="h-4 w-4 text-muted" /> : <ChevronRight className="h-4 w-4 text-muted" />}
-        <Sparkles className="h-4 w-4 text-forest" />
+        <Sparkles className="h-4 w-4 text-ink-soft" />
         <span className="text-sm font-semibold">Overzicht</span>
         <span className="text-xs text-faint ml-auto">{takeaways.length + reminders.length} punten</span>
       </button>
@@ -124,13 +124,13 @@ function HighlightsPanel({ emails, onFocus }: { emails: EmailItem[]; onFocus: (i
                 {reminders.map((h, i) => (
                   <li key={i}>
                     <button onClick={() => onFocus(h.email.id)} className="text-left w-full flex items-start gap-1.5">
-                      <CalendarClock className="h-3.5 w-3.5 text-buurtkaart-deep mt-0.5 shrink-0" />
+                      <CalendarClock className="h-3.5 w-3.5 text-ink-soft mt-0.5 shrink-0" />
                       <span>
                         <span className="text-sm text-ink-soft">
                           {h.text}{h.date && <span className="text-[11px] text-faint ml-1">({fmtDate(h.date)})</span>}
                         </span>
                         <span className="block text-[11px] text-faint">
-                          {extractName(h.email.from)} <span className="text-forest">· staat in Taken</span>
+                          {extractName(h.email.from)} <span className="text-faint">· staat in Taken</span>
                         </span>
                       </span>
                     </button>
@@ -236,7 +236,7 @@ function EmailRow({
   }
 
   return (
-    <div className={`card w-full ${dense ? 'p-3' : 'p-4'} ${e.unread ? 'border-personal/30' : ''}`}>
+    <div className={`card w-full ${dense ? 'p-3' : 'p-4'}`}>
       <div className="flex items-start gap-3">
         <span className="mt-1 h-2 w-2 rounded-full shrink-0" style={{ background: color }} />
 
@@ -278,11 +278,11 @@ function EmailRow({
           {e.unread && (
             <button
               onClick={(ev) => { ev.stopPropagation(); onMarkRead() }}
-              className="h-7 w-7 rounded-lg bg-buurtkaart/10 flex items-center justify-center hover:bg-buurtkaart/20 transition-colors"
+              className="h-7 w-7 rounded-lg bg-sunken flex items-center justify-center hover:bg-surface transition-colors"
               aria-label="Markeer als gelezen"
               title="Markeer als gelezen"
             >
-              <MailOpen className="h-3.5 w-3.5 text-buurtkaart-deep" />
+              <MailOpen className="h-3.5 w-3.5 text-ink-soft" />
             </button>
           )}
           <a
@@ -290,11 +290,11 @@ function EmailRow({
             target="_blank"
             rel="noopener noreferrer"
             onClick={(ev) => ev.stopPropagation()}
-            className="h-7 w-7 rounded-lg bg-parkingyou/10 flex items-center justify-center hover:bg-parkingyou/20 transition-colors"
+            className="h-7 w-7 rounded-lg bg-sunken flex items-center justify-center hover:bg-surface transition-colors"
             aria-label="Open in Gmail"
             title="Open in Gmail"
           >
-            <ExternalLink className="h-3.5 w-3.5 text-parkingyou-deep" />
+            <ExternalLink className="h-3.5 w-3.5 text-ink-soft" />
           </a>
         </div>
       </div>
@@ -307,7 +307,7 @@ function EmailRow({
             </div>
           ) : e.aiSummary ? (
             <div className="rounded-xl bg-sunken p-3 space-y-2">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-forest">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-ink-soft">
                 <Sparkles className="h-3.5 w-3.5" /> AI-samenvatting
               </div>
               <p className="text-sm text-ink-soft">{e.aiSummary}</p>
@@ -319,11 +319,11 @@ function EmailRow({
               {(e.aiReminders?.length ?? 0) > 0 && (
                 <ul className="text-sm space-y-0.5">
                   {e.aiReminders!.map((r, i) => (
-                    <li key={i} className="flex items-center gap-1.5 text-buurtkaart-deep">
+                    <li key={i} className="flex items-center gap-1.5 text-ink-soft">
                       <CalendarClock className="h-3.5 w-3.5 shrink-0" />
                       <span>
                         {r.text}{r.date ? ` — ${fmtDate(r.date)}` : ''}
-                        <span className="text-[11px] text-forest ml-1.5">· staat in Taken</span>
+                        <span className="text-[11px] text-faint ml-1.5">· staat in Taken</span>
                       </span>
                     </li>
                   ))}
@@ -424,16 +424,19 @@ export default function Inbox() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="flex flex-col gap-7 max-w-3xl mx-auto">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Mail className="h-5 w-5 text-personal" /> Inbox
-          </h1>
-          <p className="text-sm text-muted mt-1">
-            De mails die er nu toe doen, uit je Gmail.{' '}
-            {totalUnread > 0 ? `${totalUnread} ongelezen.` : 'Alles gelezen.'}
-          </p>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Mail className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">Inbox</h1>
+            <p className="text-sm text-muted mt-0.5">
+              De mails die er nu toe doen, uit je Gmail.{' '}
+              {totalUnread > 0 ? `${totalUnread} ongelezen.` : 'Alles gelezen.'}
+            </p>
+          </div>
         </div>
         {totalUnread > 0 && (
           <button className="btn-ghost" onClick={() => { setReadIds(new Set(emails.map((e) => e.id))); markAllEmailsRead() }}>

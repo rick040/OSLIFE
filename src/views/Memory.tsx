@@ -7,7 +7,7 @@ import { BraindumpCard, BraindumpDetail } from '../components/BraindumpCard'
 import { searchMemory } from '../lib/supabase'
 import { cogneeSearch } from '../heyra/agents/cognee'
 import type { BraindumpEntry, MemoryHit, InferredItem } from '../types'
-import type { FactCategory } from '../heyra/learning'
+import { CATEGORY_META, type FactCategory } from '../heyra/learning'
 import {
   Lock,
   GitBranch,
@@ -37,6 +37,10 @@ const INFERENCE_TYPE_LABEL: Record<string, string> = {
   subscription_candidate: 'Terugkerende uitgave',
   energy_dip_pattern: 'Slaap/energie-signaal',
   project_stall: 'Project ligt stil',
+  health_condition_promotion: 'Dossier-voorstel',
+  repeat_location_pattern: 'Terugkerend locatiepatroon',
+  budget_cap_suggestion: 'Budgetadvies',
+  theme_detected: 'Terugkerend thema',
 }
 
 function InferenceCard({ item, onResolve }: {
@@ -93,14 +97,6 @@ function InferenceCard({ item, onResolve }: {
   )
 }
 
-const CATEGORY_META: Record<FactCategory, { label: string; hex: string }> = {
-  preference: { label: 'Voorkeur', hex: '#9385B0' },
-  person: { label: 'Persoon', hex: '#7CA9C9' },
-  context: { label: 'Context', hex: '#8A9A6B' },
-  workflow: { label: 'Werkwijze', hex: '#C6A05B' },
-  goal: { label: 'Doel', hex: '#C58392' },
-}
-
 const SOURCE_LABEL: Record<string, string> = {
   braindump: 'Braindump',
   interaction: 'Contact',
@@ -127,6 +123,15 @@ export default function Memory() {
   } = useStore()
   const [tab, setTab] = useState<Tab>('threads')
   const [openEntry, setOpenEntry] = useState<BraindumpEntry | null>(null)
+  const [learnedFilter, setLearnedFilter] = useState<FactCategory | 'all'>('all')
+  const visibleLearnedFacts = useMemo(
+    () => (learnedFilter === 'all' ? learnedFacts : learnedFacts.filter((f) => f.category === learnedFilter)),
+    [learnedFacts, learnedFilter],
+  )
+  const learnedCategoriesPresent = useMemo(
+    () => Array.from(new Set(learnedFacts.map((f) => f.category))),
+    [learnedFacts],
+  )
 
   // Refresh the inference queue on entry so hourly-produced inferences show without a reload.
   useEffect(() => { void loadInferences() }, [loadInferences])
@@ -180,13 +185,18 @@ export default function Memory() {
   ]
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="flex flex-col gap-7 max-w-4xl mx-auto">
       <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold">Geheugen</h1>
-          <p className="text-sm text-muted mt-1">
-            Eén doorzoekbaar geheugen. Een belofte mag nooit begraven raken onder een gewoonte.
-          </p>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Brain className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">Geheugen</h1>
+            <p className="text-sm text-muted mt-0.5">
+              Eén doorzoekbaar geheugen. Een belofte mag nooit begraven raken onder een gewoonte.
+            </p>
+          </div>
         </div>
         <span className="flex items-center gap-1.5 text-[11px] text-faint shrink-0">
           <span className={`h-1.5 w-1.5 rounded-full ${dataSource === 'live' ? 'bg-forest' : 'bg-faint'}`} />
@@ -201,7 +211,7 @@ export default function Memory() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Doorzoek je hele geheugen…"
-          className="w-full rounded-xl bg-surface border border-line pl-9 pr-9 py-2.5 text-sm outline-none focus:border-forest-hi/50"
+          className="w-full rounded-xl bg-sunken border border-line pl-9 pr-9 py-2.5 text-sm outline-none focus:border-forest-hi/50"
         />
         {query && (
           <button
@@ -287,10 +297,38 @@ export default function Memory() {
           ))}
 
           {tab === 'learned' && (learnedFacts.length === 0 ? (
-            <Empty>Nog niks geleerd — hoe meer je met HEYRA praat, hoe persoonlijker dit wordt.</Empty>
+            <Empty>Nog niks geleerd — hoe meer je met HEYRA praat en hoe meer je bevestigt in de Kennisbank, hoe persoonlijker dit wordt.</Empty>
           ) : (
-            <div className="space-y-2 animate-fade-up">
-              {learnedFacts.map((f) => {
+            <div className="space-y-3 animate-fade-up">
+              {learnedCategoriesPresent.length > 1 && (
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={() => setLearnedFilter('all')}
+                    className={`chip text-[11px] ${learnedFilter === 'all' ? 'bg-forest/15 text-forest' : 'bg-line text-muted'}`}
+                  >
+                    Alle ({learnedFacts.length})
+                  </button>
+                  {learnedCategoriesPresent.map((cat) => {
+                    const meta = CATEGORY_META[cat]
+                    const count = learnedFacts.filter((f) => f.category === cat).length
+                    return (
+                      <button
+                        key={cat}
+                        onClick={() => setLearnedFilter(cat)}
+                        className="chip text-[11px]"
+                        style={
+                          learnedFilter === cat
+                            ? { background: `${meta.hex}22`, color: meta.hex }
+                            : undefined
+                        }
+                      >
+                        {meta.label} ({count})
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {visibleLearnedFacts.map((f) => {
                 const meta = CATEGORY_META[f.category]
                 return (
                   <div key={f.id} className="card p-3 flex items-start justify-between gap-3">

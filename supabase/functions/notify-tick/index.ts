@@ -17,7 +17,12 @@
  *   3. Continuously scans for urgent conditions (payment due soon, thread
  *      overdue, project newly blocked) and sends+claims each one once,
  *      keyed by the underlying row's id.
+ *   4. Checks every active `medications` row's `reminder_times` against the
+ *      current time (PM-072 Fase 2) — no native Android app exists to use
+ *      AlarmManager, so medication reminders reuse this same Telegram channel,
+ *      claimed per medication+time+day just like the fixed daily slots.
  *
+
  * The morning briefing is a server-side port of src/derive.ts buildNudge():
  * oldest overdue open thread -> first blocked project -> next-due open
  * thread -> calm default. The correlation branch of buildNudge() is
@@ -271,8 +276,46 @@ async function pendingInferences(sb: any): Promise<PendingInference[]> {
     .limit(6);
   // deno-lint-ignore no-explicit-any
   return ((data ?? []) as any[])
-    .filter((r) => (r.payload?.confirm_channel ?? "digest") !== "immediate")
+    // 'immediate' rides urgentAlerts() instead; 'app_only' (PM-072 Fase 2 —
+    // health_condition_promotion) opens a wizard that only exists in the app,
+    // so confirming it via a Telegram tap would leave the dossier permanently
+    // half-filled — it must only ever surface as the in-app splashscreen.
+    .filter((r) => !["immediate", "app_only"].includes(r.payload?.confirm_channel ?? "digest"))
     .map((r) => ({ id: r.id as string, question: (r.payload?.question as string) ?? "Bevestig deze afleiding?" }));
+}
+
+// ── Medication reminders (PM-072 Fase 2) ─────────────────────────────────────
+// No native Android app exists (see the plan doc's audit) so AlarmManager
+// isn't available — reminders route through the same Telegram channel as
+// everything else here. Each active medication's reminder_times is checked
+// every tick like the fixed daily slots above; claimed per medication+time+day
+// so a re-tick (or the 15-minute window) never double-sends.
+
+interface DueMedication {
+  id: string;
+  name: string;
+  dosage: string | null;
+  time: string;
+}
+
+// deno-lint-ignore no-explicit-any
+async function dueMedicationReminders(sb: any, nowMinutes: number): Promise<DueMedication[]> {
+  const { data } = await sb
+    .from("medications")
+    .select("id,name,dosage,reminder_times")
+    .eq("user_id", USER_ID)
+    .eq("active", true);
+
+  const due: DueMedication[] = [];
+  // deno-lint-ignore no-explicit-any
+  for (const m of (data ?? []) as any[]) {
+    for (const t of (m.reminder_times as string[] | null) ?? []) {
+      if (withinWindow(t, nowMinutes)) {
+        due.push({ id: m.id as string, name: m.name as string, dosage: (m.dosage as string) ?? null, time: t.slice(0, 5) });
+      }
+    }
+  }
+  return due;
 }
 
 // ── Urgent alerts ─────────────────────────────────────────────────────────
@@ -444,6 +487,18 @@ Deno.serve(async (req) => {
         ]);
         await sendClaimed(sb, "inference_digest", today, BOT_TOKEN, chatId, lines.join("\n"), keyboard);
         sent.push("inference_digest");
+      }
+    }
+
+    // Medication reminders run independent of the urgent_alerts/quiet_hours
+    // pref — a missed dose isn't an "urgent alert" in the existing sense, and
+    // muting it during quiet hours would defeat a reminder set for e.g. 22:00.
+    for (const m of await dueMedicationReminders(sb, nowMinutes)) {
+      const dedupKey = `${m.id}:${m.time}:${today}`;
+      if (await claim(sb, "medication_reminder", dedupKey)) {
+        const text = `💊 Tijd voor ${m.name}${m.dosage ? ` (${m.dosage})` : ""}.`;
+        await sendClaimed(sb, "medication_reminder", dedupKey, BOT_TOKEN, chatId, text);
+        sent.push(`medication_reminder:${dedupKey}`);
       }
     }
 

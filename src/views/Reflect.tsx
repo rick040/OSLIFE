@@ -143,28 +143,31 @@ export default function Reflect() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="flex flex-col gap-7 max-w-4xl mx-auto">
       <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Brain className="h-5 w-5 text-cross" /> Reflect
-          </h1>
-          <p className="text-sm text-muted mt-1 max-w-xl">
-            De laag die je <span className="text-ink">volledige</span> geheugen over alle domeinen tegelijk leest.
-            Vindt verbanden die geen enkele losse tracker kan zien, en schrijft verfijnde patronen terug.
-          </p>
+        <div className="flex items-center gap-3">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+            <Brain className="h-5 w-5 text-ink-soft" />
+          </span>
+          <div>
+            <h1 className="text-xl font-medium text-ink">Reflect</h1>
+            <p className="text-sm text-muted mt-0.5 max-w-xl">
+              De laag die je <span className="text-ink">volledige</span> geheugen over alle domeinen tegelijk leest.
+              Vindt verbanden die geen enkele losse tracker kan zien, en schrijft verfijnde patronen terug.
+            </p>
+          </div>
         </div>
-        <button className="btn-primary bg-cross hover:bg-cross/80" onClick={runNightlyReflect}>
+        <button className="btn-primary" onClick={runNightlyReflect}>
           <Play className="h-4 w-4" /> Nachtelijke reflectie uitvoeren
         </button>
       </div>
 
       {lastDigest && (
-        <div className="card p-3 border-cross/40 bg-cross/5 text-sm text-ink-soft animate-fade-up">
+        <div className="card p-3 bg-sunken text-sm text-ink-soft animate-fade-up">
           Reflectie heeft <b>{reflectCount}×</b> gedraaid. Patronen zijn versterkt en het Overzicht (dagelijkse nudge) is bijgewerkt.
           {lastDigest.narrative && (
             <p className="mt-2 text-ink flex items-start gap-2">
-              <Brain className="h-4 w-4 shrink-0 mt-0.5 text-cross" />
+              <Brain className="h-4 w-4 shrink-0 mt-0.5 text-ink-soft" />
               <span>{lastDigest.narrative}</span>
             </p>
           )}
@@ -250,16 +253,16 @@ export default function Reflect() {
           )}
           <ResponsiveContainer width="100%" height={180}>
             <LineChart data={sleepEnergy} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis dataKey="date" tick={AXIS_TICK_10} />
               <YAxis yAxisId="l" domain={[0, 9]} tick={AXIS_TICK_10} />
               <YAxis yAxisId="r" orientation="right" domain={[0, 5]} hide />
               <Tooltip
                 contentStyle={CHART_TIP}
               />
-              <ReferenceLine yAxisId="l" y={6} stroke="#C58392" strokeDasharray="4 4" />
-              <Line yAxisId="l" type="monotone" dataKey="sleep" stroke="#C6A05B" strokeWidth={2} dot={false} name="sleep (h)" />
-              <Line yAxisId="r" type="monotone" dataKey="energy" stroke="#6E8CA8" strokeWidth={2} dot={false} name="energy (1-5)" />
+              <ReferenceLine yAxisId="l" y={6} stroke="#F87171" strokeDasharray="4 4" />
+              <Line yAxisId="l" type="monotone" dataKey="sleep" stroke="#FBBF24" strokeWidth={2} dot={false} name="sleep (h)" />
+              <Line yAxisId="r" type="monotone" dataKey="energy" stroke="#60A5FA" strokeWidth={2} dot={false} name="energy (1-5)" />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -273,7 +276,7 @@ export default function Reflect() {
           </p>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={spendByDay} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E7E9DE" />
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
               <XAxis dataKey="date" tick={AXIS_TICK_10} />
               <YAxis tick={AXIS_TICK_10} />
               <Tooltip
@@ -282,7 +285,7 @@ export default function Reflect() {
               />
               <Bar dataKey="spend" radius={[4, 4, 0, 0]}>
                 {spendByDay.map((d) => (
-                  <Cell key={d.iso} fill={d.deadline ? '#C58392' : '#D4D7C8'} />
+                  <Cell key={d.iso} fill={d.deadline ? '#F87171' : '#333333'} />
                 ))}
               </Bar>
             </BarChart>
@@ -295,8 +298,8 @@ export default function Reflect() {
         <SectionTitle>Afwijkingen</SectionTitle>
         <div className="space-y-2">
           {anomalies.map((a) => (
-            <div key={a.id} className="card p-3 border-orange-500/30 bg-orange-500/5 flex items-start gap-3">
-              <AlertTriangle className="h-4 w-4 text-orange-300 mt-0.5 shrink-0" />
+            <div key={a.id} className="card p-3 bg-personal/8 flex items-start gap-3">
+              <AlertTriangle className="h-4 w-4 text-personal-deep mt-0.5 shrink-0" />
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium text-ink">{a.title}</span>
