@@ -12,6 +12,7 @@ import type {
   Subscription,
   Goal,
   DogEntry,
+  DogProfile,
   Block,
   Thread,
   Priority,
@@ -441,14 +442,24 @@ export async function createDogEntryRow(entry: {
   at: string
   durationMin?: number | null
   distanceKm?: number | null
+  weightKg?: number | null
   note?: string | null
+  photo?: string | null
+  location?: string | null
+  poopConsistency?: number | null
+  trainingType?: string | null
 }): Promise<string | null> {
   return insertRow('dog_log', {
     kind: entry.kind,
     happened_at: entry.at,
     duration_min: entry.durationMin ?? null,
     distance_km: entry.distanceKm ?? null,
+    weight_kg: entry.weightKg ?? null,
     notes: entry.note ?? null,
+    photo: entry.photo ?? null,
+    location: entry.location ?? null,
+    poop_consistency: entry.poopConsistency ?? null,
+    training_type: entry.trainingType ?? null,
   })
 }
 
@@ -461,14 +472,68 @@ const DOG_ENTRY_COLS: Record<string, string> = {
   at: 'happened_at',
   durationMin: 'duration_min',
   distanceKm: 'distance_km',
+  weightKg: 'weight_kg',
   note: 'notes',
+  photo: 'photo',
+  location: 'location',
+  poopConsistency: 'poop_consistency',
+  trainingType: 'training_type',
 }
 
 export async function updateDogEntryRow(
   id: string,
-  patch: { kind?: string; at?: string; durationMin?: number | null; distanceKm?: number | null; note?: string | null },
+  patch: {
+    kind?: string
+    at?: string
+    durationMin?: number | null
+    distanceKm?: number | null
+    weightKg?: number | null
+    note?: string | null
+    photo?: string | null
+    location?: string | null
+    poopConsistency?: number | null
+    trainingType?: string | null
+  },
 ): Promise<void> {
   await updateRow('dog_log', id, patch, DOG_ENTRY_COLS)
+}
+
+// ── Dog profile (one owner-scoped row, reuses app_settings) ──────────────────
+
+export async function fetchDogProfile(): Promise<DogProfile | null> {
+  const { data } = await supabase
+    .from('app_settings')
+    .select('dog_name,dog_breed,dog_birthdate,dog_weight_kg,dog_vet,dog_photo')
+    .maybeSingle()
+  if (!data || (!data.dog_name && !data.dog_birthdate && !data.dog_weight_kg)) return null
+  return {
+    name: (data.dog_name as string) ?? '',
+    breed: (data.dog_breed as string) ?? '',
+    birthdate: (data.dog_birthdate as string) ?? '',
+    weightKg: (data.dog_weight_kg as number) ?? 0,
+    vet: (data.dog_vet as string) ?? '',
+    photo: (data.dog_photo as string) ?? null,
+  }
+}
+
+export async function upsertDogProfile(patch: Partial<DogProfile>): Promise<boolean> {
+  const user_id = await currentUserId()
+  if (!user_id) return false
+  const { error } = await supabase.from('app_settings').upsert(
+    {
+      user_id,
+      ...(patch.name !== undefined && { dog_name: patch.name }),
+      ...(patch.breed !== undefined && { dog_breed: patch.breed }),
+      ...(patch.birthdate !== undefined && { dog_birthdate: patch.birthdate || null }),
+      ...(patch.weightKg !== undefined && { dog_weight_kg: patch.weightKg }),
+      ...(patch.vet !== undefined && { dog_vet: patch.vet }),
+      ...(patch.photo !== undefined && { dog_photo: patch.photo }),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id' },
+  )
+  warnWrite('app_settings.dog_profile', error)
+  return !error
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1348,14 +1413,24 @@ export async function deleteGoalRow(id: string): Promise<void> {
 // ── Dog tracker ───────────────────────────────────────────────────────────────
 
 export async function fetchDogEntries(): Promise<DogEntry[]> {
-  return fetchRows('dog_log', 'id,kind,happened_at,duration_min,distance_km,notes', { column: 'happened_at', ascending: false, limit: 100 }, (r) => ({
-    id: r.id as string,
-    kind: r.kind as DogEntry['kind'],
-    at: r.happened_at as string,
-    durationMin: (r.duration_min as number) ?? null,
-    distanceKm: (r.distance_km as number) ?? null,
-    note: (r.notes as string) ?? null,
-  }))
+  return fetchRows(
+    'dog_log',
+    'id,kind,happened_at,duration_min,distance_km,weight_kg,notes,photo,location,poop_consistency,training_type',
+    { column: 'happened_at', ascending: false, limit: 100 },
+    (r) => ({
+      id: r.id as string,
+      kind: r.kind as DogEntry['kind'],
+      at: r.happened_at as string,
+      durationMin: (r.duration_min as number) ?? null,
+      distanceKm: (r.distance_km as number) ?? null,
+      weightKg: (r.weight_kg as number) ?? null,
+      note: (r.notes as string) ?? null,
+      photo: (r.photo as string) ?? null,
+      location: (r.location as string) ?? null,
+      poopConsistency: (r.poop_consistency as DogEntry['poopConsistency']) ?? null,
+      trainingType: (r.training_type as string) ?? null,
+    }),
+  )
 }
 
 // ── Brain state (threads + patterns) ─────────────────────────────────────────
