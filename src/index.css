@@ -13,11 +13,13 @@
     --line: 0 0% 16%; /* faint hairlines — dividers only, never a card border */
     --scrim: 0 0% 0%; /* modal overlay base */
 
-    /* text ramp */
+    /* text ramp — lifted from the original values (55%/38% for muted/faint
+       read fine on an indoor screen but wash out to near-invisible in direct
+       sunlight/glare; this keeps the same hierarchy with real headroom). */
     --ink: 0 0% 96%;
-    --ink-soft: 0 0% 78%;
-    --muted-foreground: 0 0% 55%;
-    --faint: 0 0% 38%;
+    --ink-soft: 0 0% 82%;
+    --muted-foreground: 0 0% 66%;
+    --faint: 0 0% 52%;
 
     /* emphasized edge — hover/active affordance, one step up from --line */
     --line-strong: 0 0% 26%;
