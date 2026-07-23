@@ -78,6 +78,19 @@ session cookies.
 
 The cookies are your real YouTube session — treat the file like a password
 (don't commit it) and expect to re-export occasionally as sessions expire.
+This is inherent to using a browser session at all (not a config mistake to
+fix once and forget) — Google's own fraud detection watches for a session
+being used from a different location than normal, which a cloud host's IP
+always is.
+
+To find out the moment that happens instead of only noticing when a video's
+note looks worse than expected: set `TELEGRAM_BOT_TOKEN` (same value as the
+Supabase secret notify-tick already uses) and this worker sends one Telegram
+alert — throttled to once per process lifetime — the first time yt-dlp's
+"Sign in to confirm you're not a bot" shows up. Boot logs also print
+`YouTube cookies file FOUND/NOT FOUND at <path>` on every start, which tells
+a missing/misconfigured Secret File (fixable in your host's dashboard) apart
+from a present-but-rejected one (needs a fresh cookies.txt export).
 
 ## Notes
 

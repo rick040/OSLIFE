@@ -60,6 +60,11 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY || ''
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || ''
 const SUPABASE_URL = process.env.SUPABASE_URL || ''
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+// Optional — same bot notify-tick already uses. Lets this worker push a
+// Telegram alert the moment YouTube's cookie/bot-check starts failing,
+// instead of silently degrading to metadata-only notes until someone
+// happens to notice (exactly what happened before this was added).
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || ''
 // Netscape-format cookies.txt (e.g. Render's "Secret Files", mounted under
 // /etc/secrets/<name>). Absent by default — every call below degrades to an
 // unauthenticated request, same as today, when this path doesn't exist.
@@ -78,6 +83,35 @@ const ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001'
 const MAX_BYTES = 24 * 1024 * 1024 // Groq single-request cap headroom (25MB)
 
 const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+// Detects yt-dlp's bot-check message specifically (as opposed to any other
+// yt-dlp failure — "video unavailable", "private video", etc. are real,
+// per-video outcomes that don't need an alert; this one means EVERY video
+// is about to start failing until the cookies get refreshed).
+const YT_BOT_CHECK_RE = /sign in to confirm/i
+
+// Fires at most once per process lifetime (a redeploy/restart resets it) —
+// the bot-check, once it starts, hits every subsequent video, so without
+// this a single bad session would spam one Telegram message per capture.
+let cookieAlertSent = false
+
+async function alertYoutubeCookiesExpired(url) {
+  if (cookieAlertSent || !TELEGRAM_BOT_TOKEN) return
+  cookieAlertSent = true
+  try {
+    const { data: prefs } = await sb.from('notification_prefs').select('telegram_chat_id').limit(1).maybeSingle()
+    const chatId = prefs?.telegram_chat_id
+    if (!chatId) return
+    const text = `⚠️ YouTube-cookies lijken verlopen (braindump-worker) — video's krijgen alleen nog een metadata-only notitie, geen echt transcript, tot je een verse cookies.txt uploadt.\n\nLaatste video: ${url}`
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text }),
+    })
+  } catch {
+    // Best-effort — a failed alert must never break the actual job.
+  }
+}
 
 const VALID_DOMAINS = ['parkingyou', 'prjct', 'buurtkaart', 'personal', 'cross']
 const VALID_KINDS = ['task', 'note', 'vent', 'link', 'voice', 'transaction', 'event', 'health', 'email', 'idea']
@@ -517,7 +551,9 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
         // Previously silently swallowed — this was the one gap that made it
         // impossible to tell a stale yt-dlp binary / expired cookies apart
         // from "this video genuinely has no captions" after the fact.
-        console.error(`[braindump-worker] youtube captions failed for ${sourceUrl}:`, execErrorDetail(err))
+        const detail = execErrorDetail(err)
+        console.error(`[braindump-worker] youtube captions failed for ${sourceUrl}:`, detail)
+        if (YT_BOT_CHECK_RE.test(detail)) void alertYoutubeCookiesExpired(sourceUrl)
         return null
       })
       if (transcript) captionSource = 'youtube'
@@ -531,7 +567,9 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
         meta = { ...fetched.meta, ...meta } // youtube meta (if already fetched) wins
         transcript = await transcribeFile(fetched.audioPath)
       } catch (err) {
-        console.error(`[braindump-worker] audio fetch/transcribe failed for ${sourceKind} ${sourceUrl || storagePath}:`, execErrorDetail(err))
+        const detail = execErrorDetail(err)
+        console.error(`[braindump-worker] audio fetch/transcribe failed for ${sourceKind} ${sourceUrl || storagePath}:`, detail)
+        if (sourceKind === 'youtube' && sourceUrl && YT_BOT_CHECK_RE.test(detail)) void alertYoutubeCookiesExpired(sourceUrl)
         // Instagram/Pinterest often isn't a video at all (a plain photo
         // post) — yt-dlp fails to find a downloadable stream, so describe
         // the og:image instead of failing the whole entry.
