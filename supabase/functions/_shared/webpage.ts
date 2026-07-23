@@ -9,13 +9,13 @@
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36";
 
-export async function fetchText(url: string, ms = 9000): Promise<string | null> {
+export async function fetchText(url: string, ms = 9000, extraHeaders: Record<string, string> = {}): Promise<string | null> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
-      headers: { "user-agent": BROWSER_UA, "accept-language": "nl,en;q=0.8" },
+      headers: { "user-agent": BROWSER_UA, "accept-language": "nl,en;q=0.8", ...extraHeaders },
     });
     if (!res.ok) return null;
     return await res.text();

@@ -1,6 +1,6 @@
 /**
  * Lightweight, free YouTube metadata + transcript fetch — no yt-dlp, no
- * cookies, no external worker, no API key.
+ * external worker, no API key.
  *
  * - Metadata (title/channel/thumbnail): YouTube's public oEmbed endpoint.
  * - Transcript: YouTube ships caption tracks (manual or auto-generated) as
@@ -10,13 +10,32 @@
  *   `youtube-transcript-api` (PyPI) tools, just reimplemented here with a
  *   plain fetch() so it runs directly in this Deno edge function.
  *
+ * IMPORTANT, learned the hard way: an unauthenticated request to this
+ * endpoint routinely gets served `playabilityStatus: "LOGIN_REQUIRED"` (the
+ * literal reason string is "Log in om te bevestigen dat je geen bot bent" —
+ * "log in to confirm you're not a bot") with no `captions` key at all —
+ * this is the SAME anti-bot check yt-dlp hits, applied at the network/
+ * session level to any request, not something a plain fetch() dodges by
+ * avoiding yt-dlp specifically. In practice this meant this "no cookies
+ * needed" path never actually produced a transcript in real usage — every
+ * real one came through the yt-dlp+cookies worker fallback instead.
+ *
+ * Fix: an optional YOUTUBE_COOKIE_HEADER secret (a `name=value; name2=...`
+ * Cookie header string, derived from the same cookies.txt the worker uses)
+ * authenticates this request as a real browser session, same fix as
+ * yt-dlp's --cookies flag, just as an HTTP header instead of a CLI flag.
+ * Unset by default — falls back to today's unauthenticated (and, per the
+ * above, largely non-functional) behaviour when not configured.
+ *
  * This covers the vast majority of videos (most uploads get auto-generated
- * captions within minutes). Videos with no captions at all still fall back
- * to a metadata-only note — no worse than before, and everything above is
- * free and needs nothing deployed or maintained.
+ * captions within minutes) once cookies are configured. Videos with no
+ * captions at all still fall back to a metadata-only note — no worse than
+ * before.
  */
 
 import { decodeEntities, fetchText } from "./webpage.ts";
+
+const YOUTUBE_COOKIE_HEADER = Deno.env.get("YOUTUBE_COOKIE_HEADER") ?? "";
 
 export interface YoutubeMeta {
   title: string | null;
@@ -64,7 +83,8 @@ function pickCaptionTrack(tracks: CaptionTrack[]): CaptionTrack | null {
  * caption track list), then the track itself (small XML file).
  */
 export async function fetchYoutubeTranscript(videoId: string): Promise<string | null> {
-  const html = await fetchText(`https://www.youtube.com/watch?v=${videoId}&hl=en`, 9000);
+  const cookieHeaders = YOUTUBE_COOKIE_HEADER ? { cookie: YOUTUBE_COOKIE_HEADER } : {};
+  const html = await fetchText(`https://www.youtube.com/watch?v=${videoId}&hl=en`, 9000, cookieHeaders);
   if (!html) return null;
 
   // ytInitialPlayerResponse is one giant object; rather than balance braces
@@ -86,7 +106,7 @@ export async function fetchYoutubeTranscript(videoId: string): Promise<string | 
   const track = pickCaptionTrack(captions.playerCaptionsTracklistRenderer?.captionTracks ?? []);
   if (!track?.baseUrl) return null;
 
-  const xml = await fetchText(track.baseUrl, 9000);
+  const xml = await fetchText(track.baseUrl, 9000, cookieHeaders);
   if (!xml) return null;
   const text = [...xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)]
     .map((m) => decodeEntities(m[1].replace(/<[^>]+>/g, "")).trim())

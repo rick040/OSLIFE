@@ -16,8 +16,14 @@
  * YouTube is also handled inline, no worker required: oEmbed for title/
  * channel/thumbnail, plus a plain fetch() of YouTube's own caption tracks for
  * a transcript (see ../_shared/youtube.ts) — free, no API key, no yt-dlp.
+ * IMPORTANT: an unauthenticated request to that endpoint routinely gets
+ * YouTube's "log in to confirm you're not a bot" wall (the same anti-bot
+ * check yt-dlp hits — it's not something a plain fetch() avoids just by not
+ * being yt-dlp), so in practice this needs the optional YOUTUBE_COOKIE_HEADER
+ * secret to actually work; see _shared/youtube.ts's doc comment.
  * Covers any video with captions (manual or auto-generated), which is most of
- * them; a caption-less video still gets a metadata-only note.
+ * them once cookies are configured; a caption-less video still gets a
+ * metadata-only note.
  * Delegated to braindump-worker (yt-dlp + ffmpeg + Groq Whisper): video, audio,
  * and video-type instagram/pinterest, plus youtube videos with no captions at
  * all (audio+Whisper is the only way to get a transcript for those). When
@@ -29,8 +35,10 @@
  *
  * Deploy:
  *   supabase functions deploy braindump-ingest --project-ref nhyunnnmdcmojvkxrbpl
- * Secrets: ANTHROPIC_API_KEY (required); BRAINDUMP_WORKER_URL + WORKER_SECRET
- * (optional — enables real media transcription).
+ * Secrets: ANTHROPIC_API_KEY (required); YOUTUBE_COOKIE_HEADER (optional —
+ * needed in practice for YouTube transcripts, see above); BRAINDUMP_WORKER_URL
+ * + WORKER_SECRET (optional — enables real media transcription for
+ * non-YouTube video/audio and caption-less YouTube videos).
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
