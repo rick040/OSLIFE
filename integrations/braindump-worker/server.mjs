@@ -9,10 +9,14 @@
 // source type, so a transcribed video is just as searchable/materialised as a
 // captured link or text note. Called only by the braindump-ingest edge function.
 //
-// For YouTube specifically, it tries the video's own caption track first
-// (yt-dlp --write-subs/--write-auto-sub — free, seconds instead of minutes,
-// no Whisper cost) and only falls back to the audio+Whisper pipeline when the
-// video has no captions at all.
+// For YouTube specifically, this worker only ever gets a job when
+// braindump-ingest's own inline Supadata attempt didn't produce a transcript
+// (no SUPADATA_API_KEY, its free tier used up, or a long video that returned
+// an async job the edge function can't afford to poll). This worker retries
+// Supadata itself first — no such request-time constraint, so it polls the
+// job to completion — and only falls back to yt-dlp's own caption track
+// (--write-subs/--write-auto-sub, free, no Whisper cost) and then the
+// audio+Whisper pipeline when Supadata genuinely can't get a transcript.
 //
 // For Instagram/Pinterest, braindump-ingest delegates here unconditionally
 // (it can't reliably tell video-vs-photo posts apart itself — see that file's
@@ -25,10 +29,12 @@
 // "Sign in to confirm you're not a bot" from YouTube — a bot-check on the IP,
 // unrelated to the video itself. If a cookies file is present (see
 // YT_COOKIES_PATH below), every yt-dlp call passes --cookies to authenticate
-// as a real browser session, which avoids it.
+// as a real browser session, which avoids it. This is now a last-resort
+// fallback tier (behind Supadata), not the primary mechanism.
 //
 // Env (see .env.example): PORT, WORKER_SECRET, GROQ_API_KEY, ANTHROPIC_API_KEY,
-// SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, YT_COOKIES_PATH (optional).
+// SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPADATA_API_KEY (optional),
+// YT_COOKIES_PATH (optional).
 
 import http from 'node:http'
 import { execFile } from 'node:child_process'
@@ -65,6 +71,15 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 // instead of silently degrading to metadata-only notes until someone
 // happens to notice (exactly what happened before this was added).
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || ''
+// Optional — same key as the Supabase SUPADATA_API_KEY secret. braindump-ingest
+// already tries Supadata inline for the common case (short/medium video); this
+// worker only ever sees a YouTube job when that attempt didn't produce a
+// transcript. Re-trying it here (not just falling straight to yt-dlp+cookies)
+// matters specifically for long videos: Supadata hands back an async job for
+// anything over ~20min, which the edge function can't afford to poll (it'd
+// block the user's request for minutes) but this worker can, since it already
+// runs the whole job in the background. See supabase/functions/_shared/supadata.ts.
+const SUPADATA_API_KEY = process.env.SUPADATA_API_KEY || ''
 // Netscape-format cookies.txt (e.g. Render's "Secret Files", mounted under
 // /etc/secrets/<name>). Absent by default — every call below degrades to an
 // unauthenticated request, same as today, when this path doesn't exist.
@@ -255,13 +270,19 @@ async function fetchYoutubeOEmbed(url) {
  * that has no captions and whose audio yt-dlp couldn't fetch either — keeps
  * the entry from dead-ending on a raw yt-dlp error, same contract as every
  * other braindump source ("never stuck"). */
-async function noteFromYoutubeMetaOnly(url) {
-  const meta = await fetchYoutubeOEmbed(url)
+/** supadataMeta, when already fetched by the caller, is preferred over
+ * oEmbed — gives a real description instead of just title/channel. */
+async function noteFromYoutubeMetaOnly(url, supadataMeta = null) {
+  const oembed = await fetchYoutubeOEmbed(url)
+  const title = supadataMeta?.title ?? oembed.title
+  const channel = supadataMeta?.channel ?? oembed.author
+  const description = supadataMeta?.description ?? null
   const prompt = [
     `Gedeelde YouTube-video: ${url}`,
-    meta.title ? `Titel: ${meta.title}` : '',
-    meta.author ? `Kanaal: ${meta.author}` : '',
-    'Er is geen transcript beschikbaar voor deze video — maak een korte notitie met titel, kanaal en link.',
+    title ? `Titel: ${title}` : '',
+    channel ? `Kanaal: ${channel}` : '',
+    description ? `Beschrijving: ${description.slice(0, 1500)}` : '',
+    'Er is geen transcript beschikbaar voor deze video — maak een korte notitie met titel, kanaal, beschrijving en link.',
   ].filter(Boolean).join('\n')
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -273,7 +294,61 @@ async function noteFromYoutubeMetaOnly(url) {
   const text = (Array.isArray(data.content) ? data.content : []).filter((b) => b.type === 'text').map((b) => b.text).join('\n')
   const note = parseNote(text)
   if (!note) throw new Error('convert failed')
-  return { note, thumbUrl: youtubeThumbUrl(url) ?? meta.thumbnail }
+  return { note, thumbUrl: supadataMeta?.thumbnail ?? youtubeThumbUrl(url) ?? oembed.thumbnail }
+}
+
+const SUPADATA_BASE = 'https://api.supadata.ai/v1'
+
+async function supadataGet(path, ms) {
+  if (!SUPADATA_API_KEY) return null
+  const ctrl = new AbortController()
+  const t = setTimeout(() => ctrl.abort(), ms)
+  try {
+    const res = await fetch(`${SUPADATA_BASE}${path}`, { signal: ctrl.signal, headers: { 'x-api-key': SUPADATA_API_KEY } })
+    if (!res.ok && res.status !== 206) return null // 206 = transcript-unavailable, still valid JSON
+    return await res.json()
+  } catch {
+    return null
+  } finally {
+    clearTimeout(t)
+  }
+}
+
+/** Title/description/channel/thumbnail/duration via Supadata's metadata endpoint. null on any failure. */
+async function fetchSupadataMeta(url) {
+  const d = await supadataGet(`/metadata?url=${encodeURIComponent(url)}`, 12000)
+  if (!d || typeof d.title !== 'string') return null
+  return {
+    title: d.title,
+    description: typeof d.description === 'string' ? d.description : null,
+    channel: typeof d.author?.displayName === 'string' ? d.author.displayName : null,
+    thumbnail: typeof d.media?.thumbnailUrl === 'string' ? d.media.thumbnailUrl : null,
+    duration: typeof d.media?.duration === 'number' ? d.media.duration : null,
+  }
+}
+
+/**
+ * Transcript via Supadata, polling its async job for long videos (this
+ * worker has no request-time budget to respect, unlike braindump-ingest's
+ * inline attempt) — up to ~4 minutes at 1s intervals, matching Supadata's own
+ * "processing time correlates with video duration" guidance. Returns null on
+ * any failure/timeout/no-captions-at-all, same contract as every other
+ * best-effort fetch in this file.
+ */
+async function fetchSupadataTranscript(url) {
+  const first = await supadataGet(`/transcript?url=${encodeURIComponent(url)}&text=true&mode=auto`, 25000)
+  if (!first) return null
+  if (typeof first.content === 'string') return first.content
+  if (!first.jobId) return null
+  for (let i = 0; i < 240; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+    const job = await supadataGet(`/transcript/${first.jobId}`, 10000)
+    if (!job) continue
+    if (job.status === 'completed' && typeof job.content === 'string') return job.content
+    if (job.status === 'failed') return null
+    // queued/active — keep polling
+  }
+  return null
 }
 
 /** Video/channel metadata via yt-dlp's own JSON dump. Best-effort — {} on failure. */
@@ -412,6 +487,7 @@ async function summarise(transcript, meta, url) {
   const prompt = [
     meta.title ? `Titel: ${meta.title}` : '',
     meta.channel ? `Kanaal/uploader: ${meta.channel}` : '',
+    meta.description ? `Beschrijving: ${meta.description.slice(0, 1500)}` : '',
     url ? `Bron: ${url}` : '',
     `Transcript:\n"""\n${transcript.slice(0, 24000)}\n"""`,
   ].filter(Boolean).join('\n')
@@ -554,19 +630,42 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
     let transcript = null
     let meta = {}
     let captionSource = 'whisper'
+    // Kept at this scope so the metadata-only fallback further down (both
+    // Supadata and yt-dlp failed to produce a transcript) can still use its
+    // description/thumbnail instead of falling all the way back to oEmbed.
+    let ytSupadataMeta = null
 
     if (sourceKind === 'youtube' && sourceUrl) {
-      meta = await fetchYoutubeMeta(sourceUrl)
-      transcript = await fetchYoutubeCaptions(sourceUrl, dir).catch((err) => {
-        // Previously silently swallowed — this was the one gap that made it
-        // impossible to tell a stale yt-dlp binary / expired cookies apart
-        // from "this video genuinely has no captions" after the fact.
-        const detail = execErrorDetail(err)
-        console.error(`[braindump-worker] youtube captions failed for ${sourceUrl}:`, detail)
-        if (YT_BOT_CHECK_RE.test(detail)) void alertYoutubeCookiesExpired(sourceUrl)
-        return null
-      })
-      if (transcript) captionSource = 'youtube'
+      // Supadata first — braindump-ingest already tried this inline; a job
+      // only reaches this worker when that attempt didn't produce a
+      // transcript (no key, free tier exhausted, or a long video that
+      // returned an async job the edge function can't afford to poll). This
+      // worker has no such request-time constraint, so it retries here and
+      // polls the job to completion instead of jumping straight to
+      // yt-dlp+cookies.
+      ytSupadataMeta = await fetchSupadataMeta(sourceUrl)
+      transcript = await fetchSupadataTranscript(sourceUrl)
+      if (transcript) {
+        captionSource = 'supadata'
+        meta = {
+          title: ytSupadataMeta?.title ?? null, channel: ytSupadataMeta?.channel ?? null,
+          description: ytSupadataMeta?.description ?? null, duration: ytSupadataMeta?.duration ?? null,
+          thumbnail: ytSupadataMeta?.thumbnail ?? null,
+        }
+      } else {
+        meta = await fetchYoutubeMeta(sourceUrl)
+        if (ytSupadataMeta) meta = { ...meta, description: ytSupadataMeta.description, title: meta.title ?? ytSupadataMeta.title, channel: meta.channel ?? ytSupadataMeta.channel }
+        transcript = await fetchYoutubeCaptions(sourceUrl, dir).catch((err) => {
+          // Previously silently swallowed — this was the one gap that made it
+          // impossible to tell a stale yt-dlp binary / expired cookies apart
+          // from "this video genuinely has no captions" after the fact.
+          const detail = execErrorDetail(err)
+          console.error(`[braindump-worker] youtube captions failed for ${sourceUrl}:`, detail)
+          if (YT_BOT_CHECK_RE.test(detail)) void alertYoutubeCookiesExpired(sourceUrl)
+          return null
+        })
+        if (transcript) captionSource = 'youtube'
+      }
     }
 
     if (!transcript) {
@@ -597,7 +696,7 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
         // a metadata-only note via oEmbed (a plain fetch, unaffected by that
         // bot-check) instead of leaving the entry stuck on a raw yt-dlp error.
         if (sourceKind === 'youtube' && sourceUrl) {
-          const fallback = await noteFromYoutubeMetaOnly(sourceUrl)
+          const fallback = await noteFromYoutubeMetaOnly(sourceUrl, ytSupadataMeta)
           await finishReady(entryId, userId, tier, fallback.note, {
             thumbUrl: fallback.thumbUrl, meta: { transcript: false, url: sourceUrl }, contentHash, url: sourceUrl,
           })

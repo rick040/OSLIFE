@@ -13,32 +13,41 @@
  * back to a regex tag-strip), image, pdf, office documents (docx/xlsx/pptx/
  * csv/txt), and image-type instagram/pinterest posts (Claude vision / document
  * blocks).
- * YouTube is also handled inline, no worker required: oEmbed for title/
- * channel/thumbnail, plus a plain fetch() of YouTube's own caption tracks for
- * a transcript (see ../_shared/youtube.ts) — free, no API key, no yt-dlp.
- * IMPORTANT: an unauthenticated request to that endpoint routinely gets
- * YouTube's "log in to confirm you're not a bot" wall (the same anti-bot
- * check yt-dlp hits — it's not something a plain fetch() avoids just by not
- * being yt-dlp), so in practice this needs the optional YOUTUBE_COOKIE_HEADER
- * secret to actually work; see _shared/youtube.ts's doc comment.
- * Covers any video with captions (manual or auto-generated), which is most of
- * them once cookies are configured; a caption-less video still gets a
- * metadata-only note.
+ * YouTube is also handled inline, no worker required — three tiers, cheapest
+ * first:
+ *   1. Supadata (../_shared/supadata.ts) — a third-party API that returns
+ *      transcript + full metadata (title/description/channel/thumbnail/
+ *      duration) in one call, with its own Whisper fallback for videos with
+ *      no caption track. Needs SUPADATA_API_KEY; free tier is 100 req/month.
+ *      This replaced an earlier plain-fetch() scrape of YouTube's own
+ *      caption-track JSON (see supadata.ts's doc comment for why that was
+ *      abandoned — it hit the exact same anti-bot wall yt-dlp does).
+ *   2. oEmbed (../_shared/youtube.ts) — free, no key, but title/channel/
+ *      thumbnail only (no description, no transcript). Used whenever
+ *      Supadata isn't configured or its metadata call fails.
+ *   3. braindump-worker (yt-dlp + cookies + Groq Whisper) — the last-resort
+ *      fallback for videos Supadata couldn't transcribe (its free tier
+ *      exhausted, or a genuinely inaccessible video) and for videos long
+ *      enough that Supadata handed back an async job instead of an
+ *      immediate transcript (this function doesn't poll that — the worker
+ *      does, since it has no request-time budget to respect).
+ * When neither Supadata nor the worker are configured, a video still gets a
+ * metadata-only note (oEmbed) rather than failing outright.
  * Delegated to braindump-worker (yt-dlp + ffmpeg + Groq Whisper): video, audio,
- * and video-type instagram/pinterest, plus youtube videos with no captions at
- * all (audio+Whisper is the only way to get a transcript for those). When
- * BRAINDUMP_WORKER_URL is not configured, those fall back to metadata-only
- * (oEmbed / OpenGraph) so the app still works before the worker is deployed.
+ * and video-type instagram/pinterest, plus youtube videos Supadata couldn't
+ * transcribe. When BRAINDUMP_WORKER_URL is not configured, those fall back to
+ * metadata-only (oEmbed / OpenGraph) so the app still works before the worker
+ * is deployed.
  *
  *   request:  { "entryId": "<uuid>" }
  *   response: { "ok": true, "status": "ready" | "processing" | "failed" }
  *
  * Deploy:
  *   supabase functions deploy braindump-ingest --project-ref nhyunnnmdcmojvkxrbpl
- * Secrets: ANTHROPIC_API_KEY (required); YOUTUBE_COOKIE_HEADER (optional —
- * needed in practice for YouTube transcripts, see above); BRAINDUMP_WORKER_URL
+ * Secrets: ANTHROPIC_API_KEY (required); SUPADATA_API_KEY (optional — primary
+ * path for YouTube transcript+metadata, see above); BRAINDUMP_WORKER_URL
  * + WORKER_SECRET (optional — enables real media transcription for
- * non-YouTube video/audio and caption-less YouTube videos).
+ * non-YouTube video/audio and YouTube videos Supadata couldn't handle).
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -46,7 +55,8 @@ import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 import { ANTHROPIC_API, MODEL, anthropicHeaders, extractText, parseJsonBlock } from "../_shared/anthropic.ts";
 import { CORS, SUPABASE_URL, corsPreflight, jsonResponder } from "../_shared/http.ts";
 import { extractArticle, extractSocialCaption, fetchText, htmlToText, parseOG } from "../_shared/webpage.ts";
-import { extractYoutubeId, fetchYoutubeMeta, fetchYoutubeTranscript } from "../_shared/youtube.ts";
+import { extractYoutubeId, fetchYoutubeMeta } from "../_shared/youtube.ts";
+import { fetchSupadataMeta, fetchSupadataTranscript } from "../_shared/supadata.ts";
 
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
@@ -356,38 +366,56 @@ async function extractPptxText(bytes: Uint8Array): Promise<string> {
 }
 
 /**
- * YouTube: oEmbed for metadata (title/channel/thumbnail) plus a free, direct
- * fetch of YouTube's own caption tracks for a transcript — see
- * ../_shared/youtube.ts. When a transcript is found, Claude gets the full
- * text and produces a real summary, same quality bar as every other source.
- * When the video simply has no captions, this degrades to the old
- * metadata-only note (title/channel/link) — the caller may then hand off to
- * the audio+Whisper worker if one is configured.
+ * YouTube: Supadata first (transcript + title/description/channel/thumbnail/
+ * duration in one call, see ../_shared/supadata.ts), falling back to free
+ * oEmbed (title/channel/thumbnail only) whenever Supadata isn't configured or
+ * its metadata call fails. When a transcript is found, Claude gets the full
+ * text (plus the description, when available, for extra context) and
+ * produces a real summary, same quality bar as every other source. When no
+ * transcript is available at all, this degrades to a metadata-only note
+ * (title/channel/description/link when we have it) — the caller may then
+ * hand off to the braindump-worker fallback if one is configured.
  */
 async function processYoutube(apiKey: string, url: string): Promise<ProcessResult | null> {
   const videoId = extractYoutubeId(url);
-  const [{ title, author, thumb }, transcript] = await Promise.all([
+  const [supadataMeta, transcript, oembed] = await Promise.all([
+    fetchSupadataMeta(url),
+    fetchSupadataTranscript(url),
     fetchYoutubeMeta(url),
-    videoId ? fetchYoutubeTranscript(videoId) : Promise.resolve(null),
   ]);
+  const title = supadataMeta?.title ?? oembed.title;
+  const channel = supadataMeta?.channel ?? oembed.author;
+  const description = supadataMeta?.description ?? null;
   const blocks: ContentBlock[] = [{
     type: "text",
     text: [
       `Gedeelde YouTube-video: ${url}`,
       title ? `Titel: ${title}` : "",
-      author ? `Kanaal: ${author}` : "",
+      channel ? `Kanaal: ${channel}` : "",
+      description ? `Beschrijving: ${description.slice(0, 1500)}` : "",
       transcript
         ? `Transcript:\n"""\n${transcript.slice(0, 15000)}\n"""`
-        : "Er is geen transcript beschikbaar voor deze video — maak een korte notitie met titel, kanaal en link.",
+        : "Er is geen transcript beschikbaar voor deze video — maak een korte notitie met titel, kanaal, beschrijving en link.",
     ].filter(Boolean).join("\n"),
   }];
   const note = await convert(apiKey, blocks);
   // YouTube's thumbnail CDN is deterministic from the video id — prefer it
-  // over oEmbed's own thumbnail field (still a fallback for a malformed/
+  // over any fetched thumbnail field (still a fallback for a malformed/
   // shortened url extractYoutubeId() can't parse), so a thumbnail never
-  // silently depends on oEmbed alone succeeding.
+  // silently depends on a network call alone succeeding.
   const deterministicThumb = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null;
-  return note ? { note, thumbUrl: deterministicThumb ?? thumb, meta: { url, transcript: !!transcript } } : null;
+  const thumb = supadataMeta?.thumbnail ?? oembed.thumb;
+  return note
+    ? {
+      note,
+      thumbUrl: deterministicThumb ?? thumb,
+      meta: {
+        url, transcript: !!transcript, channel, description,
+        duration: supadataMeta?.duration ?? null,
+        captionSource: transcript ? "supadata" : null,
+      },
+    }
+    : null;
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────────
@@ -559,9 +587,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ── YouTube: try the free, inline caption-track pipeline first — no
-    // worker round-trip needed at all when the video has captions (most do).
-    // Only a caption-less video falls through to the audio+Whisper worker.
+    // ── YouTube: try Supadata (transcript + full metadata) inline first — no
+    // worker round-trip needed at all for the common case (short-to-medium
+    // video, transcript available). Only a video Supadata couldn't
+    // transcribe (no key configured, free tier exhausted, or a long video
+    // that returned an async job instead of an immediate result) falls
+    // through to the braindump-worker fallback.
     if (kind === "youtube" && url) {
       const yt = await processYoutube(apiKey, url);
       if (yt && yt.meta.transcript) return await finish(yt);
@@ -573,8 +604,8 @@ Deno.serve(async (req) => {
         }).catch(() => null);
         if (res && res.ok) return json({ ok: true, status: "processing" });
       }
-      // No captions and no worker (or worker unreachable) → the metadata-only
-      // note processYoutube() already produced.
+      // No transcript and no worker (or worker unreachable) → the
+      // metadata-only note processYoutube() already produced.
       return yt ? await finish(yt) : await fail("Kon de YouTube-metadata niet ophalen");
     }
 
