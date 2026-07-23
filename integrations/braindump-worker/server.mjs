@@ -70,6 +70,26 @@ const VALID_SENTIMENTS = ['positive', 'neutral', 'negative', 'stressed']
 const VALID_LEARNING_CATEGORIES = ['life_lesson', 'way_of_living', 'business_system', 'business_practice', 'implementation', 'pet']
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36'
 
+/** Same id-extraction regex as braindump-ingest's _shared/youtube.ts. */
+function extractYoutubeId(url) {
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/))([\w-]{11})/)
+  return m ? m[1] : null
+}
+
+/**
+ * YouTube's thumbnail CDN URL is fully deterministic from the video id — no
+ * network call needed. Used instead of relying on yt-dlp's own metadata dump
+ * (fetchYoutubeMeta below) for the thumbnail specifically: that call is a
+ * separate, heavier yt-dlp invocation than the caption fetch, and can fail
+ * (bot-check, transient error) independently of a successful transcript —
+ * exactly what happened to a real capture ("Rest vs Recovery: How to
+ * Actually Feel Energized", caption_source=youtube, thumb_url left null).
+ */
+function youtubeThumbUrl(url) {
+  const id = extractYoutubeId(url)
+  return id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : null
+}
+
 // Shared "wiki" field instructions, appended to every system prompt below —
 // same selection criteria as braindump-ingest/index.ts's CONVERT_SYSTEM.
 // Deliberately selective: most captures get no wiki field at all.
@@ -191,7 +211,7 @@ async function noteFromYoutubeMetaOnly(url) {
   const text = (Array.isArray(data.content) ? data.content : []).filter((b) => b.type === 'text').map((b) => b.text).join('\n')
   const note = parseNote(text)
   if (!note) throw new Error('convert failed')
-  return { note, thumbUrl: meta.thumbnail }
+  return { note, thumbUrl: youtubeThumbUrl(url) ?? meta.thumbnail }
 }
 
 /** Video/channel metadata via yt-dlp's own JSON dump. Best-effort — {} on failure. */
@@ -519,7 +539,7 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
     }
 
     await finishReady(entryId, userId, tier, note, {
-      thumbUrl: meta.thumbnail ?? null,
+      thumbUrl: (sourceKind === 'youtube' && sourceUrl ? youtubeThumbUrl(sourceUrl) : null) ?? meta.thumbnail ?? null,
       meta: { transcript: true, captionSource, channel: meta.channel ?? null, duration: meta.duration ?? null, url: sourceUrl ?? null },
       contentHash,
       url: sourceUrl ?? null,
