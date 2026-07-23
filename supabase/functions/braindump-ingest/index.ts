@@ -397,12 +397,13 @@ async function extractPptxText(bytes: Uint8Array): Promise<string> {
  */
 async function processYoutube(apiKey: string, url: string): Promise<ProcessResult | null> {
   const videoId = extractYoutubeId(url);
-  const [{ title, author, thumb: oembedThumb }, transcript] = await Promise.all([
+  const [{ title, author, thumb: oembedThumb }, transcriptResult] = await Promise.all([
     fetchYoutubeMeta(url),
-    videoId ? fetchYoutubeTranscript(videoId) : Promise.resolve(null),
+    videoId ? fetchYoutubeTranscript(videoId) : Promise.resolve({ text: null, debug: "no video id extracted" }),
   ]);
   // The predictable CDN thumbnail never depends on oEmbed succeeding.
   const thumb = videoId ? youtubeThumbnailUrl(videoId) : oembedThumb;
+  const transcript = transcriptResult.text;
 
   if (transcript) {
     const blocks: ContentBlock[] = [{
@@ -430,7 +431,10 @@ async function processYoutube(apiKey: string, url: string): Promise<ProcessResul
     ].filter(Boolean).join("\n"),
   }];
   const note = await convert(apiKey, blocks);
-  return note ? { note, thumbUrl: thumb, meta: { url, transcript: false } } : null;
+  // debugYoutube: temporary diagnostic (why no transcript was found), visible
+  // via the entry's meta column — the runtime's console logs aren't otherwise
+  // reachable from outside. Safe to remove once the root cause is confirmed.
+  return note ? { note, thumbUrl: thumb, meta: { url, transcript: false, debugYoutube: transcriptResult.debug } } : null;
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────────

@@ -21,6 +21,11 @@ import { decodeEntities, fetchText } from "./webpage.ts";
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36";
 
+interface WatchPageResult {
+  html: string | null;
+  debug: string;
+}
+
 /**
  * Fetch the watch page HTML. A plain fetch() from an EU IP (this edge
  * function runs in eu-west-1) gets served YouTube's cookie-consent
@@ -28,7 +33,7 @@ const BROWSER_UA =
  * no ytInitialPlayerResponse, so caption detection silently finds nothing.
  * The CONSENT cookie is the standard, widely-used bypass for that wall.
  */
-async function fetchYoutubeWatchPage(videoId: string, ms: number): Promise<string | null> {
+async function fetchYoutubeWatchPage(videoId: string, ms: number): Promise<WatchPageResult> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   try {
@@ -40,16 +45,11 @@ async function fetchYoutubeWatchPage(videoId: string, ms: number): Promise<strin
         cookie: "CONSENT=YES+1",
       },
     });
-    if (!res.ok) {
-      console.error(`[youtube] watch page fetch ${videoId}: HTTP ${res.status}`);
-      return null;
-    }
+    if (!res.ok) return { html: null, debug: `watch-page HTTP ${res.status}` };
     const text = await res.text();
-    console.error(`[youtube] watch page fetch ${videoId}: ok, ${text.length} bytes`);
-    return text;
+    return { html: text, debug: `watch-page ok ${text.length}b` };
   } catch (err) {
-    console.error(`[youtube] watch page fetch ${videoId}: threw ${String(err)}`);
-    return null;
+    return { html: null, debug: `watch-page threw ${String(err).slice(0, 200)}` };
   } finally {
     clearTimeout(t);
   }
@@ -118,57 +118,52 @@ function pickCaptionTrack(tracks: CaptionTrack[]): CaptionTrack | null {
   return [...tracks].sort((a, b) => score(b) - score(a))[0];
 }
 
+export interface TranscriptResult {
+  text: string | null;
+  /** Short, human-readable trace of what happened — stashed in the entry's
+   * meta column (console logs from this runtime aren't otherwise reachable)
+   * so a real failure can be diagnosed from the database instead of guessed. */
+  debug: string;
+}
+
 /**
  * Fetch a plain-text transcript for a video, or null if it has no captions
  * (manual or auto-generated) at all. Two fetches: the watch page (to find the
  * caption track list), then the track itself (small XML file).
  */
-export async function fetchYoutubeTranscript(videoId: string): Promise<string | null> {
-  const html = await fetchYoutubeWatchPage(videoId, 9000);
-  if (!html) return null;
+export async function fetchYoutubeTranscript(videoId: string): Promise<TranscriptResult> {
+  const page = await fetchYoutubeWatchPage(videoId, 9000);
+  if (!page.html) return { text: null, debug: page.debug };
+  const html = page.html;
 
   // ytInitialPlayerResponse is one giant object; rather than balance braces
   // across the whole thing, slice out just the "captions" value — it's
   // immediately followed by "videoDetails" in every observed player response.
   const marker = '"captions":';
   const start = html.indexOf(marker);
-  if (start === -1) {
-    console.error(`[youtube] ${videoId}: no "captions" marker in page (bot-check/consent page, or genuinely no captions)`);
-    return null;
-  }
+  if (start === -1) return { text: null, debug: `${page.debug}; no captions marker` };
   const afterMarker = html.slice(start + marker.length);
   const end = afterMarker.indexOf(',"videoDetails');
-  if (end === -1) {
-    console.error(`[youtube] ${videoId}: found captions marker but no ,"videoDetails" delimiter after it`);
-    return null;
-  }
+  if (end === -1) return { text: null, debug: `${page.debug}; no videoDetails delimiter` };
 
   let captions: { playerCaptionsTracklistRenderer?: { captionTracks?: CaptionTrack[] } };
   try {
     captions = JSON.parse(afterMarker.slice(0, end));
   } catch (err) {
-    console.error(`[youtube] ${videoId}: captions JSON.parse failed: ${String(err)}`);
-    return null;
+    return { text: null, debug: `${page.debug}; JSON.parse failed ${String(err).slice(0, 150)}` };
   }
   const tracks = captions.playerCaptionsTracklistRenderer?.captionTracks ?? [];
   const track = pickCaptionTrack(tracks);
-  if (!track?.baseUrl) {
-    console.error(`[youtube] ${videoId}: parsed captions object but found ${tracks.length} caption tracks`);
-    return null;
-  }
-  console.error(`[youtube] ${videoId}: picked caption track lang=${track.languageCode} kind=${track.kind ?? "manual"}`);
+  if (!track?.baseUrl) return { text: null, debug: `${page.debug}; ${tracks.length} caption tracks found` };
 
   const xml = await fetchText(track.baseUrl, 9000);
-  if (!xml) {
-    console.error(`[youtube] ${videoId}: caption track fetch failed`);
-    return null;
-  }
+  if (!xml) return { text: null, debug: `${page.debug}; track picked (${track.languageCode}) but xml fetch failed` };
   const text = [...xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)]
     .map((m) => decodeEntities(m[1].replace(/<[^>]+>/g, "")).trim())
     .filter(Boolean)
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();
-  if (!text) console.error(`[youtube] ${videoId}: caption XML had no <text> nodes (${xml.length} bytes)`);
-  return text || null;
+  if (!text) return { text: null, debug: `${page.debug}; xml ${xml.length}b but no <text> nodes` };
+  return { text, debug: `ok, ${text.length} chars from ${track.languageCode}${track.kind === "asr" ? " (auto)" : ""}` };
 }
