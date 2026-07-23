@@ -71,6 +71,14 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || ''
 const YT_COOKIES_PATH = process.env.YT_COOKIES_PATH || '/etc/secrets/youtube-cookies.txt'
 const HAS_YT_COOKIES = existsSync(YT_COOKIES_PATH)
 const cookieArgs = () => (HAS_YT_COOKIES ? ['--cookies', YT_COOKIES_PATH] : [])
+// YouTube increasingly restricts certain formats (SABR/PO-token requirements)
+// depending on which internal "player client" yt-dlp identifies as when it
+// enumerates formats — seen live as "Requested format is not available" on
+// an otherwise-fine video. android/web together typically surface formats
+// the default client alone doesn't see. Scoped to `youtube:` via
+// --extractor-args, so yt-dlp ignores it entirely for non-YouTube URLs
+// (Instagram/Pinterest) — safe to always include.
+const YT_PLAYER_CLIENT_ARGS = ['--extractor-args', 'youtube:player_client=android,web']
 // Logged once at boot (not per-request) so a "Sign in to confirm you're not
 // a bot" error later can be told apart at a glance: file missing entirely
 // (a Render Secret File / path misconfiguration — fixable in the dashboard,
@@ -271,7 +279,7 @@ async function noteFromYoutubeMetaOnly(url) {
 /** Video/channel metadata via yt-dlp's own JSON dump. Best-effort — {} on failure. */
 async function fetchYoutubeMeta(url) {
   try {
-    const { stdout } = await execFileP('yt-dlp', ['--no-playlist', '--dump-single-json', '--no-warnings', ...cookieArgs(), url],
+    const { stdout } = await execFileP('yt-dlp', ['--no-playlist', '--dump-single-json', '--no-warnings', ...cookieArgs(), ...YT_PLAYER_CLIENT_ARGS, url],
       { maxBuffer: 1024 * 1024 * 64, timeout: 1000 * 60 * 5 })
     const j = JSON.parse(stdout)
     return { title: j.title ?? null, channel: j.uploader ?? j.channel ?? null, duration: j.duration ?? null, thumbnail: j.thumbnail ?? null }
@@ -293,6 +301,7 @@ async function fetchYoutubeCaptions(url, dir) {
     '--sub-langs', 'nl,en,nl.*,en.*',
     '--convert-subs', 'srt',
     ...cookieArgs(),
+    ...YT_PLAYER_CLIENT_ARGS,
     '-o', out, url,
   ], { maxBuffer: 1024 * 1024 * 64, timeout: 1000 * 60 * 5 })
   const files = (await readdir(dir)).filter((f) => f.startsWith('subs.') && f.endsWith('.srt'))
@@ -327,6 +336,7 @@ async function fetchFromUrl(url, dir) {
     '--extract-audio', '--audio-format', 'opus',
     '--postprocessor-args', 'ffmpeg:-ac 1 -ar 16000 -b:a 16k',
     ...cookieArgs(),
+    ...YT_PLAYER_CLIENT_ARGS,
     '-o', out, url,
   ], { maxBuffer: 1024 * 1024 * 64, timeout: 1000 * 60 * 20 })
 
