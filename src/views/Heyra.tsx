@@ -16,9 +16,11 @@ import ClientIntakeCard, { type ClientIntakeCommitOptions, type ClientIntakeResu
 import IdeaCaptureCard from '../components/IdeaCaptureCard'
 import ActionCardView from '../components/ActionCardView'
 import VoiceInputPanel from '../components/VoiceInputPanel'
+import HeyraOrb from '../components/HeyraOrb'
+import HistoryTrail from '../components/HistoryTrail'
 import { dispatchAction } from '../heyra/actions/registry'
 import type { ActionCard, EntityRef } from '../heyra/actions/types'
-import { Send, Sparkles, Database, Mic, Wand2, Lightbulb, Brain } from 'lucide-react'
+import { Send, Database, Mic, Wand2, Lightbulb, Brain } from 'lucide-react'
 
 interface Msg {
   id: string
@@ -49,6 +51,11 @@ interface Msg {
 // real stage, but a rotating label at least signals it's still working.
 const PENDING_LABELS = ['Denkt na…', 'Zoekt in je geheugen…', 'Bijna klaar…']
 
+// A short confirmation/prompt reads well blown up to text-2xl and centered
+// (the "ambient" look); a multi-sentence answer doesn't — past this length
+// it falls back to normal readable body text instead.
+const AMBIENT_TEXT_LIMIT = 100
+
 export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
   const store = useStore()
   const [input, setInput] = useState('')
@@ -60,8 +67,7 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
     {
       id: 'm0',
       role: 'heyra',
-      text:
-        'Ik lees uit je ene geheugen over ParkingYou, PRJCT, Buurtkaart en je persoonlijke leven. Vraag me iets, praat tegen me, of dump een gedachte. Hoor ik een taak, dan maak ik een taakkaart. Vraag je naar een project, cijfers of iets specifieks, dan krijg je een projectkaart, grafiek of zoekresultaat terug. En voor alles daarbuiten — iets uitleggen, meedenken, een e-mail, skill of prompt schrijven, code — schakel ik naar mijn assistent-modus, zodat je hier niet meer naar Claude hoeft.',
+      text: 'Vraag me iets, praat tegen me, of dump een gedachte.',
     },
   ])
   const endRef = useRef<HTMLDivElement>(null)
@@ -330,147 +336,136 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
     }
   }
 
-  return (
-    <div className="flex flex-col h-[calc(100vh-7rem)] max-w-3xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
-          <Sparkles className="h-5 w-5 text-ink-soft" />
-        </span>
-        <div>
-          <h1 className="text-xl font-medium text-ink">HEYRA</h1>
-          <p className="text-sm text-muted mt-0.5">antwoordt uit één geheugen</p>
-        </div>
-      </div>
+  // The screen only ever shows the CURRENT exchange in full (large, centered)
+  // — everything before it collapses into HistoryTrail's compact pill list.
+  // Messages are always pushed in rick→heyra pairs (send()), so the last
+  // message is always heyra's (the current reply/pending state) and the one
+  // before it is the rick message that triggered it.
+  const current = msgs[msgs.length - 1]
+  const currentRick = msgs.length >= 2 ? msgs[msgs.length - 2] : undefined
+  const historyMessages = msgs
+    .slice(0, Math.max(0, msgs.length - 2))
+    .filter((m) => m.role === 'rick')
+    .map((m) => ({ id: m.id, text: m.text }))
+  const orbState = current?.pending ? 'thinking' : 'idle'
 
-      <div className="flex-1 overflow-auto space-y-4 pr-1">
-        {msgs.map((m) => (
-          <div key={m.id} className={`flex ${m.role === 'rick' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] ${m.role === 'rick' ? 'order-2' : ''}`}>
-              {m.skill && (
-                <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-prjct-deep animate-fade-up">
+  return (
+    <div className="flex flex-col h-[calc(100vh-7rem)] max-w-2xl mx-auto">
+      <div className="flex-1 overflow-auto flex flex-col items-center px-2">
+        <div className="w-full max-w-md pt-2">
+          <HistoryTrail messages={historyMessages} />
+        </div>
+
+        {/* The ambient glow sits BEHIND this whole block as a background
+            layer — same "haze fills the middle, text sits on top of it"
+            treatment as the reference screens, not a separate icon above
+            the text. */}
+        <div className="relative w-full max-w-md flex flex-col items-center gap-4 py-10 text-center min-h-[260px]">
+          <HeyraOrb state={orbState} />
+
+          <div className="relative z-10 w-full flex flex-col items-center gap-4">
+            {currentRick && (
+              <span className="rounded-2xl bg-sunken px-3 py-1.5 text-xs text-ink-soft">{currentRick.text}</span>
+            )}
+
+            {current?.pending ? (
+              <span className="text-sm text-muted animate-fade-up">{pendingLabel}</span>
+            ) : current && current.text.length <= AMBIENT_TEXT_LIMIT ? (
+              <p className="text-2xl font-medium text-ink leading-snug animate-fade-up whitespace-pre-line">
+                {current.text}
+              </p>
+            ) : (
+              // A long answer (a summary, a detailed explanation) doesn't read
+              // well blown up and centered — normal body text in a soft card
+              // instead, still inside the same centered column.
+              <div className="w-full card p-4 text-left animate-fade-up">
+                <p className="text-sm text-ink leading-relaxed whitespace-pre-line">{current?.text}</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+          {current && !current.pending && (
+            <div className="w-full max-w-md space-y-3">
+              {current.skill && (
+                <div className="flex items-center justify-center gap-1.5 text-[11px] text-prjct-deep animate-fade-up">
                   <span className="inline-flex items-center gap-1 rounded-full bg-prjct/12 px-2 py-0.5 font-medium">
-                    <Wand2 className="h-3 w-3" /> Functie gewisseld → {SKILLS[m.skill].label}
+                    <Wand2 className="h-3 w-3" /> Functie gewisseld → {SKILLS[current.skill].label}
                   </span>
-                  {m.trigger && m.trigger !== 'imperatief' && (
-                    <span className="text-faint">herkende “{m.trigger.trim()}”</span>
+                  {current.trigger && current.trigger !== 'imperatief' && (
+                    <span className="text-faint">herkende “{current.trigger.trim()}”</span>
                   )}
                 </div>
               )}
-              <div
-                className={`rounded-2xl px-4 py-2.5 text-sm whitespace-pre-line ${
-                  m.role === 'rick' ? 'bg-forest text-white rounded-br-sm' : 'card rounded-bl-sm text-ink'
-                }`}
-              >
-                {m.pending ? (
-                  <span className="inline-flex items-center gap-1.5 text-faint">
-                    <span className="inline-flex gap-1">
-                      <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse [animation-delay:150ms]" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse [animation-delay:300ms]" />
-                    </span>
-                    <span className="text-xs">{pendingLabel}</span>
-                  </span>
-                ) : (
-                  m.text
-                )}
-              </div>
-              {m.draft && (
-                <div className="mt-2">
-                  <TaskCard
-                    draft={m.draft}
-                    added={!!m.taskAdded}
-                    onAdd={(d) => addTaskFromCard(m.id, d)}
-                  />
-                </div>
+              {current.draft && (
+                <TaskCard draft={current.draft} added={!!current.taskAdded} onAdd={(d) => addTaskFromCard(current.id, d)} />
               )}
-              {m.search && (
-                <div className="mt-2">
-                  <SearchResultCard data={m.search} onNav={onNav} />
-                </div>
+              {current.search && <SearchResultCard data={current.search} onNav={onNav} />}
+              {current.chart && <DataVizCard data={current.chart} />}
+              {current.project && <ProjectCard project={current.project} onNav={onNav} />}
+              {current.clientIntake && (
+                <ClientIntakeCard
+                  draft={current.clientIntake}
+                  result={current.clientIntakeResult}
+                  onCommit={(draft, opts) => commitClientIntake(current.id, draft, opts)}
+                  onNav={onNav}
+                />
               )}
-              {m.chart && (
-                <div className="mt-2">
-                  <DataVizCard data={m.chart} />
-                </div>
+              {current.ideaDraft && (
+                <IdeaCaptureCard
+                  draft={current.ideaDraft}
+                  createdId={current.ideaCreatedId}
+                  onCommit={(draft) => commitIdea(current.id, draft)}
+                  onNav={onNav}
+                />
               )}
-              {m.project && (
-                <div className="mt-2">
-                  <ProjectCard project={m.project} onNav={onNav} />
-                </div>
-              )}
-              {m.clientIntake && (
-                <div className="mt-2">
-                  <ClientIntakeCard
-                    draft={m.clientIntake}
-                    result={m.clientIntakeResult}
-                    onCommit={(draft, opts) => commitClientIntake(m.id, draft, opts)}
-                    onNav={onNav}
-                  />
-                </div>
-              )}
-              {m.ideaDraft && (
-                <div className="mt-2">
-                  <IdeaCaptureCard
-                    draft={m.ideaDraft}
-                    createdId={m.ideaCreatedId}
-                    onCommit={(draft) => commitIdea(m.id, draft)}
-                    onNav={onNav}
-                  />
-                </div>
-              )}
-              {m.cards?.map((card) => (
-                <div className="mt-2" key={card.id}>
-                  <ActionCardView
-                    card={card}
-                    onNav={onNav}
-                    onConfirm={(c) => confirmCard(m.id, c)}
-                    onCancel={(c) => cancelCard(m.id, c)}
-                    onSelectCandidate={(c, entity) => selectCardCandidate(m.id, c, entity)}
-                  />
-                </div>
+              {current.cards?.map((card) => (
+                <ActionCardView
+                  key={card.id}
+                  card={card}
+                  onNav={onNav}
+                  onConfirm={(c) => confirmCard(current.id, c)}
+                  onCancel={(c) => cancelCard(current.id, c)}
+                  onSelectCandidate={(c, entity) => selectCardCandidate(current.id, c, entity)}
+                />
               ))}
-              {m.learned && m.learned.length > 0 && (
-                <div className="mt-1.5 animate-fade-up">
-                  <div className="card p-2.5 bg-prjct/8 border-prjct/20">
-                    <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-prjct-deep mb-1.5">
-                      <Brain className="h-3 w-3" /> onthouden — leert terwijl we praten
-                    </div>
-                    <ul className="space-y-1">
-                      {m.learned.map((f) => (
-                        <li key={f.id} className="text-xs text-muted">• {f.text}</li>
-                      ))}
-                    </ul>
+              {current.learned && current.learned.length > 0 && (
+                <div className="card p-2.5 bg-prjct/8 border-prjct/20 text-left animate-fade-up">
+                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-prjct-deep mb-1.5">
+                    <Brain className="h-3 w-3" /> onthouden — leert terwijl we praten
                   </div>
+                  <ul className="space-y-1">
+                    {current.learned.map((f) => (
+                      <li key={f.id} className="text-xs text-muted">• {f.text}</li>
+                    ))}
+                  </ul>
                 </div>
               )}
-              {m.classified && (
-                <div className="mt-1.5 animate-fade-up">
-                  <div className="card p-2.5 bg-surface/80">
-                    <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-faint mb-1.5">
-                      <Database className="h-3 w-3" /> begrepen → in geheugen
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <DomainChip domain={m.classified.domain} small />
-                      <KindChip kind={m.classified.kind} />
-                      <SentimentChip sentiment={m.classified.sentiment} />
-                    </div>
-                    <p className="text-xs text-muted mt-1.5">“{m.classified.summary}”</p>
+              {currentRick?.classified && (
+                <div className="card p-2.5 bg-surface/80 text-left animate-fade-up">
+                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-faint mb-1.5">
+                    <Database className="h-3 w-3" /> begrepen → in geheugen
                   </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <DomainChip domain={currentRick.classified.domain} small />
+                    <KindChip kind={currentRick.classified.kind} />
+                    <SentimentChip sentiment={currentRick.classified.sentiment} />
+                  </div>
+                  <p className="text-xs text-muted mt-1.5">“{currentRick.classified.summary}”</p>
                 </div>
               )}
             </div>
-          </div>
-        ))}
+          )}
         <div ref={endRef} />
       </div>
 
       {suggestions.length > 0 && (
         <div className="mt-3">
-          <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-faint mb-1.5">
+          <div className="flex items-center justify-center gap-1 text-[10px] uppercase tracking-wider text-faint mb-1.5">
             <Lightbulb className="h-3 w-3" />
             {conversationStarted ? 'vervolgvragen' : 'op basis van je geheugen'}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap justify-center gap-2">
             {suggestions.map((s) => (
               <button
                 key={s}
@@ -489,13 +484,13 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
           e.preventDefault()
           void send(input)
         }}
-        className="mt-3 flex gap-2"
+        className="mt-3 flex items-center gap-1 rounded-full bg-surface border border-line pl-1.5 pr-1.5 py-1.5"
       >
         {speechSupported && (
           <button
             type="button"
             onClick={() => setVoicePanelOpen(true)}
-            className="btn px-3 btn-ghost"
+            className="shrink-0 rounded-full p-2.5 text-muted hover:text-ink hover:bg-sunken transition-colors"
             aria-label="Spraakinvoer"
           >
             <Mic className="h-4 w-4" />
@@ -505,9 +500,14 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Vraag, vent, of dump een gedachte…"
-          className="flex-1 rounded-xl bg-surface border border-line px-4 py-3 text-sm outline-none focus:border-prjct/60"
+          className="flex-1 bg-transparent outline-none text-sm px-2"
         />
-        <button type="submit" className="btn-primary px-4" disabled={!input.trim()}>
+        <button
+          type="submit"
+          className="shrink-0 rounded-full bg-forest text-canvas p-2.5 disabled:opacity-30 transition-opacity"
+          disabled={!input.trim()}
+          aria-label="Versturen"
+        >
           <Send className="h-4 w-4" />
         </button>
       </form>
