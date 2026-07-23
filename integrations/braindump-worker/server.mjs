@@ -64,7 +64,14 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 // /etc/secrets/<name>). Absent by default — every call below degrades to an
 // unauthenticated request, same as today, when this path doesn't exist.
 const YT_COOKIES_PATH = process.env.YT_COOKIES_PATH || '/etc/secrets/youtube-cookies.txt'
-const cookieArgs = () => (existsSync(YT_COOKIES_PATH) ? ['--cookies', YT_COOKIES_PATH] : [])
+const HAS_YT_COOKIES = existsSync(YT_COOKIES_PATH)
+const cookieArgs = () => (HAS_YT_COOKIES ? ['--cookies', YT_COOKIES_PATH] : [])
+// Logged once at boot (not per-request) so a "Sign in to confirm you're not
+// a bot" error later can be told apart at a glance: file missing entirely
+// (a Render Secret File / path misconfiguration — fixable in the dashboard,
+// no code change needed) vs. file present but yt-dlp still rejecting it
+// (a genuinely expired session — needs a fresh cookies.txt export).
+console.log(`[braindump-worker] YouTube cookies file ${HAS_YT_COOKIES ? 'FOUND' : 'NOT FOUND'} at ${YT_COOKIES_PATH}`)
 
 const GROQ_MODEL = 'whisper-large-v3-turbo'
 const ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001'
