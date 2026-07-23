@@ -1,6 +1,7 @@
-import { Check } from 'lucide-react'
+import { Check, Video } from 'lucide-react'
 import type { Domain } from '../types'
 import { DOMAIN_META } from '../domains'
+import { DomainChip } from './ui'
 
 /**
  * RICK-OS shared component set — the actual production versions of the
@@ -226,6 +227,7 @@ export function ScheduleCard({
   urgencyLabel,
   title,
   meta,
+  badge,
   onAction,
   actionLabel = 'Bekijk',
 }: {
@@ -233,16 +235,21 @@ export function ScheduleCard({
   urgencyLabel: string
   title: string
   meta?: string
+  /** corner chip — a real count tied to the nudge, e.g. "3d te laat" */
+  badge?: React.ReactNode
   onAction?: () => void
   actionLabel?: string
 }) {
   return (
     <div className="card p-4 w-[260px] shrink-0 flex flex-col justify-between gap-6 min-h-[152px]">
       <div>
-        <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide ${TONE_TEXT[tone]}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${TONE_BG[tone].replace('/15', '')}`} />
-          {urgencyLabel}
-        </span>
+        <div className="flex items-center justify-between gap-2">
+          <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide ${TONE_TEXT[tone]}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${TONE_BG[tone].replace('/15', '')}`} />
+            {urgencyLabel}
+          </span>
+          {badge && <span className="chip bg-sunken text-muted shrink-0 !py-0.5">{badge}</span>}
+        </div>
         <p className="text-sm font-medium leading-snug mt-2 text-ink">{title}</p>
         {meta && <p className="text-xs text-faint mt-1">{meta}</p>}
       </div>
@@ -251,6 +258,65 @@ export function ScheduleCard({
           {actionLabel}
         </button>
       )}
+    </div>
+  )
+}
+
+/**
+ * Horizontal-scroll agenda card — one of today's schedule blocks: how-soon
+ * urgency (color + label), the clock time, the title, its domain tag, and a
+ * single one-tap action (complete). Mirrors ScheduleCard's shape so the
+ * "Prioriteiten" and "Vandaag" rows read as the same family of card.
+ */
+export function AgendaCard({
+  domain,
+  title,
+  start,
+  status,
+  tone,
+  urgencyLabel,
+  isCall,
+  onComplete,
+}: {
+  domain: Domain
+  title: string
+  start: string
+  status: 'planned' | 'done' | 'skipped'
+  tone: Tone
+  urgencyLabel: string
+  /** swaps the action glyph for a video icon — a call/meeting, not a task */
+  isCall?: boolean
+  onComplete?: () => void
+}) {
+  const done = status === 'done'
+  return (
+    <div className="card p-4 w-[220px] shrink-0 flex flex-col justify-between gap-8 min-h-[176px]">
+      <div className="flex items-start justify-between gap-2">
+        <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide ${done ? 'text-faint' : TONE_TEXT[tone]}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${done ? 'bg-line' : TONE_BG[tone].replace('/15', '')}`} />
+          {done ? 'klaar' : urgencyLabel}
+        </span>
+        <span className="chip bg-sunken text-ink-soft shrink-0 tabular-nums">{start}</span>
+      </div>
+      <p className={`text-lg leading-snug ${done ? 'line-through text-faint' : 'text-ink font-medium'}`}>{title}</p>
+      <div className="flex items-center justify-between gap-2">
+        <DomainChip domain={domain} small />
+        {done ? (
+          <span className="shrink-0 h-9 w-9 rounded-full bg-buurtkaart/15 text-buurtkaart-deep flex items-center justify-center">
+            <Check className="h-4 w-4" strokeWidth={2.5} />
+          </span>
+        ) : (
+          onComplete && (
+            <button
+              onClick={onComplete}
+              aria-label="Afronden"
+              className="shrink-0 h-9 w-9 rounded-full bg-ink text-canvas flex items-center justify-center outline-none transition-[background-color,transform] duration-150 hover:bg-ink/85 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+            >
+              {isCall ? <Video className="h-4 w-4" /> : <Check className="h-4 w-4" strokeWidth={2.5} />}
+            </button>
+          )
+        )}
+      </div>
     </div>
   )
 }
@@ -280,7 +346,7 @@ export function TaskRow({
   onToggle,
 }: {
   title: string
-  meta?: string
+  meta?: React.ReactNode
   priority: 'high' | 'medium' | 'low'
   checked: boolean
   onToggle: () => void

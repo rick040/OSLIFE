@@ -6,25 +6,33 @@ import { dueLabel } from '../lib/dates'
 import { OPENING_BALANCE } from '../mockData'
 import { clientHealth } from '../lib/crm/followUp'
 import { classifyImportance } from '../lib/crm/emailClassify'
-import { Empty, SetupHint, Sparkline, Ring } from '../components/ui'
-import { GreetingHeader, HeroStat, MetricTile, GoalRow, DetailCard, ScheduleCard, TaskRow, type Tone } from '../components/v3'
+import { Empty, SetupHint, Sparkline, Ring, DomainChip } from '../components/ui'
+import { GreetingHeader, HeroStat, MetricTile, GoalRow, ScheduleCard, AgendaCard, TaskRow, type Tone } from '../components/v3'
 import { useWeather, weatherMeta } from '../hooks/useWeather'
 import { storeNudgeToDash, type DashNudge, type NudgeTone } from '../components/NudgeCard'
 import { MetricDetailDialog, type MetricPoint } from '../components/MetricDetailDialog'
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip } from 'recharts'
 import { CHART_TIP, AXIS_TICK_11 } from '../components/chart'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu'
+import {
   CheckCircle2,
-  SkipForward,
   Wallet,
   FolderKanban,
   Mail,
   ArrowRight,
   Receipt,
-  CalendarRange,
+  CalendarDays,
   CheckSquare,
   Target,
   Activity,
+  Bell,
 } from 'lucide-react'
 
 import { eur0 as eur, fmtGoalValue } from '../lib/format'
@@ -38,6 +46,33 @@ function amsterdamHour(): number {
   }).format(new Date())
   return parseInt(h, 10) % 24
 }
+
+/** Minutes since Amsterdam midnight, for comparing against a block's "HH:MM" start. */
+function amsterdamMinutesNow(): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+    timeZone: 'Europe/Amsterdam',
+  }).formatToParts(new Date())
+  const h = Number(parts.find((p) => p.type === 'hour')?.value ?? 0)
+  const m = Number(parts.find((p) => p.type === 'minute')?.value ?? 0)
+  return h * 60 + m
+}
+
+/** How soon a block starts — feeds both the urgency dot color and its label. */
+function blockUrgency(start: string): { tone: Tone; label: string } {
+  const [h, m] = start.split(':').map(Number)
+  const diff = h * 60 + m - amsterdamMinutesNow()
+  if (diff <= 0) return { tone: 'danger', label: 'nu bezig' }
+  if (diff < 60) return { tone: 'danger', label: `${diff} minuten` }
+  const hours = Math.round(diff / 60)
+  if (hours <= 3) return { tone: 'warning', label: `${hours} uur` }
+  return { tone: 'success', label: `${hours} uur` }
+}
+
+/** Cosmetic only — swaps the agenda card's action glyph for a video icon. */
+const isCallBlock = (title: string) => /\b(call|bel|overleg|meeting)\b/i.test(title)
 
 const NUDGE_TONE: Record<NudgeTone, Tone> = { urgent: 'danger', attention: 'warning', calm: 'success' }
 
@@ -58,15 +93,18 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     dogReminders,
     clients,
     completeBlock,
-    skipBlock,
     tickHabit,
     toggleMilestone,
     markEmailRead,
     toggleProjectTask,
+    closeThread,
+    toggleDogReminder,
   } = useStore()
 
   const today = healthDays.find((d) => d.date === TODAY) ?? healthDays[healthDays.length - 1]
-  const nextBlock = blocks.filter((b) => b.status === 'planned')[0]
+  // Vandaag: every scheduled block today, soonest first — skipped ones drop
+  // off the agenda row since they're no longer part of today's actual plan.
+  const todaysBlocks = [...blocks].filter((b) => b.status !== 'skipped').sort((a, b) => a.start.localeCompare(b.start))
 
   // Step sync from the phone can land hours after sleep/energy are already
   // logged — a bare "0.0k" then reads as "you haven't moved" rather than
@@ -185,6 +223,18 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   // of money.
   const clientsNeedingFollowUp = clients.filter((c) => clientHealth(c, TODAY) === 'red')
 
+  // Niet vergeten: date-bound reminders — dog care plus any open thread with
+  // a real due date — due within a few days or already overdue. Same
+  // object-permanence concern as the priority nudges above, surfaced here as
+  // a checkable list instead of a single line.
+  const upcomingReminders = [
+    ...dogReminders.filter((r) => !r.done).map((r) => ({ id: r.id, title: r.title, due: r.due, kind: 'dog' as const })),
+    ...openThreads.filter((t) => t.due).map((t) => ({ id: t.id, title: t.title, due: t.due as string, kind: 'thread' as const })),
+  ]
+    .filter((r) => daysBetween(TODAY, r.due) <= 3)
+    .sort((a, b) => daysBetween(TODAY, a.due) - daysBetween(TODAY, b.due))
+    .slice(0, 4)
+
   // Prioriteiten: every currently-true thing that actually needs attention,
   // most urgent first — not just the single loudest one. A Reflect-authored
   // nudge (if the nightly pass has run) always leads; live-derived signals
@@ -200,6 +250,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         reason: 'verlopen betaling',
         tone: 'urgent',
         cta: { label: 'Naar Geld', view: 'money' },
+        badge: overduePay[0].due ? `${-daysBetween(TODAY, overduePay[0].due)}d te laat` : undefined,
       })
     if (overdueProjects.length)
       list.push({
@@ -208,6 +259,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         reason: 'over de deadline',
         tone: 'urgent',
         cta: { label: 'Naar Projecten', view: 'projects' },
+        badge: overdueProjects[0].deadline ? `${-daysBetween(TODAY, overdueProjects[0].deadline)}d te laat` : undefined,
       })
     if (today && today.date === TODAY && today.sleepHours > 0 && today.sleepHours < 6.5)
       list.push({
@@ -300,35 +352,79 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
 
   return (
     <div className="flex flex-col gap-5">
-      {/* ── greeting — the one place a full sentence lives, inline-bold stats ── */}
-      <div className="flex items-start justify-between gap-4">
-        <GreetingHeader
-          eyebrow={fmtDate(TODAY)}
-          name={`${greeting}, Rick.`}
-          sentence={
-            <>
-              Je hebt vandaag <b>{focusTasks.length} taken</b>
-              {blocks.length > 0 && (
-                <>
-                  {' '}
-                  en <b>{blocks.filter((b) => b.status === 'planned').length} geplande blokken</b>
-                </>
-              )}
-              {today && (
-                <>
-                  , en je energie staat op <b>{today.energy}/5</b>
-                </>
-              )}
-              .
-            </>
-          }
-        />
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted shrink-0 mt-1">
+      {/* ── utility bar — weather, day, notifications ────────────────────────── */}
+      <div className="flex items-center justify-between gap-3">
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted">
           <WeatherIcon className="h-4 w-4" />
           {locationLabel}
           {weather.tempC != null && ` · ${weather.tempC}°C`}
         </span>
+        <div className="flex items-center gap-2">
+          <span className="h-5 w-px bg-line" aria-hidden />
+          <button
+            onClick={() => onNav('daybuilder')}
+            aria-label="Naar dagplanning"
+            className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-sunken text-ink-soft outline-none transition-colors hover:bg-line focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+          >
+            <CalendarDays className="h-4 w-4" />
+            <span className="absolute -bottom-1 -right-1 flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-ink px-0.5 text-[9px] font-medium tabular-nums text-canvas">
+              {Number(TODAY.slice(8, 10))}
+            </span>
+          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                aria-label="Meldingen"
+                className="relative flex h-8 w-8 items-center justify-center rounded-lg bg-sunken text-ink-soft outline-none transition-colors hover:bg-line focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+              >
+                <Bell className="h-4 w-4" />
+                {priorities.length > 0 && <span className="absolute right-1.5 top-1 h-1.5 w-1.5 rounded-full bg-cross" />}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72">
+              <DropdownMenuLabel>Prioriteiten vandaag</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {priorities.length ? (
+                priorities.map((p, i) => (
+                  <DropdownMenuItem
+                    key={i}
+                    onClick={() => p.cta && onNav(p.cta.view)}
+                    className="flex flex-col items-start gap-0.5 whitespace-normal"
+                  >
+                    <span className="text-[11px] uppercase tracking-wide text-faint">{p.reason}</span>
+                    <span className="text-sm leading-snug">{p.text}</span>
+                  </DropdownMenuItem>
+                ))
+              ) : (
+                <DropdownMenuItem disabled>Niks openstaand — mooie dag 🎉</DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
+
+      {/* ── greeting — the one place a full sentence lives, inline-bold stats ── */}
+      <GreetingHeader
+        eyebrow={fmtDate(TODAY)}
+        name={`${greeting}, Rick.`}
+        sentence={
+          <>
+            Je hebt vandaag <b>{focusTasks.length} taken</b>
+            {blocks.length > 0 && (
+              <>
+                {' '}
+                en <b>{blocks.filter((b) => b.status === 'planned').length} geplande blokken</b>
+              </>
+            )}
+            {today && (
+              <>
+                , en je energie staat op <b>{today.energy}/5</b>
+              </>
+            )}
+            .
+          </>
+        }
+      />
 
       {/* ── priorities — horizontal carousel, most urgent first ─────────────── */}
       {priorities.length > 0 && (
@@ -341,6 +437,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
                 tone={NUDGE_TONE[p.tone]}
                 urgencyLabel={p.reason}
                 title={p.text}
+                badge={p.badge}
                 onAction={p.cta ? () => onNav(p.cta!.view) : undefined}
                 actionLabel={p.cta?.label}
               />
@@ -349,30 +446,62 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         </div>
       )}
 
-      {/* ── focus: the one thing to act on right now, with real actions ─────── */}
-      <DetailCard
-        domain={nextBlock?.domain}
-        title={
-          nextBlock ? nextBlock.title : blocks.length ? 'Niks meer gepland vandaag 🎉' : 'Nog niks ingepland vandaag'
-        }
-        meta={nextBlock ? `${nextBlock.start}–${nextBlock.end}` : undefined}
-        actions={
-          nextBlock ? (
-            <>
-              <button className="btn-primary !py-1.5 !px-3 text-xs" onClick={() => completeBlock(nextBlock.id)}>
-                <CheckCircle2 className="h-3.5 w-3.5" /> Klaar
-              </button>
-              <button className="btn-ghost !py-1.5 !px-3 text-xs" onClick={() => skipBlock(nextBlock.id)}>
-                <SkipForward className="h-3.5 w-3.5" /> Overslaan
-              </button>
-            </>
-          ) : !blocks.length ? (
-            <button className="btn-ghost !py-1.5 !px-3 text-xs" onClick={() => onNav('daybuilder')}>
-              <CalendarRange className="h-3.5 w-3.5" /> Bouw je dag
-            </button>
-          ) : undefined
-        }
-      />
+      {/* ── vandaag: every scheduled block today, horizontal, soonest first ─── */}
+      {todaysBlocks.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted px-1">Vandaag</p>
+          <div className="flex gap-2.5 overflow-x-auto pb-1 -mx-1 px-1">
+            {todaysBlocks.map((b) => {
+              const urgency = blockUrgency(b.start)
+              return (
+                <AgendaCard
+                  key={b.id}
+                  domain={b.domain}
+                  title={b.title}
+                  start={b.start}
+                  status={b.status}
+                  tone={urgency.tone}
+                  urgencyLabel={urgency.label}
+                  isCall={isCallBlock(b.title)}
+                  onComplete={b.status === 'planned' ? () => completeBlock(b.id) : undefined}
+                />
+              )
+            })}
+          </div>
+        </div>
+      ) : (
+        <SetupHint icon={CalendarDays} title="Nog niks ingepland vandaag" cta="Bouw je dag" onCta={() => onNav('daybuilder')}>
+          Laat de planner je dag vullen met taken, routines en pauzes.
+        </SetupHint>
+      )}
+
+      {/* ── niet vergeten: date-bound reminders, most overdue first ─────────── */}
+      {upcomingReminders.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted px-1">Niet vergeten</p>
+          <div className="flex flex-col gap-2">
+            {upcomingReminders.map((r) => {
+              const days = daysBetween(TODAY, r.due)
+              const priority = days < 0 ? 'high' : days <= 1 ? 'medium' : 'low'
+              return (
+                <TaskRow
+                  key={r.id}
+                  title={r.title}
+                  meta={
+                    <>
+                      <Bell className="h-3 w-3" />
+                      {days < 0 ? `${-days}d te laat` : days === 0 ? 'vandaag' : `${days} dagen`}
+                    </>
+                  }
+                  priority={priority}
+                  checked={false}
+                  onToggle={() => (r.kind === 'dog' ? toggleDogReminder(r.id) : closeThread(r.id))}
+                />
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── hero: whatever's actually most pressing today earns the one giant-
           number slot — overdue money first, vitals only as the calm-day
@@ -517,31 +646,41 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         </div>
       )}
 
-      {/* ── tasks due today — the second focal point after the priority card ── */}
+      {/* ── tasks due today — checklist + a real count, mirroring the priority
+          cards' number treatment above ────────────────────────────────────── */}
       {assignedToday > 0 && (
-        <div className="card p-4 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <p className="text-base font-medium text-ink">Vandaag afmaken</p>
-            <span className="text-sm text-muted tabular-nums">{doneToday.length}/{assignedToday}</span>
-          </div>
-          {focusTasks.length > 0 && (
-            <div className="flex flex-col gap-2">
-              {focusTasks.map((t) => {
-                const p = projectById.get(t.projectId)
-                const due = dueLabel(t.dueDate ?? null, { prefix: 'deadline ' })
-                return (
-                  <TaskRow
-                    key={t.id}
-                    title={t.name}
-                    meta={p?.name}
-                    priority={due.overdue ? 'high' : 'medium'}
-                    checked={false}
-                    onToggle={() => toggleProjectTask(t.id, true)}
-                  />
-                )
-              })}
+        <div className="card p-4 flex items-stretch justify-between gap-4">
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-cross-deep">
+                <span className="h-1.5 w-1.5 rounded-full bg-cross" />
+                Vandaag afmaken
+              </span>
+              <span className="text-xs text-muted tabular-nums">{doneToday.length}/{assignedToday} klaar</span>
             </div>
-          )}
+            {focusTasks.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {focusTasks.map((t) => {
+                  const p = projectById.get(t.projectId)
+                  const due = dueLabel(t.dueDate ?? null, { prefix: 'deadline ' })
+                  return (
+                    <TaskRow
+                      key={t.id}
+                      title={t.name}
+                      meta={p?.name}
+                      priority={due.overdue ? 'high' : 'medium'}
+                      checked={false}
+                      onToggle={() => toggleProjectTask(t.id, true)}
+                    />
+                  )
+                })}
+              </div>
+            )}
+          </div>
+          <div className="flex shrink-0 flex-col items-center justify-center border-l border-line pl-4">
+            <span className="text-4xl font-medium tabular-nums leading-none text-ink">{dueToday.length}</span>
+            <span className="mt-1 whitespace-nowrap text-[10px] uppercase tracking-wider text-faint">taken</span>
+          </div>
         </div>
       )}
 
