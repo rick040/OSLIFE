@@ -55,9 +55,22 @@ export interface YoutubeMeta {
   thumb: string | null;
 }
 
+/**
+ * Title/channel via oEmbed. Sent with the same browser-ish headers as the
+ * watch-page fetch — a bare, header-less fetch() (what this used to be)
+ * reads as more bot-like than the parallel watch-page request and appears to
+ * get quietly rate-limited/blocked under load, which silently produced a
+ * `{title: null, author: null, thumb: null}` note with no visible error.
+ */
 export async function fetchYoutubeMeta(url: string): Promise<YoutubeMeta> {
   try {
-    const res = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url)}`);
+    const res = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(url)}`, {
+      headers: {
+        "user-agent": BROWSER_UA,
+        "accept-language": "en-US,en;q=0.9",
+        cookie: "CONSENT=YES+1",
+      },
+    });
     if (res.ok) {
       const d = await res.json();
       return { title: d.title ?? null, author: d.author_name ?? null, thumb: d.thumbnail_url ?? null };
@@ -69,6 +82,16 @@ export async function fetchYoutubeMeta(url: string): Promise<YoutubeMeta> {
 export function extractYoutubeId(url: string): string | null {
   const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/))([\w-]{11})/);
   return m ? m[1] : null;
+}
+
+/**
+ * Every indexed YouTube video serves a thumbnail at this predictable CDN
+ * path — no network call, no oEmbed dependency, so it can't fail the way a
+ * fetch can. Preferred over oEmbed's thumbnail_url whenever a video id is
+ * available; oEmbed's thumb is only a fallback for it.
+ */
+export function youtubeThumbnailUrl(videoId: string): string {
+  return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 }
 
 interface CaptionTrack {

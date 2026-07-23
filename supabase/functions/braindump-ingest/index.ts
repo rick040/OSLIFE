@@ -38,7 +38,7 @@ import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
 import { ANTHROPIC_API, MODEL, anthropicHeaders, extractText, parseJsonBlock } from "../_shared/anthropic.ts";
 import { CORS, SUPABASE_URL, corsPreflight, jsonResponder } from "../_shared/http.ts";
 import { extractArticle, extractSocialCaption, fetchText, htmlToText, parseOG } from "../_shared/webpage.ts";
-import { extractYoutubeId, fetchYoutubeMeta, fetchYoutubeTranscript } from "../_shared/youtube.ts";
+import { extractYoutubeId, fetchYoutubeMeta, fetchYoutubeTranscript, youtubeThumbnailUrl } from "../_shared/youtube.ts";
 
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
@@ -375,10 +375,12 @@ async function extractPptxText(bytes: Uint8Array): Promise<string> {
  */
 async function processYoutube(apiKey: string, url: string): Promise<ProcessResult | null> {
   const videoId = extractYoutubeId(url);
-  const [{ title, author, thumb }, transcript] = await Promise.all([
+  const [{ title, author, thumb: oembedThumb }, transcript] = await Promise.all([
     fetchYoutubeMeta(url),
     videoId ? fetchYoutubeTranscript(videoId) : Promise.resolve(null),
   ]);
+  // The predictable CDN thumbnail never depends on oEmbed succeeding.
+  const thumb = videoId ? youtubeThumbnailUrl(videoId) : oembedThumb;
 
   if (transcript) {
     const blocks: ContentBlock[] = [{
