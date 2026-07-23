@@ -374,7 +374,12 @@ async function processYoutube(apiKey: string, url: string): Promise<ProcessResul
     ].filter(Boolean).join("\n"),
   }];
   const note = await convert(apiKey, blocks);
-  return note ? { note, thumbUrl: thumb, meta: { url, transcript: !!transcript } } : null;
+  // YouTube's thumbnail CDN is deterministic from the video id — prefer it
+  // over oEmbed's own thumbnail field (still a fallback for a malformed/
+  // shortened url extractYoutubeId() can't parse), so a thumbnail never
+  // silently depends on oEmbed alone succeeding.
+  const deterministicThumb = videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null;
+  return note ? { note, thumbUrl: deterministicThumb ?? thumb, meta: { url, transcript: !!transcript } } : null;
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────────

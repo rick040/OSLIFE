@@ -41,6 +41,19 @@ import { createClient } from '@supabase/supabase-js'
 
 const execFileP = promisify(execFile)
 
+/**
+ * execFile's promisified rejection carries the real yt-dlp output on
+ * .stderr/.stdout (the .message is often just "Command failed with exit
+ * code 1"). Pulling this out is what actually distinguishes "expired
+ * cookies.txt", "yt-dlp itself is out of date" (nsig/signature extraction
+ * errors), and "this video really has no captions" from each other —
+ * before this, all three looked identical: a silently-swallowed failure.
+ */
+function execErrorDetail(err) {
+  const out = [err?.stderr, err?.stdout].filter(Boolean).join('\n').trim()
+  return out || err?.message || String(err)
+}
+
 const PORT = Number(process.env.PORT || 8080)
 const WORKER_SECRET = process.env.WORKER_SECRET || ''
 const GROQ_API_KEY = process.env.GROQ_API_KEY || ''
@@ -69,6 +82,26 @@ const VALID_SENTIMENTS = ['positive', 'neutral', 'negative', 'stressed']
 // capture already gets from braindump-ingest itself.
 const VALID_LEARNING_CATEGORIES = ['life_lesson', 'way_of_living', 'business_system', 'business_practice', 'implementation', 'pet']
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36'
+
+/** Same id-extraction regex as braindump-ingest's _shared/youtube.ts. */
+function extractYoutubeId(url) {
+  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/))([\w-]{11})/)
+  return m ? m[1] : null
+}
+
+/**
+ * YouTube's thumbnail CDN URL is fully deterministic from the video id — no
+ * network call needed. Used instead of relying on yt-dlp's own metadata dump
+ * (fetchYoutubeMeta below) for the thumbnail specifically: that call is a
+ * separate, heavier yt-dlp invocation than the caption fetch, and can fail
+ * (bot-check, transient error) independently of a successful transcript —
+ * exactly what happened to a real capture ("Rest vs Recovery: How to
+ * Actually Feel Energized", caption_source=youtube, thumb_url left null).
+ */
+function youtubeThumbUrl(url) {
+  const id = extractYoutubeId(url)
+  return id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : null
+}
 
 // Shared "wiki" field instructions, appended to every system prompt below —
 // same selection criteria as braindump-ingest/index.ts's CONVERT_SYSTEM.
@@ -191,7 +224,7 @@ async function noteFromYoutubeMetaOnly(url) {
   const text = (Array.isArray(data.content) ? data.content : []).filter((b) => b.type === 'text').map((b) => b.text).join('\n')
   const note = parseNote(text)
   if (!note) throw new Error('convert failed')
-  return { note, thumbUrl: meta.thumbnail }
+  return { note, thumbUrl: youtubeThumbUrl(url) ?? meta.thumbnail }
 }
 
 /** Video/channel metadata via yt-dlp's own JSON dump. Best-effort — {} on failure. */
@@ -473,7 +506,13 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
 
     if (sourceKind === 'youtube' && sourceUrl) {
       meta = await fetchYoutubeMeta(sourceUrl)
-      transcript = await fetchYoutubeCaptions(sourceUrl, dir).catch(() => null)
+      transcript = await fetchYoutubeCaptions(sourceUrl, dir).catch((err) => {
+        // Previously silently swallowed — this was the one gap that made it
+        // impossible to tell a stale yt-dlp binary / expired cookies apart
+        // from "this video genuinely has no captions" after the fact.
+        console.error(`[braindump-worker] youtube captions failed for ${sourceUrl}:`, execErrorDetail(err))
+        return null
+      })
       if (transcript) captionSource = 'youtube'
     }
 
@@ -485,6 +524,7 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
         meta = { ...fetched.meta, ...meta } // youtube meta (if already fetched) wins
         transcript = await transcribeFile(fetched.audioPath)
       } catch (err) {
+        console.error(`[braindump-worker] audio fetch/transcribe failed for ${sourceKind} ${sourceUrl || storagePath}:`, execErrorDetail(err))
         // Instagram/Pinterest often isn't a video at all (a plain photo
         // post) — yt-dlp fails to find a downloadable stream, so describe
         // the og:image instead of failing the whole entry.
@@ -496,9 +536,11 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
           return
         }
         // YouTube with no captions whose audio download also failed (most
-        // often yt-dlp's bot-check) — degrade to a metadata-only note via
-        // oEmbed (a plain fetch, unaffected by that bot-check) instead of
-        // leaving the entry stuck on a raw yt-dlp error.
+        // often yt-dlp's bot-check, or an expired cookies.txt / a yt-dlp
+        // binary that's fallen behind YouTube's latest anti-bot changes —
+        // see execErrorDetail's log line above for which one) — degrade to
+        // a metadata-only note via oEmbed (a plain fetch, unaffected by that
+        // bot-check) instead of leaving the entry stuck on a raw yt-dlp error.
         if (sourceKind === 'youtube' && sourceUrl) {
           const fallback = await noteFromYoutubeMetaOnly(sourceUrl)
           await finishReady(entryId, userId, tier, fallback.note, {
@@ -519,7 +561,7 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
     }
 
     await finishReady(entryId, userId, tier, note, {
-      thumbUrl: meta.thumbnail ?? null,
+      thumbUrl: (sourceKind === 'youtube' && sourceUrl ? youtubeThumbUrl(sourceUrl) : null) ?? meta.thumbnail ?? null,
       meta: { transcript: true, captionSource, channel: meta.channel ?? null, duration: meta.duration ?? null, url: sourceUrl ?? null },
       contentHash,
       url: sourceUrl ?? null,
