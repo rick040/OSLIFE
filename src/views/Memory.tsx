@@ -39,6 +39,8 @@ const INFERENCE_TYPE_LABEL: Record<string, string> = {
   project_stall: 'Project ligt stil',
   health_condition_promotion: 'Dossier-voorstel',
   repeat_location_pattern: 'Terugkerend locatiepatroon',
+  budget_cap_suggestion: 'Budgetadvies',
+  theme_detected: 'Terugkerend thema',
 }
 
 function InferenceCard({ item, onResolve }: {

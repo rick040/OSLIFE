@@ -52,6 +52,8 @@ import type {
   AdminItem,
   HealthCondition,
   Medication,
+  BudgetCap,
+  ProfileFact,
   MemorySummary,
   BusinessIdea,
   IdeaSource,
@@ -73,6 +75,7 @@ import { runReflect, computeCorrelations, computeAnomalies, buildNarrativePrompt
 import { askBrain } from './heyra/brainClient'
 import { buildFinanceCoachPrompt } from './finance/financeCoach'
 import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
+import type { CardTemplate, ActionKind, ActionFieldType } from './heyra/actions/types'
 import { proposeGoals as proposeGoalsAI } from './heyra/goals'
 import { buildWeekPlan, weekDates } from './heyra/planner'
 import {
@@ -210,6 +213,9 @@ import {
   updateHealthConditionRow,
   fetchMedications,
   createMedicationRow,
+  fetchBudgetCaps,
+  updateBudgetCapRow,
+  fetchProfileFacts,
   fetchSummaries,
   forgetRecord as forgetRecordApi,
   fetchBusinessIdeas,
@@ -217,6 +223,8 @@ import {
   updateBusinessIdeaRow,
   deleteBusinessIdeaRow,
   invokeIdeaElaborate,
+  fetchCardTemplates,
+  upsertCardTemplate,
 } from './lib/supabase'
 
 // The single Realtime channel opened by loadLiveData(). Held at module scope so
@@ -299,11 +307,18 @@ interface State {
   adminItems: AdminItem[]
   healthConditions: HealthCondition[]
   medications: Medication[]
+  budgetCaps: BudgetCap[]
+  profileFacts: ProfileFact[]
   summaries: MemorySummary[]
   businessIdeas: BusinessIdea[]
+  /** Cached extra fields per HEYRA action kind (proposeAction.ts) — see recordCardTemplateUsage. */
+  cardTemplates: CardTemplate[]
   settings: AppSettings
   dataSource: 'mock' | 'live'
   isLoading: boolean
+
+  /** Merges newly-seen extra fields (beyond an action kind's hard-coded baseline) into its cached template, incrementing seenCount so a recurring one keeps a stable label/type instead of being re-guessed every time. Best-effort, fire-and-forget persistence. */
+  recordCardTemplateUsage: (templateKey: string, kind: ActionKind, seen: { key: string; label: string; type: ActionFieldType }[]) => void
 
   // HEYRA learns as we speak — distil durable facts from one exchange, merge
   // them into the persisted set and return only the genuinely NEW facts so the
@@ -376,6 +391,7 @@ interface State {
   resolveInference: (id: string, decision: InferenceDecision) => Promise<string | null>
   updateHealthCondition: (id: string, patch: Partial<HealthCondition>) => Promise<void>
   createMedication: (m: Omit<Medication, 'id'>) => Promise<void>
+  updateBudgetCap: (id: string, patch: Partial<BudgetCap>) => Promise<void>
 
   // Kennisbank: load the wiki suggest-queue and resolve one. On confirm, the
   // entry also gets materialised as a real .md file in the vault.
@@ -620,8 +636,11 @@ const seed = () => ({
   adminItems: [] as AdminItem[],
   healthConditions: [] as HealthCondition[],
   medications: [] as Medication[],
+  budgetCaps: [] as BudgetCap[],
+  profileFacts: [] as ProfileFact[],
   summaries: [] as MemorySummary[],
   businessIdeas: [] as BusinessIdea[],
+  cardTemplates: [] as CardTemplate[],
   settings: { hourlyRate: 0 } as AppSettings,
   dataSource: 'mock' as const,
   isLoading: true,
@@ -862,6 +881,7 @@ export const useStore = create<State>()(
         if (rawText) meta.rawText = rawText
         if (input.storagePath) meta.storagePath = input.storagePath
         if (input.domain) meta.domainHint = input.domain
+        if (input.sourceTag) meta.source = input.sourceTag
 
         const row = await insertBraindumpEntry({
           sourceKind: input.sourceKind,
@@ -1065,6 +1085,35 @@ export const useStore = create<State>()(
       forgetLearnedFact: (id) => {
         set((s) => ({ learnedFacts: s.learnedFacts.filter((f) => f.id !== id) }))
         void persistLearnedFacts(get().learnedFacts)
+      },
+
+      recordCardTemplateUsage: (templateKey, kind, seen) => {
+        if (!seen.length) return
+        const existing = get().cardTemplates.find((t) => t.templateKey === templateKey)
+        const extraFields = [...(existing?.extraFields ?? [])]
+        for (const s of seen) {
+          const i = extraFields.findIndex((f) => f.key === s.key)
+          // A recurring key keeps its FIRST-seen label/type (stable across
+          // occurrences) and just bumps seenCount — a brand-new key is added
+          // with the label/type guessed for this occurrence.
+          if (i >= 0) extraFields[i] = { ...extraFields[i], seenCount: extraFields[i].seenCount + 1 }
+          else extraFields.push({ key: s.key, label: s.label, type: s.type, seenCount: 1 })
+        }
+        const useCount = (existing?.useCount ?? 0) + 1
+        const template: CardTemplate = {
+          id: existing?.id ?? uid('tpl'),
+          templateKey,
+          kind,
+          extraFields,
+          useCount,
+          lastUsedAt: new Date().toISOString(),
+        }
+        set((s) => ({
+          cardTemplates: existing
+            ? s.cardTemplates.map((t) => (t.templateKey === templateKey ? template : t))
+            : [template, ...s.cardTemplates],
+        }))
+        void upsertCardTemplate({ templateKey, kind, extraFields, useCount })
       },
 
       addTask: (draft) => {
@@ -2363,7 +2412,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, medications, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -2382,12 +2431,15 @@ export const useStore = create<State>()(
             fetchAdminItems(),
             fetchHealthConditions(),
             fetchMedications(),
+            fetchBudgetCaps(),
+            fetchProfileFacts(),
             fetchSummaries(),
             fetchCleaningLog(),
             fetchBusinessIdeas(),
             fetchHoldings(),
             fetchBalanceCheckpoints(),
             fetchTasks(),
+            fetchCardTemplates(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -2439,11 +2491,14 @@ export const useStore = create<State>()(
             adminItems,
             healthConditions,
             medications,
+            budgetCaps,
+            profileFacts,
             summaries,
             cleaningLog,
             businessIdeas,
             holdings,
             balanceCheckpoints,
+            cardTemplates,
             dataSource: 'live',
             isLoading: false,
           })
@@ -2572,6 +2627,11 @@ export const useStore = create<State>()(
       createMedication: async (m) => {
         const id = await createMedicationRow(m)
         if (id) set({ medications: [...get().medications, { ...m, id }] })
+      },
+
+      updateBudgetCap: async (id, patch) => {
+        set({ budgetCaps: get().budgetCaps.map((b) => (b.id === id ? { ...b, ...patch } : b)) })
+        await updateBudgetCapRow(id, patch)
       },
 
       loadWikiEntries: async () => {

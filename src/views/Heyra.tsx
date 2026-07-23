@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useStore } from '../store'
 import { SKILLS, type AgentId } from '../heyra/skills'
-import { contextualSuggestions, followUpSuggestions, type Topic } from '../heyra/suggestions'
+import { contextualSuggestions, followUpSuggestions, actionFollowUpSuggestion, brainFollowUps, type Topic } from '../heyra/suggestions'
 import { routeMessage } from '../heyra/router'
-import { emptyMemory, remember, type ConversationMemory } from '../heyra/memory'
+import { emptyMemory, remember, rememberSuggestions, type ConversationMemory } from '../heyra/memory'
 import type { LearnedFact } from '../heyra/learning'
 import type { SearchCardData, ChartCardData, ClientIntakeDraft, IdeaCaptureDraft } from '../heyra/cards'
 import { DomainChip, SentimentChip, KindChip } from '../components/ui'
@@ -15,9 +15,11 @@ import ProjectCard from '../components/ProjectCard'
 import ClientIntakeCard, { type ClientIntakeCommitOptions, type ClientIntakeResult } from '../components/ClientIntakeCard'
 import IdeaCaptureCard from '../components/IdeaCaptureCard'
 import ActionCardView from '../components/ActionCardView'
+import VoiceInputPanel from '../components/VoiceInputPanel'
+import HeyraOrb from '../components/HeyraOrb'
 import { dispatchAction } from '../heyra/actions/registry'
 import type { ActionCard, EntityRef } from '../heyra/actions/types'
-import { Send, Sparkles, Database, Mic, MicOff, Wand2, Lightbulb, Brain } from 'lucide-react'
+import { Send, Database, Mic, Wand2, Lightbulb, Brain } from 'lucide-react'
 
 interface Msg {
   id: string
@@ -42,29 +44,29 @@ interface Msg {
   learned?: LearnedFact[]
 }
 
-// Minimal typings for the Web Speech API (not in TS lib by default).
-type SpeechRec = { start: () => void; stop: () => void; onresult: ((e: any) => void) | null; onend: (() => void) | null; lang: string; interimResults: boolean; continuous: boolean }
-
 // A brain-routed reply can take a few sequential round-trips (routing, the
 // agent's own answer, semantic recall) — a static "..." reads as "did this
 // break?" past a couple of seconds. Cheap, honest staging: we don't know the
 // real stage, but a rotating label at least signals it's still working.
 const PENDING_LABELS = ['Denkt na…', 'Zoekt in je geheugen…', 'Bijna klaar…']
 
+// A short confirmation/prompt reads well blown up to text-2xl and centered
+// (the "ambient" look); a multi-sentence answer doesn't — past this length
+// it falls back to normal readable body text instead.
+const AMBIENT_TEXT_LIMIT = 100
+
 export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
   const store = useStore()
   const [input, setInput] = useState('')
-  const [listening, setListening] = useState(false)
+  const [voicePanelOpen, setVoicePanelOpen] = useState(false)
   const [pendingLabel, setPendingLabel] = useState(PENDING_LABELS[0])
   const pendingTimers = useRef<number[]>([])
-  const recRef = useRef<SpeechRec | null>(null)
   const memoryRef = useRef<ConversationMemory>(emptyMemory())
   const [msgs, setMsgs] = useState<Msg[]>([
     {
       id: 'm0',
       role: 'heyra',
-      text:
-        'Ik lees uit je ene geheugen over ParkingYou, PRJCT, Buurtkaart en je persoonlijke leven. Vraag me iets, praat tegen me, of dump een gedachte. Hoor ik een taak, dan maak ik een taakkaart. Vraag je naar een project, cijfers of iets specifieks, dan krijg je een projectkaart, grafiek of zoekresultaat terug. En voor alles daarbuiten — iets uitleggen, meedenken, een e-mail, skill of prompt schrijven, code — schakel ik naar mijn assistent-modus, zodat je hier niet meer naar Claude hoeft.',
+      text: 'Vraag me iets, praat tegen me, of dump een gedachte.',
     },
   ])
   const endRef = useRef<HTMLDivElement>(null)
@@ -73,14 +75,20 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
   // payments, inbox, habits, Kyra and goals — whatever actually needs
   // attention today. Recomputed whenever the underlying data changes.
   const openingSuggestions = useMemo(
-    () => contextualSuggestions(store),
+    () => contextualSuggestions(store, memoryRef.current.recentSuggestions),
     [store.projects, store.threads, store.payments, store.emails, store.habits, store.dogReminders, store.clients, store.checkins, store.goals, store.milestones],
   )
   const [suggestions, setSuggestions] = useState<string[]>(openingSuggestions)
   const conversationStarted = msgs.length > 1
 
+  /** setSuggestions() + records what was shown, so the next pass can deprioritize repeats — every suggestion update should go through this, not setSuggestions directly. */
+  function showSuggestions(list: string[]) {
+    setSuggestions(list)
+    memoryRef.current = rememberSuggestions(memoryRef.current, list)
+  }
+
   useEffect(() => {
-    if (!conversationStarted) setSuggestions(openingSuggestions)
+    if (!conversationStarted) showSuggestions(openingSuggestions)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openingSuggestions, conversationStarted])
 
@@ -92,30 +100,7 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
 
   const speechSupported =
     typeof window !== 'undefined' &&
-    ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
-
-  function toggleMic() {
-    if (!speechSupported) return
-    if (listening) {
-      recRef.current?.stop()
-      return
-    }
-    const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    const rec: SpeechRec = new Ctor()
-    rec.lang = 'nl-NL'
-    rec.interimResults = true
-    rec.continuous = false
-    rec.onresult = (e: any) => {
-      const text = Array.from(e.results)
-        .map((r: any) => r[0].transcript)
-        .join('')
-      setInput(text)
-    }
-    rec.onend = () => setListening(false)
-    recRef.current = rec
-    setListening(true)
-    rec.start()
-  }
+    Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
 
   function addTaskFromCard(msgId: string, draft: TaskDraft) {
     store.addTask(draft)
@@ -212,6 +197,13 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
     patchCard(msgId, card.id, { status: 'confirmed' })
     const outcome = await dispatchAction(store, card)
     patchCard(msgId, card.id, outcome.ok ? { status: 'dispatched' } : { status: 'failed', error: outcome.error })
+
+    // A just-completed action is a stronger next-step signal than the generic
+    // topic follow-ups — surface it alongside whatever's already suggested.
+    if (outcome.ok) {
+      const followUp = actionFollowUpSuggestion(card.kind, card.entity?.label)
+      if (followUp) showSuggestions([followUp, ...suggestions.filter((s) => s !== followUp)].slice(0, 4))
+    }
   }
 
   function cancelCard(msgId: string, card: ActionCard) {
@@ -235,7 +227,7 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
     pendingTimers.current = []
   }
 
-  async function send(text: string) {
+  async function send(text: string, opts?: { viaVoice?: boolean }) {
     const clean = text.trim()
     if (!clean) return
     setInput('')
@@ -285,15 +277,29 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
             : x,
         ),
       )
-      setSuggestions(
-        followUpSuggestions(result.topic, store, {
-          domain: item.domain,
-          projectName: result.project?.name,
-          searchQuery: result.search?.query,
-          chartTitle: result.chart?.title,
-          clientName: result.clientIntake?.clientName,
-        }),
+      // Instant, rule-based follow-ups first (topic-shaped, always available) —
+      // then, best-effort, upgrade to suggestions actually grounded in what
+      // HEYRA just said (not just its topic). Never blocks the reply that
+      // already rendered; a brain failure just leaves the rule-based chips.
+      showSuggestions(
+        followUpSuggestions(
+          result.topic,
+          store,
+          {
+            domain: item.domain,
+            projectName: result.project?.name,
+            searchQuery: result.search?.query,
+            chartTitle: result.chart?.title,
+            clientName: result.clientIntake?.clientName,
+          },
+          memoryRef.current.recentSuggestions,
+        ),
       )
+      void brainFollowUps(clean, result.text, memoryRef.current.recentSuggestions)
+        .then((grounded) => {
+          if (grounded && grounded.length) showSuggestions(grounded)
+        })
+        .catch(() => {})
 
       // Learn as we speak: distil any durable fact from this exchange in the
       // background and, if HEYRA learned something new, tag the reply so the
@@ -307,6 +313,21 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
           }
         })
         .catch(() => {})
+
+      // Voice turns get a second, DURABLE log beyond the distilled facts above:
+      // the raw exchange goes into the braindump/embeddings pipeline (tagged
+      // heyra-voice) so it's fully recall-searchable via search_memory(), not
+      // just reduced to whatever fact extractFacts() happened to keep.
+      // Best-effort — never affects the reply that already rendered.
+      if (opts?.viaVoice) {
+        void store.braindumpCapture({
+          sourceKind: 'text',
+          title: 'HEYRA (spraak)',
+          text: `Rick (spraak): ${clean}\n\nHEYRA: ${result.text}`,
+          domain: item.domain,
+          sourceTag: 'heyra-voice',
+        })
+      }
     } catch {
       // Give the text back — losing what you just typed on a failed send is a
       // real dead-end, especially for a longer thought dumped in one go.
@@ -323,122 +344,27 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
     }
   }
 
+  // Every past message stays fully visible and scrollable — only the very
+  // latest HEYRA reply gets the ambient orb+big-text treatment; everything
+  // before it renders as normal, fully readable chat history so you can
+  // always scroll back and read exactly what was said.
+  const lastIdx = msgs.length - 1
+  const orbState = msgs[lastIdx]?.pending ? 'thinking' : 'idle'
+
   return (
     <div className="flex flex-col h-[calc(100vh-7rem)] max-w-3xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
-          <Sparkles className="h-5 w-5 text-ink-soft" />
-        </span>
-        <div>
-          <h1 className="text-xl font-medium text-ink">HEYRA</h1>
-          <p className="text-sm text-muted mt-0.5">antwoordt uit één geheugen</p>
-        </div>
-      </div>
+      <div className="flex-1 overflow-auto flex flex-col gap-3 pr-1">
+        {msgs.map((m, idx) => {
+          const isCurrent = idx === lastIdx && m.role === 'heyra'
 
-      <div className="flex-1 overflow-auto space-y-4 pr-1">
-        {msgs.map((m) => (
-          <div key={m.id} className={`flex ${m.role === 'rick' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] ${m.role === 'rick' ? 'order-2' : ''}`}>
-              {m.skill && (
-                <div className="mb-1.5 flex items-center gap-1.5 text-[11px] text-prjct-deep animate-fade-up">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-prjct/12 px-2 py-0.5 font-medium">
-                    <Wand2 className="h-3 w-3" /> Functie gewisseld → {SKILLS[m.skill].label}
-                  </span>
-                  {m.trigger && m.trigger !== 'imperatief' && (
-                    <span className="text-faint">herkende “{m.trigger.trim()}”</span>
-                  )}
-                </div>
-              )}
-              <div
-                className={`rounded-2xl px-4 py-2.5 text-sm whitespace-pre-line ${
-                  m.role === 'rick' ? 'bg-forest text-white rounded-br-sm' : 'card rounded-bl-sm text-ink'
-                }`}
-              >
-                {m.pending ? (
-                  <span className="inline-flex items-center gap-1.5 text-faint">
-                    <span className="inline-flex gap-1">
-                      <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse [animation-delay:150ms]" />
-                      <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse [animation-delay:300ms]" />
-                    </span>
-                    <span className="text-xs">{pendingLabel}</span>
-                  </span>
-                ) : (
-                  m.text
-                )}
-              </div>
-              {m.draft && (
-                <div className="mt-2">
-                  <TaskCard
-                    draft={m.draft}
-                    added={!!m.taskAdded}
-                    onAdd={(d) => addTaskFromCard(m.id, d)}
-                  />
-                </div>
-              )}
-              {m.search && (
-                <div className="mt-2">
-                  <SearchResultCard data={m.search} onNav={onNav} />
-                </div>
-              )}
-              {m.chart && (
-                <div className="mt-2">
-                  <DataVizCard data={m.chart} />
-                </div>
-              )}
-              {m.project && (
-                <div className="mt-2">
-                  <ProjectCard project={m.project} onNav={onNav} />
-                </div>
-              )}
-              {m.clientIntake && (
-                <div className="mt-2">
-                  <ClientIntakeCard
-                    draft={m.clientIntake}
-                    result={m.clientIntakeResult}
-                    onCommit={(draft, opts) => commitClientIntake(m.id, draft, opts)}
-                    onNav={onNav}
-                  />
-                </div>
-              )}
-              {m.ideaDraft && (
-                <div className="mt-2">
-                  <IdeaCaptureCard
-                    draft={m.ideaDraft}
-                    createdId={m.ideaCreatedId}
-                    onCommit={(draft) => commitIdea(m.id, draft)}
-                    onNav={onNav}
-                  />
-                </div>
-              )}
-              {m.cards?.map((card) => (
-                <div className="mt-2" key={card.id}>
-                  <ActionCardView
-                    card={card}
-                    onNav={onNav}
-                    onConfirm={(c) => confirmCard(m.id, c)}
-                    onCancel={(c) => cancelCard(m.id, c)}
-                    onSelectCandidate={(c, entity) => selectCardCandidate(m.id, c, entity)}
-                  />
-                </div>
-              ))}
-              {m.learned && m.learned.length > 0 && (
-                <div className="mt-1.5 animate-fade-up">
-                  <div className="card p-2.5 bg-prjct/8 border-prjct/20">
-                    <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-prjct-deep mb-1.5">
-                      <Brain className="h-3 w-3" /> onthouden — leert terwijl we praten
-                    </div>
-                    <ul className="space-y-1">
-                      {m.learned.map((f) => (
-                        <li key={f.id} className="text-xs text-muted">• {f.text}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              )}
-              {m.classified && (
-                <div className="mt-1.5 animate-fade-up">
-                  <div className="card p-2.5 bg-surface/80">
+          if (m.role === 'rick') {
+            return (
+              <div key={m.id} className="flex flex-col items-end gap-1.5">
+                <span className="max-w-[80%] rounded-2xl bg-forest text-white px-4 py-2.5 text-sm whitespace-pre-line">
+                  {m.text}
+                </span>
+                {m.classified && (
+                  <div className="card p-2.5 bg-surface/80 text-left max-w-[85%] animate-fade-up">
                     <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-faint mb-1.5">
                       <Database className="h-3 w-3" /> begrepen → in geheugen
                     </div>
@@ -449,11 +375,108 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
                     </div>
                     <p className="text-xs text-muted mt-1.5">“{m.classified.summary}”</p>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+            )
+          }
+
+          return (
+            <div key={m.id} className={isCurrent ? 'relative flex flex-col items-center gap-3 py-8 text-center' : 'flex flex-col items-start gap-2'}>
+              {isCurrent && <HeyraOrb state={orbState} />}
+              <div className={isCurrent ? 'relative z-10 w-full max-w-md mx-auto flex flex-col items-center gap-3' : 'w-full max-w-[85%]'}>
+                {m.skill && (
+                  <div className={`flex items-center gap-1.5 text-[11px] text-prjct-deep animate-fade-up ${isCurrent ? 'justify-center' : ''}`}>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-prjct/12 px-2 py-0.5 font-medium">
+                      <Wand2 className="h-3 w-3" /> Functie gewisseld → {SKILLS[m.skill].label}
+                    </span>
+                    {m.trigger && m.trigger !== 'imperatief' && (
+                      <span className="text-faint">herkende “{m.trigger.trim()}”</span>
+                    )}
+                  </div>
+                )}
+
+                {m.pending ? (
+                  isCurrent ? (
+                    <span className="text-sm text-muted animate-fade-up">{pendingLabel}</span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-2xl card px-4 py-2.5 text-faint">
+                      <span className="inline-flex gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse [animation-delay:150ms]" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse [animation-delay:300ms]" />
+                      </span>
+                      <span className="text-xs">{pendingLabel}</span>
+                    </span>
+                  )
+                ) : isCurrent && m.text.length <= AMBIENT_TEXT_LIMIT ? (
+                  <p className="text-2xl font-medium text-ink leading-snug animate-fade-up whitespace-pre-line">
+                    {m.text}
+                  </p>
+                ) : isCurrent ? (
+                  // A long answer (a summary, a detailed explanation) doesn't
+                  // read well blown up and centered — normal body text in a
+                  // soft card instead, still inside the same centered column.
+                  <div className="w-full card p-4 text-left animate-fade-up">
+                    <p className="text-sm text-ink leading-relaxed whitespace-pre-line">{m.text}</p>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl card rounded-bl-sm px-4 py-2.5 text-sm text-ink whitespace-pre-line">
+                    {m.text}
+                  </div>
+                )}
+
+                {!m.pending && (
+                  <>
+                    {m.draft && (
+                      <TaskCard draft={m.draft} added={!!m.taskAdded} onAdd={(d) => addTaskFromCard(m.id, d)} />
+                    )}
+                    {m.search && <SearchResultCard data={m.search} onNav={onNav} />}
+                    {m.chart && <DataVizCard data={m.chart} />}
+                    {m.project && <ProjectCard project={m.project} onNav={onNav} />}
+                    {m.clientIntake && (
+                      <ClientIntakeCard
+                        draft={m.clientIntake}
+                        result={m.clientIntakeResult}
+                        onCommit={(draft, opts) => commitClientIntake(m.id, draft, opts)}
+                        onNav={onNav}
+                      />
+                    )}
+                    {m.ideaDraft && (
+                      <IdeaCaptureCard
+                        draft={m.ideaDraft}
+                        createdId={m.ideaCreatedId}
+                        onCommit={(draft) => commitIdea(m.id, draft)}
+                        onNav={onNav}
+                      />
+                    )}
+                    {m.cards?.map((card) => (
+                      <ActionCardView
+                        key={card.id}
+                        card={card}
+                        onNav={onNav}
+                        onConfirm={(c) => confirmCard(m.id, c)}
+                        onCancel={(c) => cancelCard(m.id, c)}
+                        onSelectCandidate={(c, entity) => selectCardCandidate(m.id, c, entity)}
+                      />
+                    ))}
+                    {m.learned && m.learned.length > 0 && (
+                      <div className="card p-2.5 bg-prjct/8 border-prjct/20 text-left animate-fade-up">
+                        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-prjct-deep mb-1.5">
+                          <Brain className="h-3 w-3" /> onthouden — leert terwijl we praten
+                        </div>
+                        <ul className="space-y-1">
+                          {m.learned.map((f) => (
+                            <li key={f.id} className="text-xs text-muted">• {f.text}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
         <div ref={endRef} />
       </div>
 
@@ -482,28 +505,40 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
           e.preventDefault()
           void send(input)
         }}
-        className="mt-3 flex gap-2"
+        className="mt-3 flex items-center gap-1 rounded-full bg-surface border border-line pl-1.5 pr-1.5 py-1.5"
       >
         {speechSupported && (
           <button
             type="button"
-            onClick={toggleMic}
-            className={`btn px-3 ${listening ? 'bg-cross text-white animate-pulse-ring' : 'btn-ghost'}`}
-            aria-label={listening ? 'Stop opname' : 'Spraakinvoer'}
+            onClick={() => setVoicePanelOpen(true)}
+            className="shrink-0 rounded-full p-2.5 text-muted hover:text-ink hover:bg-sunken transition-colors"
+            aria-label="Spraakinvoer"
           >
-            {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            <Mic className="h-4 w-4" />
           </button>
         )}
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={listening ? 'Luisteren…' : 'Vraag, vent, of dump een gedachte…'}
-          className="flex-1 rounded-xl bg-surface border border-line px-4 py-3 text-sm outline-none focus:border-prjct/60"
+          placeholder="Vraag, vent, of dump een gedachte…"
+          className="flex-1 bg-transparent outline-none text-sm px-2"
         />
-        <button type="submit" className="btn-primary px-4" disabled={!input.trim()}>
+        <button
+          type="submit"
+          className="shrink-0 rounded-full bg-forest text-canvas p-2.5 disabled:opacity-30 transition-opacity"
+          disabled={!input.trim()}
+          aria-label="Versturen"
+        >
           <Send className="h-4 w-4" />
         </button>
       </form>
+
+      {voicePanelOpen && (
+        <VoiceInputPanel
+          onSend={(text) => void send(text, { viaVoice: true })}
+          onClose={() => setVoicePanelOpen(false)}
+        />
+      )}
     </div>
   )
 }

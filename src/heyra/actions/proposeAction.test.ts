@@ -3,15 +3,22 @@ import { proposeAction } from './proposeAction'
 import { askBrainTool } from '../brainClient'
 import type { useStore } from '../../store'
 import type { Project, Invoice } from '../../types'
+import type { CardTemplate } from './types'
 
 vi.mock('../brainClient', () => ({ askBrainTool: vi.fn() }))
 
 type Store = ReturnType<typeof useStore.getState>
 const mockAskBrainTool = vi.mocked(askBrainTool)
 
-function store(partial: { projects?: Project[]; projectInvoices?: Invoice[] } = {}): Store {
+function store(partial: {
+  projects?: Project[]
+  projectInvoices?: Invoice[]
+  cardTemplates?: CardTemplate[]
+  recordCardTemplateUsage?: Store['recordCardTemplateUsage']
+} = {}): Store {
   return {
     projects: [], projectInvoices: [], clients: [], threads: [],
+    cardTemplates: [], recordCardTemplateUsage: vi.fn(),
     ...partial,
   } as unknown as Store
 }
@@ -95,5 +102,46 @@ describe('proposeAction', () => {
     expect(card?.entity ?? null).toBeNull()
     expect(card?.fields.find((f) => f.key === 'title')?.value).toBe('Bel de klant terug')
     expect(card?.renderHint).toBe('list')
+  })
+
+  it('unions a values key the baseline template does not cover onto the card, instead of dropping it', async () => {
+    mockAskBrainTool.mockResolvedValue({
+      name: 'propose_action',
+      input: { kind: 'create_task', title: 'Taak aanmaken', entityMention: '', values: { title: 'Bel de klant terug', reminderMinutesBefore: 30 } },
+    })
+    const record = vi.fn()
+    const card = await proposeAction('bel me 30 minuten van tevoren', store({ recordCardTemplateUsage: record }))
+    const extra = card?.fields.find((f) => f.key === 'reminderMinutesBefore')
+    expect(extra?.value).toBe(30)
+    expect(extra?.type).toBe('number')
+    expect(extra?.label).toBe('Reminder Minutes Before')
+    expect(record).toHaveBeenCalledWith('create_task', 'create_task', [
+      { key: 'reminderMinutesBefore', label: 'Reminder Minutes Before', type: 'number' },
+    ])
+  })
+
+  it('reuses a cached label/type for a recurring extra field instead of re-guessing it', async () => {
+    mockAskBrainTool.mockResolvedValue({
+      name: 'propose_action',
+      input: { kind: 'create_task', title: 'Taak aanmaken', entityMention: '', values: { title: 'Bel de klant terug', reminderMinutesBefore: 45 } },
+    })
+    const cached: CardTemplate = {
+      id: 't1', templateKey: 'create_task', kind: 'create_task', useCount: 1, lastUsedAt: new Date(0).toISOString(),
+      extraFields: [{ key: 'reminderMinutesBefore', label: 'Herinner me van tevoren', type: 'number', seenCount: 1 }],
+    }
+    const card = await proposeAction('bel me 45 minuten van tevoren', store({ cardTemplates: [cached] }))
+    const extra = card?.fields.find((f) => f.key === 'reminderMinutesBefore')
+    expect(extra?.label).toBe('Herinner me van tevoren')
+    expect(extra?.value).toBe(45)
+  })
+
+  it('does not touch the cache when nothing extra was said', async () => {
+    mockAskBrainTool.mockResolvedValue({
+      name: 'propose_action',
+      input: { kind: 'create_task', title: 'Taak aanmaken', entityMention: '', values: { title: 'Bel de klant terug' } },
+    })
+    const record = vi.fn()
+    await proposeAction('bel de klant terug', store({ recordCardTemplateUsage: record }))
+    expect(record).not.toHaveBeenCalled()
   })
 })

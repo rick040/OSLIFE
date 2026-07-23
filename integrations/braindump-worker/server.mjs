@@ -62,7 +62,29 @@ const sb = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 const VALID_DOMAINS = ['parkingyou', 'prjct', 'buurtkaart', 'personal', 'cross']
 const VALID_KINDS = ['task', 'note', 'vent', 'link', 'voice', 'transaction', 'event', 'health', 'email', 'idea']
 const VALID_SENTIMENTS = ['positive', 'neutral', 'negative', 'stressed']
+// Kennisbank/wiki learning taxonomy — must match wiki_entries.category's check
+// constraint (20260721020000_wiki_entries_category.sql) and braindump-ingest's
+// own VALID_LEARNING_CATEGORIES, so a video/audio/social capture handled by
+// this worker gets the exact same Kennisbank-suggestion treatment a text/link
+// capture already gets from braindump-ingest itself.
+const VALID_LEARNING_CATEGORIES = ['life_lesson', 'way_of_living', 'business_system', 'business_practice', 'implementation', 'pet']
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36'
+
+// Shared "wiki" field instructions, appended to every system prompt below —
+// same selection criteria as braindump-ingest/index.ts's CONVERT_SYSTEM.
+// Deliberately selective: most captures get no wiki field at all.
+const WIKI_PROMPT_BLOCK = `
+"wiki" is alleen voor content die een concreet, herbruikbaar idee, inzicht of les bevat die Rick mogelijk wil onthouden of implementeren — bijvoorbeeld een aanpak/tool/groeistrategie, een slim stukje workflow, een businessmodel-truc, een levensles, of een tip/product voor de hond. Dit is bewust selectief: de meeste braindumps krijgen GEEN wiki-veld — laat het dan gewoon "wiki": null. Alleen als het duidelijk het karakter heeft van "dit is een idee/inzicht om te bewaren en ooit toe te passen", vul je 'm:
+  - "category": één van ${VALID_LEARNING_CATEGORIES.join(', ')} — kies de beste match:
+      - life_lesson: een persoonlijke levensles of inzicht over hoe je denkt, leeft of reageert
+      - way_of_living: een gewoonte, routine of manier van leven (gezondheid, huishouden, mindset, dagritme)
+      - business_system: een systeem, proces of tool om een bedrijf te runnen
+      - business_practice: een concrete zakelijke tactiek of gewoonte
+      - implementation: een concreet idee over hoe je iets nieuws bouwt, lanceert of implementeert
+      - pet: iets over de hond/huisdier
+  - "takeaway": één tot twee zinnen, de kern van het idee/inzicht/les (niet de hele inhoud herhalen).
+  - "application": concreet en specifiek hoe dit zou kunnen toepassen op Rick — zijn eigen bedrijven (ParkingYou, PRJCT Agency, Geldrop Buurtkaart), lopende projecten, zijn persoonlijk leven of zijn hond.
+Bij twijfel: "wiki": null. Beter een goede suggestie missen dan de kennisbank vervuilen met ruis.`
 
 // ── image-post fallback (Instagram/Pinterest posts with no downloadable video) ──
 
@@ -91,8 +113,10 @@ Geef ALLEEN een fenced \`\`\`json blok terug:
   "kind": één van ${VALID_KINDS.join(', ')},
   "sentiment": één van ${VALID_SENTIMENTS.join(', ')},
   "tags": ["3-6 lowercase trefwoorden"],
-  "markdown": "de notitie: # titel, korte samenvatting van wat te zien is + bijschrift, bronlink onderaan"
-}`
+  "markdown": "de notitie: # titel, korte samenvatting van wat te zien is + bijschrift, bronlink onderaan",
+  "wiki": { "category": "...", "takeaway": "...", "application": "..." } of null
+}
+${WIKI_PROMPT_BLOCK}`
 
 /** Describe a social post's og:image with Claude vision when it isn't a video at all. */
 async function noteFromImagePost(url) {
@@ -295,8 +319,10 @@ Geef ALLEEN een fenced \`\`\`json blok terug:
   "kind": één van ${VALID_KINDS.join(', ')},
   "sentiment": één van ${VALID_SENTIMENTS.join(', ')},
   "tags": ["3-6 lowercase trefwoorden"],
-  "markdown": "de notitie: # titel, korte samenvatting, dan de kernpunten als bullets; bronlink onderaan"
-}`
+  "markdown": "de notitie: # titel, korte samenvatting, dan de kernpunten als bullets; bronlink onderaan",
+  "wiki": { "category": "...", "takeaway": "...", "application": "..." } of null
+}
+${WIKI_PROMPT_BLOCK}`
 
 async function summarise(transcript, meta, url) {
   const prompt = [
@@ -317,6 +343,16 @@ async function summarise(transcript, meta, url) {
   return parseNote(text)
 }
 
+/** A wiki suggestion needs both a real takeaway and a real, non-empty application — same rule as braindump-ingest's sanitizeWiki(). */
+function sanitizeWiki(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const takeaway = String(raw.takeaway ?? '').trim()
+  const application = String(raw.application ?? '').trim()
+  if (!takeaway || !application) return null
+  const category = VALID_LEARNING_CATEGORIES.includes(raw.category) ? raw.category : null
+  return { category, takeaway, application }
+}
+
 function parseNote(text) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
   const candidate = fenced ? fenced[1] : text
@@ -332,6 +368,7 @@ function parseNote(text) {
     sentiment: VALID_SENTIMENTS.includes(p.sentiment) ? p.sentiment : 'neutral',
     tags: Array.isArray(p.tags) ? p.tags.map(String).slice(0, 8) : [],
     markdown: p.markdown.trim(),
+    wiki: sanitizeWiki(p.wiki),
   }
 }
 
@@ -373,6 +410,28 @@ async function finishReady(entryId, userId, tier, note, { thumbUrl = null, meta 
     domain: note.domain, kind: note.kind, sentiment: note.sentiment, tags: note.tags,
     thumb_url: thumbUrl, content_hash: contentHash, meta, error: null,
   }).eq('id', entryId)
+
+  // Claude flagged this as an actionable idea/insight worth a spot in the
+  // Kennisbank — same suggest-then-confirm insert braindump-ingest's finish()
+  // does for text/link/image captures. This was the missing piece: every
+  // video/audio/social capture routed to this worker previously never got a
+  // chance at a wiki suggestion at all (the old SUMMARY_SYSTEM/IMAGE_SYSTEM
+  // prompts didn't even ask for one).
+  if (note.wiki && tier !== 'geheim') {
+    await sb.from('wiki_entries').insert({
+      user_id: userId,
+      braindump_entry_id: entryId,
+      status: 'suggested',
+      title: note.title ?? 'Zonder titel',
+      transcript: note.markdown,
+      takeaway: note.wiki.takeaway,
+      application: note.wiki.application,
+      category: note.wiki.category,
+      domain: note.domain,
+      tags: note.tags,
+      source_url: url,
+    })
+  }
 
   const authHeader = `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
   const text = [note.title, note.summary, note.markdown].filter(Boolean).join('\n')

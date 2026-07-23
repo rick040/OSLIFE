@@ -118,6 +118,8 @@ export interface BraindumpInput {
   storagePath?: string | null
   /** Optional user hint at capture time. */
   domain?: Domain | null
+  /** Written to meta.source — e.g. 'heyra-voice' so a raw voice exchange is distinguishable from a typed one in Geheugen/search_memory() results, without a dedicated column. */
+  sourceTag?: string
 }
 
 // ── Layer 3: REMEMBER (three separate stores) ────────────────────────────────
@@ -334,6 +336,41 @@ export interface Medication {
   reminderTimes: string[] // 'HH:MM', local/Amsterdam time
   active: boolean
   tier: Tier
+}
+
+/**
+ * A per-category monthly spending cap (generic pattern engine, R11). Created
+ * automatically when confirming a `budget_cap_suggestion` inference, but
+ * editable afterwards like any other setting — the rule only proposes the
+ * starting number.
+ */
+export interface BudgetCap {
+  id: string
+  category: string
+  monthlyMax: number
+  active: boolean
+  sourceRuleId: string | null
+  tier: Tier
+}
+
+/**
+ * A versioned entry in Rick's living profile — the confirm-gated replacement
+ * path for what `heyra_memory`/LearnedFact does today (see heyra/learning.ts):
+ * every new value for the same `key` supersedes the previous one instead of
+ * silently overwriting it, so the profile has an audit trail. Only the
+ * current (non-superseded) version is fetched into the store.
+ */
+export interface ProfileFact {
+  id: string
+  key: string
+  label: string
+  value: Record<string, unknown>
+  version: number
+  confidence: number
+  sourceRuleId: string | null
+  sourceIds: string[]
+  tier: Tier
+  createdAt: string
 }
 
 // ── Memory & retrieval (PM-201 Slice 3) ───────────────────────────────────────

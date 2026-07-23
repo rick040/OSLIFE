@@ -42,6 +42,8 @@ import type {
   AdminItem,
   HealthCondition,
   Medication,
+  BudgetCap,
+  ProfileFact,
   MemorySummary,
   MemoryHit,
   BusinessIdea,
@@ -52,6 +54,7 @@ import type {
 } from '../types'
 import { today, habitStreak } from '../domains'
 import { CATEGORY_META, type LearnedFact, type LearningCategory } from '../heyra/learning'
+import type { CardTemplate, CardTemplateExtraField } from '../heyra/actions/types'
 
 // New oslife project (nhyunnnmdcmojvkxrbpl, eu-west-1).
 // Set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY in .env.local
@@ -1393,6 +1396,44 @@ export async function persistLearnedFacts(facts: LearnedFact[]): Promise<void> {
   warnWrite('heyra_memory', error)
 }
 
+// ── HEYRA card templates — cached extra fields per action kind ──────────────
+
+export async function fetchCardTemplates(): Promise<CardTemplate[]> {
+  return fetchRows(
+    'card_templates',
+    'id,template_key,kind,layout,use_count,last_used_at',
+    { column: 'last_used_at', ascending: false },
+    (r) => ({
+      id: r.id as string,
+      templateKey: r.template_key as string,
+      kind: r.kind as CardTemplate['kind'],
+      extraFields: Array.isArray((r.layout as { extraFields?: unknown })?.extraFields)
+        ? ((r.layout as { extraFields: CardTemplateExtraField[] }).extraFields)
+        : [],
+      useCount: (r.use_count as number) ?? 0,
+      lastUsedAt: (r.last_used_at as string) ?? '',
+    }),
+  )
+}
+
+/** Full upsert of one template row — the caller (store.recordCardTemplateUsage) computes the merged extraFields client-side, so this is a plain replace, not a partial patch. */
+export async function upsertCardTemplate(template: Omit<CardTemplate, 'id' | 'lastUsedAt'>): Promise<void> {
+  const user_id = await currentUserId()
+  if (!user_id) return
+  const { error } = await supabase.from('card_templates').upsert(
+    {
+      user_id,
+      template_key: template.templateKey,
+      kind: template.kind,
+      layout: { extraFields: template.extraFields },
+      use_count: template.useCount,
+      last_used_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,template_key' },
+  )
+  warnWrite('card_templates', error)
+}
+
 // ── Screen time (if available) ────────────────────────────────────────────────
 
 /** Classify an app by name into the ScreenDay app categories. Known productivity
@@ -2159,6 +2200,54 @@ export async function createMedicationRow(m: Omit<Medication, 'id'>): Promise<st
     reminder_times: m.reminderTimes,
     active: m.active,
   })
+}
+
+// ── Generieke patroon-engine: budgetplafonds + versioneerd profiel ───────────
+// (R11/R12 — zie 20260724000000_pattern_engine_profile.sql). budget_caps
+// wordt aangemaakt door confirm_inference() bij het bevestigen van een
+// budget_cap_suggestion; het maximum blijft daarna hier gewoon aanpasbaar.
+
+export async function fetchBudgetCaps(): Promise<BudgetCap[]> {
+  return fetchRows('budget_caps', 'id,category,monthly_max,active,source_rule_id,tier', { column: 'category' }, (r) => ({
+    id: r.id as string,
+    category: (r.category as string) ?? '',
+    monthlyMax: Number(r.monthly_max) || 0,
+    active: (r.active as boolean) ?? true,
+    sourceRuleId: (r.source_rule_id as string) ?? null,
+    tier: (r.tier as BudgetCap['tier']) ?? 'normaal',
+  }))
+}
+
+const BUDGET_CAP_COLS: Record<string, string> = { monthlyMax: 'monthly_max', active: 'active' }
+
+export async function updateBudgetCapRow(id: string, patch: Partial<BudgetCap>): Promise<void> {
+  await updateRow('budget_caps', id, patch, BUDGET_CAP_COLS)
+}
+
+/**
+ * Only the current (non-superseded) version of every profile fact — the
+ * versioned replacement path for heyra_memory/LearnedFact, starting with
+ * R12's theme detection (see src/types.ts's ProfileFact doc comment).
+ */
+export async function fetchProfileFacts(): Promise<ProfileFact[]> {
+  const { data, error } = await supabase
+    .from('profile_facts')
+    .select('id,key,label,value,version,confidence,source_rule_id,source_ids,tier,created_at')
+    .is('superseded_at', null)
+    .order('created_at', { ascending: false })
+  warnWrite('profile_facts.fetch', error)
+  return ((data ?? []) as Record<string, unknown>[]).map((r) => ({
+    id: r.id as string,
+    key: r.key as string,
+    label: (r.label as string) ?? '',
+    value: (r.value as Record<string, unknown>) ?? {},
+    version: (r.version as number) ?? 1,
+    confidence: Number(r.confidence) || 0,
+    sourceRuleId: (r.source_rule_id as string) ?? null,
+    sourceIds: (r.source_ids as string[]) ?? [],
+    tier: (r.tier as ProfileFact['tier']) ?? 'normaal',
+    createdAt: (r.created_at as string) ?? '',
+  }))
 }
 
 // ── Geheugen & retrieval (Slice 3) ────────────────────────────────────────────

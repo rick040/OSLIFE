@@ -22,6 +22,9 @@ import type {
   Domain,
 } from '../types'
 import { DOMAIN_META, TODAY, fmtDate, daysBetween } from '../domains'
+import type { ActionKind } from './actions/types'
+import { askBrain } from './brainClient'
+import { parseBrainJson } from './brainJson'
 
 export type Topic =
   | 'open-loops'
@@ -62,8 +65,22 @@ function push(list: Candidate[], text: string, score: number) {
   if (!list.some((c) => c.text === text)) list.push({ text, score })
 }
 
-/** Suggestions shown before the conversation starts, sourced from live data. */
-export function contextualSuggestions(ctx: HeyraContext): string[] {
+// A chip that was already shown recently gets its score cut sharply rather
+// than removed outright — a still-true suggestion ("nog 1 factuur open") can
+// resurface once nothing else outranks it, but a repeat no longer dominates
+// every turn. This is the fix for "it gives the same suggestions every time".
+const REPEAT_PENALTY = 0.15
+
+function rank(candidates: Candidate[], exclude: string[] | undefined, limit: number): string[] {
+  return candidates
+    .map((c) => (exclude?.includes(c.text) ? { ...c, score: c.score * REPEAT_PENALTY } : c))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((x) => x.text)
+}
+
+/** Suggestions shown before the conversation starts, sourced from live data. `exclude` (chips shown in the last several turns) deprioritizes repeats without hard-banning them. */
+export function contextualSuggestions(ctx: HeyraContext, exclude?: string[]): string[] {
   const c: Candidate[] = []
 
   // 1. Project deadlines today / very soon — the highest-signal prompt.
@@ -140,10 +157,7 @@ export function contextualSuggestions(ctx: HeyraContext): string[] {
   push(c, 'Wat staat er nog open bij klanten?', 10)
   push(c, 'Hoe staat het met mijn Noordster-doelen?', 8)
 
-  return c
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 4)
-    .map((x) => x.text)
+  return rank(c, exclude, 4)
 }
 
 // ── follow-ups ────────────────────────────────────────────────────────────────
@@ -152,7 +166,7 @@ function domainOpenCount(ctx: HeyraContext, domain: Domain): number {
   return ctx.threads.filter((t) => t.status === 'open' && t.domain === domain).length
 }
 
-/** Suggested next questions, based on the topic of the exchange that just happened. */
+/** Suggested next questions, based on the topic of the exchange that just happened. `exclude` (chips shown in the last several turns) deprioritizes repeats without hard-banning them. */
 export function followUpSuggestions(
   topic: Topic,
   ctx: HeyraContext,
@@ -164,6 +178,7 @@ export function followUpSuggestions(
     chartTitle?: string
     clientName?: string
   },
+  exclude?: string[],
 ): string[] {
   const c: Candidate[] = []
 
@@ -263,8 +278,72 @@ export function followUpSuggestions(
     }
   }
 
-  return c
-    .sort((a, b) => b.score - a.score)
+  return rank(c, exclude, 3)
+}
+
+// ── action-card-driven follow-ups ────────────────────────────────────────────
+// After a confirmed action card actually dispatches, a natural next-step chip
+// tied to what just happened is a much stronger signal than the generic
+// topic-based follow-ups above — ties suggestion variety directly to the
+// action system instead of being a wholly separate guess.
+const ACTION_FOLLOWUP: Partial<Record<ActionKind, (entityLabel?: string | null) => string>> = {
+  mark_invoice_paid: () => 'Nog een factuur bijwerken?',
+  update_invoice_status: () => 'Nog een factuur bijwerken?',
+  create_invoice: (label) => (label ? `Factuur versturen voor ${label}?` : 'Nog een factuur aanmaken?'),
+  create_task: () => 'Nog een taak toevoegen?',
+  update_task: () => 'Nog een taak bijwerken?',
+  complete_task: () => 'Nog een taak afronden?',
+  update_project_status: (label) => (label ? `Wat is de volgende stap voor ${label}?` : 'Wat is de volgende stap?'),
+  log_project_activity: (label) => (label ? `Nog een update loggen voor ${label}?` : 'Nog een update loggen?'),
+  create_client: (label) => (label ? `Project koppelen aan ${label}?` : 'Nog een klant toevoegen?'),
+  update_client: () => 'Nog een klant bijwerken?',
+}
+
+/** A follow-up chip for right after a confirmed action card dispatches — null for kinds with no natural next step (informational cards, which never dispatch anyway). */
+export function actionFollowUpSuggestion(kind: ActionKind, entityLabel?: string | null): string | null {
+  return ACTION_FOLLOWUP[kind]?.(entityLabel) ?? null
+}
+
+// ── brain-grounded follow-ups ─────────────────────────────────────────────────
+// followUpSuggestions() above is topic-shaped ("money" always offers the same
+// three templates) — it never actually reads what HEYRA just said, so two
+// different money answers get the same chips. This asks the brain for 2-3
+// follow-ups grounded in the EXACT exchange that just happened — same
+// null-safe, best-effort contract as every other brain call in this app
+// (askBrain resolves null on any failure), so callers keep the rule-based
+// result showing immediately and only swap in the real ones once they land.
+
+const BRAIN_FOLLOWUP_SYSTEM = `Je bent HEYRA (OSLIFE). Je krijgt het laatste bericht van Rick en jouw eigen antwoord daarop. Bedenk 2 tot 3 korte, natuurlijke vervolgvragen of acties die Rick nu zou willen — gebaseerd op EXACT wat jij net zei, niet algemene vragen over het onderwerp. Als je antwoord bijvoorbeeld een specifiek aantal, naam of datum noemt, verwijs daar dan naar. Max 8 woorden per suggestie, in het Nederlands. Verzin geen feiten die niet in het gesprek staan. Als er niets zinnigs op te volgen is, geef een lege lijst.
+
+Antwoord ALLEEN met een fenced \`\`\`json blok:
+{"suggestions":["...","..."]}`
+
+/**
+ * Asks the brain for follow-ups grounded in this specific exchange. Returns
+ * null on any brain failure/malformed response (never an error) and [] when
+ * the brain genuinely has nothing to add — both cases mean "keep whatever
+ * rule-based suggestions are already showing".
+ */
+export async function brainFollowUps(
+  userText: string,
+  heyraText: string,
+  exclude: string[] = [],
+): Promise<string[] | null> {
+  const prompt =
+    `Rick: ${userText}\nHEYRA: ${heyraText}` +
+    (exclude.length ? `\n\n(Vermijd suggesties die hier al op lijken: ${exclude.join(' | ')})` : '')
+
+  const raw = await askBrain(BRAIN_FOLLOWUP_SYSTEM, prompt, { maxTokens: 150, timeoutMs: 3500 })
+  if (!raw) return null
+
+  const parsed = parseBrainJson(raw)
+  const list = parsed && Array.isArray((parsed as { suggestions?: unknown }).suggestions)
+    ? (parsed as { suggestions: unknown[] }).suggestions
+    : null
+  if (!list) return null
+
+  return list
+    .filter((s): s is string => typeof s === 'string' && s.trim().length > 0 && s.trim().length <= 80)
+    .map((s) => s.trim())
     .slice(0, 3)
-    .map((x) => x.text)
 }
