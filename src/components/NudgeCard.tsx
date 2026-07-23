@@ -11,6 +11,8 @@ export interface DashNudge {
   tone: NudgeTone
   /** optional jump to the screen where you can act on it */
   cta?: { label: string; view: string }
+  /** optional corner badge on the priority card — a real count, e.g. "3d te laat" */
+  badge?: string
 }
 
 const TONE: Record<NudgeTone, { hex: string; icon: LucideIcon }> = {

@@ -5,6 +5,7 @@ import { useStore } from '../store'
 import { TODAY, fmtDate, daysBetween } from '../domains'
 import { daysUntil, overdueLabel } from '../lib/dates'
 import { SectionTitle, Empty, Overlay } from '../components/ui'
+import { TaskRow } from '../components/v3'
 import HealthConditions from '../components/HealthConditions'
 import { useLongPress } from '../lib/useLongPress'
 import { isoToDatetimeLocal, nowDatetimeLocal } from '../lib/datetimeLocal'
@@ -625,21 +626,25 @@ export default function Dog() {
         <SectionTitle>
           <span className="flex items-center gap-2"><Bell className="h-4 w-4 text-cross" /> Herinneringen</span>
         </SectionTitle>
-        <div className="card divide-y divide-line">
+        <div className="flex flex-col gap-2">
           {[...dogReminders].sort((a, b) => a.due.localeCompare(b.due)).map((r) => {
             const dd = daysUntil(r.due)
             const overdue = dd < 0 && !r.done
+            const priority = overdue ? 'high' : dd <= 1 ? 'medium' : 'low'
             return (
-              <div key={r.id} className={`flex items-center gap-3 p-3 ${r.done ? 'opacity-50' : ''}`}>
-                <button onClick={() => toggleDogReminder(r.id)} className={`h-5 w-5 rounded-full border flex items-center justify-center shrink-0 ${r.done ? 'bg-buurtkaart border-buurtkaart text-white' : 'border-line text-transparent'}`}>
-                  <Check className="h-3 w-3" />
-                </button>
-                <div className="flex-1 min-w-0">
-                  <div className={`text-sm truncate ${r.done ? 'line-through text-faint' : 'text-ink'}`}>{r.title}</div>
-                  <div className={`text-[11px] ${overdue ? 'text-cross font-medium' : 'text-faint'}`}>
-                    {overdue ? overdueLabel(dd) : dd === 0 ? 'vandaag' : `over ${dd}d · ${fmtDate(r.due)}`}
-                  </div>
-                </div>
+              <div key={r.id} className={r.done ? 'opacity-50' : ''}>
+                <TaskRow
+                  title={r.title}
+                  meta={
+                    <>
+                      <Bell className="h-3 w-3" />
+                      {overdue ? overdueLabel(dd) : dd === 0 ? 'vandaag' : `over ${dd}d · ${fmtDate(r.due)}`}
+                    </>
+                  }
+                  priority={priority}
+                  checked={r.done}
+                  onToggle={() => toggleDogReminder(r.id)}
+                />
               </div>
             )
           })}
