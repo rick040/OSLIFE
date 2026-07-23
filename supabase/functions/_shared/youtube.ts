@@ -40,9 +40,15 @@ async function fetchYoutubeWatchPage(videoId: string, ms: number): Promise<strin
         cookie: "CONSENT=YES+1",
       },
     });
-    if (!res.ok) return null;
-    return await res.text();
-  } catch {
+    if (!res.ok) {
+      console.error(`[youtube] watch page fetch ${videoId}: HTTP ${res.status}`);
+      return null;
+    }
+    const text = await res.text();
+    console.error(`[youtube] watch page fetch ${videoId}: ok, ${text.length} bytes`);
+    return text;
+  } catch (err) {
+    console.error(`[youtube] watch page fetch ${videoId}: threw ${String(err)}`);
     return null;
   } finally {
     clearTimeout(t);
@@ -126,27 +132,43 @@ export async function fetchYoutubeTranscript(videoId: string): Promise<string | 
   // immediately followed by "videoDetails" in every observed player response.
   const marker = '"captions":';
   const start = html.indexOf(marker);
-  if (start === -1) return null;
+  if (start === -1) {
+    console.error(`[youtube] ${videoId}: no "captions" marker in page (bot-check/consent page, or genuinely no captions)`);
+    return null;
+  }
   const afterMarker = html.slice(start + marker.length);
   const end = afterMarker.indexOf(',"videoDetails');
-  if (end === -1) return null;
+  if (end === -1) {
+    console.error(`[youtube] ${videoId}: found captions marker but no ,"videoDetails" delimiter after it`);
+    return null;
+  }
 
   let captions: { playerCaptionsTracklistRenderer?: { captionTracks?: CaptionTrack[] } };
   try {
     captions = JSON.parse(afterMarker.slice(0, end));
-  } catch {
+  } catch (err) {
+    console.error(`[youtube] ${videoId}: captions JSON.parse failed: ${String(err)}`);
     return null;
   }
-  const track = pickCaptionTrack(captions.playerCaptionsTracklistRenderer?.captionTracks ?? []);
-  if (!track?.baseUrl) return null;
+  const tracks = captions.playerCaptionsTracklistRenderer?.captionTracks ?? [];
+  const track = pickCaptionTrack(tracks);
+  if (!track?.baseUrl) {
+    console.error(`[youtube] ${videoId}: parsed captions object but found ${tracks.length} caption tracks`);
+    return null;
+  }
+  console.error(`[youtube] ${videoId}: picked caption track lang=${track.languageCode} kind=${track.kind ?? "manual"}`);
 
   const xml = await fetchText(track.baseUrl, 9000);
-  if (!xml) return null;
+  if (!xml) {
+    console.error(`[youtube] ${videoId}: caption track fetch failed`);
+    return null;
+  }
   const text = [...xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)]
     .map((m) => decodeEntities(m[1].replace(/<[^>]+>/g, "")).trim())
     .filter(Boolean)
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();
+  if (!text) console.error(`[youtube] ${videoId}: caption XML had no <text> nodes (${xml.length} bytes)`);
   return text || null;
 }
