@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useStore } from '../store'
 import { SKILLS, type AgentId } from '../heyra/skills'
-import { contextualSuggestions, followUpSuggestions, actionFollowUpSuggestion, type Topic } from '../heyra/suggestions'
+import { contextualSuggestions, followUpSuggestions, actionFollowUpSuggestion, brainFollowUps, type Topic } from '../heyra/suggestions'
 import { routeMessage } from '../heyra/router'
 import { emptyMemory, remember, rememberSuggestions, type ConversationMemory } from '../heyra/memory'
 import type { LearnedFact } from '../heyra/learning'
@@ -17,7 +17,6 @@ import IdeaCaptureCard from '../components/IdeaCaptureCard'
 import ActionCardView from '../components/ActionCardView'
 import VoiceInputPanel from '../components/VoiceInputPanel'
 import HeyraOrb from '../components/HeyraOrb'
-import HistoryTrail from '../components/HistoryTrail'
 import { dispatchAction } from '../heyra/actions/registry'
 import type { ActionCard, EntityRef } from '../heyra/actions/types'
 import { Send, Database, Mic, Wand2, Lightbulb, Brain } from 'lucide-react'
@@ -278,6 +277,10 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
             : x,
         ),
       )
+      // Instant, rule-based follow-ups first (topic-shaped, always available) —
+      // then, best-effort, upgrade to suggestions actually grounded in what
+      // HEYRA just said (not just its topic). Never blocks the reply that
+      // already rendered; a brain failure just leaves the rule-based chips.
       showSuggestions(
         followUpSuggestions(
           result.topic,
@@ -292,6 +295,11 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
           memoryRef.current.recentSuggestions,
         ),
       )
+      void brainFollowUps(clean, result.text, memoryRef.current.recentSuggestions)
+        .then((grounded) => {
+          if (grounded && grounded.length) showSuggestions(grounded)
+        })
+        .catch(() => {})
 
       // Learn as we speak: distil any durable fact from this exchange in the
       // background and, if HEYRA learned something new, tag the reply so the
@@ -336,136 +344,149 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
     }
   }
 
-  // The screen only ever shows the CURRENT exchange in full (large, centered)
-  // — everything before it collapses into HistoryTrail's compact pill list.
-  // Messages are always pushed in rick→heyra pairs (send()), so the last
-  // message is always heyra's (the current reply/pending state) and the one
-  // before it is the rick message that triggered it.
-  const current = msgs[msgs.length - 1]
-  const currentRick = msgs.length >= 2 ? msgs[msgs.length - 2] : undefined
-  const historyMessages = msgs
-    .slice(0, Math.max(0, msgs.length - 2))
-    .filter((m) => m.role === 'rick')
-    .map((m) => ({ id: m.id, text: m.text }))
-  const orbState = current?.pending ? 'thinking' : 'idle'
+  // Every past message stays fully visible and scrollable — only the very
+  // latest HEYRA reply gets the ambient orb+big-text treatment; everything
+  // before it renders as normal, fully readable chat history so you can
+  // always scroll back and read exactly what was said.
+  const lastIdx = msgs.length - 1
+  const orbState = msgs[lastIdx]?.pending ? 'thinking' : 'idle'
 
   return (
-    <div className="flex flex-col h-[calc(100vh-7rem)] max-w-2xl mx-auto">
-      <div className="flex-1 overflow-auto flex flex-col items-center px-2">
-        <div className="w-full max-w-md pt-2">
-          <HistoryTrail messages={historyMessages} />
-        </div>
+    <div className="flex flex-col h-[calc(100vh-7rem)] max-w-3xl mx-auto">
+      <div className="flex-1 overflow-auto flex flex-col gap-3 pr-1">
+        {msgs.map((m, idx) => {
+          const isCurrent = idx === lastIdx && m.role === 'heyra'
 
-        {/* The ambient glow sits BEHIND this whole block as a background
-            layer — same "haze fills the middle, text sits on top of it"
-            treatment as the reference screens, not a separate icon above
-            the text. */}
-        <div className="relative w-full max-w-md flex flex-col items-center gap-4 py-10 text-center min-h-[260px]">
-          <HeyraOrb state={orbState} />
-
-          <div className="relative z-10 w-full flex flex-col items-center gap-4">
-            {currentRick && (
-              <span className="rounded-2xl bg-sunken px-3 py-1.5 text-xs text-ink-soft">{currentRick.text}</span>
-            )}
-
-            {current?.pending ? (
-              <span className="text-sm text-muted animate-fade-up">{pendingLabel}</span>
-            ) : current && current.text.length <= AMBIENT_TEXT_LIMIT ? (
-              <p className="text-2xl font-medium text-ink leading-snug animate-fade-up whitespace-pre-line">
-                {current.text}
-              </p>
-            ) : (
-              // A long answer (a summary, a detailed explanation) doesn't read
-              // well blown up and centered — normal body text in a soft card
-              // instead, still inside the same centered column.
-              <div className="w-full card p-4 text-left animate-fade-up">
-                <p className="text-sm text-ink leading-relaxed whitespace-pre-line">{current?.text}</p>
+          if (m.role === 'rick') {
+            return (
+              <div key={m.id} className="flex flex-col items-end gap-1.5">
+                <span className="max-w-[80%] rounded-2xl bg-forest text-white px-4 py-2.5 text-sm whitespace-pre-line">
+                  {m.text}
+                </span>
+                {m.classified && (
+                  <div className="card p-2.5 bg-surface/80 text-left max-w-[85%] animate-fade-up">
+                    <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-faint mb-1.5">
+                      <Database className="h-3 w-3" /> begrepen → in geheugen
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <DomainChip domain={m.classified.domain} small />
+                      <KindChip kind={m.classified.kind} />
+                      <SentimentChip sentiment={m.classified.sentiment} />
+                    </div>
+                    <p className="text-xs text-muted mt-1.5">“{m.classified.summary}”</p>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
+            )
+          }
 
-          {current && !current.pending && (
-            <div className="w-full max-w-md space-y-3">
-              {current.skill && (
-                <div className="flex items-center justify-center gap-1.5 text-[11px] text-prjct-deep animate-fade-up">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-prjct/12 px-2 py-0.5 font-medium">
-                    <Wand2 className="h-3 w-3" /> Functie gewisseld → {SKILLS[current.skill].label}
-                  </span>
-                  {current.trigger && current.trigger !== 'imperatief' && (
-                    <span className="text-faint">herkende “{current.trigger.trim()}”</span>
-                  )}
-                </div>
-              )}
-              {current.draft && (
-                <TaskCard draft={current.draft} added={!!current.taskAdded} onAdd={(d) => addTaskFromCard(current.id, d)} />
-              )}
-              {current.search && <SearchResultCard data={current.search} onNav={onNav} />}
-              {current.chart && <DataVizCard data={current.chart} />}
-              {current.project && <ProjectCard project={current.project} onNav={onNav} />}
-              {current.clientIntake && (
-                <ClientIntakeCard
-                  draft={current.clientIntake}
-                  result={current.clientIntakeResult}
-                  onCommit={(draft, opts) => commitClientIntake(current.id, draft, opts)}
-                  onNav={onNav}
-                />
-              )}
-              {current.ideaDraft && (
-                <IdeaCaptureCard
-                  draft={current.ideaDraft}
-                  createdId={current.ideaCreatedId}
-                  onCommit={(draft) => commitIdea(current.id, draft)}
-                  onNav={onNav}
-                />
-              )}
-              {current.cards?.map((card) => (
-                <ActionCardView
-                  key={card.id}
-                  card={card}
-                  onNav={onNav}
-                  onConfirm={(c) => confirmCard(current.id, c)}
-                  onCancel={(c) => cancelCard(current.id, c)}
-                  onSelectCandidate={(c, entity) => selectCardCandidate(current.id, c, entity)}
-                />
-              ))}
-              {current.learned && current.learned.length > 0 && (
-                <div className="card p-2.5 bg-prjct/8 border-prjct/20 text-left animate-fade-up">
-                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-prjct-deep mb-1.5">
-                    <Brain className="h-3 w-3" /> onthouden — leert terwijl we praten
+          return (
+            <div key={m.id} className={isCurrent ? 'relative flex flex-col items-center gap-3 py-8 text-center' : 'flex flex-col items-start gap-2'}>
+              {isCurrent && <HeyraOrb state={orbState} />}
+              <div className={isCurrent ? 'relative z-10 w-full max-w-md mx-auto flex flex-col items-center gap-3' : 'w-full max-w-[85%]'}>
+                {m.skill && (
+                  <div className={`flex items-center gap-1.5 text-[11px] text-prjct-deep animate-fade-up ${isCurrent ? 'justify-center' : ''}`}>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-prjct/12 px-2 py-0.5 font-medium">
+                      <Wand2 className="h-3 w-3" /> Functie gewisseld → {SKILLS[m.skill].label}
+                    </span>
+                    {m.trigger && m.trigger !== 'imperatief' && (
+                      <span className="text-faint">herkende “{m.trigger.trim()}”</span>
+                    )}
                   </div>
-                  <ul className="space-y-1">
-                    {current.learned.map((f) => (
-                      <li key={f.id} className="text-xs text-muted">• {f.text}</li>
+                )}
+
+                {m.pending ? (
+                  isCurrent ? (
+                    <span className="text-sm text-muted animate-fade-up">{pendingLabel}</span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-2xl card px-4 py-2.5 text-faint">
+                      <span className="inline-flex gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse [animation-delay:150ms]" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-faint animate-pulse [animation-delay:300ms]" />
+                      </span>
+                      <span className="text-xs">{pendingLabel}</span>
+                    </span>
+                  )
+                ) : isCurrent && m.text.length <= AMBIENT_TEXT_LIMIT ? (
+                  <p className="text-2xl font-medium text-ink leading-snug animate-fade-up whitespace-pre-line">
+                    {m.text}
+                  </p>
+                ) : isCurrent ? (
+                  // A long answer (a summary, a detailed explanation) doesn't
+                  // read well blown up and centered — normal body text in a
+                  // soft card instead, still inside the same centered column.
+                  <div className="w-full card p-4 text-left animate-fade-up">
+                    <p className="text-sm text-ink leading-relaxed whitespace-pre-line">{m.text}</p>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl card rounded-bl-sm px-4 py-2.5 text-sm text-ink whitespace-pre-line">
+                    {m.text}
+                  </div>
+                )}
+
+                {!m.pending && (
+                  <>
+                    {m.draft && (
+                      <TaskCard draft={m.draft} added={!!m.taskAdded} onAdd={(d) => addTaskFromCard(m.id, d)} />
+                    )}
+                    {m.search && <SearchResultCard data={m.search} onNav={onNav} />}
+                    {m.chart && <DataVizCard data={m.chart} />}
+                    {m.project && <ProjectCard project={m.project} onNav={onNav} />}
+                    {m.clientIntake && (
+                      <ClientIntakeCard
+                        draft={m.clientIntake}
+                        result={m.clientIntakeResult}
+                        onCommit={(draft, opts) => commitClientIntake(m.id, draft, opts)}
+                        onNav={onNav}
+                      />
+                    )}
+                    {m.ideaDraft && (
+                      <IdeaCaptureCard
+                        draft={m.ideaDraft}
+                        createdId={m.ideaCreatedId}
+                        onCommit={(draft) => commitIdea(m.id, draft)}
+                        onNav={onNav}
+                      />
+                    )}
+                    {m.cards?.map((card) => (
+                      <ActionCardView
+                        key={card.id}
+                        card={card}
+                        onNav={onNav}
+                        onConfirm={(c) => confirmCard(m.id, c)}
+                        onCancel={(c) => cancelCard(m.id, c)}
+                        onSelectCandidate={(c, entity) => selectCardCandidate(m.id, c, entity)}
+                      />
                     ))}
-                  </ul>
-                </div>
-              )}
-              {currentRick?.classified && (
-                <div className="card p-2.5 bg-surface/80 text-left animate-fade-up">
-                  <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-faint mb-1.5">
-                    <Database className="h-3 w-3" /> begrepen → in geheugen
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <DomainChip domain={currentRick.classified.domain} small />
-                    <KindChip kind={currentRick.classified.kind} />
-                    <SentimentChip sentiment={currentRick.classified.sentiment} />
-                  </div>
-                  <p className="text-xs text-muted mt-1.5">“{currentRick.classified.summary}”</p>
-                </div>
-              )}
+                    {m.learned && m.learned.length > 0 && (
+                      <div className="card p-2.5 bg-prjct/8 border-prjct/20 text-left animate-fade-up">
+                        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-prjct-deep mb-1.5">
+                          <Brain className="h-3 w-3" /> onthouden — leert terwijl we praten
+                        </div>
+                        <ul className="space-y-1">
+                          {m.learned.map((f) => (
+                            <li key={f.id} className="text-xs text-muted">• {f.text}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-          )}
+          )
+        })}
         <div ref={endRef} />
       </div>
 
       {suggestions.length > 0 && (
         <div className="mt-3">
-          <div className="flex items-center justify-center gap-1 text-[10px] uppercase tracking-wider text-faint mb-1.5">
+          <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-faint mb-1.5">
             <Lightbulb className="h-3 w-3" />
             {conversationStarted ? 'vervolgvragen' : 'op basis van je geheugen'}
           </div>
-          <div className="flex flex-wrap justify-center gap-2">
+          <div className="flex flex-wrap gap-2">
             {suggestions.map((s) => (
               <button
                 key={s}
