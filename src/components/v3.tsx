@@ -84,12 +84,15 @@ export function MetricTile({
   label,
   onClick,
   corner,
+  footer,
 }: {
   icon: React.ComponentType<{ className?: string }>
   value: React.ReactNode
   label: string
   onClick?: () => void
   corner?: React.ReactNode
+  /** Tiny sub-line under the label — e.g. a real "bijgewerkt Xu geleden". */
+  footer?: React.ReactNode
 }) {
   const Comp = onClick ? 'button' : 'div'
   return (
@@ -101,6 +104,7 @@ export function MetricTile({
       <div className={`min-w-0 flex-1 ${corner ? 'sm:pr-11' : ''}`}>
         <div className="text-lg font-medium tabular-nums truncate leading-tight text-ink">{value}</div>
         <div className="text-xs text-faint truncate">{label}</div>
+        {footer && <div className="text-[10px] text-faint/70 truncate mt-0.5">{footer}</div>}
       </div>
     </Comp>
   )
@@ -355,19 +359,23 @@ export function TaskRow({
   onToggle: () => void
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl bg-sunken px-4 py-3">
+    <div className="flex items-start gap-3 rounded-2xl bg-sunken px-4 py-3">
       <button
         onClick={onToggle}
         aria-label={`${title} afvinken`}
-        className={`shrink-0 h-6 w-6 rounded-lg border flex items-center justify-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+        className={`shrink-0 mt-0.5 h-6 w-6 rounded-lg border flex items-center justify-center transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
           checked ? 'bg-forest border-forest text-white' : 'border-line-strong text-transparent hover:border-forest hover:text-forest'
         }`}
       >
         <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
       </button>
-      <p className={`text-sm flex-1 min-w-0 leading-snug ${checked ? 'line-through text-faint' : 'text-ink'}`}>{title}</p>
-      {meta && <span className="chip bg-canvas text-muted shrink-0">{meta}</span>}
-      <PriorityBar level={priority} />
+      <div className="min-w-0 flex-1 flex flex-col gap-1.5">
+        <p className={`text-sm leading-snug ${checked ? 'line-through text-faint' : 'text-ink'}`}>{title}</p>
+        <div className="flex items-center gap-2">
+          {meta && <span className="chip bg-canvas text-muted shrink-0">{meta}</span>}
+          <PriorityBar level={priority} />
+        </div>
+      </div>
     </div>
   )
 }
