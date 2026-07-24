@@ -9,7 +9,7 @@ import { TaskRow } from '../components/v3'
 import HealthConditions from '../components/HealthConditions'
 import { useLongPress } from '../lib/useLongPress'
 import { isoToDatetimeLocal, nowDatetimeLocal } from '../lib/datetimeLocal'
-import type { DogKind, DogEntry, DogMedicalType } from '../types'
+import type { DogKind, DogEntry, DogMedicalType, DogProfile } from '../types'
 import {
   Dog as DogIcon,
   Footprints,
@@ -32,6 +32,9 @@ import {
   Clock,
   MapPin,
   Timer,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
 } from 'lucide-react'
 
 const KIND: Record<DogKind, { label: string; icon: typeof Bone; hex: string }> = {
@@ -419,6 +422,85 @@ function TimelineRow({ e, onEdit, onDelete }: { e: DogEntry; onEdit: () => void;
   )
 }
 
+// ── Profile edit modal: naam, ras, geboortedatum, gewicht, dierenarts, foto ──
+function ProfileModal({
+  profile,
+  onSave,
+  onClose,
+}: {
+  profile: DogProfile
+  onSave: (patch: Partial<DogProfile>) => void
+  onClose: () => void
+}) {
+  const [name, setName] = useState(profile.name)
+  const [breed, setBreed] = useState(profile.breed)
+  const [birthdate, setBirthdate] = useState(profile.birthdate)
+  const [weightKg, setWeightKg] = useState(String(profile.weightKg || ''))
+  const [vet, setVet] = useState(profile.vet)
+  const [photo, setPhoto] = useState<string | null>(profile.photo ?? null)
+  const photoRef = useRef<HTMLInputElement>(null)
+
+  const save = () => {
+    onSave({
+      name: name.trim(),
+      breed: breed.trim(),
+      birthdate,
+      weightKg: weightKg ? Number(weightKg) : 0,
+      vet: vet.trim(),
+      photo,
+    })
+    onClose()
+  }
+
+  return (
+    <Overlay tone="black-blur" onClose={onClose} panelClassName="bg-surface rounded-3xl p-5 w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div className="font-semibold text-ink mb-4">Profiel bewerken</div>
+
+      <div className="flex items-center gap-3 mb-4">
+        <button
+          type="button"
+          onClick={() => photoRef.current?.click()}
+          className="h-16 w-16 rounded-3xl bg-gradient-to-br from-personal to-cross flex items-center justify-center shadow-card overflow-hidden shrink-0"
+        >
+          {photo ? <img src={photo} alt={name || 'Hond'} className="h-full w-full object-cover" /> : <DogIcon className="h-8 w-8 text-white" />}
+        </button>
+        <label className="btn-ghost !py-1.5 cursor-pointer">
+          <Camera className="h-4 w-4" /> {photo ? 'Andere foto' : 'Foto kiezen'}
+          <input ref={photoRef} type="file" accept="image/*" hidden onChange={async (e) => { const f = e.target.files?.[0]; if (f) setPhoto(await readPhoto(f)) }} />
+        </label>
+      </div>
+
+      <label className="block mb-3">
+        <div className="text-xs text-faint mb-1">Naam</div>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Kyra" className="input w-full" />
+      </label>
+      <label className="block mb-3">
+        <div className="text-xs text-faint mb-1">Ras</div>
+        <input value={breed} onChange={(e) => setBreed(e.target.value)} placeholder="Shiba Inu" className="input w-full" />
+      </label>
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <label className="block">
+          <div className="text-xs text-faint mb-1">Geboortedatum</div>
+          <input type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} className="input w-full" />
+        </label>
+        <label className="block">
+          <div className="text-xs text-faint mb-1">Gewicht (kg)</div>
+          <input type="number" min="0" step="0.1" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} placeholder="12" className="input w-full" />
+        </label>
+      </div>
+      <label className="block mb-4">
+        <div className="text-xs text-faint mb-1">Dierenarts</div>
+        <input value={vet} onChange={(e) => setVet(e.target.value)} placeholder="Naam / praktijk" className="input w-full" />
+      </label>
+
+      <div className="flex gap-2">
+        <button onClick={onClose} className="btn-ghost flex-1">Annuleren</button>
+        <button onClick={save} className="btn-primary flex-1"><Check className="h-4 w-4" /> Opslaan</button>
+      </div>
+    </Overlay>
+  )
+}
+
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function Dog() {
   const {
@@ -426,18 +508,24 @@ export default function Dog() {
     dogEntries,
     dogMedical,
     dogReminders,
+    dogCoach,
+    dogCoachLoading,
     logDog,
     deleteDogEntry,
     updateDogEntry,
+    updateDogProfile,
     addDogMedical,
     deleteDogMedical,
     toggleDogReminder,
+    refreshDogCoach,
   } = useStore()
   const photoRef = useRef<HTMLInputElement>(null)
   const [medForm, setMedForm] = useState(false)
   const [detailKind, setDetailKind] = useState<DogKind | null>(null)
   const [editEntry, setEditEntry] = useState<DogEntry | null>(null)
   const [addModal, setAddModal] = useState(false)
+  const [profileModal, setProfileModal] = useState(false)
+  const [selectedDate, setSelectedDate] = useState(TODAY)
 
   const today = dogEntries.filter((e) => e.at.slice(0, 10) === TODAY)
   const count = (k: DogKind) => today.filter((e) => e.kind === k).length
@@ -449,7 +537,7 @@ export default function Dog() {
     { label: 'Sanitair', goal: 6, val: count('pee') + count('poop'), hex: '#A78BFA', icon: Droplet },
   ]
 
-  const ageYears = Math.floor(daysBetween(dogProfile.birthdate, TODAY) / 365)
+  const ageYears = dogProfile.birthdate ? Math.floor(daysBetween(dogProfile.birthdate, TODAY) / 365) : null
 
   const weights = useMemo(
     () =>
@@ -482,11 +570,24 @@ export default function Dog() {
     return tips
   }, [dogEntries, dogReminders, latestWeight])
 
-  const todaySorted = [...today].sort((a, b) => b.at.localeCompare(a.at))
+  const dayEntries = dogEntries.filter((e) => e.at.slice(0, 10) === selectedDate)
+  const daySorted = [...dayEntries].sort((a, b) => b.at.localeCompare(a.at))
+  const shiftDay = (delta: number) => {
+    const d = new Date(selectedDate + 'T00:00:00')
+    d.setDate(d.getDate() + delta)
+    setSelectedDate(d.toISOString().slice(0, 10))
+  }
 
   return (
     <div className="flex flex-col gap-7 max-w-3xl mx-auto">
       {/* Modals */}
+      {profileModal && (
+        <ProfileModal
+          profile={dogProfile}
+          onSave={(patch) => updateDogProfile(patch)}
+          onClose={() => setProfileModal(false)}
+        />
+      )}
       {detailKind && (
         <EntryModal
           mode="detail"
@@ -515,13 +616,18 @@ export default function Dog() {
       {/* Hero */}
       <div className="flex items-center gap-4">
         <div className="h-16 w-16 rounded-3xl bg-gradient-to-br from-personal to-cross flex items-center justify-center shadow-card overflow-hidden shrink-0">
-          {dogProfile.photo ? <img src={dogProfile.photo} alt="Kyra" className="h-full w-full object-cover" /> : <DogIcon className="h-8 w-8 text-white" />}
+          {dogProfile.photo ? <img src={dogProfile.photo} alt={dogProfile.name || 'Hond'} className="h-full w-full object-cover" /> : <DogIcon className="h-8 w-8 text-white" />}
         </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{dogProfile.name}</h1>
-          <div className="text-sm text-muted">{dogProfile.breed} · {ageYears} jaar · {latestWeight} kg</div>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl font-bold tracking-tight">{dogProfile.name || 'Naam onbekend'}</h1>
+          <div className="text-sm text-muted">
+            {dogProfile.breed || 'Ras onbekend'} · {ageYears != null ? `${ageYears} jaar` : 'leeftijd onbekend'} · {latestWeight ? `${latestWeight} kg` : 'gewicht onbekend'}
+          </div>
           <div className="text-xs text-faint">{dogProfile.vet}</div>
         </div>
+        <button onClick={() => setProfileModal(true)} className="btn-ghost !py-1.5 shrink-0">
+          <Pencil className="h-4 w-4" /> Bewerken
+        </button>
       </div>
 
       {/* Today summary */}
@@ -563,19 +669,30 @@ export default function Dog() {
         </div>
       </div>
 
-      {/* Today timeline */}
+      {/* Day timeline */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <SectionTitle>Vandaag</SectionTitle>
-          <button className="btn-ghost !py-1.5" onClick={() => setAddModal(true)}>
-            <Plus className="h-4 w-4" /> Toevoegen
-          </button>
+          <SectionTitle>{selectedDate === TODAY ? 'Vandaag' : fmtDate(selectedDate)}</SectionTitle>
+          <div className="flex items-center gap-1.5">
+            <button className="btn-ghost !p-1.5" onClick={() => shiftDay(-1)} aria-label="Vorige dag">
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            {selectedDate !== TODAY && (
+              <button className="btn-ghost !py-1.5" onClick={() => setSelectedDate(TODAY)}>Vandaag</button>
+            )}
+            <button className="btn-ghost !p-1.5" onClick={() => shiftDay(1)} disabled={selectedDate >= TODAY} aria-label="Volgende dag">
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <button className="btn-ghost !py-1.5" onClick={() => setAddModal(true)}>
+              <Plus className="h-4 w-4" /> Toevoegen
+            </button>
+          </div>
         </div>
-        {todaySorted.length === 0 ? (
-          <Empty>Nog niks gelogd vandaag. Tik een knop hierboven om te loggen.</Empty>
+        {daySorted.length === 0 ? (
+          <Empty>{selectedDate === TODAY ? 'Nog niks gelogd vandaag. Tik een knop hierboven om te loggen.' : 'Niks gelogd op deze dag.'}</Empty>
         ) : (
           <div className="card divide-y divide-line">
-            {todaySorted.map((e) => (
+            {daySorted.map((e) => (
               <TimelineRow
                 key={e.id}
                 e={e}
@@ -608,17 +725,30 @@ export default function Dog() {
 
       {/* Advice */}
       <div className="card p-4">
-        <SectionTitle hint="Op basis van vandaag, gewicht en aankomende herinneringen.">
-          <span className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-personal" /> Advies</span>
-        </SectionTitle>
-        <div className="space-y-2">
-          {advice.map((a, i) => (
-            <div key={i} className={`flex items-start gap-2 text-sm rounded-xl px-3 py-2 ${a.tone === 'good' ? 'bg-buurtkaart/10 text-buurtkaart-deep' : 'bg-personal/10 text-personal-deep'}`}>
-              <span className="mt-0.5">{a.tone === 'good' ? '✓' : '!'}</span>
-              <span>{a.text}</span>
-            </div>
-          ))}
+        <div className="flex items-center justify-between mb-1">
+          <SectionTitle hint="HEYRA leest mee met de echte logs, het gewicht en de herinneringen.">
+            <span className="flex items-center gap-2"><Lightbulb className="h-4 w-4 text-personal" /> Advies</span>
+          </SectionTitle>
+          <button onClick={() => refreshDogCoach()} disabled={dogCoachLoading} className="btn-ghost !py-1.5 shrink-0">
+            <RefreshCw className={`h-4 w-4 ${dogCoachLoading ? 'animate-spin' : ''}`} /> {dogCoachLoading ? 'Bezig…' : 'Ververs advies'}
+          </button>
         </div>
+        {dogCoach ? (
+          <div className="mt-2">
+            <p className="text-sm text-ink leading-relaxed whitespace-pre-line">{dogCoach.text}</p>
+            <p className="text-xs text-faint mt-2">bijgewerkt {fmtDate(dogCoach.generatedAt.slice(0, 10))}</p>
+          </div>
+        ) : (
+          <div className="space-y-2 mt-2">
+            {advice.map((a, i) => (
+              <div key={i} className={`flex items-start gap-2 text-sm rounded-xl px-3 py-2 ${a.tone === 'good' ? 'bg-buurtkaart/10 text-buurtkaart-deep' : 'bg-personal/10 text-personal-deep'}`}>
+                <span className="mt-0.5">{a.tone === 'good' ? '✓' : '!'}</span>
+                <span>{a.text}</span>
+              </div>
+            ))}
+            <p className="text-xs text-faint px-1">Nog geen AI-advies gegenereerd — tik op "Ververs advies" voor een op maat gemaakt advies.</p>
+          </div>
+        )}
       </div>
 
       {/* Reminders */}

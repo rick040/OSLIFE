@@ -74,6 +74,7 @@ import type { ClaudeImportRecord } from './lib/claudeImport'
 import { runReflect, computeCorrelations, computeAnomalies, buildNarrativePrompt, NARRATIVE_SYSTEM_PROMPT } from './reflect'
 import { askBrain } from './heyra/brainClient'
 import { buildFinanceCoachPrompt } from './finance/financeCoach'
+import { buildDogCoachPrompt } from './dog/dogCoach'
 import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
 import type { CardTemplate, ActionKind, ActionFieldType } from './heyra/actions/types'
 import { proposeGoals as proposeGoalsAI } from './heyra/goals'
@@ -161,6 +162,8 @@ import {
   createDogEntryRow,
   deleteDogEntryRow,
   updateDogEntryRow,
+  fetchDogProfile,
+  upsertDogProfile,
   createClientRow,
   updateClientRow,
   deleteClientRow,
@@ -297,6 +300,8 @@ interface State {
   dogEntries: DogEntry[]
   dogMedical: DogMedical[]
   dogReminders: DogReminder[]
+  dogCoach: { text: string; generatedAt: string } | null
+  dogCoachLoading: boolean
   learnedFacts: LearnedFact[]
   vendorTags: VendorTag[]
   braindumpEntries: BraindumpEntry[]
@@ -562,9 +567,11 @@ interface State {
   logDog: (entry: Omit<DogEntry, 'id' | 'at'> & { at?: string }) => void
   deleteDogEntry: (id: string) => void
   updateDogEntry: (id: string, patch: Partial<Omit<DogEntry, 'id'>>) => void
+  updateDogProfile: (patch: Partial<DogProfile>) => void
   addDogMedical: (m: Omit<DogMedical, 'id'>) => void
   deleteDogMedical: (id: string) => void
   toggleDogReminder: (id: string) => void
+  refreshDogCoach: () => Promise<void>
 
   // Subscriptions
   addSubscription: (sub: Omit<Subscription, 'id'>) => void
@@ -626,6 +633,8 @@ const seed = () => ({
   dogEntries: mock.dogEntries,
   dogMedical: mock.dogMedical,
   dogReminders: mock.dogReminders,
+  dogCoach: null as { text: string; generatedAt: string } | null,
+  dogCoachLoading: false,
   learnedFacts: [] as LearnedFact[],
   vendorTags: [] as VendorTag[],
   braindumpEntries: [] as BraindumpEntry[],
@@ -690,8 +699,10 @@ export function applyPersistDefaults(
   state.planningWeek = false
   state.loadingQuotes = false
   state.financeCoachLoading = false
+  state.dogCoachLoading = false
   if (!state.stockQuotes) state.stockQuotes = {}
   if (state.financeCoach === undefined) state.financeCoach = null
+  if (state.dogCoach === undefined) state.dogCoach = null
   if (state.weekPlanAt === undefined) state.weekPlanAt = null
   if (state.lastGoalProposalError === undefined) state.lastGoalProposalError = null
   if (state.lastPlanError === undefined) state.lastPlanError = null
@@ -2228,7 +2239,8 @@ export const useStore = create<State>()(
           activity: pushSignal(s.activity, { text: `Kyra: ${entry.kind} gelogd`, domain: 'personal', loop: 'fast' }),
         }))
         void createDogEntryRow({
-          kind: e.kind, at: e.at, durationMin: e.durationMin, distanceKm: e.distanceKm, note: e.note,
+          kind: e.kind, at: e.at, durationMin: e.durationMin, distanceKm: e.distanceKm, weightKg: e.weightKg,
+          note: e.note, photo: e.photo, location: e.location, poopConsistency: e.poopConsistency, trainingType: e.trainingType,
         }).then(swapTempId(set, 'dogEntries', tempId))
       },
 
@@ -2242,6 +2254,11 @@ export const useStore = create<State>()(
         void updateDogEntryRow(id, patch)
       },
 
+      updateDogProfile: (patch) => {
+        set((s) => ({ dogProfile: { ...s.dogProfile, ...patch } }))
+        void upsertDogProfile(patch)
+      },
+
       addDogMedical: (m) =>
         set((s) => ({ dogMedical: [{ ...m, id: uid('dmed') }, ...s.dogMedical] })),
 
@@ -2249,6 +2266,21 @@ export const useStore = create<State>()(
 
       toggleDogReminder: (id) =>
         set((s) => ({ dogReminders: s.dogReminders.map((x) => (x.id === id ? { ...x, done: !x.done } : x)) })),
+
+      refreshDogCoach: async () => {
+        set({ dogCoachLoading: true })
+        const s = get()
+        try {
+          const { system, prompt } = buildDogCoachPrompt(s)
+          const text = await askBrain(system, prompt, { maxTokens: 400 })
+          set({
+            dogCoach: text ? { text, generatedAt: new Date().toISOString() } : get().dogCoach,
+            dogCoachLoading: false,
+          })
+        } catch {
+          set({ dogCoachLoading: false })
+        }
+      },
 
       addSubscription: (sub) => {
         const tempId = uid('sub')
@@ -2412,7 +2444,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -2440,6 +2472,7 @@ export const useStore = create<State>()(
             fetchBalanceCheckpoints(),
             fetchTasks(),
             fetchCardTemplates(),
+            fetchDogProfile(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -2476,6 +2509,7 @@ export const useStore = create<State>()(
             ...(messages.length > 0 && { messages }),
             notificationPrefs,
             ...(appSettings && { settings: appSettings }),
+            ...(dogProfile && { dogProfile }),
             ...(learnedFacts.length > 0 && { learnedFacts }),
             ...(vendorTags.length > 0 && { vendorTags }),
             // Braindump is app-owned (no mock fallback) — set directly so an empty
@@ -2561,6 +2595,7 @@ export const useStore = create<State>()(
           { table: 'braindump_entries', onChange: () => fetchBraindumpEntries().then((d) => set({ braindumpEntries: d })) },
           { table: 'wiki_entries', onChange: () => fetchWikiEntries().then((d) => set({ wikiEntries: d })) },
           { table: 'app_settings', onChange: () => fetchAppSettings().then((p) => { if (p) set({ settings: p }) }) },
+          { table: 'app_settings', onChange: () => fetchDogProfile().then((p) => { if (p) set({ dogProfile: p }) }) },
           { table: 'person', onChange: () => fetchPeople().then((d) => set({ people: d })) },
           { table: 'interaction', onChange: () => fetchInteractions().then((d) => set({ interactions: d })) },
           { table: 'admin_item', onChange: () => fetchAdminItems().then((d) => set({ adminItems: d })) },
