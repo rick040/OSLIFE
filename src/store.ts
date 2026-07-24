@@ -1546,7 +1546,7 @@ export const useStore = create<State>()(
       },
 
       updateGoal: (id, patch) => {
-        set((s) => ({ goals: s.goals.map((g) => (g.id === id ? { ...g, ...patch } : g)) }))
+        patchSlice(set, 'goals', id, patch)
         const g = get().goals.find((x) => x.id === id)
         if (g) void updateGoalRow(id, patch, g.target > 0 ? Math.min(1, g.current / g.target) : 0)
       },
@@ -2391,9 +2391,11 @@ export const useStore = create<State>()(
       },
 
       toggleSubscription: (id) => {
-        set((s) => ({ subscriptions: s.subscriptions.map((x) => (x.id === id ? { ...x, active: !x.active } : x)) }))
-        const updated = get().subscriptions.find((x) => x.id === id)
-        if (updated) void updateSubscriptionRow(id, { active: updated.active })
+        const sub = get().subscriptions.find((x) => x.id === id)
+        if (!sub) return
+        const nextActive = !sub.active
+        patchSlice(set, 'subscriptions', id, { active: nextActive })
+        void updateSubscriptionRow(id, { active: nextActive })
       },
 
       deleteSubscription: (id) => {
