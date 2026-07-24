@@ -92,6 +92,31 @@ alert — throttled to once per process lifetime — the first time yt-dlp's
 a missing/misconfigured Secret File (fixable in your host's dashboard) apart
 from a present-but-rejected one (needs a fresh cookies.txt export).
 
+## Instagram cookies (optional — works around Instagram's login wall)
+
+Same problem as YouTube above, different platform: an unauthenticated request
+(yt-dlp's video-download attempt, or the plain fetch `noteFromImagePost()`
+falls back to for photo posts) increasingly gets redirected to Instagram's
+login wall instead of the real post — a page with no `og:image` tag at all,
+which surfaces as a bare `no og:image found` error indistinguishable from a
+genuinely deleted/private post. Fix: the same cookie approach as YouTube.
+
+1. While logged into Instagram in your own browser, export cookies in
+   Netscape format (e.g. "Get cookies.txt LOCALLY").
+2. Upload it as a **Secret File** named `instagram-cookies.txt` (Render:
+   service → Environment → Secret Files). Mounted at
+   `/etc/secrets/instagram-cookies.txt` (override via `IG_COOKIES_PATH`).
+3. That's it — every yt-dlp call against an instagram.com URL adds
+   `--cookies` automatically, and `noteFromImagePost()`'s plain fetch sends
+   the same cookies as a `Cookie` header. No file present → falls back to
+   today's unauthenticated behaviour.
+
+Same caveats as the YouTube cookies: treat the file like a password, expect
+to re-export occasionally as the session expires, and a `TELEGRAM_BOT_TOKEN`
+alert fires (once per process lifetime) the first time the login wall shows
+up so a stale export gets noticed instead of every capture quietly degrading
+to a title-only note.
+
 ## Notes
 
 - Audio is transcoded to 16 kHz mono opus, which keeps most content under Groq's

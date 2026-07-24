@@ -36,7 +36,9 @@
  * Deploy:
  *   supabase functions deploy braindump-ingest --project-ref nhyunnnmdcmojvkxrbpl
  * Secrets: ANTHROPIC_API_KEY (required); YOUTUBE_COOKIE_HEADER (optional —
- * needed in practice for YouTube transcripts, see above); BRAINDUMP_WORKER_URL
+ * needed in practice for YouTube transcripts, see above); INSTAGRAM_COOKIE_HEADER
+ * (optional — same fix, same reason, for processSocial()'s og-scrape below,
+ * only used when the worker isn't configured or is unreachable); BRAINDUMP_WORKER_URL
  * + WORKER_SECRET (optional — enables real media transcription for
  * non-YouTube video/audio and caption-less YouTube videos).
  */
@@ -49,6 +51,13 @@ import { extractArticle, extractSocialCaption, fetchText, htmlToText, parseOG } 
 import { extractYoutubeId, fetchYoutubeMeta, fetchYoutubeTranscript } from "../_shared/youtube.ts";
 
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+// Same fix as _shared/youtube.ts's YOUTUBE_COOKIE_HEADER, for Instagram: an
+// unauthenticated og-scrape increasingly gets redirected to Instagram's login
+// wall (no og:image/og:description at all) instead of the real post. Only
+// exercised by processSocial() below, and only sent to instagram.com URLs
+// specifically — never to Pinterest, which wouldn't recognise this cookie
+// anyway and shouldn't see it leaked into its request logs.
+const INSTAGRAM_COOKIE_HEADER = Deno.env.get("INSTAGRAM_COOKIE_HEADER") ?? "";
 
 const VALID_DOMAINS = ["parkingyou", "prjct", "buurtkaart", "personal", "cross"];
 const VALID_KINDS = ["task", "note", "vent", "link", "voice", "transaction", "event", "health", "email", "idea"];
@@ -245,7 +254,9 @@ async function processLink(apiKey: string, url: string): Promise<ProcessResult |
 
 /** Instagram / Pinterest: OG scrape → image (vision) or video (worker upstream). */
 async function processSocial(apiKey: string, url: string): Promise<{ delegate: boolean; result?: ProcessResult | null }> {
-  const html = await fetchText(url);
+  const isInstagram = /instagram\.com/i.test(url);
+  const cookieHeaders = isInstagram && INSTAGRAM_COOKIE_HEADER ? { cookie: INSTAGRAM_COOKIE_HEADER } : {};
+  const html = await fetchText(url, 9000, cookieHeaders);
   const og = html ? parseOG(html) : { title: null, description: null, image: null, video: null };
   if (og.video) return { delegate: true };
 
