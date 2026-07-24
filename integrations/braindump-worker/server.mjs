@@ -25,15 +25,20 @@
 // "Sign in to confirm you're not a bot" from YouTube — a bot-check on the IP,
 // unrelated to the video itself. If a cookies file is present (see
 // YT_COOKIES_PATH below), every yt-dlp call passes --cookies to authenticate
-// as a real browser session, which avoids it.
+// as a real browser session, which avoids it. Instagram has the same problem
+// (an unauthenticated request/download increasingly gets redirected to its
+// login wall) and the same fix, via IG_COOKIES_PATH — used both for yt-dlp's
+// video-download attempt and for noteFromImagePost()'s plain fetch() of the
+// og:image fallback.
 //
 // Env (see .env.example): PORT, WORKER_SECRET, GROQ_API_KEY, ANTHROPIC_API_KEY,
-// SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, YT_COOKIES_PATH (optional).
+// SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, YT_COOKIES_PATH (optional),
+// IG_COOKIES_PATH (optional).
 
 import http from 'node:http'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdtemp, readFile, writeFile, rm, stat, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -85,6 +90,73 @@ const YT_PLAYER_CLIENT_ARGS = ['--extractor-args', 'youtube:player_client=androi
 // no code change needed) vs. file present but yt-dlp still rejecting it
 // (a genuinely expired session — needs a fresh cookies.txt export).
 console.log(`[braindump-worker] YouTube cookies file ${HAS_YT_COOKIES ? 'FOUND' : 'NOT FOUND'} at ${YT_COOKIES_PATH}`)
+
+// Same idea, for Instagram: an unauthenticated yt-dlp download attempt or
+// plain fetch() (noteFromImagePost's og:image scrape below) increasingly
+// gets redirected to Instagram's login wall instead of the real post — a
+// page with no og:image meta tag at all, which used to surface as a bare
+// "no og:image found" error indistinguishable from a genuinely deleted/
+// private post. A real logged-in session's cookies fixes it, same mechanism
+// as the YouTube cookies above.
+const IG_COOKIES_PATH = process.env.IG_COOKIES_PATH || '/etc/secrets/instagram-cookies.txt'
+const HAS_IG_COOKIES = existsSync(IG_COOKIES_PATH)
+console.log(`[braindump-worker] Instagram cookies file ${HAS_IG_COOKIES ? 'FOUND' : 'NOT FOUND'} at ${IG_COOKIES_PATH}`)
+
+const isInstagramUrl = (url) => /(^|\.)instagram\.com/i.test(url || '')
+
+/** yt-dlp --cookies for whichever platform this URL belongs to (or none). */
+function cookieArgsFor(url) {
+  if (isInstagramUrl(url)) return HAS_IG_COOKIES ? ['--cookies', IG_COOKIES_PATH] : []
+  return cookieArgs()
+}
+
+/**
+ * Parse a Netscape-format cookies.txt into a plain `name=value; ...` Cookie
+ * header string, for the plain fetch() calls that can't use yt-dlp's
+ * --cookies flag (noteFromImagePost's og:image scrape). Malformed/blank
+ * lines are skipped rather than thrown on; read once at boot since the file
+ * only changes on a redeploy.
+ */
+function cookieHeaderFromNetscapeFile(path) {
+  try {
+    const pairs = []
+    for (const line of readFileSync(path, 'utf8').split('\n')) {
+      const t = line.trim()
+      if (!t || t.startsWith('#')) continue
+      const cols = t.split('\t')
+      if (cols.length < 7) continue
+      pairs.push(`${cols[5]}=${cols[6]}`)
+    }
+    return pairs.join('; ')
+  } catch {
+    return ''
+  }
+}
+
+const IG_COOKIE_HEADER = HAS_IG_COOKIES ? cookieHeaderFromNetscapeFile(IG_COOKIES_PATH) : ''
+// Distinguishes "post genuinely has no image / is deleted" from "Instagram
+// served us the login wall" — the latter needs a fresh cookies.txt, the
+// former doesn't.
+const IG_LOGIN_WALL_RE = /accounts\/login|LoginAndSignupPage/i
+
+let igCookieAlertSent = false
+async function alertInstagramCookiesExpired(url) {
+  if (igCookieAlertSent || !TELEGRAM_BOT_TOKEN) return
+  igCookieAlertSent = true
+  try {
+    const { data: prefs } = await sb.from('notification_prefs').select('telegram_chat_id').limit(1).maybeSingle()
+    const chatId = prefs?.telegram_chat_id
+    if (!chatId) return
+    const text = `⚠️ Instagram toont een inlogmuur (braindump-worker) — posts krijgen alleen nog een titel-only notitie, geen echte samenvatting, tot je een verse instagram-cookies.txt uploadt.\n\nLaatste post: ${url}`
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text }),
+    })
+  } catch {
+    // Best-effort — a failed alert must never break the actual job.
+  }
+}
 
 const GROQ_MODEL = 'whisper-large-v3-turbo'
 const ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001'
@@ -202,14 +274,26 @@ ${WIKI_PROMPT_BLOCK}`
 
 /** Describe a social post's og:image with Claude vision when it isn't a video at all. */
 async function noteFromImagePost(url) {
-  const res = await fetch(url, { headers: { 'user-agent': BROWSER_UA, 'accept-language': 'nl,en;q=0.8' } })
+  const headers = { 'user-agent': BROWSER_UA, 'accept-language': 'nl,en;q=0.8' }
+  if (isInstagramUrl(url) && IG_COOKIE_HEADER) headers.cookie = IG_COOKIE_HEADER
+  const res = await fetch(url, { headers })
   if (!res.ok) throw new Error(`fetch ${res.status}`)
   const html = await res.text()
   const title = ogTag(html, 'og:title')
   const descRaw = ogTag(html, 'og:description')
   const image = ogTag(html, 'og:image')
-  if (!image) throw new Error('no og:image found')
   const description = descRaw ? extractCaption(descRaw) : null
+
+  if (!image) {
+    // No image at all is most often Instagram's login wall (no cookies
+    // configured, or a stale/expired cookies.txt) rather than a genuinely
+    // image-less post. Alert once so a stale cookies.txt gets noticed
+    // instead of every capture silently degrading, but only actually fail
+    // the entry when there's truly nothing to work with — title/caption
+    // alone is still a usable note ("never stuck" contract).
+    if (isInstagramUrl(url) && IG_LOGIN_WALL_RE.test(html)) void alertInstagramCookiesExpired(url)
+    if (!title && !description) throw new Error('no og:image found')
+  }
 
   const content = [
     {
@@ -218,10 +302,12 @@ async function noteFromImagePost(url) {
         `Gedeelde social post: ${url}`,
         title ? `Titel: ${title}` : '',
         description ? `Bijschrift: ${description}` : '',
-        'Hieronder de afbeelding van de post — beschrijf wat te zien is en neem eventuele tekst (OCR) op.',
+        image
+          ? 'Hieronder de afbeelding van de post — beschrijf wat te zien is en neem eventuele tekst (OCR) op.'
+          : 'Geen afbeelding beschikbaar — maak een korte notitie op basis van titel/bijschrift.',
       ].filter(Boolean).join('\n'),
     },
-    { type: 'image', source: { type: 'url', url: image } },
+    ...(image ? [{ type: 'image', source: { type: 'url', url: image } }] : []),
   ]
   const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -335,7 +421,7 @@ async function fetchFromUrl(url, dir) {
     '-f', 'bestaudio/best',
     '--extract-audio', '--audio-format', 'opus',
     '--postprocessor-args', 'ffmpeg:-ac 1 -ar 16000 -b:a 16k',
-    ...cookieArgs(),
+    ...cookieArgsFor(url),
     ...YT_PLAYER_CLIENT_ARGS,
     '-o', out, url,
   ], { maxBuffer: 1024 * 1024 * 64, timeout: 1000 * 60 * 20 })
