@@ -21,6 +21,10 @@
  *      current time (PM-072 Fase 2) — no native Android app exists to use
  *      AlarmManager, so medication reminders reuse this same Telegram channel,
  *      claimed per medication+time+day just like the fixed daily slots.
+ *   5. If `nudges_enabled`, rolls a small per-tick chance (sized off
+ *      `nudges_per_day`) of firing one throughout-the-day nudge — a task/habit
+ *      nudge, a keep-me-sharp recall prompt from the Kennisbank, a suggestion,
+ *      or an ad-hoc energy check-in — so timing feels random, not fixed.
  *
 
  * The morning briefing is a server-side port of src/derive.ts buildNudge():
@@ -82,6 +86,14 @@ function inQuietHours(start: string | null, end: string | null, nowMinutes: numb
   const s = toMinutes(start);
   const e = toMinutes(end);
   if (s === e) return false;
+  if (s < e) return nowMinutes >= s && nowMinutes < e;
+  return nowMinutes >= s || nowMinutes < e; // wraps past midnight
+}
+
+function withinActiveWindow(startHHMM: string, endHHMM: string, nowMinutes: number): boolean {
+  const s = toMinutes(startHHMM);
+  const e = toMinutes(endHHMM);
+  if (s === e) return true; // degenerate config: treat as always active
   if (s < e) return nowMinutes >= s && nowMinutes < e;
   return nowMinutes >= s || nowMinutes < e; // wraps past midnight
 }
@@ -318,6 +330,148 @@ async function dueMedicationReminders(sb: any, nowMinutes: number): Promise<DueM
   return due;
 }
 
+// ── Nudges: throughout-the-day interactions beyond the fixed slots ─────────
+// Each tick that lands inside the active window (morning_time..evening_time)
+// rolls a small chance of firing one, sized so the expected count per day
+// matches nudges_per_day — that's what makes the timing feel random rather
+// than clustering at a fixed minute. buildNudge tries the enabled categories
+// in random order and returns the first with something to say; an empty day
+// (no open tasks, no habits left, no wiki entries) means no nudge fires.
+
+const TICK_MIN = 5;
+const NUDGE_MIN_GAP_MIN = 40; // never fire two nudges closer together than this
+
+interface Nudge {
+  text: string;
+  keyboard?: InlineKeyboard;
+}
+
+// deno-lint-ignore no-explicit-any
+async function buildTaskNudge(sb: any, today: string): Promise<Nudge | null> {
+  const { data: openTasks } = await sb
+    .from("tasks")
+    .select("id,title,domain,priority")
+    .eq("user_id", USER_ID)
+    .eq("status", "open");
+  const habits = await openHabitsWithStreak(sb, today);
+
+  const candidates: Nudge[] = [];
+  // deno-lint-ignore no-explicit-any
+  for (const t of (openTasks ?? []) as any[]) {
+    const prio = t.priority ? ` · prioriteit ${t.priority}` : "";
+    candidates.push({
+      text: `👋 Kleine duw: "${t.title}" staat nog open (${t.domain}${prio}).`,
+      keyboard: [[{ text: "✅ Afgerond", callback_data: `task_done:${t.id}` }]],
+    });
+  }
+  for (const h of habits) {
+    candidates.push({
+      text: `🔁 "${h.name}" nog niet gedaan vandaag${h.priorStreak > 0 ? ` — 🔥${h.priorStreak}d op het spel` : ""}.`,
+      keyboard: [[{ text: `${h.icon} Gedaan`, callback_data: `hb_done:${h.id}` }]],
+    });
+  }
+  if (!candidates.length) return null;
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+// deno-lint-ignore no-explicit-any
+async function buildSharpNudge(sb: any): Promise<Nudge | null> {
+  // Kennisbank (wiki_entries) doubles as recall material: things Rick already
+  // decided were worth keeping. No answer-grading — a "toon antwoord" reveal
+  // is enough for a keep-me-sharp prompt, this isn't a spaced-repetition app.
+  const { data } = await sb
+    .from("wiki_entries")
+    .select("id,title")
+    .eq("user_id", USER_ID)
+    .eq("status", "confirmed");
+  if (!data?.length) return null;
+  // deno-lint-ignore no-explicit-any
+  const pick = data[Math.floor(Math.random() * data.length)] as any;
+  return {
+    text: `🧠 Keep-me-sharp: weet je nog waar dit over ging?\n\n"${pick.title}"`,
+    keyboard: [[{ text: "💡 Toon antwoord", callback_data: `sharp_show:${pick.id}` }]],
+  };
+}
+
+// deno-lint-ignore no-explicit-any
+async function buildSuggestionNudge(sb: any): Promise<Nudge | null> {
+  const { data: highPrio } = await sb
+    .from("tasks")
+    .select("id,title,domain")
+    .eq("user_id", USER_ID)
+    .eq("status", "open")
+    .eq("priority", "High")
+    .is("due", null);
+  const { data: liveProjects } = await sb
+    .from("projects")
+    .select("id,name")
+    .eq("user_id", USER_ID)
+    .in("status", ["active", "review"]);
+
+  const candidates: string[] = [];
+  // deno-lint-ignore no-explicit-any
+  for (const t of (highPrio ?? []) as any[]) {
+    candidates.push(`💡 Suggestie: pak "${t.title}" op (${t.domain}) — hoge prioriteit, nog geen datum gepland.`);
+  }
+  // deno-lint-ignore no-explicit-any
+  for (const p of (liveProjects ?? []) as any[]) {
+    candidates.push(`💡 Suggestie: even een stap zetten in project "${p.name}"?`);
+  }
+  if (!candidates.length) return null;
+  return { text: candidates[Math.floor(Math.random() * candidates.length)] };
+}
+
+function buildCheckinNudge(): Nudge {
+  const keyboard: InlineKeyboard = [[1, 2, 3, 4, 5].map((n) => ({ text: String(n), callback_data: `ci_e:${n}` }))];
+  return { text: "☀️ Tussentijdse check: hoe is je energie nu (1-5)?", keyboard };
+}
+
+// deno-lint-ignore no-explicit-any
+async function buildNudge(sb: any, categories: string[], today: string): Promise<{ category: string; nudge: Nudge } | null> {
+  const shuffled = [...categories].sort(() => Math.random() - 0.5);
+  for (const cat of shuffled) {
+    let nudge: Nudge | null = null;
+    if (cat === "task") nudge = await buildTaskNudge(sb, today);
+    else if (cat === "sharp") nudge = await buildSharpNudge(sb);
+    else if (cat === "suggestion") nudge = await buildSuggestionNudge(sb);
+    else if (cat === "checkin") nudge = buildCheckinNudge();
+    if (nudge) return { category: cat, nudge };
+  }
+  return null;
+}
+
+// deno-lint-ignore no-explicit-any
+async function maybeBuildNudge(sb: any, prefs: any, today: string, nowMinutes: number): Promise<{ category: string; nudge: Nudge } | null> {
+  if (!prefs.nudges_enabled) return null;
+  if (inQuietHours(prefs.quiet_hours_start, prefs.quiet_hours_end, nowMinutes)) return null;
+  if (!withinActiveWindow(prefs.morning_time, prefs.evening_time, nowMinutes)) return null;
+
+  const { data: last } = await sb
+    .from("notification_log")
+    .select("sent_at")
+    .eq("user_id", USER_ID)
+    .eq("kind", "nudge")
+    .order("sent_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const elapsedMin = last?.sent_at ? (Date.now() - new Date(last.sent_at as string).getTime()) / 60_000 : Infinity;
+  if (elapsedMin < NUDGE_MIN_GAP_MIN) return null;
+
+  const startMin = toMinutes(prefs.morning_time);
+  const endMin = toMinutes(prefs.evening_time);
+  const activeWindowMin = endMin > startMin ? endMin - startMin : endMin + 1440 - startMin;
+  const perDay = Math.max(1, Math.min(12, (prefs.nudges_per_day as number) ?? 3));
+  const avgIntervalMin = activeWindowMin / perDay;
+  // Expected ticks between fires = avgIntervalMin / TICK_MIN, so this tick's
+  // fire probability is its reciprocal — a Poisson-ish spread across the day.
+  if (Math.random() > TICK_MIN / avgIntervalMin) return null;
+
+  const categories = (prefs.nudge_categories as string[] | null)?.length
+    ? (prefs.nudge_categories as string[])
+    : ["task", "sharp", "suggestion", "checkin"];
+  return await buildNudge(sb, categories, today);
+}
+
 // ── Urgent alerts ─────────────────────────────────────────────────────────
 
 interface UrgentAlert {
@@ -508,6 +662,18 @@ Deno.serve(async (req) => {
           await sendClaimed(sb, a.kind, a.dedupKey, BOT_TOKEN, chatId, a.text);
           sent.push(`${a.kind}:${a.dedupKey}`);
         }
+      }
+    }
+
+    // Random throughout-the-day nudges. Claimed with a per-minute dedup key —
+    // uniqueness only needs to survive a single tick's own retries, since the
+    // NUDGE_MIN_GAP_MIN spacing check above is what prevents back-to-back sends.
+    const picked = await maybeBuildNudge(sb, prefs, today, nowMinutes);
+    if (picked) {
+      const dedupKey = `${today}T${String(nowMinutes).padStart(4, "0")}`;
+      if (await claim(sb, "nudge", dedupKey)) {
+        await sendClaimed(sb, "nudge", dedupKey, BOT_TOKEN, chatId, picked.nudge.text, picked.nudge.keyboard);
+        sent.push(`nudge:${picked.category}`);
       }
     }
 

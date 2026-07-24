@@ -1,7 +1,7 @@
 import { X, Send } from 'lucide-react'
 import { useStore } from '../store'
 import { SectionTitle, Overlay } from './ui'
-import type { NotificationPrefs } from '../types'
+import type { NotificationPrefs, NudgeCategory } from '../types'
 
 const BOT_USERNAME = import.meta.env.VITE_TELEGRAM_BOT_USERNAME as string | undefined
 
@@ -18,6 +18,9 @@ const DEFAULT_PREFS: NotificationPrefs = {
   habitTime: '21:00',
   quietHoursStart: null,
   quietHoursEnd: null,
+  nudgesEnabled: false,
+  nudgesPerDay: 3,
+  nudgeCategories: ['task', 'sharp', 'suggestion', 'checkin'],
 }
 
 const CATEGORIES: Array<{ key: keyof NotificationPrefs; timeKey?: keyof NotificationPrefs; label: string; hint: string }> = [
@@ -25,6 +28,13 @@ const CATEGORIES: Array<{ key: keyof NotificationPrefs; timeKey?: keyof Notifica
   { key: 'eveningCheckin', timeKey: 'eveningTime', label: 'Avond check-in', hint: 'Vraagt energie + stemming als je nog niet hebt ingecheckt.' },
   { key: 'habitReminders', timeKey: 'habitTime', label: 'Gewoonte-herinneringen', hint: 'Gewoontes die nog openstaan, met streak op het spel.' },
   { key: 'urgentAlerts', label: 'Urgente signalen', hint: 'Betaling nadert, loop over deadline, project geblokkeerd — zodra het gebeurt.' },
+]
+
+const NUDGE_CATEGORIES: Array<{ key: NudgeCategory; label: string; hint: string }> = [
+  { key: 'task', label: 'Taak/gewoonte-duwtjes', hint: 'Een open taak of nog niet afgevinkte gewoonte, op een willekeurig moment.' },
+  { key: 'sharp', label: 'Keep-me-sharp', hint: 'Herinner je iets terug uit de Kennisbank, met een "toon antwoord"-knop.' },
+  { key: 'suggestion', label: 'Suggesties', hint: 'Een lichte aanmoediging op basis van openstaande taken of lopende projecten.' },
+  { key: 'checkin', label: 'Losse check-ins', hint: 'Tussentijdse "hoe is je energie nu?" — los van de vaste avond check-in.' },
 ]
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
@@ -141,6 +151,64 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setNotificationPrefs({ quietHoursEnd: e.target.value })}
             />
           </div>
+        </div>
+
+        <div className="mt-5">
+          <SectionTitle hint="Willekeurige momenten door de dag heen, los van de vaste tijden hierboven — geen vast schema, gewoon af en toe een duwtje.">
+            Nudges door de dag
+          </SectionTitle>
+          <div className="flex items-center justify-between gap-3 py-1.5">
+            <div className="min-w-0">
+              <div className="text-sm text-ink">Actief</div>
+              <div className="text-xs text-faint">Respecteert je stille uren hierboven.</div>
+            </div>
+            <input
+              type="checkbox"
+              className="accent-forest h-4 w-4"
+              checked={p.nudgesEnabled}
+              onChange={(e) => setNotificationPrefs({ nudgesEnabled: e.target.checked })}
+            />
+          </div>
+          {p.nudgesEnabled && (
+            <>
+              <label className="flex items-center justify-between gap-3 py-1.5 border-t border-line">
+                <span className="text-sm text-ink">Ongeveer per dag</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={12}
+                  className="input !py-1 !px-2 text-sm w-16 text-right"
+                  value={p.nudgesPerDay}
+                  onChange={(e) => setNotificationPrefs({ nudgesPerDay: Math.min(12, Math.max(1, parseInt(e.target.value, 10) || 1)) })}
+                />
+              </label>
+              <div className="space-y-2 pt-1">
+                {NUDGE_CATEGORIES.map((c) => {
+                  const checked = p.nudgeCategories.includes(c.key)
+                  return (
+                    <div key={c.key} className="flex items-center justify-between gap-3 py-1 border-b border-line last:border-0">
+                      <div className="min-w-0">
+                        <div className="text-sm text-ink">{c.label}</div>
+                        <div className="text-xs text-faint">{c.hint}</div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        className="accent-forest h-4 w-4 shrink-0"
+                        checked={checked}
+                        onChange={(e) =>
+                          setNotificationPrefs({
+                            nudgeCategories: e.target.checked
+                              ? [...p.nudgeCategories, c.key]
+                              : p.nudgeCategories.filter((k) => k !== c.key),
+                          })
+                        }
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
         </div>
 
         <div className="mt-5">

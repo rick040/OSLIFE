@@ -1441,6 +1441,9 @@ export const useStore = create<State>()(
             habitTime: '21:00',
             quietHoursStart: null,
             quietHoursEnd: null,
+            nudgesEnabled: false,
+            nudgesPerDay: 3,
+            nudgeCategories: ['task', 'sharp', 'suggestion', 'checkin'],
           }
           return { notificationPrefs: { ...base, ...p } }
         })

@@ -523,6 +523,8 @@ export interface Checkin {
 
 // ── Proactive Telegram notifications ─────────────────────────────────────────
 
+export type NudgeCategory = 'task' | 'sharp' | 'suggestion' | 'checkin'
+
 export interface NotificationPrefs {
   telegramChatId: number | null
   telegramUsername: string | null
@@ -536,6 +538,9 @@ export interface NotificationPrefs {
   habitTime: string // 'HH:MM'
   quietHoursStart: string | null // 'HH:MM'
   quietHoursEnd: string | null // 'HH:MM'
+  nudgesEnabled: boolean
+  nudgesPerDay: number
+  nudgeCategories: NudgeCategory[]
 }
 
 // ── Behaviour sense: screen time + app usage ─────────────────────────────────

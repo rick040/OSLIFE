@@ -441,6 +441,27 @@ Deno.serve(async (req) => {
       return new Response("ok");
     }
 
+    // Nudge actions (notify-tick's throughout-the-day interactions).
+    if (data.startsWith("task_done:")) {
+      const taskId = data.split(":")[1];
+      const { error } = await sb.from("tasks").update({ status: "closed", updated_at: new Date().toISOString() })
+        .eq("id", taskId).eq("user_id", USER_ID);
+      await answerCallbackQuery(BOT_TOKEN, callbackId, error ? "Mislukt" : "Afgerond ✅");
+      if (!error) await editMessageText(BOT_TOKEN, chatId, messageId, "✅ Afgerond.");
+      return new Response("ok");
+    }
+
+    if (data.startsWith("sharp_show:")) {
+      const entryId = data.split(":")[1];
+      const { data: entry } = await sb.from("wiki_entries").select("title,takeaway,application").eq("id", entryId).maybeSingle();
+      const text = entry
+        ? `🧠 "${entry.title}"\n\n📌 ${entry.takeaway}\n\n🔗 ${entry.application}`
+        : "Kon deze niet meer terugvinden.";
+      await editMessageText(BOT_TOKEN, chatId, messageId, text);
+      await answerCallbackQuery(BOT_TOKEN, callbackId);
+      return new Response("ok");
+    }
+
     if (data.startsWith("hb_done:")) {
       const habitId = data.split(":")[1];
       const today = amsterdamToday();

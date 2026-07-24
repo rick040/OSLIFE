@@ -30,6 +30,7 @@ import type {
   Message,
   Channel,
   NotificationPrefs,
+  NudgeCategory,
   VendorTag,
   BraindumpEntry,
   WikiEntry,
@@ -669,7 +670,7 @@ export async function fetchNotificationPrefs(): Promise<NotificationPrefs | null
   const { data } = await supabase
     .from('notification_prefs')
     .select(
-      'telegram_chat_id,telegram_username,linked_at,morning_briefing,evening_checkin,habit_reminders,urgent_alerts,morning_time,evening_time,habit_time,quiet_hours_start,quiet_hours_end',
+      'telegram_chat_id,telegram_username,linked_at,morning_briefing,evening_checkin,habit_reminders,urgent_alerts,morning_time,evening_time,habit_time,quiet_hours_start,quiet_hours_end,nudges_enabled,nudges_per_day,nudge_categories',
     )
     .maybeSingle()
   if (!data) return null
@@ -686,6 +687,9 @@ export async function fetchNotificationPrefs(): Promise<NotificationPrefs | null
     habitTime: (data.habit_time as string)?.slice(0, 5) ?? '21:00',
     quietHoursStart: (data.quiet_hours_start as string)?.slice(0, 5) ?? null,
     quietHoursEnd: (data.quiet_hours_end as string)?.slice(0, 5) ?? null,
+    nudgesEnabled: (data.nudges_enabled as boolean) ?? false,
+    nudgesPerDay: (data.nudges_per_day as number) ?? 3,
+    nudgeCategories: (data.nudge_categories as NudgeCategory[]) ?? ['task', 'sharp', 'suggestion', 'checkin'],
   }
 }
 
@@ -705,6 +709,9 @@ export async function upsertNotificationPrefs(p: Partial<NotificationPrefs>): Pr
       ...(p.habitTime !== undefined && { habit_time: p.habitTime }),
       ...(p.quietHoursStart !== undefined && { quiet_hours_start: p.quietHoursStart }),
       ...(p.quietHoursEnd !== undefined && { quiet_hours_end: p.quietHoursEnd }),
+      ...(p.nudgesEnabled !== undefined && { nudges_enabled: p.nudgesEnabled }),
+      ...(p.nudgesPerDay !== undefined && { nudges_per_day: p.nudgesPerDay }),
+      ...(p.nudgeCategories !== undefined && { nudge_categories: p.nudgeCategories }),
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'user_id' },
