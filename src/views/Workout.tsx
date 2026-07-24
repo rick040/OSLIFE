@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store'
-import { TODAY } from '../domains'
+import { TODAY, DOMAIN_HEX } from '../domains'
 import { SectionTitle, Empty, SegmentedProgress, Overlay } from '../components/ui'
 import { humanizeAge } from '../lib/syncStatus'
-import type { WorkoutPlan, WorkoutExercise } from '../types'
+import { BODY_PARTS, TARGET_MUSCLES, titleCase, loadExerciseLibrary, searchExercises, type LibraryExercise } from '../workout/exerciseLibrary'
+import type { WorkoutPlan, WorkoutExercise, WorkoutSet } from '../types'
 import {
   Dumbbell,
   Plus,
@@ -17,12 +18,15 @@ import {
   Pencil,
   Scale,
   BarChart3,
+  Search,
+  ListPlus,
 } from 'lucide-react'
 
 const WEEKDAY_FULL = ['Zondag', 'Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag']
 const WEEKDAY_SHORT = ['zo', 'ma', 'di', 'wo', 'do', 'vr', 'za']
 const MONTH_SHORT = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
-const MUSCLE_GROUPS = ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core']
+/** The app's 5 core accent hues (shared with domain tags elsewhere) — reused as the plan-color palette. */
+const PLAN_COLORS = Object.values(DOMAIN_HEX)
 /** Evidence-based weekly landmark (roughly MEV→MAV) used only to scale the muscle-progress dots. */
 const TARGET_SETS_PER_WEEK = 15
 
@@ -44,9 +48,9 @@ export default function Workout() {
     workoutSessions,
     bodyWeight,
     addWorkoutPlan,
-    updateWorkoutPlan,
     deleteWorkoutPlan,
     addWorkoutExercise,
+    updateWorkoutExercise,
     deleteWorkoutExercise,
     logWorkoutSession,
     deleteWorkoutSession,
@@ -92,6 +96,22 @@ export default function Workout() {
     return [...s].sort()
   }, [workoutExercises, allSets])
 
+  /** Most recent logged sets per exercise (across all past sessions) — powers the "vorige keer" hints while logging. */
+  const previousByExercise = useMemo(() => {
+    const map = new Map<string, WorkoutSet[]>()
+    const sorted = [...workoutSessions].sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+    for (const ex of workoutExercises) {
+      for (const s of sorted) {
+        const sets = s.sets.filter((x) => x.exerciseId === ex.id).sort((a, b) => a.setNumber - b.setNumber)
+        if (sets.length) {
+          map.set(ex.id, sets)
+          break
+        }
+      }
+    }
+    return map
+  }, [workoutSessions, workoutExercises])
+
   const planLastDone = (planId: string): string | null => {
     const sessions = workoutSessions.filter((s) => s.planId === planId)
     if (!sessions.length) return null
@@ -116,6 +136,7 @@ export default function Workout() {
 
       {planForm && (
         <PlanForm
+          existingCount={workoutPlans.length}
           onCancel={() => setPlanForm(false)}
           onSave={(draft) => {
             addWorkoutPlan(draft)
@@ -154,9 +175,7 @@ export default function Workout() {
               </div>
               <div className="text-xs text-faint flex items-center gap-1">
                 Volume getild · laatste 7 dagen
-                {volumePrev7 > 0 && (
-                  <VolumeDelta current={volume7} prev={volumePrev7} />
-                )}
+                {volumePrev7 > 0 && <VolumeDelta current={volume7} prev={volumePrev7} />}
               </div>
             </div>
           </div>
@@ -168,6 +187,7 @@ export default function Workout() {
               {workoutPlans.map((p, i) => {
                 const lastDone = planLastDone(p.id)
                 const isToday = p.dayOfWeek === new Date(TODAY + 'T00:00:00').getDay()
+                const color = p.color ?? PLAN_COLORS[i % PLAN_COLORS.length]
                 return (
                   <button
                     key={p.id}
@@ -177,7 +197,7 @@ export default function Workout() {
                     <div className="flex items-start justify-between gap-2">
                       <span
                         className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold border-2"
-                        style={{ borderColor: p.color ?? '#34D399', color: p.color ?? '#34D399' }}
+                        style={{ borderColor: color, color }}
                       >
                         {i + 1}
                       </span>
@@ -185,6 +205,16 @@ export default function Workout() {
                     </div>
                     <div className="text-base font-medium text-ink mt-3">{p.name}</div>
                     <div className="text-xs text-faint mt-0.5">{nextPlanLabel(p)}</div>
+                    {p.muscleGroups.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {p.muscleGroups.slice(0, 3).map((m) => (
+                          <span key={m} className="chip bg-sunken text-ink-soft text-[10px] px-1.5 py-0">{m}</span>
+                        ))}
+                        {p.muscleGroups.length > 3 && (
+                          <span className="chip bg-sunken text-faint text-[10px] px-1.5 py-0">+{p.muscleGroups.length - 3}</span>
+                        )}
+                      </div>
+                    )}
                     <div className="text-xs text-faint mt-2">
                       {lastDone ? `Laatst gedaan · ${humanizeAge(lastDone)}` : 'Nog niet gelogd'}
                     </div>
@@ -200,6 +230,7 @@ export default function Workout() {
               plan={selectedPlan}
               exercises={exercisesFor(selectedPlan.id)}
               onAddExercise={(ex) => addWorkoutExercise(selectedPlan.id, ex)}
+              onUpdateExercise={updateWorkoutExercise}
               onDeleteExercise={deleteWorkoutExercise}
               onDeletePlan={() => {
                 deleteWorkoutPlan(selectedPlan.id)
@@ -243,9 +274,12 @@ export default function Workout() {
                   .slice(0, 8)
                   .map((s) => {
                     const vol = volumeOf(s.sets)
+                    const planIdx = workoutPlans.findIndex((p) => p.id === s.planId)
+                    const color = planIdx >= 0 ? workoutPlans[planIdx].color ?? PLAN_COLORS[planIdx % PLAN_COLORS.length] : '#737373'
                     return (
-                      <div key={s.id} className="p-4 flex items-center justify-between gap-3">
-                        <div className="min-w-0">
+                      <div key={s.id} className="p-4 flex items-center gap-3">
+                        <span className="h-2 w-2 rounded-full shrink-0" style={{ background: color }} />
+                        <div className="min-w-0 flex-1">
                           <div className="text-sm font-medium text-ink truncate">{s.planName ?? 'Vrije training'}</div>
                           <div className="text-xs text-faint">
                             {humanizeAge(s.startedAt)} · {s.sets.length} sets{vol > 0 ? ` · ${fmtKg(vol)} kg` : ''}
@@ -267,6 +301,7 @@ export default function Workout() {
         <LogWorkoutModal
           plan={logPlan}
           exercises={exercisesFor(logPlan.id)}
+          previousByExercise={previousByExercise}
           onClose={() => setLogPlan(null)}
           onSave={(sets) => {
             const startedAt = new Date().toISOString()
@@ -328,8 +363,18 @@ function MuscleCard({ muscle, thisWeek, lastWeek }: { muscle: string; thisWeek: 
   )
 }
 
+/** 0=leeg .. 3=vol, mirrors a GitHub-style contribution scale. */
+function cellShade(count: number): string {
+  if (count <= 0) return ''
+  if (count === 1) return '#34D39955'
+  if (count === 2) return '#34D399AA'
+  return '#34D399'
+}
+
 function ContributionGrid({ sessionsByDate }: { sessionsByDate: Map<string, number> }) {
   // 12 weeks, columns = weeks (7-day chunks ending today), rows = weekday.
+  // Fixed row heights + fluid (1fr) columns so the grid always fills the
+  // card's full width instead of a fixed cell size scrolling off to the side.
   const weeks: string[][] = []
   for (let i = 0; i < last84.length; i += 7) weeks.push(last84.slice(i, i + 7))
 
@@ -342,66 +387,74 @@ function ContributionGrid({ sessionsByDate }: { sessionsByDate: Map<string, numb
   }
 
   return (
-    <div className="overflow-x-auto">
-      <div className="inline-flex flex-col gap-1 min-w-max">
-        <div className="flex gap-1 pl-6">
-          {weeks.map((_, wi) => (
-            <div key={wi} className="w-3.5 text-[10px] text-faint">
-              {monthLabelFor(wi) ?? ''}
-            </div>
-          ))}
-        </div>
-        <div className="flex gap-1">
-          <div className="flex flex-col gap-1 pr-1 justify-between text-[10px] text-faint w-5 shrink-0">
-            {WEEKDAY_SHORT.map((d) => (
-              <span key={d} className="h-3.5 leading-[14px]">{d}</span>
-            ))}
+    <div>
+      <div
+        className="grid gap-1"
+        style={{ gridTemplateColumns: `20px repeat(${weeks.length}, minmax(0, 1fr))`, gridTemplateRows: `14px repeat(7, 1fr)`, height: 160 }}
+      >
+        {weeks.map((_, wi) => (
+          <div key={`m-${wi}`} className="text-[10px] text-faint truncate" style={{ gridColumn: wi + 2, gridRow: 1 }}>
+            {monthLabelFor(wi) ?? ''}
           </div>
-          <div className="flex gap-1">
-            {weeks.map((week, wi) => (
-              <div key={wi} className="flex flex-col gap-1">
-                {week.map((iso) => {
-                  const count = sessionsByDate.get(iso) ?? 0
-                  const isToday = iso === TODAY
-                  return (
-                    <div
-                      key={iso}
-                      title={`${iso}: ${count} training${count === 1 ? '' : 'en'}`}
-                      className="h-3.5 w-3.5 rounded"
-                      style={{
-                        background: count === 0 ? '#262626' : count === 1 ? '#34D39966' : '#34D399',
-                        outline: isToday ? '1.5px solid #34D399' : 'none',
-                        outlineOffset: 1,
-                      }}
-                    />
-                  )
-                })}
-              </div>
-            ))}
+        ))}
+        {WEEKDAY_SHORT.map((d, di) => (
+          <div key={`d-${di}`} className="text-[10px] text-faint flex items-center" style={{ gridColumn: 1, gridRow: di + 2 }}>
+            {di % 2 === 1 ? d : ''}
           </div>
-        </div>
+        ))}
+        {weeks.map((week, wi) =>
+          week.map((iso, di) => {
+            const count = sessionsByDate.get(iso) ?? 0
+            const isToday = iso === TODAY
+            return (
+              <div
+                key={iso}
+                title={`${iso}: ${count} training${count === 1 ? '' : 'en'}`}
+                className={`rounded ${count === 0 ? 'bg-line' : ''}`}
+                style={{
+                  gridColumn: wi + 2,
+                  gridRow: di + 2,
+                  background: count > 0 ? cellShade(count) : undefined,
+                  outline: isToday ? '1.5px solid #34D399' : 'none',
+                  outlineOffset: 1,
+                }}
+              />
+            )
+          }),
+        )}
+      </div>
+      <div className="flex items-center justify-end gap-1.5 mt-2 text-[10px] text-faint">
+        <span>Minder</span>
+        <span className="h-2.5 w-2.5 rounded bg-line" />
+        <span className="h-2.5 w-2.5 rounded" style={{ background: cellShade(1) }} />
+        <span className="h-2.5 w-2.5 rounded" style={{ background: cellShade(2) }} />
+        <span className="h-2.5 w-2.5 rounded" style={{ background: cellShade(3) }} />
+        <span>Meer</span>
       </div>
     </div>
   )
 }
 
 function PlanForm({
+  existingCount,
   onCancel,
   onSave,
 }: {
+  existingCount: number
   onCancel: () => void
   onSave: (draft: Omit<WorkoutPlan, 'id' | 'orderIdx' | 'active'>) => void
 }) {
   const [name, setName] = useState('')
   const [dayOfWeek, setDayOfWeek] = useState<number | null>(null)
   const [muscles, setMuscles] = useState<string[]>([])
+  const [color, setColor] = useState(PLAN_COLORS[existingCount % PLAN_COLORS.length])
 
   const toggleMuscle = (m: string) => setMuscles((prev) => (prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]))
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
-    onSave({ name: name.trim(), dayOfWeek, muscleGroups: muscles, color: null })
+    onSave({ name: name.trim(), dayOfWeek, muscleGroups: muscles, color })
   }
 
   return (
@@ -414,9 +467,21 @@ function PlanForm({
             <option key={d} value={i}>{d}</option>
           ))}
         </select>
+        <div className="flex items-center gap-1.5">
+          {PLAN_COLORS.map((c) => (
+            <button
+              type="button"
+              key={c}
+              onClick={() => setColor(c)}
+              aria-label={`Kleur ${c}`}
+              className={`h-7 w-7 rounded-full shrink-0 transition-transform ${color === c ? 'ring-2 ring-ink ring-offset-2 ring-offset-surface scale-110' : ''}`}
+              style={{ background: c }}
+            />
+          ))}
+        </div>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {MUSCLE_GROUPS.map((m) => (
+        {TARGET_MUSCLES.map((m) => (
           <button type="button" key={m} onClick={() => toggleMuscle(m)} className={`chip ${muscles.includes(m) ? 'bg-ink text-canvas' : 'bg-sunken text-muted'}`}>
             {m}
           </button>
@@ -434,6 +499,7 @@ function PlanDetail({
   plan,
   exercises,
   onAddExercise,
+  onUpdateExercise,
   onDeleteExercise,
   onDeletePlan,
   onStart,
@@ -441,21 +507,23 @@ function PlanDetail({
   plan: WorkoutPlan
   exercises: WorkoutExercise[]
   onAddExercise: (ex: Omit<WorkoutExercise, 'id' | 'planId'>) => void
+  onUpdateExercise: (id: string, patch: Partial<WorkoutExercise>) => void
   onDeleteExercise: (id: string) => void
   onDeletePlan: () => void
   onStart: () => void
 }) {
-  const [exForm, setExForm] = useState(false)
+  const [picker, setPicker] = useState(false)
+  const [customForm, setCustomForm] = useState(false)
   const [name, setName] = useState('')
-  const [muscle, setMuscle] = useState(MUSCLE_GROUPS[0])
+  const [muscle, setMuscle] = useState(TARGET_MUSCLES[0])
   const [targetSets, setTargetSets] = useState('3')
   const [targetReps, setTargetReps] = useState('8-12')
 
-  const submit = (e: React.FormEvent) => {
+  const submitCustom = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
     onAddExercise({ name: name.trim(), muscleGroup: muscle, targetSets: Number(targetSets) || 3, targetReps: targetReps.trim() || '8-12', orderIdx: exercises.length })
-    setName(''); setExForm(false)
+    setName(''); setCustomForm(false)
   }
 
   return (
@@ -463,9 +531,15 @@ function PlanDetail({
       <div className="flex items-center justify-between gap-2">
         <div>
           <div className="text-base font-medium text-ink">{plan.name}</div>
-          {plan.muscleGroups.length > 0 && <div className="text-xs text-faint mt-0.5">{plan.muscleGroups.join(' · ')}</div>}
+          {plan.muscleGroups.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {plan.muscleGroups.map((m) => (
+                <span key={m} className="chip bg-sunken text-ink-soft text-[11px] px-2 py-0">{m}</span>
+              ))}
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button onClick={onDeletePlan} className="text-faint hover:text-cross p-1.5" aria-label="Verwijder plan"><Trash2 className="h-4 w-4" /></button>
           <button onClick={onStart} className="btn-primary !py-2" disabled={exercises.length === 0}>
             <Play className="h-4 w-4" /> Start workout
@@ -478,10 +552,20 @@ function PlanDetail({
       ) : (
         <div className="flex flex-col gap-2">
           {exercises.map((ex) => (
-            <div key={ex.id} className="flex items-center gap-3 rounded-2xl bg-sunken px-4 py-2.5">
-              <span className="flex-1 text-sm text-ink">{ex.name}</span>
-              <span className="chip bg-line text-ink-soft">{ex.muscleGroup}</span>
-              <span className="text-xs text-faint w-20 text-right shrink-0">{ex.targetSets} × {ex.targetReps}</span>
+            <div key={ex.id} className="flex items-center gap-2 rounded-2xl bg-sunken px-4 py-2.5">
+              <span className="flex-1 text-sm text-ink truncate">{ex.name}</span>
+              <span className="chip bg-line text-ink-soft shrink-0">{ex.muscleGroup}</span>
+              <input
+                type="number" min={1} value={ex.targetSets}
+                onChange={(e) => onUpdateExercise(ex.id, { targetSets: Number(e.target.value) || 1 })}
+                className="input w-11 !py-1 !px-1 text-xs text-center shrink-0" aria-label="Sets"
+              />
+              <span className="text-xs text-faint shrink-0">×</span>
+              <input
+                value={ex.targetReps}
+                onChange={(e) => onUpdateExercise(ex.id, { targetReps: e.target.value })}
+                className="input w-14 !py-1 !px-1 text-xs text-center shrink-0" aria-label="Reps"
+              />
               <button onClick={() => onDeleteExercise(ex.id)} className="text-faint hover:text-cross p-1 shrink-0" aria-label="Verwijder oefening">
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -490,22 +574,108 @@ function PlanDetail({
         </div>
       )}
 
-      {exForm ? (
-        <form onSubmit={submit} className="flex flex-wrap gap-2 items-center pt-1">
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Oefening (bv. Barbell Bench Press)" className="input flex-1 min-w-[180px]" autoFocus />
+      {customForm ? (
+        <form onSubmit={submitCustom} className="flex flex-wrap gap-2 items-center pt-1">
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Oefeningnaam" className="input flex-1 min-w-[160px]" autoFocus />
           <select value={muscle} onChange={(e) => setMuscle(e.target.value)} className="input">
-            {MUSCLE_GROUPS.map((m) => <option key={m} value={m}>{m}</option>)}
+            {TARGET_MUSCLES.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
           <input type="number" min={1} value={targetSets} onChange={(e) => setTargetSets(e.target.value)} className="input w-16 text-center" aria-label="Sets" />
           <input value={targetReps} onChange={(e) => setTargetReps(e.target.value)} placeholder="8-12" className="input w-20 text-center" aria-label="Reps" />
           <button type="submit" className="btn-primary !py-2"><Plus className="h-4 w-4" /></button>
+          <button type="button" onClick={() => setCustomForm(false)} className="text-xs text-faint hover:text-ink">Annuleer</button>
         </form>
       ) : (
-        <button onClick={() => setExForm(true)} className="btn-ghost !py-2 self-start">
-          <Pencil className="h-4 w-4" /> Oefening toevoegen
-        </button>
+        <div className="flex items-center gap-4">
+          <button onClick={() => setPicker(true)} className="btn-ghost !py-2"><Search className="h-4 w-4" /> Oefening kiezen</button>
+          <button onClick={() => setCustomForm(true)} className="text-xs text-muted hover:text-ink flex items-center gap-1">
+            <Pencil className="h-3 w-3" /> Handmatig toevoegen
+          </button>
+        </div>
+      )}
+
+      {picker && (
+        <ExercisePicker
+          onClose={() => setPicker(false)}
+          onPick={(picked) => {
+            onAddExercise({ name: picked.name, muscleGroup: picked.muscleGroup, targetSets: 3, targetReps: '8-12', orderIdx: exercises.length })
+            setPicker(false)
+          }}
+          onCustom={() => { setPicker(false); setCustomForm(true) }}
+        />
       )}
     </div>
+  )
+}
+
+function ExercisePicker({
+  onClose,
+  onPick,
+  onCustom,
+}: {
+  onClose: () => void
+  onPick: (ex: { name: string; muscleGroup: string }) => void
+  onCustom: () => void
+}) {
+  const [library, setLibrary] = useState<LibraryExercise[] | null>(null)
+  const [query, setQuery] = useState('')
+  const [bodyPart, setBodyPart] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    loadExerciseLibrary().then((d) => { if (alive) setLibrary(d) })
+    return () => { alive = false }
+  }, [])
+
+  const matches = useMemo(() => (library ? searchExercises(library, query, bodyPart) : []), [library, query, bodyPart])
+  const results = matches.slice(0, 60)
+
+  return (
+    <Overlay tone="black-blur" onClose={onClose} panelClassName="bg-surface rounded-3xl p-5 w-full max-w-lg shadow-2xl max-h-[85vh] flex flex-col">
+      <div className="flex items-center justify-between mb-3">
+        <div className="font-semibold text-ink flex items-center gap-2"><Search className="h-4 w-4" /> Oefening kiezen</div>
+        <button onClick={onClose} className="text-faint hover:text-ink p-1" aria-label="Sluiten"><X className="h-4 w-4" /></button>
+      </div>
+      <input
+        value={query} onChange={(e) => setQuery(e.target.value)}
+        placeholder="Zoek op naam, spiergroep of materiaal…" className="input w-full mb-3" autoFocus
+      />
+      <div className="flex flex-wrap gap-1.5 mb-3 shrink-0">
+        <button onClick={() => setBodyPart(null)} className={`chip ${bodyPart === null ? 'bg-ink text-canvas' : 'bg-sunken text-muted'}`}>Alle</button>
+        {BODY_PARTS.map((bp) => (
+          <button key={bp} onClick={() => setBodyPart(bp)} className={`chip ${bodyPart === bp ? 'bg-ink text-canvas' : 'bg-sunken text-muted'}`}>
+            {titleCase(bp)}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 overflow-y-auto -mx-1 px-1 min-h-[200px]">
+        {!library ? (
+          <div className="text-sm text-faint text-center py-10">Oefeningen laden…</div>
+        ) : results.length === 0 ? (
+          <Empty>Geen oefeningen gevonden.</Empty>
+        ) : (
+          <div className="flex flex-col gap-1">
+            {results.map((ex) => (
+              <button
+                key={ex.id}
+                onClick={() => onPick({ name: ex.name, muscleGroup: titleCase(ex.target) })}
+                className="flex items-center gap-3 rounded-2xl px-3 py-2.5 hover:bg-sunken text-left transition-colors"
+              >
+                <span className="flex-1 text-sm text-ink truncate">{ex.name}</span>
+                <span className="chip bg-sunken text-ink-soft shrink-0">{titleCase(ex.target)}</span>
+                <span className="text-[11px] text-faint w-20 text-right shrink-0 truncate">{titleCase(ex.equipment)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+      {library && matches.length > results.length && (
+        <p className="text-[11px] text-faint text-center pt-2 shrink-0">{results.length} van {matches.length} — verfijn je zoekopdracht voor meer.</p>
+      )}
+      <button onClick={onCustom} className="btn-ghost !py-2 mt-3 self-center text-xs shrink-0">
+        <ListPlus className="h-3.5 w-3.5" /> Staat er niet bij — aangepaste oefening
+      </button>
+    </Overlay>
   )
 }
 
@@ -517,11 +687,13 @@ interface SetRow {
 function LogWorkoutModal({
   plan,
   exercises,
+  previousByExercise,
   onClose,
   onSave,
 }: {
   plan: WorkoutPlan
   exercises: WorkoutExercise[]
+  previousByExercise: Map<string, WorkoutSet[]>
   onClose: () => void
   onSave: (sets: { exerciseId: string; exerciseName: string; muscleGroup: string; setNumber: number; weightKg: number | null; reps: number | null }[]) => void
 }) {
@@ -561,37 +733,48 @@ function LogWorkoutModal({
       <p className="text-xs text-faint mb-4">Vul gewicht (kg) en reps in per set — leeg laten sla je die set over.</p>
 
       <div className="flex flex-col gap-4">
-        {exercises.map((ex) => (
-          <div key={ex.id}>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-ink">{ex.name}</span>
-              <span className="text-xs text-faint">{ex.muscleGroup} · doel {ex.targetSets}×{ex.targetReps}</span>
+        {exercises.map((ex) => {
+          const prev = previousByExercise.get(ex.id) ?? []
+          return (
+            <div key={ex.id}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-medium text-ink">{ex.name}</span>
+                <span className="text-xs text-faint">{ex.muscleGroup} · doel {ex.targetSets}×{ex.targetReps}</span>
+              </div>
+              {prev.length > 0 && (
+                <p className="text-[11px] text-faint mb-2">
+                  Vorige keer: {prev.map((p) => `${p.weightKg ?? '–'}kg×${p.reps ?? '–'}`).join(', ')}
+                </p>
+              )}
+              <div className="flex flex-col gap-1.5">
+                {(rows[ex.id] ?? []).map((row, i) => {
+                  const p = prev[i]
+                  return (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="text-xs text-faint w-5 shrink-0">{i + 1}</span>
+                      <input
+                        type="number" step="0.5" min="0" placeholder={p?.weightKg != null ? `${p.weightKg}` : 'kg'} value={row.weight}
+                        onChange={(e) => updateRow(ex.id, i, { weight: e.target.value })}
+                        className="input flex-1 text-center"
+                      />
+                      <input
+                        type="number" min="0" placeholder={p?.reps != null ? `${p.reps}` : 'reps'} value={row.reps}
+                        onChange={(e) => updateRow(ex.id, i, { reps: e.target.value })}
+                        className="input flex-1 text-center"
+                      />
+                      <button onClick={() => removeRow(ex.id, i)} className="text-faint hover:text-cross p-1 shrink-0" aria-label="Verwijder set">
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+              <button onClick={() => addRow(ex.id)} className="text-xs text-muted hover:text-ink mt-1.5 flex items-center gap-1">
+                <Plus className="h-3 w-3" /> Set toevoegen
+              </button>
             </div>
-            <div className="flex flex-col gap-1.5">
-              {(rows[ex.id] ?? []).map((row, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-xs text-faint w-5 shrink-0">{i + 1}</span>
-                  <input
-                    type="number" step="0.5" min="0" placeholder="kg" value={row.weight}
-                    onChange={(e) => updateRow(ex.id, i, { weight: e.target.value })}
-                    className="input flex-1 text-center"
-                  />
-                  <input
-                    type="number" min="0" placeholder="reps" value={row.reps}
-                    onChange={(e) => updateRow(ex.id, i, { reps: e.target.value })}
-                    className="input flex-1 text-center"
-                  />
-                  <button onClick={() => removeRow(ex.id, i)} className="text-faint hover:text-cross p-1 shrink-0" aria-label="Verwijder set">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <button onClick={() => addRow(ex.id)} className="text-xs text-muted hover:text-ink mt-1.5 flex items-center gap-1">
-              <Plus className="h-3 w-3" /> Set toevoegen
-            </button>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       <button onClick={submit} className="btn-primary w-full !py-2.5 mt-5">
