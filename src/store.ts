@@ -60,6 +60,10 @@ import type {
   Holding,
   HoldingQuote,
   BalanceCheckpoint,
+  WorkoutPlan,
+  WorkoutExercise,
+  WorkoutSession,
+  WorkoutSet,
 } from './types'
 import { vendorKey, isUntagged, isTransfer } from './finance/categories'
 import { categorizeVendor } from './heyra/agents/vendorAgent'
@@ -147,6 +151,18 @@ import {
   persistHabitTick,
   fetchCleaningLog,
   persistCleaningTick,
+  fetchWorkoutPlans,
+  createWorkoutPlanRow,
+  updateWorkoutPlanRow,
+  deactivateWorkoutPlanRow,
+  fetchWorkoutExercises,
+  createWorkoutExerciseRow,
+  updateWorkoutExerciseRow,
+  deleteWorkoutExerciseRow,
+  fetchWorkoutSessions,
+  createWorkoutSessionRow,
+  deleteWorkoutSessionRow,
+  fetchLatestBodyWeight,
   createSubscriptionRow,
   updateSubscriptionRow,
   deleteSubscriptionRow,
@@ -253,6 +269,10 @@ interface State {
   habits: Habit[]
   /** `${onDate}__${taskKey}` → done, for the ADHD-proof cleaning schedule. */
   cleaningLog: Record<string, boolean>
+  workoutPlans: WorkoutPlan[]
+  workoutExercises: WorkoutExercise[]
+  workoutSessions: WorkoutSession[]
+  bodyWeight: { weightKg: number; at: string } | null
   blocks: Block[]
   nudge: Nudge
   lastDigest: ReflectDigest | null
@@ -372,6 +392,18 @@ interface State {
   deleteHabit: (id: string) => void
   /** Flip one cleaning-schedule task for a date (defaults to today). */
   toggleCleaningTask: (taskKey: string, onDate?: string) => void
+  addWorkoutPlan: (plan: Omit<WorkoutPlan, 'id' | 'orderIdx' | 'active'>) => void
+  updateWorkoutPlan: (id: string, patch: Partial<WorkoutPlan>) => void
+  deleteWorkoutPlan: (id: string) => void
+  addWorkoutExercise: (planId: string, ex: Omit<WorkoutExercise, 'id' | 'planId'>) => void
+  updateWorkoutExercise: (id: string, patch: Partial<WorkoutExercise>) => void
+  deleteWorkoutExercise: (id: string) => void
+  /** Log a completed (or in-progress) workout — creates the session + every set in one go. */
+  logWorkoutSession: (
+    session: Omit<WorkoutSession, 'id' | 'sets'>,
+    sets: Omit<WorkoutSet, 'id' | 'sessionId'>[],
+  ) => void
+  deleteWorkoutSession: (id: string) => void
   completeBlock: (id: string) => void
   skipBlock: (id: string) => void
   resetBlock: (id: string) => void
@@ -590,6 +622,10 @@ const seed = () => ({
   transactions: mock.transactions,
   habits: mock.habits,
   cleaningLog: {} as Record<string, boolean>,
+  workoutPlans: [] as WorkoutPlan[],
+  workoutExercises: [] as WorkoutExercise[],
+  workoutSessions: [] as WorkoutSession[],
+  bodyWeight: null as { weightKg: number; at: string } | null,
   blocks: mock.blocks,
   nudge: mock.initialNudge,
   lastDigest: null,
@@ -673,7 +709,7 @@ const EMPTY_WHEN_FALSY = [
   'projectMilestones', 'projectTasks', 'projectHours', 'projectInvoices',
   'projectActivity', 'checkins', 'learnedFacts', 'vendorTags', 'braindumpEntries',
   'goalProposals', 'weekPlan', 'businessIdeas', 'wikiEntries',
-  'holdings', 'balanceCheckpoints',
+  'holdings', 'balanceCheckpoints', 'workoutPlans', 'workoutExercises', 'workoutSessions',
 ] as const
 
 /**
@@ -690,6 +726,7 @@ export function applyPersistDefaults(
   for (const k of SEED_WHEN_FALSY) if (!state[k]) state[k] = seeded[k]
   for (const k of EMPTY_WHEN_FALSY) if (!state[k]) state[k] = []
   if (!state.cleaningLog) state.cleaningLog = {}
+  if (state.bodyWeight === undefined) state.bodyWeight = null
   if (state.notificationPrefs === undefined) state.notificationPrefs = null
   if (!state.settings) state.settings = seeded.settings
   if (!state.dataSource) state.dataSource = 'mock'
@@ -1249,6 +1286,69 @@ export const useStore = create<State>()(
         const done = !get().cleaningLog[key]
         set((s) => ({ cleaningLog: { ...s.cleaningLog, [key]: done } }))
         void persistCleaningTick(taskKey, day, done)
+      },
+
+      // ── Workout (Trainen) ───────────────────────────────────────────────────
+      addWorkoutPlan: (plan) => {
+        const tempId = uid('wp')
+        const orderIdx = get().workoutPlans.length
+        set((s) => ({
+          workoutPlans: [...s.workoutPlans, { ...plan, id: tempId, orderIdx, active: true }],
+        }))
+        void createWorkoutPlanRow({ ...plan, orderIdx, active: true }).then(swapTempId(set, 'workoutPlans', tempId))
+      },
+
+      updateWorkoutPlan: (id, patch) => {
+        patchSlice(set, 'workoutPlans', id, patch)
+        void updateWorkoutPlanRow(id, patch)
+      },
+
+      deleteWorkoutPlan: (id) => {
+        removeFromSlice(set, 'workoutPlans', id)
+        set((s) => ({ workoutExercises: s.workoutExercises.filter((e) => e.planId !== id) }))
+        void deactivateWorkoutPlanRow(id)
+      },
+
+      addWorkoutExercise: (planId, ex) => {
+        const tempId = uid('wex')
+        set((s) => ({ workoutExercises: [...s.workoutExercises, { ...ex, id: tempId, planId }] }))
+        void createWorkoutExerciseRow(planId, ex).then(swapTempId(set, 'workoutExercises', tempId))
+      },
+
+      updateWorkoutExercise: (id, patch) => {
+        patchSlice(set, 'workoutExercises', id, patch)
+        void updateWorkoutExerciseRow(id, patch)
+      },
+
+      deleteWorkoutExercise: (id) => {
+        removeFromSlice(set, 'workoutExercises', id)
+        void deleteWorkoutExerciseRow(id)
+      },
+
+      logWorkoutSession: (session, sets) => {
+        const tempId = uid('ws')
+        const optimistic: WorkoutSession = {
+          ...session,
+          id: tempId,
+          sets: sets.map((st, i) => ({ ...st, id: uid('wset'), sessionId: tempId, setNumber: st.setNumber ?? i + 1 })),
+        }
+        set((s) => ({
+          workoutSessions: [...s.workoutSessions, optimistic],
+          activity: pushSignal(s.activity, {
+            text: `Training gelogd: ${session.planName ?? 'workout'}`,
+            domain: 'personal',
+            loop: 'fast',
+          }),
+        }))
+        void createWorkoutSessionRow(session, sets).then((real) => {
+          if (!real) return
+          set((s) => ({ workoutSessions: s.workoutSessions.map((w) => (w.id === tempId ? real : w)) }))
+        })
+      },
+
+      deleteWorkoutSession: (id) => {
+        removeFromSlice(set, 'workoutSessions', id)
+        void deleteWorkoutSessionRow(id)
       },
 
       completeBlock: (id) => {
@@ -2446,7 +2546,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -2475,6 +2575,10 @@ export const useStore = create<State>()(
             fetchTasks(),
             fetchCardTemplates(),
             fetchDogProfile(),
+            fetchWorkoutPlans(),
+            fetchWorkoutExercises(),
+            fetchWorkoutSessions(),
+            fetchLatestBodyWeight(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -2535,6 +2639,10 @@ export const useStore = create<State>()(
             holdings,
             balanceCheckpoints,
             cardTemplates,
+            workoutPlans,
+            workoutExercises,
+            workoutSessions,
+            bodyWeight,
             dataSource: 'live',
             isLoading: false,
           })
@@ -2603,6 +2711,11 @@ export const useStore = create<State>()(
           { table: 'admin_item', onChange: () => fetchAdminItems().then((d) => set({ adminItems: d })) },
           { table: 'health_condition', onChange: () => fetchHealthConditions().then((d) => set({ healthConditions: d })) },
           { table: 'business_ideas', onChange: () => fetchBusinessIdeas().then((d) => set({ businessIdeas: d })) },
+          { table: 'workout_plans', onChange: () => fetchWorkoutPlans().then((d) => set({ workoutPlans: d })) },
+          { table: 'workout_exercises', onChange: () => fetchWorkoutExercises().then((d) => set({ workoutExercises: d })) },
+          { table: 'workout_sessions', onChange: () => fetchWorkoutSessions().then((d) => set({ workoutSessions: d })) },
+          { table: 'workout_sets', onChange: () => fetchWorkoutSessions().then((d) => set({ workoutSessions: d })) },
+          { table: 'health_body_metrics', onChange: () => fetchLatestBodyWeight().then((d) => set({ bodyWeight: d })) },
         ]
         // Tear down any channel from a previous loadLiveData() before opening a
         // new one — otherwise each auth event leaks another full subscription.

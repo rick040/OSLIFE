@@ -13,6 +13,7 @@ import Kennisbank from './views/Kennisbank'
 import Reflect from './views/Reflect'
 import DayBuilder from './views/DayBuilder'
 import Vitals from './views/Vitals'
+import Workout from './views/Workout'
 import Money from './views/Money'
 import Projects from './views/Projects'
 import CRM from './views/CRM'
@@ -71,6 +72,7 @@ export default function App() {
     tasks: <Tasks />,
     daybuilder: <DayBuilder />,
     vitals: <Vitals />,
+    workout: <Workout />,
     money: <Money />,
     projects: <Projects />,
     inbox: <InboxView />,

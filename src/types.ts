@@ -451,6 +451,54 @@ export interface Habit {
   history?: string[] // ISO dates the habit was completed
 }
 
+// ── Workout (Trainen) ─────────────────────────────────────────────────────────
+
+/** A recurring split (e.g. "Chest + triceps" on Fridays) — the template, not the log. */
+export interface WorkoutPlan {
+  id: string
+  name: string
+  dayOfWeek: number | null // 0=Sun..6=Sat, null = no fixed day
+  muscleGroups: string[]
+  color?: string | null // hex accent
+  orderIdx: number
+  active: boolean
+}
+
+/** One exercise within a plan — target sets/reps, not what actually happened. */
+export interface WorkoutExercise {
+  id: string
+  planId: string
+  name: string
+  muscleGroup: string
+  targetSets: number
+  targetReps: string // free text, e.g. "8-12"
+  orderIdx: number
+}
+
+/** One logged set within a session. Exercise name/muscle snapshotted so history survives an edited/deleted exercise. */
+export interface WorkoutSet {
+  id: string
+  sessionId: string
+  exerciseId: string | null
+  exerciseName: string
+  muscleGroup: string
+  setNumber: number
+  weightKg: number | null
+  reps: number | null
+}
+
+/** An actual logged workout, optionally against a plan. */
+export interface WorkoutSession {
+  id: string
+  planId: string | null
+  planName: string | null
+  startedAt: string // ISO datetime
+  completedAt: string | null
+  durationMin: number | null
+  notes?: string | null
+  sets: WorkoutSet[]
+}
+
 // ── Health (Fit / Samsung Health style sense) ────────────────────────────────
 
 export interface HealthDay {

@@ -21,6 +21,7 @@ import {
   FileText,
   SprayCan,
   BookOpen,
+  Dumbbell,
 } from 'lucide-react'
 
 // ── Central screen registry ──────────────────────────────────────────────────
@@ -30,6 +31,7 @@ export type View =
   | 'tasks'
   | 'daybuilder'
   | 'vitals'
+  | 'workout'
   | 'habits'
   | 'cleaning'
   | 'money'
@@ -71,6 +73,7 @@ export const SCREENS: Screen[] = [
 
   // Life
   { id: 'vitals', label: 'Gezondheid', icon: Activity, layer: 'Leven · gezondheid, gedrag & schermtijd', group: 'Life', primary: true, accent: 'text-cross' },
+  { id: 'workout', label: 'Workout', icon: Dumbbell, layer: 'Leven · training & spieren', group: 'Life', accent: 'text-cross' },
   { id: 'habits', label: 'Gewoonten', icon: Repeat, layer: 'Leven · gedrag', group: 'Life', accent: 'text-buurtkaart' },
   { id: 'cleaning', label: 'Schoonmaak', icon: SprayCan, layer: 'Leven · huishouden', group: 'Life', primary: true, accent: 'text-buurtkaart' },
   { id: 'money', label: 'Geld', icon: Wallet, layer: 'Leven · financiën', group: 'Life', primary: true, accent: 'text-buurtkaart' },
