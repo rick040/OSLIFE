@@ -18,18 +18,18 @@ export interface LibraryExercise {
 /** Coarse body-part facets for the picker's filter chips. */
 export const BODY_PARTS = ['back', 'cardio', 'chest', 'lower arms', 'lower legs', 'neck', 'shoulders', 'upper arms', 'upper legs', 'waist']
 
+const TITLE_CASE_OVERRIDES: Record<string, string> = { 'ez barbell': 'EZ Barbell' }
+
+export function titleCase(s: string): string {
+  return TITLE_CASE_OVERRIDES[s] ?? s.replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 /** The specific muscles exercises actually target — this is what the app tracks per-plan/per-exercise as "muscle group". */
 export const TARGET_MUSCLES = [
   'abductors', 'abs', 'adductors', 'biceps', 'calves', 'cardiovascular system', 'delts', 'forearms',
   'glutes', 'hamstrings', 'lats', 'levator scapulae', 'pectorals', 'quads', 'serratus anterior',
   'spine', 'traps', 'triceps', 'upper back',
 ].map(titleCase)
-
-const TITLE_CASE_OVERRIDES: Record<string, string> = { 'ez barbell': 'EZ Barbell' }
-
-export function titleCase(s: string): string {
-  return TITLE_CASE_OVERRIDES[s] ?? s.replace(/\b\w/g, (c) => c.toUpperCase())
-}
 
 let cached: LibraryExercise[] | null = null
 /** Lazy-loaded (dynamic import) so the ~200KB dataset only downloads once the picker actually opens. */
