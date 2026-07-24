@@ -52,6 +52,10 @@ import type {
   Holding,
   HoldingQuote,
   BalanceCheckpoint,
+  WorkoutPlan,
+  WorkoutExercise,
+  WorkoutSession,
+  WorkoutSet,
 } from '../types'
 import { today, habitStreak } from '../domains'
 import { CATEGORY_META, type LearnedFact, type LearningCategory } from '../heyra/learning'
@@ -2528,4 +2532,223 @@ export async function invokeIdeaElaborate(ideaId: string): Promise<void> {
   } catch (err) {
     console.warn('[OSLIFE] idea-elaborate invoke failed', err)
   }
+}
+
+// ── Workout (Trainen) ─────────────────────────────────────────────────────────
+
+export async function fetchWorkoutPlans(): Promise<WorkoutPlan[]> {
+  return fetchRows('workout_plans', 'id,name,day_of_week,muscle_groups,color,order_idx,active', { column: 'order_idx', ascending: true }, (r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    dayOfWeek: (r.day_of_week as number) ?? null,
+    muscleGroups: (r.muscle_groups as string[]) ?? [],
+    color: (r.color as string) ?? null,
+    orderIdx: (r.order_idx as number) ?? 0,
+    active: (r.active as boolean) ?? true,
+  })).then((rows) => rows.filter((p) => p.active))
+}
+
+export async function createWorkoutPlanRow(plan: Omit<WorkoutPlan, 'id'>): Promise<string | null> {
+  return insertRow('workout_plans', {
+    name: plan.name,
+    day_of_week: plan.dayOfWeek,
+    muscle_groups: plan.muscleGroups,
+    color: plan.color ?? null,
+    order_idx: plan.orderIdx,
+    active: plan.active,
+  })
+}
+
+const WORKOUT_PLAN_COLS: Record<string, string> = {
+  name: 'name',
+  dayOfWeek: 'day_of_week',
+  muscleGroups: 'muscle_groups',
+  color: 'color',
+  orderIdx: 'order_idx',
+  active: 'active',
+}
+
+export async function updateWorkoutPlanRow(id: string, patch: Partial<WorkoutPlan>): Promise<void> {
+  await updateRow('workout_plans', id, patch, WORKOUT_PLAN_COLS)
+}
+
+/** Soft-delete: flips `active` off rather than a hard delete, so past sessions keep a real plan_id/name to point at. */
+export async function deactivateWorkoutPlanRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('workout_plans').update({ active: false }).eq('id', id)
+  warnWrite('workout_plans.deactivate', error)
+}
+
+export async function fetchWorkoutExercises(): Promise<WorkoutExercise[]> {
+  return fetchRows('workout_exercises', 'id,plan_id,name,muscle_group,target_sets,target_reps,order_idx', { column: 'order_idx', ascending: true }, (r) => ({
+    id: r.id as string,
+    planId: r.plan_id as string,
+    name: r.name as string,
+    muscleGroup: r.muscle_group as string,
+    targetSets: (r.target_sets as number) ?? 3,
+    targetReps: (r.target_reps as string) ?? '8-12',
+    orderIdx: (r.order_idx as number) ?? 0,
+  }))
+}
+
+export async function createWorkoutExerciseRow(
+  planId: string,
+  ex: Omit<WorkoutExercise, 'id' | 'planId'>,
+): Promise<string | null> {
+  if (!isDbId(planId)) return null
+  return insertRow('workout_exercises', {
+    plan_id: planId,
+    name: ex.name,
+    muscle_group: ex.muscleGroup,
+    target_sets: ex.targetSets,
+    target_reps: ex.targetReps,
+    order_idx: ex.orderIdx,
+  })
+}
+
+const WORKOUT_EXERCISE_COLS: Record<string, string> = {
+  name: 'name',
+  muscleGroup: 'muscle_group',
+  targetSets: 'target_sets',
+  targetReps: 'target_reps',
+  orderIdx: 'order_idx',
+}
+
+export async function updateWorkoutExerciseRow(id: string, patch: Partial<WorkoutExercise>): Promise<void> {
+  await updateRow('workout_exercises', id, patch, WORKOUT_EXERCISE_COLS)
+}
+
+export async function deleteWorkoutExerciseRow(id: string): Promise<void> {
+  return deleteRow('workout_exercises', id)
+}
+
+/** Logged sessions from the last ~4 months, each with its logged sets — enough for the monthly heatmap + volume/muscle trends. */
+export async function fetchWorkoutSessions(): Promise<WorkoutSession[]> {
+  const since = new Date()
+  since.setDate(since.getDate() - 120)
+  const { data: sessionRows, error: sErr } = await supabase
+    .from('workout_sessions')
+    .select('id,plan_id,plan_name,started_at,completed_at,duration_min,notes')
+    .gte('started_at', since.toISOString())
+    .order('started_at', { ascending: true })
+  warnWrite('workout_sessions.fetch', sErr)
+  if (!sessionRows?.length) return []
+
+  const { data: setRows, error: setErr } = await supabase
+    .from('workout_sets')
+    .select('id,session_id,exercise_id,exercise_name,muscle_group,set_number,weight_kg,reps')
+    .in('session_id', sessionRows.map((s) => s.id as string))
+    .order('set_number', { ascending: true })
+  warnWrite('workout_sets.fetch', setErr)
+
+  const setsBySession = new Map<string, WorkoutSet[]>()
+  for (const r of setRows ?? []) {
+    const sid = r.session_id as string
+    if (!setsBySession.has(sid)) setsBySession.set(sid, [])
+    setsBySession.get(sid)!.push({
+      id: r.id as string,
+      sessionId: sid,
+      exerciseId: (r.exercise_id as string) ?? null,
+      exerciseName: r.exercise_name as string,
+      muscleGroup: r.muscle_group as string,
+      setNumber: (r.set_number as number) ?? 1,
+      weightKg: (r.weight_kg as number) ?? null,
+      reps: (r.reps as number) ?? null,
+    })
+  }
+
+  return sessionRows.map((s) => ({
+    id: s.id as string,
+    planId: (s.plan_id as string) ?? null,
+    planName: (s.plan_name as string) ?? null,
+    startedAt: s.started_at as string,
+    completedAt: (s.completed_at as string) ?? null,
+    durationMin: (s.duration_min as number) ?? null,
+    notes: (s.notes as string) ?? null,
+    sets: setsBySession.get(s.id as string) ?? [],
+  }))
+}
+
+/** Logs one completed workout — the session row plus every set in it — as a single insert pass. */
+export async function createWorkoutSessionRow(
+  session: Omit<WorkoutSession, 'id' | 'sets'>,
+  sets: Omit<WorkoutSet, 'id' | 'sessionId'>[],
+): Promise<WorkoutSession | null> {
+  const user_id = await currentUserId()
+  if (!user_id) return null
+  const { data: sessionRow, error: sErr } = await supabase
+    .from('workout_sessions')
+    .insert({
+      user_id,
+      plan_id: isDbId(session.planId ?? '') ? session.planId : null,
+      plan_name: session.planName,
+      started_at: session.startedAt,
+      completed_at: session.completedAt,
+      duration_min: session.durationMin,
+      notes: session.notes ?? null,
+    })
+    .select('id')
+    .single()
+  warnWrite('workout_sessions.insert', sErr)
+  if (!sessionRow) return null
+
+  const sessionId = sessionRow.id as string
+  let insertedSets: WorkoutSet[] = []
+  if (sets.length) {
+    const { data: setRows, error: setErr } = await supabase
+      .from('workout_sets')
+      .insert(
+        sets.map((s) => ({
+          user_id,
+          session_id: sessionId,
+          exercise_id: s.exerciseId,
+          exercise_name: s.exerciseName,
+          muscle_group: s.muscleGroup,
+          set_number: s.setNumber,
+          weight_kg: s.weightKg,
+          reps: s.reps,
+        })),
+      )
+      .select('id,session_id,exercise_id,exercise_name,muscle_group,set_number,weight_kg,reps')
+    warnWrite('workout_sets.insert', setErr)
+    insertedSets = (setRows ?? []).map((r) => ({
+      id: r.id as string,
+      sessionId: r.session_id as string,
+      exerciseId: (r.exercise_id as string) ?? null,
+      exerciseName: r.exercise_name as string,
+      muscleGroup: r.muscle_group as string,
+      setNumber: (r.set_number as number) ?? 1,
+      weightKg: (r.weight_kg as number) ?? null,
+      reps: (r.reps as number) ?? null,
+    }))
+  }
+
+  return {
+    id: sessionId,
+    planId: session.planId,
+    planName: session.planName,
+    startedAt: session.startedAt,
+    completedAt: session.completedAt,
+    durationMin: session.durationMin,
+    notes: session.notes ?? null,
+    sets: insertedSets,
+  }
+}
+
+export async function deleteWorkoutSessionRow(id: string): Promise<void> {
+  return deleteRow('workout_sessions', id)
+}
+
+/** Latest body-weight reading (health_body_metrics is passively ingested from a smart-scale notification pipeline — see weight-ingest). */
+export async function fetchLatestBodyWeight(): Promise<{ weightKg: number; at: string } | null> {
+  const { data, error } = await supabase
+    .from('health_body_metrics')
+    .select('weight_kg,datetime')
+    .not('weight_kg', 'is', null)
+    .order('datetime', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  warnWrite('health_body_metrics.fetchLatest', error)
+  if (!data?.weight_kg) return null
+  return { weightKg: data.weight_kg as number, at: data.datetime as string }
 }
