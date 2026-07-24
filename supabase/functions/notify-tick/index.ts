@@ -152,16 +152,16 @@ async function buildMorningBriefing(sb: any, today: string): Promise<string> {
 
   let topLine: string;
   if (overdue) {
-    topLine = `"${overdue.title}" is ${daysBetween(overdue.due!, today)} dag(en) over de deadline (${overdue.owedTo}). Sluit deze loop eerst.`;
+    topLine = `${daysBetween(overdue.due!, today)}d te laat — "${overdue.title}" (${overdue.owedTo})`;
   } else if (blockedProjects?.length) {
-    topLine = `${blockedProjects.length} project(en) staan geblokkeerd, waaronder "${blockedProjects[0].name}". Eén bericht kan ze weer in beweging zetten.`;
+    topLine = `${blockedProjects.length} project(en) geblokkeerd — o.a. "${blockedProjects[0].name}"`;
   } else {
     const nextDue = threads
       .filter((t) => t.due)
       .sort((a, b) => daysBetween(today, a.due!) - daysBetween(today, b.due!))[0];
     topLine = nextDue
-      ? `Eerstvolgende deadline: "${nextDue.title}" op ${fmtDateNL(nextDue.due)} (${nextDue.owedTo}).`
-      : "Geen verlopen loops of harde deadlines vandaag. Goed moment voor diep werk.";
+      ? `${fmtDateNL(nextDue.due)} — "${nextDue.title}" (${nextDue.owedTo})`
+      : "Geen verlopen loops of harde deadlines vandaag.";
   }
 
   const list = threads

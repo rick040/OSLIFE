@@ -13,7 +13,7 @@ import { DOMAIN_META, DOMAIN_HEX, fmtDate } from '../domains'
 import { eur0 as eur } from '../lib/format'
 import { DomainChip, Ring, Overlay, ConfirmDialog, Empty, SetupHint } from '../components/ui'
 import { CHART_TIP, AXIS_TICK_10 } from '../components/chart'
-import { Markdown } from '../components/BraindumpCard'
+import { Markdown } from '../components/Markdown'
 
 const STATUS_LABEL: Record<IdeaLifecycleStatus, string> = {
   idea: 'Idee', active: 'Actief', parked: 'Geparkeerd', archived: 'Gearchiveerd',

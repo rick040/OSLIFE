@@ -1,6 +1,7 @@
 import type { ActionCard, ActionField, EntityRef } from '../heyra/actions/types'
 import DataVizCard from './DataVizCard'
 import SearchResultCard from './SearchResultCard'
+import { MarkdownInline } from './Markdown'
 import {
   Wand2, CheckCircle2, XCircle, AlertTriangle, HelpCircle, ArrowRight,
 } from 'lucide-react'
@@ -87,7 +88,7 @@ export default function ActionCardView({ card, onConfirm, onCancel, onSelectCand
       </div>
 
       <div className="p-4 space-y-3">
-        {card.description && <p className="text-sm text-ink-soft">{card.description}</p>}
+        {card.description && <p className="text-sm text-ink-soft"><MarkdownInline text={card.description} /></p>}
 
         {needsDisambiguation ? (
           <Disambiguation card={card} onSelect={(entity) => onSelectCandidate?.(card, entity)} />

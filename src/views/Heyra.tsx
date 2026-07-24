@@ -17,6 +17,7 @@ import IdeaCaptureCard from '../components/IdeaCaptureCard'
 import ActionCardView from '../components/ActionCardView'
 import VoiceInputPanel from '../components/VoiceInputPanel'
 import HeyraOrb from '../components/HeyraOrb'
+import { Markdown, MarkdownInline } from '../components/Markdown'
 import { dispatchAction } from '../heyra/actions/registry'
 import type { ActionCard, EntityRef } from '../heyra/actions/types'
 import { Send, Database, Mic, Wand2, Lightbulb, Brain } from 'lucide-react'
@@ -410,18 +411,18 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
                   )
                 ) : isCurrent && m.text.length <= AMBIENT_TEXT_LIMIT ? (
                   <p className="text-2xl font-medium text-ink leading-snug animate-fade-up whitespace-pre-line">
-                    {m.text}
+                    <MarkdownInline text={m.text} />
                   </p>
                 ) : isCurrent ? (
                   // A long answer (a summary, a detailed explanation) doesn't
                   // read well blown up and centered — normal body text in a
                   // soft card instead, still inside the same centered column.
                   <div className="w-full card p-4 text-left animate-fade-up">
-                    <p className="text-sm text-ink leading-relaxed whitespace-pre-line">{m.text}</p>
+                    <Markdown text={m.text} />
                   </div>
                 ) : (
-                  <div className="rounded-2xl card rounded-bl-sm px-4 py-2.5 text-sm text-ink whitespace-pre-line">
-                    {m.text}
+                  <div className="rounded-2xl card rounded-bl-sm px-4 py-2.5 text-sm text-ink">
+                    <Markdown text={m.text} />
                   </div>
                 )}
 

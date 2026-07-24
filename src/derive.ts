@@ -202,7 +202,7 @@ export function buildNudge(
     return {
       id: 'nudge-overdue',
       domain: overdue.domain,
-      text: `"${overdue.title}" is ${daysBetween(overdue.due!, now)} dag(en) over de deadline (${overdue.owedTo}). Sluit deze loop eerst — een openstaande belofte weegt het zwaarst.`,
+      text: `**${daysBetween(overdue.due!, now)}d te laat** — "${overdue.title}" (${overdue.owedTo})`,
       reason: 'oudste verlopen open loop',
     }
   }
@@ -212,7 +212,7 @@ export function buildNudge(
     return {
       id: 'nudge-blocked',
       domain: blocked[0].domain,
-      text: `${blocked.length} project(en) staan geblokkeerd, waaronder "${blocked[0].name}". Eén bericht kan ze weer in beweging zetten.`,
+      text: `**${blocked.length} project(en) geblokkeerd** — o.a. "${blocked[0].name}"`,
       reason: 'geblokkeerd werk dat op jou wacht',
     }
   }
@@ -222,7 +222,7 @@ export function buildNudge(
     return {
       id: 'nudge-corr',
       domain: top.domains[0] ?? 'cross',
-      text: `${top.title}. ${top.detail}`,
+      text: `**${top.title}** — ${top.detail}`,
       reason: 'sterkste domein-overstijgende verband',
     }
   }
@@ -234,7 +234,7 @@ export function buildNudge(
     return {
       id: 'nudge-next',
       domain: nextDue.domain,
-      text: `Eerstvolgende deadline: "${nextDue.title}" op ${fmtDate(nextDue.due)} (${nextDue.owedTo}).`,
+      text: `**${fmtDate(nextDue.due)}** — "${nextDue.title}" (${nextDue.owedTo})`,
       reason: 'eerstvolgende open loop met datum',
     }
   }
@@ -242,7 +242,7 @@ export function buildNudge(
   return {
     id: 'nudge-calm',
     domain: 'personal',
-    text: `Geen verlopen loops of harde deadlines vandaag. Goed moment voor diep werk of iets uit je Noordster.`,
+    text: `**Alles onder controle** — goed moment voor diep werk`,
     reason: 'alles onder controle',
   }
 }

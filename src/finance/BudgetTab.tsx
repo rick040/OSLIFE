@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Empty, SectionTitle } from '../components/ui'
+import { Markdown } from '../components/Markdown'
 import { eur0, eur } from '../lib/format'
 import { fmtDate } from '../domains'
 import type { Goal, BudgetCap } from '../types'
@@ -40,7 +41,7 @@ export function BudgetTab({
         </div>
         {coach ? (
           <>
-            <p className="text-sm text-ink leading-relaxed whitespace-pre-line">{coach.text}</p>
+            <Markdown text={coach.text} />
             <p className="text-xs text-faint mt-2">bijgewerkt {fmtDate(coach.generatedAt.slice(0, 10))}</p>
           </>
         ) : (

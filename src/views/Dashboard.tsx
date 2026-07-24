@@ -10,6 +10,7 @@ import { Empty, SetupHint, Sparkline, Ring, DomainChip } from '../components/ui'
 import { GreetingHeader, HeroStat, MetricTile, GoalRow, ScheduleCard, AgendaCard, TaskRow, type Tone } from '../components/v3'
 import { useWeather, weatherMeta } from '../hooks/useWeather'
 import { storeNudgeToDash, type DashNudge, type NudgeTone } from '../components/NudgeCard'
+import { MarkdownInline } from '../components/Markdown'
 import { MetricDetailDialog, type MetricPoint } from '../components/MetricDetailDialog'
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip } from 'recharts'
 import { CHART_TIP, AXIS_TICK_11 } from '../components/chart'
@@ -245,7 +246,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     if (nudge.text?.trim()) list.push(storeNudgeToDash(nudge))
     if (overduePay.length)
       list.push({
-        text: `Je hebt ${overduePay.length} betaling${overduePay.length > 1 ? 'en' : ''} over de vervaldatum (o.a. ${overduePay[0].payee}). Regel die eerst — ze blokkeren je hoofd.`,
+        text: `**${overduePay.length} betaling${overduePay.length > 1 ? 'en' : ''} te laat** — o.a. ${overduePay[0].payee}`,
         domain: 'buurtkaart',
         reason: 'verlopen betaling',
         tone: 'urgent',
@@ -254,7 +255,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       })
     if (overdueProjects.length)
       list.push({
-        text: `${overdueProjects[0].name} staat over de deadline. Plan vandaag één concreet blok om 'm los te trekken.`,
+        text: `**${overdueProjects[0].name}** over deadline — plan er vandaag een blok voor`,
         domain: overdueProjects[0].domain,
         reason: 'over de deadline',
         tone: 'urgent',
@@ -263,7 +264,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       })
     if (today && today.date === TODAY && today.sleepHours > 0 && today.sleepHours < 6.5)
       list.push({
-        text: `Maar ${today.sleepHours}u geslapen. Houd vandaag je zwaarste denkwerk in de ochtend en plan niks na 22:30.`,
+        text: `**${today.sleepHours}u geslapen** — zwaarste werk in de ochtend, niks na 22:30`,
         domain: 'cross',
         reason: 'weinig slaap',
         tone: 'attention',
@@ -271,7 +272,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       })
     if (unreadImportant.length)
       list.push({
-        text: `${unreadImportant.length} belangrijke mail wacht op antwoord. Beantwoord 'm nu het nog klein is.`,
+        text: `**${unreadImportant.length} belangrijke mail${unreadImportant.length > 1 ? 's' : ''}** wacht op antwoord`,
         domain: 'parkingyou',
         reason: 'mail ongelezen',
         tone: 'attention',
@@ -279,7 +280,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       })
     if (habitsLeft.length && habits.length)
       list.push({
-        text: `Nog ${habitsLeft.length}/${habits.length} gewoonten open vandaag. Pak de makkelijkste eerst voor de momentum.`,
+        text: `**${habitsLeft.length}/${habits.length} gewoonten open** — pak de makkelijkste eerst`,
         domain: 'buurtkaart',
         reason: 'gewoonten open',
         tone: 'attention',
@@ -287,7 +288,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       })
     if (dogDue.length)
       list.push({
-        text: `${dogDue[0].title}${dogDue.length > 1 ? ` (+${dogDue.length - 1} meer)` : ''} voor Kyra staat open.`,
+        text: `**${dogDue[0].title}**${dogDue.length > 1 ? ` (+${dogDue.length - 1} meer)` : ''} voor Kyra`,
         domain: 'personal',
         reason: 'kyra-reminder',
         tone: 'attention',
@@ -295,7 +296,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       })
     if (clientsNeedingFollowUp.length)
       list.push({
-        text: `${clientsNeedingFollowUp.length} klant${clientsNeedingFollowUp.length > 1 ? 'en' : ''} (o.a. ${clientsNeedingFollowUp[0].name}) wacht${clientsNeedingFollowUp.length > 1 ? '' : 't'} al langer dan de opvolgcyclus op contact.`,
+        text: `**${clientsNeedingFollowUp.length} klant${clientsNeedingFollowUp.length > 1 ? 'en' : ''}** wacht op opvolging — o.a. ${clientsNeedingFollowUp[0].name}`,
         domain: clientsNeedingFollowUp[0].domain,
         reason: 'opvolging klant',
         tone: 'attention',
@@ -303,7 +304,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       })
     if (!list.length && habits.length)
       list.push({
-        text: 'Alle gewoonten staan, geen betaling te laat. Mooie dag — kies één ding dat je vooruit helpt.',
+        text: '**Alles staat** — mooie dag, kies één ding dat je vooruit helpt',
         domain: 'personal',
         reason: 'alles onder controle',
         tone: 'calm',
@@ -392,7 +393,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
                     className="flex flex-col items-start gap-0.5 whitespace-normal"
                   >
                     <span className="text-[11px] uppercase tracking-wide text-faint">{p.reason}</span>
-                    <span className="text-sm leading-snug">{p.text}</span>
+                    <span className="text-sm leading-snug"><MarkdownInline text={p.text} /></span>
                   </DropdownMenuItem>
                 ))
               ) : (

@@ -19,6 +19,7 @@ import { deriveDeadlines, hasSleepSignal, hasEnergySignal } from '../derive'
 import { isTransfer } from '../finance/categories'
 import { fmtDate } from '../domains'
 import { DomainChip, SectionTitle, Empty } from '../components/ui'
+import { MarkdownInline } from '../components/Markdown'
 import { fetchSyncStatus, humanizeAge, HEALTH_META, type SyncSourceStatus } from '../lib/syncStatus'
 import { Brain, Moon, Wallet, AlertTriangle, ArrowUpRight, ArrowDownRight, Play, Smartphone, CalendarClock, Database, RefreshCw } from 'lucide-react'
 
@@ -162,7 +163,7 @@ export default function Reflect() {
           {lastDigest.narrative && (
             <p className="mt-2 text-ink flex items-start gap-2">
               <Brain className="h-4 w-4 shrink-0 mt-0.5 text-ink-soft" />
-              <span>{lastDigest.narrative}</span>
+              <span><MarkdownInline text={lastDigest.narrative} /></span>
             </p>
           )}
         </div>

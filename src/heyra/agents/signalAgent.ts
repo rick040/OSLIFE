@@ -41,7 +41,7 @@ export const runSignalAgent: Agent = async (_input, ctx) => {
   ].join('\n\n')
 
   const brainText = await askBrain(
-    'Je bent HEYRA, het Reflect-brein van OSLIFE. Je krijgt de daadwerkelijk berekende verbanden en afwijkingen van de gebruiker (nooit verzonnen). Schrijf een kort Nederlands antwoord (max 3 zinnen): benoem het sterkste verband of de belangrijkste afwijking, en geef ÉÉN concreet, uitvoerbaar advies dat daar direct uit volgt. Noem geen percentages of feiten die niet in de gegevens staan.',
+    'Je bent HEYRA, het Reflect-brein van OSLIFE. Je krijgt de daadwerkelijk berekende verbanden en afwijkingen van de gebruiker (nooit verzonnen). Schrijf een kort Nederlands antwoord (max 3 zinnen): benoem het sterkste verband of de belangrijkste afwijking in **vet**, en geef ÉÉN concreet, uitvoerbaar advies dat daar direct uit volgt. Noem geen percentages of feiten die niet in de gegevens staan.',
     facts,
     { maxTokens: 220 },
   )

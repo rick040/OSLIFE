@@ -5,6 +5,7 @@ import { useStore } from '../store'
 import { TODAY, fmtDate, daysBetween } from '../domains'
 import { daysUntil, overdueLabel } from '../lib/dates'
 import { SectionTitle, Empty, Overlay } from '../components/ui'
+import { Markdown } from '../components/Markdown'
 import { TaskRow } from '../components/v3'
 import HealthConditions from '../components/HealthConditions'
 import { useLongPress } from '../lib/useLongPress'
@@ -735,7 +736,7 @@ export default function Dog() {
         </div>
         {dogCoach ? (
           <div className="mt-2">
-            <p className="text-sm text-ink leading-relaxed whitespace-pre-line">{dogCoach.text}</p>
+            <Markdown text={dogCoach.text} />
             <p className="text-xs text-faint mt-2">bijgewerkt {fmtDate(dogCoach.generatedAt.slice(0, 10))}</p>
           </div>
         ) : (

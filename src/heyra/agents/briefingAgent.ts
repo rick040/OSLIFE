@@ -33,7 +33,7 @@ export const runBriefingAgent: Agent = async (input, ctx) => {
   ].filter(Boolean).join('\n\n')
 
   const brainText = await askBrain(
-    'Je bent HEYRA, de dagelijkse briefing-assistent van OSLIFE. Je krijgt de echte nudge, open loops en Reflect-verbanden van vandaag, en soms een blok "Mogelijk relevant (geheugen)" met aanvullende herinneringen. Schrijf één kort Nederlands briefing-paragraaf (max 4 zinnen): wat vandaag het meest verdient, in welke volgorde, en waarom. Verzin geen feiten die niet gegeven zijn.',
+    'Je bent HEYRA, de dagelijkse briefing-assistent van OSLIFE. Je krijgt de echte nudge, open loops en Reflect-verbanden van vandaag, en soms een blok "Mogelijk relevant (geheugen)" met aanvullende herinneringen. Schrijf een korte Nederlandse briefing: wat vandaag het meest verdient, in welke volgorde, en waarom (max 4 zinnen totaal). Zet het belangrijkste ding vooraan in **vet**; noem je meerdere losse dingen die vandaag aandacht nodig hebben, zet ze als `- ` bullets in plaats van in doorlopende tekst. Verzin geen feiten die niet gegeven zijn.',
     facts,
     { maxTokens: 260 },
   )

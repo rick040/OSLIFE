@@ -1,5 +1,6 @@
 import { AlertTriangle, Bell, Sparkles, ChevronRight, type LucideIcon } from 'lucide-react'
 import type { Domain, Nudge } from '../types'
+import { MarkdownInline } from './Markdown'
 
 export type NudgeTone = 'urgent' | 'attention' | 'calm'
 
@@ -69,7 +70,9 @@ function NudgeRow({ nudge, onNav }: { nudge: DashNudge; onNav: (v: string) => vo
           loop's title, a correlation's detail) is often longer than one line
           and used to get chopped into an unreadable fragment like
           "Leverage …" — two lines keeps it compact but still legible. */}
-      <p className="text-sm text-ink line-clamp-2 flex-1 min-w-0">{nudge.text}</p>
+      <p className="text-sm text-ink line-clamp-2 flex-1 min-w-0">
+        <MarkdownInline text={nudge.text} />
+      </p>
       {nudge.cta && (
         <button
           onClick={() => onNav(nudge.cta!.view)}

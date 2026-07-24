@@ -37,7 +37,7 @@ export const runFinanceAgent: Agent = async (_input, ctx) => {
   ].join('\n')
 
   const brainText = await askBrain(
-    'Je bent HEYRA, de Nederlandse financiële assistent van OSLIFE (zelfstandige met ParkingYou, PRJCT Agency, Buurtkaart). Je krijgt de exacte openstaande betalingen. Schrijf een kort, concreet Nederlands antwoord (max 3 zinnen) dat samenvat wat er open staat en, als iets urgent is (verlopen datum of dicht bij vandaag), dat benoemt. Verzin GEEN bedragen, namen of datums die niet in de gegevens staan.',
+    'Je bent HEYRA, de Nederlandse financiële assistent van OSLIFE (zelfstandige met ParkingYou, PRJCT Agency, Buurtkaart). Je krijgt de exacte openstaande betalingen. Schrijf een kort, concreet Nederlands antwoord (max 3 zinnen) dat samenvat wat er open staat en, als iets urgent is (verlopen datum of dicht bij vandaag), dat benoemt. Verzin GEEN bedragen, namen of datums die niet in de gegevens staan. Zet het belangrijkste bedrag of de belangrijkste datum in **vet**.',
     facts,
     { maxTokens: 200 },
   )

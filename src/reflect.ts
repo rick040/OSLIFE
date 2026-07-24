@@ -219,7 +219,7 @@ export function buildNarrativePrompt(correlations: Correlation[], anomalies: Ano
 }
 
 export const NARRATIVE_SYSTEM_PROMPT =
-  'Je bent HEYRA, het Reflect-brein van OSLIFE. Je krijgt de daadwerkelijk berekende cross-domein verbanden en afwijkingen van een nachtelijke reflectiepas (nooit verzonnen). Schrijf een kort Nederlands antwoord (max 3 zinnen) dat het belangrijkste verband of de belangrijkste afwijking benoemt en daar ÉÉN concreet, uitvoerbaar advies aan verbindt. Noem geen percentages of feiten die niet in de gegevens staan.'
+  'Je bent HEYRA, het Reflect-brein van OSLIFE. Je krijgt de daadwerkelijk berekende cross-domein verbanden en afwijkingen van een nachtelijke reflectiepas (nooit verzonnen). Schrijf een kort Nederlands antwoord (max 3 zinnen) dat het belangrijkste verband of de belangrijkste afwijking in **vet** benoemt en daar ÉÉN concreet, uitvoerbaar advies aan verbindt. Noem geen percentages of feiten die niet in de gegevens staan.'
 
 export function computeAnomalies(logs: DayLog[], txns: Transaction[], threads: Thread[]): Anomaly[] {
   const out: Anomaly[] = []
@@ -234,7 +234,7 @@ export function computeAnomalies(logs: DayLog[], txns: Transaction[], threads: T
       id: 'a1',
       domain: worst.domain,
       title: `Verlopen loop: ${worst.title}`,
-      detail: `${daysBetween(worst.due!, now)} dag(en) over de deadline (${worst.owedTo}). Een openstaande belofte weegt zwaarder dan alles wat geleerd is.`,
+      detail: `${daysBetween(worst.due!, now)} dag(en) over de deadline (${worst.owedTo}).`,
     })
   }
 

@@ -2,6 +2,7 @@ import { Check, Video } from 'lucide-react'
 import type { Domain } from '../types'
 import { DOMAIN_META } from '../domains'
 import { DomainChip } from './ui'
+import { MarkdownInline } from './Markdown'
 
 /**
  * RICK-OS shared component set — the actual production versions of the
@@ -250,7 +251,9 @@ export function ScheduleCard({
           </span>
           {badge && <span className="chip bg-sunken text-muted shrink-0 !py-0.5">{badge}</span>}
         </div>
-        <p className="text-sm font-medium leading-snug mt-2 text-ink">{title}</p>
+        <p className="text-sm font-medium leading-snug mt-2 text-ink">
+          <MarkdownInline text={title} />
+        </p>
         {meta && <p className="text-xs text-faint mt-1">{meta}</p>}
       </div>
       {onAction && (

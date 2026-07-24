@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { BraindumpEntry, BraindumpSourceKind } from '../types'
 import { DomainChip, Overlay } from './ui'
+import { Markdown } from './Markdown'
 import { fmtDate } from '../domains'
 import { braindumpThumbUrl } from '../lib/braindump'
 import {
@@ -190,51 +191,3 @@ export function BraindumpDetail({
   )
 }
 
-/**
- * Deliberately tiny Markdown renderer — no new dependency. Handles the shapes the
- * ingest pipeline actually emits: #/##/### headings, - bullets, [links](url),
- * **bold**, and paragraphs. Everything else renders as plain text.
- */
-export function Markdown({ text }: { text: string }) {
-  const lines = text.split('\n')
-  const out: JSX.Element[] = []
-  let list: string[] = []
-  const flush = () => {
-    if (list.length) {
-      out.push(
-        <ul key={`ul-${out.length}`} className="list-disc pl-5 space-y-1 text-sm text-ink-soft">
-          {list.map((li, i) => <li key={i}>{inline(li)}</li>)}
-        </ul>,
-      )
-      list = []
-    }
-  }
-  lines.forEach((raw, i) => {
-    const line = raw.trimEnd()
-    if (/^###\s+/.test(line)) { flush(); out.push(<h4 key={i} className="text-sm font-semibold text-ink mt-2">{inline(line.replace(/^###\s+/, ''))}</h4>) }
-    else if (/^##\s+/.test(line)) { flush(); out.push(<h3 key={i} className="text-base font-semibold text-ink mt-2">{inline(line.replace(/^##\s+/, ''))}</h3>) }
-    else if (/^#\s+/.test(line)) { flush(); out.push(<h2 key={i} className="text-lg font-semibold text-ink">{inline(line.replace(/^#\s+/, ''))}</h2>) }
-    else if (/^[-*]\s+/.test(line)) { list.push(line.replace(/^[-*]\s+/, '')) }
-    else if (line.trim() === '') { flush() }
-    else { flush(); out.push(<p key={i} className="text-sm text-ink-soft leading-relaxed">{inline(line)}</p>) }
-  })
-  flush()
-  return <div className="space-y-1.5">{out}</div>
-}
-
-/** Inline formatting: [text](url) links and **bold**. */
-function inline(text: string): (string | JSX.Element)[] {
-  const parts: (string | JSX.Element)[] = []
-  const re = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)|\*\*([^*]+)\*\*/g
-  let last = 0
-  let m: RegExpExecArray | null
-  let k = 0
-  while ((m = re.exec(text))) {
-    if (m.index > last) parts.push(text.slice(last, m.index))
-    if (m[2]) parts.push(<a key={k++} href={m[2]} target="_blank" rel="noreferrer" className="text-buurtkaart underline">{m[1]}</a>)
-    else if (m[3]) parts.push(<strong key={k++} className="font-semibold text-ink">{m[3]}</strong>)
-    last = re.lastIndex
-  }
-  if (last < text.length) parts.push(text.slice(last))
-  return parts
-}

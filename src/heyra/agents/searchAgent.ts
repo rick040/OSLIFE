@@ -34,7 +34,7 @@ export const runSearchAgent: Agent = async (input, ctx) => {
   const facts = search.results.map((r) => `- ${r.title} (${r.kind}${r.detail ? `, ${r.detail}` : ''})`).join('\n')
   const [brainText, graphInsight] = await Promise.all([
     askBrain(
-      'Je bent HEYRA, de Nederlandse assistent van OSLIFE. Je krijgt zoekresultaten uit het geheugen van de gebruiker. Schrijf ÉÉN korte, natuurlijke Nederlandse introzin (max 20 woorden) die samenvat wat er gevonden is. Verzin niets buiten de gegeven resultaten.',
+      'Je bent HEYRA, de Nederlandse assistent van OSLIFE. Je krijgt zoekresultaten uit het geheugen van de gebruiker. Schrijf ÉÉN korte, natuurlijke Nederlandse introzin (max 20 woorden) die samenvat wat er gevonden is, met het aantal of het belangrijkste resultaat in **vet**. Verzin niets buiten de gegeven resultaten.',
       `Zoekopdracht: "${input}"\n\nResultaten:\n${facts}`,
       { maxTokens: 120 },
     ),
