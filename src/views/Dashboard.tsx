@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { TODAY, DOMAIN_META, fmtDate, daysBetween } from '../domains'
 import { isTransfer } from '../finance/categories'
@@ -12,6 +12,9 @@ import { useWeather, weatherMeta } from '../hooks/useWeather'
 import { storeNudgeToDash, type DashNudge, type NudgeTone } from '../components/NudgeCard'
 import { MarkdownInline } from '../components/Markdown'
 import { MetricDetailDialog, type MetricPoint } from '../components/MetricDetailDialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog'
+import CheckinCard from '../components/CheckinCard'
+import { fetchSyncStatusFor, humanizeAge, type SyncSourceStatus } from '../lib/syncStatus'
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip } from 'recharts'
 import { CHART_TIP, AXIS_TICK_11 } from '../components/chart'
 import {
@@ -34,7 +37,24 @@ import {
   Target,
   Activity,
   Bell,
+  RefreshCw,
 } from 'lucide-react'
+
+// Ranks a source's health for "pick the worse of two" comparisons — down is
+// worse than slow/empty/error, which are worse than up.
+const SYNC_HEALTH_RANK: Record<SyncSourceStatus['health'], number> = { up: 0, slow: 1, empty: 1, error: 1, down: 2 }
+function worseSync(a?: SyncSourceStatus, b?: SyncSourceStatus): SyncSourceStatus | undefined {
+  if (!a) return b
+  if (!b) return a
+  return SYNC_HEALTH_RANK[b.health] > SYNC_HEALTH_RANK[a.health] ? b : a
+}
+const SYNC_BADGE_CLS: Record<SyncSourceStatus['health'], string> = {
+  up: 'bg-sunken text-muted',
+  slow: 'bg-personal/15 text-personal-deep',
+  down: 'bg-cross/15 text-cross-deep',
+  empty: 'bg-sunken text-muted',
+  error: 'bg-cross/15 text-cross-deep',
+}
 
 import { eur0 as eur, fmtGoalValue } from '../lib/format'
 
@@ -84,6 +104,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     habits,
     nudge,
     healthDays,
+    checkins,
     projects,
     projectTasks,
     goals,
@@ -100,7 +121,43 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     toggleProjectTask,
     closeThread,
     toggleDogReminder,
+    loadLiveData,
   } = useStore()
+
+  // Real ingestion freshness for the health rings + saldo/mail tiles — the
+  // same sync-health system Reflect's SourceStatusStrip uses, so the two
+  // screens can never disagree about whether a source is actually stale.
+  const [syncInfo, setSyncInfo] = useState<Record<string, SyncSourceStatus>>({})
+  const [refreshing, setRefreshing] = useState(false)
+  const SYNC_KEYS = ['health', 'sleep', 'finance', 'gmail']
+  useEffect(() => {
+    let alive = true
+    fetchSyncStatusFor(SYNC_KEYS).then((rows) => {
+      if (alive) setSyncInfo(Object.fromEntries(rows.map((r) => [r.key, r])))
+    })
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function handleRefresh() {
+    setRefreshing(true)
+    try {
+      await loadLiveData()
+      const rows = await fetchSyncStatusFor(SYNC_KEYS)
+      setSyncInfo(Object.fromEntries(rows.map((r) => [r.key, r])))
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  // Energy is a manual check-in, not an ingested feed — read it straight from
+  // `checkins` rather than `today.energy` (which defaults to a fake 3 for any
+  // day nobody has actually logged), so an un-logged day never masquerades as
+  // real data.
+  const todaysCheckin = checkins.find((c) => c.date === TODAY)
+  const [checkinOpen, setCheckinOpen] = useState(false)
 
   const today = healthDays.find((d) => d.date === TODAY) ?? healthDays[healthDays.length - 1]
   // Vandaag: every scheduled block today, soonest first — skipped ones drop
@@ -115,6 +172,11 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const lastStepsDay = stepsStale ? [...healthDays].reverse().find((d) => d.steps > 0) : today
   const stepsPct = lastStepsDay ? Math.min(1, lastStepsDay.steps / lastStepsDay.stepGoal) : 0
   const stepsLabel = lastStepsDay ? (lastStepsDay.steps / 1000).toFixed(1) : '–'
+
+  // Real freshness for the "Vandaag" badge — the worse of the two feeds that
+  // actually back these rings, so the badge always says how old the data
+  // really is instead of a static "not synced" guess.
+  const healthSync = worseSync(syncInfo.health, syncInfo.sleep)
 
   const openThreads = threads
     .filter((t) => t.status === 'open')
@@ -320,7 +382,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     ? Math.round(
         ((Math.min(1, (lastStepsDay?.steps ?? 0) / (today.stepGoal || 10000)) +
           Math.min(1, today.sleepHours / 8) +
-          Math.min(1, today.energy / 5)) /
+          Math.min(1, (todaysCheckin?.energy ?? 3) / 5)) /
           3) *
           100,
       )
@@ -361,6 +423,14 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           {weather.tempC != null && ` · ${weather.tempC}°C`}
         </span>
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            aria-label="Nu synchroniseren"
+            className="flex h-8 w-8 items-center justify-center rounded-lg bg-sunken text-ink-soft outline-none transition-colors hover:bg-line focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
           <span className="h-5 w-px bg-line" aria-hidden />
           <button
             onClick={() => onNav('daybuilder')}
@@ -417,9 +487,9 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
                 en <b>{blocks.filter((b) => b.status === 'planned').length} geplande blokken</b>
               </>
             )}
-            {today && (
+            {todaysCheckin && (
               <>
-                , en je energie staat op <b>{today.energy}/5</b>
+                , en je energie staat op <b>{todaysCheckin.energy}/5</b>
               </>
             )}
             .
@@ -517,7 +587,11 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         <div className="card-hero p-5">
           <div className="flex items-center justify-between mb-4">
             <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Vandaag</p>
-            {stepsStale && lastStepsDay && <span className="chip bg-sunken text-muted">nog niet gesynct</span>}
+            {healthSync && (
+              <span className={`chip ${SYNC_BADGE_CLS[healthSync.health]}`}>
+                {healthSync.health === 'up' ? `gesynct · ${humanizeAge(healthSync.lastAt)}` : `nog niet gesynct · ${humanizeAge(healthSync.lastAt)}`}
+              </span>
+            )}
           </div>
           <div className="grid grid-cols-3 gap-3">
             <button
@@ -535,10 +609,14 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
               <span className="text-xs text-muted">slaap</span>
             </button>
             <button
-              onClick={() => setMetricDialog('energy')}
+              onClick={() => (todaysCheckin ? setMetricDialog('energy') : setCheckinOpen(true))}
               className="flex flex-col items-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-2xl py-1"
             >
-              <Ring value={today.energy / 5} size={72} color="stroke-forest-hi" label={`${today.energy}/5`} />
+              {todaysCheckin ? (
+                <Ring value={todaysCheckin.energy / 5} size={72} color="stroke-forest-hi" label={`${todaysCheckin.energy}/5`} />
+              ) : (
+                <Ring value={0} size={72} color="stroke-forest-hi" label="–" sub="loggen" />
+              )}
               <span className="text-xs text-muted">energie</span>
             </button>
           </div>
@@ -554,6 +632,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           label="saldo"
           onClick={() => setMetricDialog('saldo')}
           corner={transactions.length >= 2 ? <Sparkline values={balanceTrend} className="text-ink-soft" width={40} height={18} /> : undefined}
+          footer={syncInfo.finance ? `bijgewerkt ${humanizeAge(syncInfo.finance.lastAt)}` : undefined}
         />
         <MetricTile
           icon={Receipt}
@@ -570,7 +649,13 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           label="te ontv. / te betalen"
           onClick={() => onNav('money')}
         />
-        <MetricTile icon={Mail} value={unreadImportant.length || '0'} label="belangrijke mail" onClick={() => onNav('inbox')} />
+        <MetricTile
+          icon={Mail}
+          value={unreadImportant.length || '0'}
+          label="belangrijke mail"
+          onClick={() => onNav('inbox')}
+          footer={syncInfo.gmail ? `bijgewerkt ${humanizeAge(syncInfo.gmail.lastAt)}` : undefined}
+        />
         <MetricTile icon={CheckSquare} value={openThreads.length} label="open taken" onClick={() => onNav('tasks')} />
         <MetricTile
           icon={Activity}
@@ -752,6 +837,18 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         kind="line"
         action={{ label: 'Naar Geld', onClick: () => { setMetricDialog(null); onNav('money') } }}
       />
+
+      {/* Quick energie/stemming check-in — reached by tapping the energy ring
+          before today's check-in has been logged, instead of a trend chart
+          with nothing today to show. */}
+      <Dialog open={checkinOpen} onOpenChange={setCheckinOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Hoe voel je je vandaag?</DialogTitle>
+          </DialogHeader>
+          <CheckinCard compact onSaved={() => setTimeout(() => setCheckinOpen(false), 900)} />
+        </DialogContent>
+      </Dialog>
 
       {/* ── below the fold: secondary detail ──────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-2">

@@ -113,6 +113,13 @@ export async function fetchSyncStatus(): Promise<SyncSourceStatus[]> {
   return Promise.all(SYNC_SOURCES.map(fetchOne))
 }
 
+/** Same as fetchSyncStatus, scoped to a subset of source keys — for callers
+ *  (like the Dashboard) that only need one or two sources' freshness rather
+ *  than paying for all of them. */
+export async function fetchSyncStatusFor(keys: string[]): Promise<SyncSourceStatus[]> {
+  return Promise.all(SYNC_SOURCES.filter((s) => keys.includes(s.key)).map(fetchOne))
+}
+
 // ── Presentation helpers ──────────────────────────────────────────────────────
 
 /** Dutch relative time: "3 uur geleden", "over 2 dagen", "zojuist", "nooit". */

@@ -5,7 +5,7 @@ import { Zap, Smile, Check } from 'lucide-react'
 
 // The one signal no sensor captures: how Rick actually felt today. Feeds Reflect
 // so energy↔spend / energy↔screentime / meetings↔energy can be computed at all.
-export default function CheckinCard({ compact }: { compact?: boolean }) {
+export default function CheckinCard({ compact, onSaved }: { compact?: boolean; onSaved?: () => void }) {
   const { checkins, logCheckin } = useStore()
   const todays = checkins.find((c) => c.date === today())
 
@@ -29,6 +29,7 @@ export default function CheckinCard({ compact }: { compact?: boolean }) {
     logCheckin(energy, mood)
     setSavedAt(true)
     setTimeout(() => setSavedAt(false), 1800)
+    onSaved?.()
   }
 
   const Scale = ({
