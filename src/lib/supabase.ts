@@ -195,7 +195,7 @@ export async function persistBrainState(threads: Thread[], patterns: Pattern[]):
 export async function fetchTasks(): Promise<Thread[]> {
   return fetchRows(
     'tasks',
-    'id,domain,title,owed_to,due,status,priority,notes,created_at',
+    'id,domain,title,owed_to,due,status,priority,notes,checklist,created_at',
     { column: 'created_at', ascending: false },
     (r) => ({
       id: r.id as string,
@@ -207,6 +207,7 @@ export async function fetchTasks(): Promise<Thread[]> {
       createdAt: (r.created_at as string) ?? new Date().toISOString(),
       priority: (r.priority as Priority) ?? null,
       notes: (r.notes as string) ?? null,
+      checklist: (r.checklist as Thread['checklist']) ?? [],
     }),
   )
 }
@@ -220,6 +221,7 @@ export async function insertTaskRow(t: Omit<Thread, 'id'>): Promise<string | nul
     status: t.status,
     priority: t.priority ?? null,
     notes: t.notes ?? null,
+    checklist: t.checklist ?? [],
   })
 }
 
@@ -231,6 +233,7 @@ const TASK_COLS: Record<string, string> = {
   status: 'status',
   priority: 'priority',
   notes: 'notes',
+  checklist: 'checklist',
 }
 
 export async function updateTaskRow(id: string, patch: Partial<Thread>): Promise<void> {

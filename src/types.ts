@@ -131,6 +131,12 @@ export interface Essential {
   value: string
 }
 
+export interface ChecklistItem {
+  id: string
+  text: string
+  done: boolean
+}
+
 export interface Thread {
   id: string
   domain: Domain
@@ -141,6 +147,7 @@ export interface Thread {
   createdAt: string
   priority?: Priority | null
   notes?: string | null
+  checklist?: ChecklistItem[] | null
 }
 
 export interface Pattern {

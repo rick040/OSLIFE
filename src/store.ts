@@ -1140,6 +1140,7 @@ export const useStore = create<State>()(
           createdAt: new Date().toISOString(),
           priority: draft.priority ?? null,
           notes: draft.notes ?? null,
+          checklist: [],
         }
         set((s) => ({
           threads: [thread, ...s.threads],
@@ -1154,6 +1155,7 @@ export const useStore = create<State>()(
         void insertTaskRow({
           domain: thread.domain, title: thread.title, owedTo: thread.owedTo, due: thread.due,
           status: thread.status, createdAt: thread.createdAt, priority: thread.priority, notes: thread.notes,
+          checklist: thread.checklist,
         }).then(swapTempId(set, 'threads', tempId))
         return tempId
       },
