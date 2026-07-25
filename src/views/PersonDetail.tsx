@@ -3,16 +3,14 @@ import {
   X, Pencil, Trash2, Mail, Phone, Instagram, Linkedin, Twitter, Globe,
   Building2, Briefcase, Share2, StickyNote, Link2, Plus, CheckCircle2,
 } from 'lucide-react'
-import type { Person, PersonKind } from '../types'
+import type { Person } from '../types'
 import { useStore } from '../store'
-import { SheetShell } from '../components/crm'
+import { SheetShell, PersonAvatar } from '../components/crm'
 import { fmtDate } from '../domains'
-import { connectionsForPerson } from '../lib/crm/relaties'
+import { connectionsForPerson, PERSON_KIND_LABEL, PERSON_KIND_HEX } from '../lib/crm/relaties'
 import PersonForm from './PersonForm'
 import { ConfirmDialog, Pill } from '../components/ui'
 
-const KIND_LABEL: Record<PersonKind, string> = { network: 'Netwerk', business: 'Zakelijk', both: 'Beide' }
-const KIND_HEX: Record<PersonKind, string> = { network: '#60A5FA', business: '#A78BFA', both: '#34D399' }
 const CHANNEL_LABEL: Record<string, string> = { mail: 'Mail', whatsapp: 'WhatsApp', call: 'Bellen', in_person: 'Persoonlijk', fiverr: 'Fiverr', note: 'Notitie' }
 
 const CONNECTION_LABEL_PRESETS = ['Partner', 'Collega van', 'Vriend(in) van', 'Geïntroduceerd door', 'Familie van', 'Werkt met']
@@ -60,7 +58,7 @@ export default function PersonDetail({ person: initial, onClose }: { person: Per
   const [connLabel, setConnLabel] = useState(CONNECTION_LABEL_PRESETS[0])
   const [connNote, setConnNote] = useState('')
 
-  const color = KIND_HEX[person.kind]
+  const color = PERSON_KIND_HEX[person.kind]
   const since = daysSince(person.lastInteractionAt)
   const overdue = person.cadenceDays != null && since != null && since > person.cadenceDays
 
@@ -90,16 +88,14 @@ export default function PersonDetail({ person: initial, onClose }: { person: Per
     <>
       <SheetShell onClose={onClose} panelClassName="md:max-w-lg md:max-h-[92dvh] max-h-[94dvh]">
         <div className="flex items-start gap-3 p-5 pb-4 border-b border-line shrink-0">
-          <span className="h-12 w-12 rounded-full flex items-center justify-center shrink-0 text-lg font-bold" style={{ color, background: `${color}28` }}>
-            {person.displayName.slice(0, 1).toUpperCase()}
-          </span>
+          <PersonAvatar person={person} className="h-12 w-12 text-lg" />
           <div className="flex-1 min-w-0 pt-0.5">
             <div className="font-semibold text-lg leading-tight truncate">{person.displayName}</div>
             {(person.jobTitle || person.company) && (
               <div className="text-xs text-faint mt-0.5 truncate">{[person.jobTitle, person.company].filter(Boolean).join(' bij ')}</div>
             )}
             <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-              <Pill hex={color} className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full">{KIND_LABEL[person.kind]}</Pill>
+              <Pill hex={color} className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full">{PERSON_KIND_LABEL[person.kind]}</Pill>
               {person.tags.map((t) => (
                 <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-line text-muted">{t}</span>
               ))}

@@ -2154,7 +2154,7 @@ export async function confirmInference(id: string, decision: InferenceDecision):
 export async function fetchPeople(): Promise<Person[]> {
   return fetchRows(
     'person',
-    'id,display_name,kind,emails,phones,birthday,cadence_days,last_interaction_at,client_id,notes,tier,tags,company,job_title,instagram_url,linkedin_url,twitter_url,website_url',
+    'id,display_name,kind,emails,phones,birthday,cadence_days,last_interaction_at,client_id,notes,tier,tags,company,job_title,instagram_url,linkedin_url,twitter_url,website_url,avatar_url',
     { column: 'display_name' },
     (r) => ({
       id: r.id as string,
@@ -2175,6 +2175,7 @@ export async function fetchPeople(): Promise<Person[]> {
       linkedinUrl: (r.linkedin_url as string) ?? null,
       twitterUrl: (r.twitter_url as string) ?? null,
       websiteUrl: (r.website_url as string) ?? null,
+      avatarUrl: (r.avatar_url as string) ?? null,
     }),
   )
 }
@@ -2184,7 +2185,7 @@ const PERSON_COLS: Record<string, string> = {
   birthday: 'birthday', cadenceDays: 'cadence_days', lastInteractionAt: 'last_interaction_at',
   clientId: 'client_id', notes: 'notes', tier: 'tier', tags: 'tags', company: 'company',
   jobTitle: 'job_title', instagramUrl: 'instagram_url', linkedinUrl: 'linkedin_url',
-  twitterUrl: 'twitter_url', websiteUrl: 'website_url',
+  twitterUrl: 'twitter_url', websiteUrl: 'website_url', avatarUrl: 'avatar_url',
 }
 
 export async function createPersonRow(p: Omit<Person, 'id'>): Promise<string | null> {
@@ -2193,7 +2194,7 @@ export async function createPersonRow(p: Omit<Person, 'id'>): Promise<string | n
     birthday: p.birthday, cadence_days: p.cadenceDays, client_id: p.clientId,
     notes: p.notes, tier: p.tier, tags: p.tags, company: p.company, job_title: p.jobTitle,
     instagram_url: p.instagramUrl, linkedin_url: p.linkedinUrl, twitter_url: p.twitterUrl,
-    website_url: p.websiteUrl,
+    website_url: p.websiteUrl, avatar_url: p.avatarUrl,
   })
 }
 
@@ -2226,6 +2227,38 @@ export async function createPersonConnectionRow(c: Omit<PersonConnection, 'id' |
 
 export async function deletePersonConnectionRow(id: string): Promise<void> {
   return deleteRow('person_connection', id)
+}
+
+export interface InstagramProfileFetch {
+  username: string | null
+  displayName: string | null
+  bio: string | null
+  imageUrl: string | null
+  statsText: string | null
+}
+
+/**
+ * Best-effort pull of a public Instagram profile's link-preview metadata
+ * (display name, photo, follower-count line) via the fetch-instagram-profile
+ * edge function — never a logged-in scrape. Returns `{ ok: false, error }`
+ * on anything from a private/removed profile to Instagram just blocking the
+ * request; the caller shows that inline rather than silently doing nothing.
+ */
+export async function fetchInstagramProfile(url: string): Promise<{ ok: true; profile: InstagramProfileFetch } | { ok: false; error: string }> {
+  const { data, error } = await supabase.functions.invoke('fetch-instagram-profile', { body: { url } })
+  if (error || !data?.ok) {
+    return { ok: false, error: (data?.error as string) ?? error?.message ?? 'onbekende fout' }
+  }
+  return {
+    ok: true,
+    profile: {
+      username: (data.username as string) ?? null,
+      displayName: (data.displayName as string) ?? null,
+      bio: (data.bio as string) ?? null,
+      imageUrl: (data.imageUrl as string) ?? null,
+      statsText: (data.statsText as string) ?? null,
+    },
+  }
 }
 
 export async function fetchInteractions(): Promise<Interaction[]> {

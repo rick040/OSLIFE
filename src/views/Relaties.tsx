@@ -1,18 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { Empty, Pill } from '../components/ui'
+import { PersonAvatar } from '../components/crm'
 import { UserPlus, AlertCircle, Users, Search, Link2 } from 'lucide-react'
-import type { Person, PersonKind } from '../types'
-import { connectionsForPerson } from '../lib/crm/relaties'
+import type { Person } from '../types'
+import { connectionsForPerson, PERSON_KIND_LABEL, PERSON_KIND_HEX } from '../lib/crm/relaties'
 import PersonForm from './PersonForm'
 import PersonDetail from './PersonDetail'
-
-const KIND_LABEL: Record<PersonKind, string> = {
-  network: 'Netwerk',
-  business: 'Zakelijk',
-  both: 'Beide',
-}
-const KIND_HEX: Record<PersonKind, string> = { network: '#60A5FA', business: '#A78BFA', both: '#34D399' }
 
 function daysSince(iso: string | null): number | null {
   if (!iso) return null
@@ -116,17 +110,15 @@ export default function Relaties() {
             const overdue = p.cadenceDays != null && since != null && since > p.cadenceDays
             const owed = owedByPerson.get(p.id) ?? 0
             const connCount = connectionsForPerson(p.id, personConnections, people).length
-            const color = KIND_HEX[p.kind]
+            const color = PERSON_KIND_HEX[p.kind]
             return (
               <button key={p.id} onClick={() => setOpen(p)} className="card p-4 w-full text-left hover:bg-sunken transition-colors">
                 <div className="flex items-start gap-3">
-                  <span className="h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0" style={{ color, background: `${color}28` }}>
-                    {p.displayName.slice(0, 1).toUpperCase()}
-                  </span>
+                  <PersonAvatar person={p} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium truncate">{p.displayName}</span>
-                      <Pill hex={color} className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0">{KIND_LABEL[p.kind]}</Pill>
+                      <Pill hex={color} className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0">{PERSON_KIND_LABEL[p.kind]}</Pill>
                       {p.tags.slice(0, 2).map((t) => (
                         <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-line text-muted shrink-0">{t}</span>
                       ))}

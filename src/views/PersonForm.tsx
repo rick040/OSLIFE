@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { X, Wand2, Loader2 } from 'lucide-react'
 import type { Person, PersonKind } from '../types'
 import { useStore } from '../store'
+import { fetchInstagramProfile } from '../lib/supabase'
 import { Sheet, Field, TextInput, TextArea, SelectInput, PrimaryBtn } from '../components/crm'
 import { TAG_PRESETS, suggestTags } from '../lib/crm/relaties'
 
@@ -35,6 +36,31 @@ export default function PersonForm({ person, onClose }: { person: Person | null;
   const [birthday, setBirthday] = useState(person?.birthday?.slice(0, 10) ?? '')
   const [cadenceDays, setCadenceDays] = useState(person?.cadenceDays != null ? String(person.cadenceDays) : '')
   const [notes, setNotes] = useState(person?.notes ?? '')
+  const [avatarUrl, setAvatarUrl] = useState(person?.avatarUrl ?? '')
+  const [igLoading, setIgLoading] = useState(false)
+  const [igStatus, setIgStatus] = useState<string | null>(null)
+
+  async function fetchFromInstagram() {
+    const url = instagramUrl.trim()
+    if (!url) return
+    setIgLoading(true)
+    setIgStatus(null)
+    const res = await fetchInstagramProfile(url)
+    setIgLoading(false)
+    if (!res.ok) {
+      setIgStatus(`Kon niets ophalen — ${res.error}`)
+      return
+    }
+    const { profile } = res
+    if (profile.displayName && !name.trim()) setName(profile.displayName)
+    if (profile.imageUrl) setAvatarUrl(profile.imageUrl)
+    if (profile.bio) setNotes((cur) => (cur.trim() ? cur : `Instagram-bio: ${profile.bio}`))
+    if (!profile.displayName && !profile.imageUrl && !profile.bio) {
+      setIgStatus('Instagram gaf geen bruikbare gegevens terug — profiel is mogelijk privé of niet gevonden.')
+    } else {
+      setIgStatus(`Automatisch ingevuld vanaf Instagram${profile.statsText ? ` (${profile.statsText})` : ''}.`)
+    }
+  }
 
   function toggleTag(t: string) {
     setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]))
@@ -72,6 +98,7 @@ export default function PersonForm({ person, onClose }: { person: Person | null;
       linkedinUrl: linkedinUrl.trim() || null,
       twitterUrl: twitterUrl.trim() || null,
       websiteUrl: websiteUrl.trim() || null,
+      avatarUrl: avatarUrl.trim() || null,
     }
     if (editing && person) updatePerson(person.id, patch)
     else addPerson({ ...patch, lastInteractionAt: null })
@@ -141,22 +168,41 @@ export default function PersonForm({ person, onClose }: { person: Person | null;
         </Field>
       </div>
 
+      <Field label="Instagram" hint="Plak alleen de profiellink en laat OSLIFE naam, foto en bio proberen aan te vullen.">
+        <div className="flex gap-2 items-start">
+          {avatarUrl && (
+            <img
+              src={avatarUrl}
+              alt=""
+              className="h-9 w-9 rounded-full object-cover shrink-0 border border-line"
+              onError={() => setAvatarUrl('')}
+            />
+          )}
+          <TextInput value={instagramUrl} onChange={(e) => setInstagramUrl(e.target.value)} placeholder="https://instagram.com/…" className="flex-1" />
+          <button
+            type="button"
+            onClick={fetchFromInstagram}
+            disabled={!instagramUrl.trim() || igLoading}
+            title="Gegevens ophalen vanaf Instagram"
+            className="px-3 rounded-xl bg-sunken text-sm font-medium text-muted hover:text-ink disabled:opacity-40 shrink-0 flex items-center gap-1.5"
+          >
+            {igLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+          </button>
+        </div>
+        {igStatus && <div className="text-xs text-faint mt-1.5">{igStatus}</div>}
+      </Field>
+
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Instagram">
-          <TextInput value={instagramUrl} onChange={(e) => setInstagramUrl(e.target.value)} placeholder="https://instagram.com/…" />
-        </Field>
         <Field label="LinkedIn">
           <TextInput value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} placeholder="https://linkedin.com/in/…" />
         </Field>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
         <Field label="X / Twitter">
           <TextInput value={twitterUrl} onChange={(e) => setTwitterUrl(e.target.value)} placeholder="https://x.com/…" />
         </Field>
-        <Field label="Website">
-          <TextInput value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} placeholder="https://…" />
-        </Field>
       </div>
+      <Field label="Website">
+        <TextInput value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} placeholder="https://…" />
+      </Field>
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="Verjaardag">
