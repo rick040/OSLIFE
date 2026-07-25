@@ -48,6 +48,7 @@ import type {
   InferenceDecision,
   WikiEntry,
   Person,
+  PersonConnection,
   Interaction,
   AdminItem,
   HealthCondition,
@@ -225,6 +226,9 @@ import {
   createPersonRow,
   updatePersonRow,
   deletePersonRow,
+  fetchPersonConnections,
+  createPersonConnectionRow,
+  deletePersonConnectionRow,
   fetchInteractions,
   createInteractionRow,
   fetchAdminItems,
@@ -334,6 +338,7 @@ interface State {
   inferences: InferredItem[]
   wikiEntries: WikiEntry[]
   people: Person[]
+  personConnections: PersonConnection[]
   interactions: Interaction[]
   adminItems: AdminItem[]
   healthConditions: HealthCondition[]
@@ -447,6 +452,8 @@ interface State {
   addPerson: (p: Omit<Person, 'id'>) => void
   updatePerson: (id: string, patch: Partial<Person>) => void
   deletePerson: (id: string) => void
+  addPersonConnection: (c: Omit<PersonConnection, 'id' | 'createdAt'>) => void
+  deletePersonConnection: (id: string) => void
   logInteraction: (i: Omit<Interaction, 'id'>) => void
   addAdminItem: (a: Omit<AdminItem, 'id'>) => void
   updateAdminItem: (id: string, patch: Partial<AdminItem>) => void
@@ -688,6 +695,7 @@ const seed = () => ({
   inferences: [] as InferredItem[],
   wikiEntries: [] as WikiEntry[],
   people: [] as Person[],
+  personConnections: [] as PersonConnection[],
   interactions: [] as Interaction[],
   adminItems: [] as AdminItem[],
   healthConditions: [] as HealthCondition[],
@@ -2651,7 +2659,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -2666,6 +2674,7 @@ export const useStore = create<State>()(
             fetchPendingInferences(),
             fetchWikiEntries(),
             fetchPeople(),
+            fetchPersonConnections(),
             fetchInteractions(),
             fetchAdminItems(),
             fetchHealthConditions(),
@@ -2732,6 +2741,7 @@ export const useStore = create<State>()(
             wikiEntries,
             // Slice 2 domains — app-owned, set directly (empty = none yet).
             people,
+            personConnections,
             interactions,
             adminItems,
             healthConditions,
@@ -2842,6 +2852,7 @@ export const useStore = create<State>()(
           { table: 'app_settings', onChange: () => fetchAppSettings().then((p) => { if (p) set({ settings: p }) }) },
           { table: 'app_settings', onChange: () => fetchDogProfile().then((p) => { if (p) set({ dogProfile: p }) }) },
           { table: 'person', onChange: () => fetchPeople().then((d) => set({ people: d })) },
+          { table: 'person_connection', onChange: () => fetchPersonConnections().then((d) => set({ personConnections: d })) },
           { table: 'interaction', onChange: () => fetchInteractions().then((d) => set({ interactions: d })) },
           { table: 'admin_item', onChange: () => fetchAdminItems().then((d) => set({ adminItems: d })) },
           { table: 'health_condition', onChange: () => fetchHealthConditions().then((d) => set({ healthConditions: d })) },
@@ -2977,6 +2988,15 @@ export const useStore = create<State>()(
       deletePerson: (id) => {
         set((s) => ({ people: s.people.filter((x) => x.id !== id) }))
         void deletePersonRow(id)
+      },
+      addPersonConnection: (c) => {
+        void createPersonConnectionRow(c).then((id) => {
+          if (id) fetchPersonConnections().then((d) => set({ personConnections: d }))
+        })
+      },
+      deletePersonConnection: (id) => {
+        set((s) => ({ personConnections: s.personConnections.filter((x) => x.id !== id) }))
+        void deletePersonConnectionRow(id)
       },
       logInteraction: (i) => {
         void createInteractionRow(i).then((id) => {

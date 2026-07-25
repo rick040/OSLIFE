@@ -39,6 +39,7 @@ import type {
   InferenceDecision,
   LifeDomain,
   Person,
+  PersonConnection,
   Interaction,
   AdminItem,
   HealthCondition,
@@ -2151,32 +2152,48 @@ export async function confirmInference(id: string, decision: InferenceDecision):
 // ── Mensen / relaties (Slice 2) ───────────────────────────────────────────────
 
 export async function fetchPeople(): Promise<Person[]> {
-  return fetchRows('person', 'id,display_name,kind,emails,phones,birthday,cadence_days,last_interaction_at,client_id,notes,tier', { column: 'display_name' }, (r) => ({
-    id: r.id as string,
-    displayName: (r.display_name as string) ?? '',
-    kind: (r.kind as Person['kind']) ?? 'network',
-    emails: (r.emails as string[]) ?? [],
-    phones: (r.phones as string[]) ?? [],
-    birthday: (r.birthday as string) ?? null,
-    cadenceDays: (r.cadence_days as number) ?? null,
-    lastInteractionAt: (r.last_interaction_at as string) ?? null,
-    clientId: (r.client_id as string) ?? null,
-    notes: (r.notes as string) ?? null,
-    tier: (r.tier as Person['tier']) ?? 'normaal',
-  }))
+  return fetchRows(
+    'person',
+    'id,display_name,kind,emails,phones,birthday,cadence_days,last_interaction_at,client_id,notes,tier,tags,company,job_title,instagram_url,linkedin_url,twitter_url,website_url',
+    { column: 'display_name' },
+    (r) => ({
+      id: r.id as string,
+      displayName: (r.display_name as string) ?? '',
+      kind: (r.kind as Person['kind']) ?? 'network',
+      emails: (r.emails as string[]) ?? [],
+      phones: (r.phones as string[]) ?? [],
+      birthday: (r.birthday as string) ?? null,
+      cadenceDays: (r.cadence_days as number) ?? null,
+      lastInteractionAt: (r.last_interaction_at as string) ?? null,
+      clientId: (r.client_id as string) ?? null,
+      notes: (r.notes as string) ?? null,
+      tier: (r.tier as Person['tier']) ?? 'normaal',
+      tags: (r.tags as string[]) ?? [],
+      company: (r.company as string) ?? null,
+      jobTitle: (r.job_title as string) ?? null,
+      instagramUrl: (r.instagram_url as string) ?? null,
+      linkedinUrl: (r.linkedin_url as string) ?? null,
+      twitterUrl: (r.twitter_url as string) ?? null,
+      websiteUrl: (r.website_url as string) ?? null,
+    }),
+  )
 }
 
 const PERSON_COLS: Record<string, string> = {
   displayName: 'display_name', kind: 'kind', emails: 'emails', phones: 'phones',
   birthday: 'birthday', cadenceDays: 'cadence_days', lastInteractionAt: 'last_interaction_at',
-  clientId: 'client_id', notes: 'notes', tier: 'tier',
+  clientId: 'client_id', notes: 'notes', tier: 'tier', tags: 'tags', company: 'company',
+  jobTitle: 'job_title', instagramUrl: 'instagram_url', linkedinUrl: 'linkedin_url',
+  twitterUrl: 'twitter_url', websiteUrl: 'website_url',
 }
 
 export async function createPersonRow(p: Omit<Person, 'id'>): Promise<string | null> {
   return insertRow('person', {
     display_name: p.displayName, kind: p.kind, emails: p.emails, phones: p.phones,
     birthday: p.birthday, cadence_days: p.cadenceDays, client_id: p.clientId,
-    notes: p.notes, tier: p.tier,
+    notes: p.notes, tier: p.tier, tags: p.tags, company: p.company, job_title: p.jobTitle,
+    instagram_url: p.instagramUrl, linkedin_url: p.linkedinUrl, twitter_url: p.twitterUrl,
+    website_url: p.websiteUrl,
   })
 }
 
@@ -2186,6 +2203,29 @@ export async function updatePersonRow(id: string, patch: Partial<Person>): Promi
 
 export async function deletePersonRow(id: string): Promise<void> {
   return deleteRow('person', id)
+}
+
+// ── Connecties tussen mensen (rolodex-netwerk) ────────────────────────────────
+
+export async function fetchPersonConnections(): Promise<PersonConnection[]> {
+  return fetchRows('person_connection', 'id,person_a_id,person_b_id,label,note,created_at', { column: 'created_at', ascending: false }, (r) => ({
+    id: r.id as string,
+    personAId: r.person_a_id as string,
+    personBId: r.person_b_id as string,
+    label: (r.label as string) ?? 'Connectie',
+    note: (r.note as string) ?? null,
+    createdAt: r.created_at as string,
+  }))
+}
+
+export async function createPersonConnectionRow(c: Omit<PersonConnection, 'id' | 'createdAt'>): Promise<string | null> {
+  return insertRow('person_connection', {
+    person_a_id: c.personAId, person_b_id: c.personBId, label: c.label, note: c.note,
+  })
+}
+
+export async function deletePersonConnectionRow(id: string): Promise<void> {
+  return deleteRow('person_connection', id)
 }
 
 export async function fetchInteractions(): Promise<Interaction[]> {
