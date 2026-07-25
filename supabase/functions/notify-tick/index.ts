@@ -42,7 +42,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { sendMessage, type InlineKeyboard } from "../_shared/telegram.ts";
+import { sendMessage, withAutomationTag, type AutomationPayload, type InlineKeyboard } from "../_shared/telegram.ts";
 import { amsterdamToday, daysBetween, fmtDateNL, type Thread } from "../_shared/dates.ts";
 import { SUPABASE_SERVICE_KEY, SUPABASE_URL, USER_ID, bearerToken, jsonResponder } from "../_shared/http.ts";
 
@@ -117,8 +117,10 @@ async function unclaim(sb: any, kind: string, dedupKey: string): Promise<void> {
 async function sendClaimed(
   sb: any, kind: string, dedupKey: string,
   token: string, chatId: number, text: string, keyboard?: InlineKeyboard,
+  automationPayload?: AutomationPayload,
 ): Promise<void> {
-  const { ok } = await sendMessage(token, chatId, text, keyboard);
+  const taggedText = automationPayload ? withAutomationTag(text, kind, automationPayload) : text;
+  const { ok } = await sendMessage(token, chatId, taggedText, keyboard);
   if (!ok) {
     await unclaim(sb, kind, dedupKey);
     throw new Error(`sendMessage(${kind}) rejected by Telegram`);
@@ -324,6 +326,7 @@ interface UrgentAlert {
   kind: string;
   dedupKey: string;
   text: string;
+  payload: AutomationPayload;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -340,17 +343,20 @@ async function urgentAlerts(sb: any, today: string): Promise<UrgentAlert[]> {
   for (const p of paymentRows ?? []) {
     const due = p.due as string;
     const daysLeft = daysBetween(today, due); // due − today; negative = overdue
+    const paymentPayload: AutomationPayload = { id: p.id, payee: p.payee, amount: p.amount, due, daysLeft };
     if (daysLeft < 0) {
       alerts.push({
         kind: "urgent_payment",
         dedupKey: p.id as string,
         text: `⚠️ Betaling te laat: ${p.payee} — €${p.amount} was ${fmtDateNL(due)} verschuldigd.`,
+        payload: paymentPayload,
       });
     } else if (daysLeft <= 3) {
       alerts.push({
         kind: "urgent_payment",
         dedupKey: p.id as string,
         text: `⚠️ Betaling nadert: ${p.payee} — €${p.amount} vervalt op ${fmtDateNL(due)}.`,
+        payload: paymentPayload,
       });
     }
   }
@@ -359,10 +365,12 @@ async function urgentAlerts(sb: any, today: string): Promise<UrgentAlert[]> {
   const threads = (brainRow?.threads as Thread[]) ?? [];
   for (const t of threads) {
     if (t.status === "open" && t.due && daysBetween(t.due, today) > 0) {
+      const daysOverdue = daysBetween(t.due, today);
       alerts.push({
         kind: "urgent_thread",
         dedupKey: t.id,
-        text: `⏰ "${t.title}" staat al ${daysBetween(t.due, today)} dag(en) open en is nog niet afgesloten (${t.owedTo}).`,
+        text: `⏰ "${t.title}" staat al ${daysOverdue} dag(en) open en is nog niet afgesloten (${t.owedTo}).`,
+        payload: { id: t.id, title: t.title, owedTo: t.owedTo, daysOverdue },
       });
     }
   }
@@ -377,6 +385,7 @@ async function urgentAlerts(sb: any, today: string): Promise<UrgentAlert[]> {
       kind: "urgent_project_blocked",
       dedupKey: p.id as string,
       text: `🚧 Project "${p.name}" is geblokkeerd geraakt. Eén bericht kan 'm weer los trekken.`,
+      payload: { id: p.id, name: p.name },
     });
   }
 
@@ -395,6 +404,7 @@ async function urgentAlerts(sb: any, today: string): Promise<UrgentAlert[]> {
       kind: "urgent_invoice_overdue",
       dedupKey: inv.id as string,
       text: `⚠️ ${label} (€${inv.amount}) is te laat — verviel ${fmtDateNL(inv.due_on as string)}.`,
+      payload: { id: inv.id, number: inv.number ?? null, amount: inv.amount, due: inv.due_on },
     });
   }
 
@@ -417,6 +427,7 @@ async function urgentAlerts(sb: any, today: string): Promise<UrgentAlert[]> {
         kind: "urgent_followup",
         dedupKey: `${c.id}:${dueStr}`,
         text: `📇 Tijd om ${c.name} op te volgen — al ${daysSince} dag(en) geen contact.`,
+        payload: { id: c.id, name: c.name, daysSince },
       });
     }
   }
@@ -446,14 +457,14 @@ Deno.serve(async (req) => {
 
   try {
     if (prefs.morning_briefing && withinWindow(prefs.morning_time, nowMinutes) && (await claim(sb, "morning", today))) {
-      await sendClaimed(sb, "morning", today, BOT_TOKEN, chatId, await buildMorningBriefing(sb, today));
+      await sendClaimed(sb, "morning", today, BOT_TOKEN, chatId, await buildMorningBriefing(sb, today), undefined, {});
       sent.push("morning");
     }
 
     if (prefs.evening_checkin && withinWindow(prefs.evening_time, nowMinutes) && (await claim(sb, "evening_checkin", today))) {
       if (!(await hasCheckinToday(sb, today))) {
         const keyboard: InlineKeyboard = [[1, 2, 3, 4, 5].map((n) => ({ text: String(n), callback_data: `ci_e:${n}` }))];
-        await sendClaimed(sb, "evening_checkin", today, BOT_TOKEN, chatId, "🌙 Hoe ging vandaag? Kies je energie (1-5):", keyboard);
+        await sendClaimed(sb, "evening_checkin", today, BOT_TOKEN, chatId, "🌙 Hoe ging vandaag? Kies je energie (1-5):", keyboard, {});
       }
       sent.push("evening_checkin");
     }
@@ -467,7 +478,10 @@ Deno.serve(async (req) => {
             callback_data: `hb_done:${h.id}`,
           },
         ]);
-        await sendClaimed(sb, "habit_reminder", today, BOT_TOKEN, chatId, "🔁 Nog openstaande gewoontes vandaag:", keyboard);
+        const payload: AutomationPayload = {
+          habits: open.map((h) => ({ id: h.id, name: h.name, icon: h.icon, streak: h.priorStreak })),
+        };
+        await sendClaimed(sb, "habit_reminder", today, BOT_TOKEN, chatId, "🔁 Nog openstaande gewoontes vandaag:", keyboard, payload);
       }
       sent.push("habit_reminder");
     }
@@ -485,7 +499,7 @@ Deno.serve(async (req) => {
           { text: `✅ ${i + 1}`, callback_data: `infer:ok:${p.id}` },
           { text: `❌ ${i + 1}`, callback_data: `infer:no:${p.id}` },
         ]);
-        await sendClaimed(sb, "inference_digest", today, BOT_TOKEN, chatId, lines.join("\n"), keyboard);
+        await sendClaimed(sb, "inference_digest", today, BOT_TOKEN, chatId, lines.join("\n"), keyboard, { count: pending.length });
         sent.push("inference_digest");
       }
     }
@@ -497,7 +511,8 @@ Deno.serve(async (req) => {
       const dedupKey = `${m.id}:${m.time}:${today}`;
       if (await claim(sb, "medication_reminder", dedupKey)) {
         const text = `💊 Tijd voor ${m.name}${m.dosage ? ` (${m.dosage})` : ""}.`;
-        await sendClaimed(sb, "medication_reminder", dedupKey, BOT_TOKEN, chatId, text);
+        const payload: AutomationPayload = { id: m.id, name: m.name, dosage: m.dosage, time: m.time };
+        await sendClaimed(sb, "medication_reminder", dedupKey, BOT_TOKEN, chatId, text, undefined, payload);
         sent.push(`medication_reminder:${dedupKey}`);
       }
     }
@@ -505,7 +520,7 @@ Deno.serve(async (req) => {
     if (prefs.urgent_alerts && !inQuietHours(prefs.quiet_hours_start, prefs.quiet_hours_end, nowMinutes)) {
       for (const a of await urgentAlerts(sb, today)) {
         if (await claim(sb, a.kind, a.dedupKey)) {
-          await sendClaimed(sb, a.kind, a.dedupKey, BOT_TOKEN, chatId, a.text);
+          await sendClaimed(sb, a.kind, a.dedupKey, BOT_TOKEN, chatId, a.text, undefined, a.payload);
           sent.push(`${a.kind}:${a.dedupKey}`);
         }
       }
