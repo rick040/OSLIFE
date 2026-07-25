@@ -41,12 +41,11 @@ Apps Script hub (Code.gs)                                                       
 Sheet-bound Apps Script          │
   Health  → health-sheets-ingest │
   Betalingen → payments-sheet-ingest ─▶ Edge Functions ─▶ finance_tx
-  Schermtijd → screentime-sheet-ingest                 ─▶ screentime
 Projecten/Klanten (native CRM, in-app only — no external sync)
 Geldrop Buurtkaart WordPress API ─▶ gbk-overview ─▶ Buurtkaart screen
 Google Wallet (MacroDroid)       ─▶ wallet-ingest ─▶ finance_tx
 Phone unlock/screen-off (MacroDroid) ─▶ phone-events-ingest ─▶ phone_events ─▶ health_sleep
-App-timer stopwatch (MacroDroid)     ─▶ phone-events-ingest ─▶ app_sessions ─▶ screentime
+App Opened/Closed (MacroDroid)       ─▶ screentime-app-ingest ─▶ screentime_events ─▶ screentime
 ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betalingen sheet)
 ```
 
@@ -67,7 +66,7 @@ ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betaling
 | Buurtkaart beheer | **Geldrop Buurtkaart WordPress API** | `gbk-overview` (header `X-GBK-Key`) | — (live read) |
 | Geld · transacties | **Betalingen Google Sheet** + **ABN AMRO CSV** (in-app) + Google Wallet | `payments-sheet-ingest` · in-app import · `wallet-ingest` | `finance_tx` |
 | Geld · Te betalen | **Payments Google Calendar** | Code.gs `syncPayments` | `payments` |
-| Schermtijd | **App-timer stopwatch (MacroDroid)** — actieve tijd per app + **Schermtijd Google Sheet** (fallback) | `phone-events-ingest` (`app_sessions` → `screentime`) · `screentime-sheet-ingest` | `screentime`, `app_sessions` |
+| Schermtijd | **App-timer (MacroDroid)** — App Opened/Closed per app, rechtstreeks | `screentime-app-ingest` (`screentime_events` → `screentime`) | `screentime`, `screentime_events` |
 | Gezondheid | **Health Google Sheet** (slaap/activiteiten/gewicht/stappen) + **phone-afgeleide slaap** (MacroDroid) | `health-sheets-ingest` · `phone-events-ingest` | `health_daily_stats`, `health_sleep`, `health_body_metrics`, `phone_events` |
 | Inbox / mail | **Gmail** | Code.gs `syncGmail` | `gmail_messages` |
 | Dagplanner / agenda | **Google Calendar** | Code.gs `syncCalendarBlocks` | `day_blocks` |
@@ -125,13 +124,12 @@ an estimate. Setup: `integrations/macrodroid/phone-sleep.md`.
 
 ### Phone-derived per-app screen time
 Per-app active time comes straight from the phone via MacroDroid — no StayFree, no
-Sheet. A macro runs a **stopwatch** while an app is foregrounded (App Launched →
-reset+start, App Closed → stop) and, on close, sends the app name + the stopwatch
-value to `phone-events-ingest` (`kind=app_usage`). Each session lands in
-`app_sessions`; the function recomputes that day's per-app total into `screentime`
-from the raw sessions (so retries never double-count), exactly like pickups are
-recomputed from `phone_events`. This fills the one gap the Sheet used to own — the
-`screentime-sheet-ingest` path still works as a fallback. Setup:
+Sheet, no stopwatch. A macro fires on **App Launched** and **App Closed** for the
+apps you track and posts the app name + state to `screentime-app-ingest`. Each
+event lands in `screentime_events`; on every Closed the function pairs it with the
+app's most recent unmatched Opened, computes the session length, and recomputes
+that day's per-app total into `screentime` from the raw log (so retries never
+double-count) — exactly like pickups are recomputed from `phone_events`. Setup:
 `integrations/macrodroid/app-timer.md`.
 
 ### Obsidian integration: read the vault, write via an inbox
@@ -159,8 +157,8 @@ the full contract. Summary:
 1. **Edge-function secrets** (Supabase → Edge Functions → Manage secrets): `OSLIFE_USER_ID`,
    `INGEST_SECRET`, `GBK_API_KEY`, `WALLET_WEBHOOK_SECRET`.
 2. **Apps Script** (`integrations/apps-script/`): paste `Code.gs` into the account-level project and
-   `health-sheets.gs` / `payments-sheet.gs` / `screentime-sheet.gs` each into their own
-   Sheet-bound project; fill Script Properties; run `installTrigger()` / add time-driven triggers.
+   `health-sheets.gs` / `payments-sheet.gs` each into their own Sheet-bound project; fill Script
+   Properties; run `installTrigger()` / add time-driven triggers.
 
 ## Screens
 

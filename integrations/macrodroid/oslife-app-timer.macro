@@ -5,7 +5,7 @@
     "m_completed": true,
     "m_GUID": 0,
     "aiGenerated": 1,
-    "m_description": "Meet actieve tijd per app met een stopwatch en stuurt die bij het sluiten van de app naar OSLIFE (phone-events-ingest, kind=app_usage). App geopend -> stopwatch reset+start + zwevende tekst. App gesloten -> HTTP GET met app-naam + stopwatch-waarde, stopwatch stop, tekst verbergen.",
+    "m_description": "Stuurt App Opened/Closed events rechtstreeks naar OSLIFE (screentime-app-ingest) -- geen stopwatch, geen sheet. De server onthoudt zelf wanneer een app openging en berekent de sessieduur bij het sluiten.",
     "m_category": "OSLIFE",
     "localVariables": [
       {
@@ -46,25 +46,13 @@
         ]
       },
       {
-        "m_classType": "StopWatchAction",
+        "m_classType": "HttpRequestAction",
         "m_SIGUID": 0,
-        "m_stopwatchName": "app timer",
-        "m_option": 2,
-        "m_comment": "Reset de stopwatch zodat elke app-sessie op 0 begint."
-      },
-      {
-        "m_classType": "StopWatchAction",
-        "m_SIGUID": 0,
-        "m_stopwatchName": "app timer",
-        "m_option": 0,
-        "m_comment": "Start de stopwatch."
-      },
-      {
-        "m_classType": "FloatingTextAction",
-        "m_SIGUID": 0,
-        "m_text": "{stopwatch=app timer}",
-        "m_option": 0,
-        "m_comment": "Toon de lopende tijd als overlay. Gebruik desgewenst de Magic Text-knop om de stopwatch-waarde opnieuw te kiezen."
+        "m_urlToOpen": "https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/screentime-app-ingest?app={app_name}&state=Opened&secret={lv=secret}",
+        "m_httpMethod": 0,
+        "m_blockNextAction": true,
+        "m_disableUrlEncode": false,
+        "m_comment": "Logt dat {app_name} is geopend."
       },
       {
         "m_classType": "ElseIfConditionAction",
@@ -80,25 +68,11 @@
       {
         "m_classType": "HttpRequestAction",
         "m_SIGUID": 0,
-        "m_urlToOpen": "https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/phone-events-ingest?kind=app_usage&app={app_name}&seconds={stopwatch=app timer}&secret={lv=secret}",
+        "m_urlToOpen": "https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/screentime-app-ingest?app={app_name}&state=Closed&secret={lv=secret}",
         "m_httpMethod": 0,
         "m_blockNextAction": true,
         "m_disableUrlEncode": false,
-        "m_comment": "Stuurt app-naam + stopwatch-waarde naar OSLIFE. De server berekent er de dag-totalen per app van."
-      },
-      {
-        "m_classType": "StopWatchAction",
-        "m_SIGUID": 0,
-        "m_stopwatchName": "app timer",
-        "m_option": 1,
-        "m_comment": "Stop de stopwatch."
-      },
-      {
-        "m_classType": "FloatingTextAction",
-        "m_SIGUID": 0,
-        "m_text": "",
-        "m_option": 1,
-        "m_comment": "Verberg de zwevende tekst."
+        "m_comment": "Logt dat {app_name} is gesloten -- de server berekent de sessieduur t.o.v. de laatste Opened voor deze app."
       },
       {
         "m_classType": "EndIfAction",

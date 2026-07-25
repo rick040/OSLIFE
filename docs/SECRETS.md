@@ -25,9 +25,10 @@ Publiek/veilig (RLS beschermt de data).
 | Secret | Gebruikt door | Waar vandaan |
 |---|---|---|
 | `OSLIFE_USER_ID` | *-sheet-ingest, wallet-ingest, notify-tick, telegram-webhook | Supabase → Authentication → Users → jouw UUID |
-| `INGEST_SECRET` | health/payments/screentime-sheet-ingest | **zelf verzinnen** (random) |
+| `INGEST_SECRET` | health/payments-sheet-ingest | **zelf verzinnen** (random) |
 | `WALLET_WEBHOOK_SECRET` | wallet-ingest | **zelf verzinnen** (random) |
 | `GEOFENCE_WEBHOOK_SECRET` *(optioneel)* | geofence-ingest | **zelf verzinnen** (random) — valt terug op `WALLET_WEBHOOK_SECRET` als niet gezet (zelfde telefoon/MacroDroid-app). |
+| `SCREENTIME_WEBHOOK_SECRET` *(optioneel)* | screentime-app-ingest | **zelf verzinnen** (random) — valt terug op `PHONE_WEBHOOK_SECRET`, dan `WALLET_WEBHOOK_SECRET` als niet gezet (zelfde telefoon/MacroDroid-app). |
 | `GBK_API_KEY` | gbk-overview | Geldrop Buurtkaart admin → API key (`X-GBK-Key`) |
 | `GBK_BASE_URL` *(optioneel)* | gbk-overview | `https://www.geldropbuurtkaart.nl` (default) |
 | `ANTHROPIC_API_KEY` | heyra-brain | console.anthropic.com → API keys. HEYRA's agents (src/heyra/agents/) en de nachtelijke Reflect-narrative vallen terug op de bestaande rule-based tekst als deze niet gezet is — de app breekt nooit zonder deze key. Ook gebruikt door summarize-email en draft-email-reply (Inbox, zie §8). |
@@ -66,8 +67,6 @@ Er zijn geen GitHub Actions meer (de Spotify-workflow is verwijderd). Oude repo-
 | `HEALTH_SHEET_ID` | id uit de Health-sheet URL |
 | `PAYMENTS_SYNC_URL` | `https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/payments-sheet-ingest` |
 | `PAYMENTS_SHEET_ID` | id uit de Betalingen-sheet URL |
-| `SCREENTIME_SYNC_URL` | `https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/screentime-sheet-ingest` |
-| `SCREENTIME_SHEET_ID` | id uit de Schermtijd-sheet URL |
 
 > Sheet-id = het lange stuk in de URL: `docs.google.com/spreadsheets/d/`**`<ID>`**`/edit`.
 > Daarna `installAllTriggers()` één keer draaien en de scopes autoriseren.
@@ -259,7 +258,7 @@ zelf, in deze volgorde:
 | Geld · Betalingen-sheet | `INGEST_SECRET`, `OSLIFE_USER_ID` (+ Apps Script props) |
 | Geld · Wallet | `WALLET_WEBHOOK_SECRET`, `OSLIFE_USER_ID` |
 | Locatie-check-ins (geofence, PM-072 Fase 1) | `GEOFENCE_WEBHOOK_SECRET` (optioneel — valt terug op `WALLET_WEBHOOK_SECRET`), `OSLIFE_USER_ID` |
-| Schermtijd-sheet | `INGEST_SECRET`, `OSLIFE_USER_ID` (+ Apps Script props) |
+| Schermtijd (MacroDroid, direct) | `SCREENTIME_WEBHOOK_SECRET` (optioneel — valt terug op `PHONE_WEBHOOK_SECRET`, dan `WALLET_WEBHOOK_SECRET`), `OSLIFE_USER_ID` |
 | Gezondheid-sheet | `INGEST_SECRET`, `OSLIFE_USER_ID` (+ Apps Script props) |
 | Inbox / Agenda / Te betalen | Apps Script: `SUPABASE_SERVICE_KEY`, `OSLIFE_USER_ID` (+ `PAYMENTS_CAL_ID`) |
 | Inbox · AI-samenvatting + concept-antwoord | `ANTHROPIC_API_KEY`, `SUPABASE_ANON_KEY` (samenvatten/concept-tekst genereren); `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` (concept opslaan in Gmail — zonder deze drie 502'd alleen die ene actie, zie §8) |
