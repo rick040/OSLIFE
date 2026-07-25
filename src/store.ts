@@ -1378,6 +1378,7 @@ export const useStore = create<State>()(
 
       addSuggestedBlock: (b) => {
         const tempId = `tmp-block-${Math.random().toString(36).slice(2, 10)}`
+        const date = today()
         const block: Block = {
           id: tempId,
           title: b.title,
@@ -1389,16 +1390,28 @@ export const useStore = create<State>()(
         }
         set((s) => ({
           blocks: [...s.blocks, block],
+          // Mirror into weekPlan too (when a plan covering today already
+          // exists) so Dagplanner doesn't sit stale until the realtime
+          // round-trip catches up — the two screens read the same table.
+          weekPlan: s.weekPlan.some((x) => x.date === date)
+            ? [
+                ...s.weekPlan,
+                { id: tempId, date, title: b.title, domain: b.domain, start: b.start, end: b.end, rationale: b.rationale ?? '', kind: 'personal', source: 'rule', locked: true },
+              ]
+            : s.weekPlan,
           activity: pushSignal(s.activity, { text: `Blok toegevoegd: ${b.title}`, domain: b.domain, loop: 'fast' }),
         }))
         void insertDayBlock({
-          date: today(),
+          date,
           start: b.start,
           end: b.end,
           title: b.title,
           description: b.rationale,
           domain: b.domain,
-        }).then(swapTempId(set, 'blocks', tempId))
+        }).then((realId) => {
+          swapTempId(set, 'blocks', tempId)(realId)
+          swapTempId(set, 'weekPlan', tempId)(realId)
+        })
       },
 
       skipBlock: (id) => {
@@ -1702,10 +1715,16 @@ export const useStore = create<State>()(
       lockPlanBlock: (id) => {
         const b = get().weekPlan.find((x) => x.id === id)
         if (!b || b.locked) return
+        const isToday = b.date === today()
         // Optimistic: mark locked (keeps its kind/rationale). It's now also a real
         // day_blocks row; generateWeekPlan dedupes that DB copy on the next run.
+        // Mirror into `blocks` too when it's today's — Dashboard reads that
+        // slice directly and shouldn't have to wait on the realtime round-trip.
         set((s) => ({
           weekPlan: s.weekPlan.map((x) => (x.id === id ? { ...x, locked: true } : x)),
+          blocks: isToday
+            ? [...s.blocks, { id, title: b.title, domain: b.domain, start: b.start, end: b.end, status: 'planned', rationale: b.rationale }]
+            : s.blocks,
           activity: pushSignal(s.activity, { text: `Blok vergrendeld: ${b.title}`, domain: b.domain, loop: 'fast' }),
         }))
         void insertDayBlock({
@@ -1715,16 +1734,24 @@ export const useStore = create<State>()(
           title: b.title,
           description: b.rationale,
           domain: b.domain,
-        }).then(swapTempId(set, 'weekPlan', id))
+        }).then((realId) => {
+          swapTempId(set, 'weekPlan', id)(realId)
+          if (isToday) swapTempId(set, 'blocks', id)(realId)
+        })
       },
 
       dismissPlanBlock: (id) => {
         const b = get().weekPlan.find((x) => x.id === id)
         if (!b || b.source === 'calendar') return // never drop a real appointment
         removeFromSlice(set, 'weekPlan', id)
-        // A locked block is also a real day_blocks row by now — drop that too,
-        // not just the in-memory proposal, so rejecting it actually sticks.
-        if (b.locked) void deleteDayBlock(id)
+        if (b.locked) {
+          // A locked block is also a real day_blocks row by now — drop that too
+          // (not just the in-memory proposal), and mirror the removal into
+          // `blocks` when it's today's, so Dashboard doesn't keep showing it
+          // until the realtime round-trip catches up.
+          if (b.date === today()) removeFromSlice(set, 'blocks', id)
+          void deleteDayBlock(id)
+        }
       },
 
       movePlanBlock: (id, deltaMin) => {
@@ -1737,7 +1764,13 @@ export const useStore = create<State>()(
         const toHHMM = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
         const start = toHHMM(clampedStart)
         const end = toHHMM(clampedStart + durMin)
-        set((s) => ({ weekPlan: s.weekPlan.map((x) => (x.id === id ? { ...x, start, end } : x)) }))
+        const isToday = b.date === today()
+        set((s) => ({
+          weekPlan: s.weekPlan.map((x) => (x.id === id ? { ...x, start, end } : x)),
+          // Mirror the new time into `blocks` too, so Dashboard's Vandaag row
+          // (which reads that slice directly) doesn't show the old time.
+          blocks: isToday ? s.blocks.map((x) => (x.id === id ? { ...x, start, end } : x)) : s.blocks,
+        }))
         if (b.locked) void moveDayBlock(id, start, end)
       },
 
@@ -2743,9 +2776,39 @@ export const useStore = create<State>()(
           { table: 'finance_tx', onChange: () => fetchTransactions().then((d) => { if (d.length > 0) { set({ transactions: d }); get().recomputeBrain(); void get().autoTagTransactions() } }) },
           { table: 'vendor_tags', onChange: () => fetchVendorTags().then((d) => { set({ vendorTags: d }); void get().autoTagTransactions() }) },
           { table: 'gmail_messages', onChange: () => fetchEmails().then((d) => { if (d.length > 0) { set({ emails: d }); void get().autoSummarizeImportantEmails() } }) },
-          { table: 'day_blocks', onChange: () => Promise.all([fetchBlocks(), fetchMeetingDays()]).then(([b, m]) => {
-            set({ ...(b.length > 0 && { blocks: b }), ...(m.length > 0 && { meetingDays: m }) })
-          }) },
+          { table: 'day_blocks', onChange: () => {
+            // Dashboard's `blocks` (today only) and Dagplanner's `weekPlan`
+            // (the whole week) are two separate cached reads of the same
+            // day_blocks table — a row inserted from either screen (a Vandaag
+            // suggestion added, or a Dagplanner block locked/moved/rejected)
+            // has to refresh BOTH, or the two screens silently drift apart.
+            const planDates = [...new Set(get().weekPlan.map((b) => b.date))].sort()
+            return Promise.all([
+              fetchBlocks(),
+              fetchMeetingDays(),
+              planDates.length ? fetchBlocksRange(planDates[0], planDates[planDates.length - 1]) : Promise.resolve([]),
+            ]).then(([b, m, weekEvents]) => {
+              set((s) => ({
+                ...(b.length > 0 && { blocks: b }),
+                ...(m.length > 0 && { meetingDays: m }),
+                ...(planDates.length && {
+                  weekPlan: (() => {
+                    // Keep this session's in-memory proposals (not persisted yet)
+                    // untouched, and reuse the richer locked copy we already know
+                    // (real kind/rationale/domain) instead of the flattened
+                    // "source: calendar" shape fetchBlocksRange returns for every
+                    // day_blocks row — same simplification generateWeekPlan()
+                    // already relies on. A genuinely new persisted row (locked
+                    // from elsewhere) has no rich copy yet, so it comes in plain.
+                    const proposals = s.weekPlan.filter((x) => !x.locked && x.source !== 'calendar')
+                    const richByKey = new Map(s.weekPlan.filter((x) => x.locked).map((x) => [`${x.date}|${x.start}|${x.title}`, x]))
+                    const merged = weekEvents.map((e) => richByKey.get(`${e.date}|${e.start}|${e.title}`) ?? e)
+                    return [...merged, ...proposals]
+                  })(),
+                }),
+              }))
+            })
+          } },
           { table: 'projects', onChange: () => fetchProjects().then((d) => { if (d.length > 0) { set({ projects: d }); get().recomputeBrain() } }) },
           { table: 'payments', onChange: () => fetchPayments().then((d) => d.length > 0 && set({ payments: d })) },
           { table: 'investment_holdings', onChange: () => fetchHoldings().then((d) => { set({ holdings: d }); void get().refreshStockQuotes() }) },
