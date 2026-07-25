@@ -2247,7 +2247,9 @@ export interface InstagramProfileFetch {
 export async function fetchInstagramProfile(url: string): Promise<{ ok: true; profile: InstagramProfileFetch } | { ok: false; error: string }> {
   const { data, error } = await supabase.functions.invoke('fetch-instagram-profile', { body: { url } })
   if (error || !data?.ok) {
-    return { ok: false, error: (data?.error as string) ?? error?.message ?? 'onbekende fout' }
+    const message = (data?.error as string) ?? error?.message ?? 'onbekende fout'
+    console.warn('[OSLIFE] fetch-instagram-profile failed', message)
+    return { ok: false, error: message }
   }
   return {
     ok: true,
