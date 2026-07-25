@@ -421,10 +421,11 @@ All tables are owner-scoped via `user_id` + an `owner` RLS policy. Passively-ing
 | 24 | `20260714150000_memory_retrieval.sql` | **Slice 3.** Creates `summaries` + `build_summaries()` (nightly rollup, no LLM) and `search_memory(query, limit)` (Postgres full-text search, Dutch config, excludes `tier='geheim'`). |
 | 25 | `20260714160000_learning_loop.sql` | **Slice 4.** `rule_suppressed()` + trigger that mutes rules with ≥3 resolutions and ≥70% rejection; `run_self_audit()` (monthly); `forget(table, id)` (hard-delete + tombstone event, right-to-be-forgotten). |
 | 26 | `20260714161000_harden_learning_loop.sql` | Restricts execute on `rule_suppressed`/`suppress_muted_inferences` and `forget()`. |
-| 27 | `20260714170000_app_sessions.sql` | Creates `app_sessions` (per-app foreground time from a MacroDroid stopwatch macro); derives daily per-app totals into `screentime`. |
+| 27 | `20260714170000_app_sessions.sql` | Creates `app_sessions` (per-app foreground time from a MacroDroid stopwatch macro); derives daily per-app totals into `screentime`. **Superseded** by #29 below — table dropped. |
 | 28 | `20260714170000_cleaning_schedule.sql` | Creates `cleaning_log` (per-task-per-day completion; schedule content itself lives in `src/cleaning/schedule.ts`). |
+| 29 | `20260725050000_screentime_app_events.sql` | Drops `app_sessions` (stopwatch approach retired). Creates `screentime_events` (raw MacroDroid App Opened/Closed log, direct — no sheet, no stopwatch); `screentime-app-ingest` derives per-app daily totals from it into `screentime`. Truncates `screentime` to clear the old sheet-imported rows. |
 
-> Migrations #27 and #28 share the same timestamp prefix — harmless (Postgres/tooling sorts by full filename) but worth flagging if migration tooling ever sorts strictly by numeric prefix.
+> Migrations #27 and #28 share the same timestamp prefix — harmless (Postgres/tooling sorts by full filename) but worth flagging if migration tooling ever sorts strictly by numeric prefix. (This table isn't kept in lockstep with every migration added after 2026-07-14 — only screen-time-relevant entries are added here.)
 
 For the design rationale behind Slices 0-4 (event-sourcing principles, the R1-R9 derivation rules, P1-P5 promotion rules, and the `pg_cron` job schedule), see [`docs/DATA-ARCHITECTURE.md`](./DATA-ARCHITECTURE.md).
 
@@ -439,9 +440,9 @@ For the design rationale behind Slices 0-4 (event-sourcing principles, the R1-R9
 | `gbk-overview` | client-invoked (`[verify_jwt]`) | Proxies the Geldrop Buurtkaart WordPress API with server-side `GBK_API_KEY`, consumed by Buurtkaart. |
 | `health-sheets-ingest` | webhook (Apps Script) | Upserts Google Sheets health payloads into `health_*` tables. |
 | `payments-sheet-ingest` | webhook (Apps Script) | Upserts payments-sheet rows into `payments`/`finance_tx`. |
-| `screentime-sheet-ingest` | webhook (Apps Script) | Upserts screentime-sheet rows into `screentime`. |
 | `wallet-ingest` | webhook (MacroDroid) | Bank/wallet payment notifications → `finance_tx`, realtime. |
-| `phone-events-ingest` | webhook (MacroDroid) | Unlock/screen-off/app-usage events → `phone_events`/`app_sessions`; derives `health_sleep` (source='phone') and `screentime_daily`. |
+| `phone-events-ingest` | webhook (MacroDroid) | Unlock/screen-off events → `phone_events`; derives `health_sleep` (source='phone') and `screentime_daily`. |
+| `screentime-app-ingest` | webhook (MacroDroid) | App Opened/Closed events → `screentime_events`; derives per-app daily totals into `screentime`. Direct replacement for the old Schermtijd sheet. |
 | `weight-ingest` | webhook (MacroDroid, experimental) | Smart-scale notification parsing → `health_body_metrics`. |
 | `heyra-brain` | client-invoked (`[verify_jwt]`) | Thin proxy to the Anthropic Messages API for all HEYRA agents — see `src/heyra/brainClient.ts`. |
 | `categorize-vendor` | client-invoked (`[verify_jwt]`) | Claude Haiku + web search → tags a merchant into `vendor_tags` — called by `src/heyra/agents/vendorAgent.ts`. |
@@ -455,9 +456,9 @@ For the design rationale behind Slices 0-4 (event-sourcing principles, the R1-R9
 
 Architecture per `integrations/README.md`: **Apps Script + Sheets + Geldrop Buurtkaart WordPress API (ingestion) → Supabase (Postgres/Realtime/Edge Functions) → React app.** Everything writes only to the one Supabase project. Projects/Clients (native CRM) have no external sync.
 
-- **`integrations/apps-script/`** — one standalone Apps Script project ("OSLIFE ingest"): `Code.gs` (hub — Gmail→gmail_messages, Calendar→day_blocks, payments calendar→payments via direct PostgREST), `health-sheets.gs`, `payments-sheet.gs`, `screentime-sheet.gs` (sheet readers), `setup-health-sheet.gs`, `appsscript.json`.
+- **`integrations/apps-script/`** — one standalone Apps Script project ("OSLIFE ingest"): `Code.gs` (hub — Gmail→gmail_messages, Calendar→day_blocks, payments calendar→payments via direct PostgREST), `health-sheets.gs`, `payments-sheet.gs` (sheet readers), `setup-health-sheet.gs`, `appsscript.json`. Screen time no longer has a sheet reader here — see `app-timer.md` below.
 - **`integrations/braindump-worker/`** — a small standalone Node service (Dockerfile + `server.mjs`) that does what an Edge Function can't: `yt-dlp` download + `ffmpeg` transcode + Groq Whisper transcription + Claude Haiku → Markdown. Called by `braindump-ingest` via `POST /transcribe` (bearer `WORKER_SECRET`); updates `braindump_entries` via service role.
-- **`integrations/macrodroid/`** — setup docs + one exported macro (`oslife-app-timer.macro`) for Android automations: `bank-notifications.md` (→ `wallet-ingest`), `phone-sleep.md` (→ `phone-events-ingest`), `app-timer.md` (per-app stopwatch → `phone-events-ingest`), `weight-notifications.md` (→ `weight-ingest`, experimental).
+- **`integrations/macrodroid/`** — setup docs for Android automations: `bank-notifications.md` (→ `wallet-ingest`), `phone-sleep.md` (→ `phone-events-ingest`), `app-timer.md` (App Opened/Closed, direct → `screentime-app-ingest`), `weight-notifications.md` (→ `weight-ingest`, experimental).
 
 Finance dedup note: `payments-sheet-ingest` and the in-app ABN AMRO CSV import share `dedup_key = "YYYY-MM-DD|amount"`, deduped via `UNIQUE(user_id, dedup_key)`.
 

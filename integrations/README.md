@@ -16,7 +16,6 @@ de sheets vullen dus niet aan. Voeg alle bestanden toe aan dit ene project en ru
 | `Code.gs` | hub + gedeelde helpers + `installAllTriggers()` | Gmail→`gmail_messages`, Calendar→`day_blocks`, betalingen-agenda→`payments` (direct via PostgREST) |
 | `health-sheets.gs` | leest Health-sheet (id) | `health-sheets-ingest` → `health_*` |
 | `payments-sheet.gs` | leest Betalingen-sheet (id) | `payments-sheet-ingest` → `finance_tx` |
-| `screentime-sheet.gs` | leest Schermtijd-sheet (id) | `screentime-sheet-ingest` → `screentime` |
 | `setup-health-sheet.gs` | eenmalig hulpscript (los te draaien) | maakt de Health-sheet tabs aan |
 | `appsscript.json` | manifest (Gmail/Calendar/Sheets scopes) | — |
 
@@ -28,16 +27,19 @@ maken niet uit. De verwachte tabs/kolommen + sheet-id properties staan boven in 
 
 - `gbk-overview` — proxyt de Geldrop Buurtkaart WordPress API (`/wp-json/gbk/v1/overview`) met de
   `X-GBK-Key` header; de key blijft server-side (secret `GBK_API_KEY`).
-- `health-sheets-ingest`, `payments-sheet-ingest`, `screentime-sheet-ingest` — ontvangen de
-  Sheet-payloads en upserten idempotent.
+- `health-sheets-ingest`, `payments-sheet-ingest` — ontvangen de Sheet-payloads en upserten
+  idempotent.
 - `wallet-ingest` (`supabase/functions/wallet-ingest/`) — betaal-notificaties (MacroDroid) →
   `finance_tx`, real-time. Werkt met Google Wallet (ruwe notificatie, zoals eerst) én met bank-apps
   (ruw óf al-uitgepakte velden zoals bedrag/rekeningtype). Vervangt de Betalingen-sheet-flow voor
   macro's die direct kunnen posten. Setup: `macrodroid/bank-notifications.md`.
 - `phone-events-ingest` (`supabase/functions/phone-events-ingest/`) — MacroDroid ontgrendel- en
   scherm-uit-events → `phone_events`, leidt daaruit slaap af → `health_sleep` (`source='phone'`) én
-  dagelijkse ontgrendel-tellingen af → `screentime_daily.pickups` (vervangt de "Ontgrendelingen"-tab
-  in de Schermtijd-sheet). Setup: `macrodroid/phone-sleep.md`.
+  dagelijkse ontgrendel-tellingen af → `screentime_daily.pickups`. Setup: `macrodroid/phone-sleep.md`.
+- `screentime-app-ingest` (`supabase/functions/screentime-app-ingest/`) — MacroDroid App
+  Opened/Closed events (rechtstreeks, geen sheet) → `screentime_events`, leidt daaruit per-app
+  dag-totalen af → `screentime`. Vervangt de oude Schermtijd-sheet + `screentime-sheet-ingest` +
+  `app_sessions`-stopwatch. Setup: `macrodroid/app-timer.md`.
 - `weight-ingest` (`supabase/functions/weight-ingest/`) — weegschaal-app-notificatie (MacroDroid) →
   `health_body_metrics`, real-time. Experimenteel (notificatietekst niet geverifieerd), aanvullend op
   de Health-sheet-import. Setup: `macrodroid/weight-notifications.md`.
