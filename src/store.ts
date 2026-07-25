@@ -72,6 +72,7 @@ import type { ActivityAnalysis } from './lib/crm/activityAnalyzer'
 import { unbilledBillableHours, sumHours, invoiceAmountFromHours } from './lib/crm/invoicing'
 import { parseWhatsapp } from './lib/crm/whatsapp'
 import { classifyImportance, emailTaskDomain } from './lib/crm/emailClassify'
+import { clientHealth } from './lib/crm/followUp'
 import { classifyWithBrain, type Classification } from './understand'
 import { invokeBraindumpIngest } from './lib/braindump'
 import type { ClaudeImportRecord } from './lib/claudeImport'
@@ -82,7 +83,7 @@ import { buildDogCoachPrompt } from './dog/dogCoach'
 import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
 import type { CardTemplate, ActionKind, ActionFieldType } from './heyra/actions/types'
 import { proposeGoals as proposeGoalsAI } from './heyra/goals'
-import { buildWeekPlan, weekDates } from './heyra/planner'
+import { buildWeekPlan, weekDates, dayBounds, type DayBounds } from './heyra/planner'
 import {
   deriveEssentials,
   deriveThreads,
@@ -92,7 +93,7 @@ import {
   applyCheckins,
   buildNudge,
 } from './derive'
-import { today, habitStreak, DOMAIN_META, KIND_LABEL } from './domains'
+import { today, habitStreak, DOMAIN_META, KIND_LABEL, daysBetween } from './domains'
 import { logKey } from './cleaning/gamify'
 import * as mock from './mockData'
 import {
@@ -111,6 +112,9 @@ import {
   deleteGoalRow,
   fetchBlocksRange,
   insertDayBlock,
+  moveDayBlock,
+  deleteDayBlock,
+  fetchSleepWindow,
   fetchDogEntries,
   fetchBrainState,
   fetchTasks,
@@ -302,6 +306,8 @@ interface State {
   lastGoalProposalError: string | null
   weekPlan: PlanBlock[]
   weekPlanAt: string | null
+  /** The day bounds actually used for the last plan (wake/bed-anchored when real sleep data exists) — DayBuilder's banner reads this instead of the fixed defaults. */
+  weekPlanBounds: DayBounds | null
   planningWeek: boolean
   /** Same idea as lastGoalProposalError, for generateWeekPlan(). */
   lastPlanError: string | null
@@ -467,6 +473,8 @@ interface State {
   generateWeekPlan: () => Promise<void>
   lockPlanBlock: (id: string) => void
   dismissPlanBlock: (id: string) => void
+  /** Shift a plan block earlier/later by `deltaMin` (e.g. -15/+15), clamped to the day and persisted when already locked. */
+  movePlanBlock: (id: string, deltaMin: number) => void
   markEmailRead: (id: string) => void
   markAllEmailsRead: () => void
   // Patch an already-fetched email row with an AI summary result (on-demand
@@ -655,6 +663,7 @@ const seed = () => ({
   lastGoalProposalError: null as string | null,
   weekPlan: [] as PlanBlock[],
   weekPlanAt: null as string | null,
+  weekPlanBounds: null as DayBounds | null,
   planningWeek: false,
   lastPlanError: null as string | null,
   emails: mock.emails,
@@ -743,6 +752,7 @@ export function applyPersistDefaults(
   if (state.financeCoach === undefined) state.financeCoach = null
   if (state.dogCoach === undefined) state.dogCoach = null
   if (state.weekPlanAt === undefined) state.weekPlanAt = null
+  if (state.weekPlanBounds === undefined) state.weekPlanBounds = null
   if (state.lastGoalProposalError === undefined) state.lastGoalProposalError = null
   if (state.lastPlanError === undefined) state.lastPlanError = null
 }
@@ -1637,7 +1647,10 @@ export const useStore = create<State>()(
         set({ planningWeek: true, lastPlanError: null })
         try {
           const dates = weekDates(today())
-          const allEvents = await fetchBlocksRange(dates[0], dates[dates.length - 1])
+          const [allEvents, sleep] = await Promise.all([
+            fetchBlocksRange(dates[0], dates[dates.length - 1]),
+            fetchSleepWindow(),
+          ])
           const s = get()
           // Preserve blocks Rick already locked this session (not calendar rows,
           // and still within the current week) so a regenerate doesn't wipe them.
@@ -1650,16 +1663,29 @@ export const useStore = create<State>()(
           const lockedKeys = new Set(keepLocked.map((b) => `${b.date}|${b.start}|${b.title}`))
           const events = allEvents.filter((e) => !lockedKeys.has(`${e.date}|${e.start}|${e.title}`))
           const busy = [...events, ...keepLocked]
+          // "Nu openstaand" signals (overdue payments/mail/client follow-up) are
+          // only real for the nearest planned day — the planner itself gates
+          // them to dateIndex 0, but gathering them here (once) keeps this in
+          // one place rather than re-deriving Dashboard's logic twice.
+          const overduePayments = s.payments.filter((p) => p.status === 'open' && p.due && daysBetween(today(), p.due) < 0)
+          const importantUnread = s.emails.filter((e) => e.unread && classifyImportance(e) === 'high')
+          const lapsedClients = s.clients.filter((c) => clientHealth(c, today()) === 'red')
           const proposed = await buildWeekPlan(dates, {
             events: busy,
             habits: s.habits,
             goals: s.goals,
             threads: s.threads,
             patterns: s.patterns,
+            dogReminders: s.dogReminders,
+            overduePayments,
+            emails: importantUnread,
+            clients: lapsedClients,
+            sleep,
           })
           set((st) => ({
             weekPlan: [...events, ...keepLocked, ...proposed],
             weekPlanAt: new Date().toISOString(),
+            weekPlanBounds: dayBounds(sleep),
             planningWeek: false,
             activity: pushSignal(st.activity, {
               text: `Dagplan gegenereerd voor ${dates.length} dag(en)`,
@@ -1696,6 +1722,23 @@ export const useStore = create<State>()(
         const b = get().weekPlan.find((x) => x.id === id)
         if (!b || b.source === 'calendar') return // never drop a real appointment
         removeFromSlice(set, 'weekPlan', id)
+        // A locked block is also a real day_blocks row by now — drop that too,
+        // not just the in-memory proposal, so rejecting it actually sticks.
+        if (b.locked) void deleteDayBlock(id)
+      },
+
+      movePlanBlock: (id, deltaMin) => {
+        const b = get().weekPlan.find((x) => x.id === id)
+        if (!b || b.source === 'calendar') return // fixed appointments aren't movable here
+        const [sh, sm] = b.start.split(':').map(Number)
+        const [eh, em] = b.end.split(':').map(Number)
+        const durMin = eh * 60 + em - (sh * 60 + sm)
+        const clampedStart = Math.max(0, Math.min(sh * 60 + sm + deltaMin, 24 * 60 - durMin))
+        const toHHMM = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
+        const start = toHHMM(clampedStart)
+        const end = toHHMM(clampedStart + durMin)
+        set((s) => ({ weekPlan: s.weekPlan.map((x) => (x.id === id ? { ...x, start, end } : x)) }))
+        if (b.locked) void moveDayBlock(id, start, end)
       },
 
       markEmailRead: (id) => {

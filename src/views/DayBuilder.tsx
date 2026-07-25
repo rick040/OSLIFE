@@ -22,6 +22,8 @@ import {
   Sparkles,
   Sun,
   RefreshCw,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 
 const KIND_META: Record<PlanBlockKind, { label: string; icon: typeof Zap }> = {
@@ -42,12 +44,12 @@ function dayHeading(date: string): { weekday: string; rest: string } {
   return { weekday: weekday.charAt(0).toUpperCase() + weekday.slice(1), rest }
 }
 
-function BlockRow({ b }: { b: PlanBlock }) {
-  const { lockPlanBlock, dismissPlanBlock } = useStore()
+function BlockRow({ b, peakStart, peakEnd }: { b: PlanBlock; peakStart: string; peakEnd: string }) {
+  const { lockPlanBlock, dismissPlanBlock, movePlanBlock } = useStore()
   const meta = DOMAIN_META[b.domain]
   const kind = KIND_META[b.kind]
   const Icon = kind.icon
-  const inPeak = b.start >= PEAK_START && b.start < PEAK_END
+  const inPeak = b.start >= peakStart && b.start < peakEnd
   const isCalendar = b.source === 'calendar'
   const isLocked = b.locked && !isCalendar // a proposal Rick committed
   const isProposal = !isCalendar && !b.locked
@@ -92,15 +94,33 @@ function BlockRow({ b }: { b: PlanBlock }) {
         {b.rationale && <p className="text-[11px] text-faint mt-0.5">{b.rationale}</p>}
 
         <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-          {isProposal && (
+          {!isCalendar && (
             <>
-              <button className="btn-ghost !py-1 !px-2.5 text-xs" onClick={() => lockPlanBlock(b.id)}>
-                <LockKeyhole className="h-3.5 w-3.5" /> Vergrendel
+              <button
+                className="btn-ghost !py-1 !px-2 text-xs"
+                onClick={() => movePlanBlock(b.id, -15)}
+                aria-label="15 minuten eerder"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
               </button>
-              <button className="btn-ghost !py-1 !px-2.5 text-xs" onClick={() => dismissPlanBlock(b.id)}>
-                <X className="h-3.5 w-3.5" /> Negeer
+              <button
+                className="btn-ghost !py-1 !px-2 text-xs"
+                onClick={() => movePlanBlock(b.id, 15)}
+                aria-label="15 minuten later"
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
               </button>
             </>
+          )}
+          {isProposal && (
+            <button className="btn-ghost !py-1 !px-2.5 text-xs" onClick={() => lockPlanBlock(b.id)}>
+              <LockKeyhole className="h-3.5 w-3.5" /> Vergrendel
+            </button>
+          )}
+          {!isCalendar && (
+            <button className="btn-ghost !py-1 !px-2.5 text-xs" onClick={() => dismissPlanBlock(b.id)}>
+              <X className="h-3.5 w-3.5" /> {isLocked ? 'Verwijder' : 'Negeer'}
+            </button>
           )}
           <a
             className="btn-ghost !py-1 !px-2.5 text-xs"
@@ -117,7 +137,12 @@ function BlockRow({ b }: { b: PlanBlock }) {
 }
 
 export default function DayBuilder() {
-  const { weekPlan, weekPlanAt, planningWeek, generateWeekPlan, lastPlanError } = useStore()
+  const { weekPlan, weekPlanAt, weekPlanBounds, planningWeek, generateWeekPlan, lastPlanError } = useStore()
+  // The actually-used window from the last generation — wake/bed-anchored
+  // when real sleep data exists, the fixed defaults otherwise.
+  const peakStart = weekPlanBounds?.peakStart ?? PEAK_START
+  const peakEnd = weekPlanBounds?.peakEnd ?? PEAK_END
+  const learnedFromSleep = weekPlanBounds != null && (weekPlanBounds.peakStart !== PEAK_START || weekPlanBounds.dayEnd !== '23:00')
 
   const dates = useMemo(() => weekDates(today()), [])
   const dateSet = useMemo(() => new Set(dates), [dates])
@@ -165,14 +190,20 @@ export default function DayBuilder() {
         <div className="card p-3 text-sm text-personal-deep bg-personal/10">{lastPlanError}</div>
       )}
 
-      {/* learned-window banner */}
-      <div className="card p-3 flex items-center gap-2 text-sm text-ink-soft">
+      {/* learned-window banner — wake/bed-anchored once real sleep data exists */}
+      <div className="card p-3 flex items-center gap-2 text-sm text-ink-soft flex-wrap">
         <Sun className="h-4 w-4 text-personal" />
-        Aangeleerd hoog-energie venster:{' '}
+        {learnedFromSleep ? 'Focuspiek uit je echte slaapritme:' : 'Hoog-energie venster (nog geen echte slaapdata):'}{' '}
         <b className="text-personal">
-          {PEAK_START} – {PEAK_END}
+          {peakStart} – {peakEnd}
         </b>
-        . Diep werk wordt hier beschermd.
+        . Diep werk wordt hier beschermd
+        {weekPlanBounds && (
+          <>
+            , wind-down richting <b className="text-personal">{weekPlanBounds.dayEnd}</b>
+          </>
+        )}
+        .
       </div>
 
       {hasPlan && (
@@ -213,7 +244,7 @@ export default function DayBuilder() {
                   {isToday && <span className="chip bg-forest/15 text-forest">vandaag</span>}
                 </div>
                 {list.length ? (
-                  list.map((b) => <BlockRow key={b.id} b={b} />)
+                  list.map((b) => <BlockRow key={b.id} b={b} peakStart={peakStart} peakEnd={peakEnd} />)
                 ) : (
                   <p className="text-[11px] text-faint italic pl-1">Geen blokken.</p>
                 )}

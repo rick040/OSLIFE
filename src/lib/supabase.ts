@@ -269,6 +269,18 @@ export async function persistBlockStatus(id: string, status: Block['status']): P
   warnWrite('day_blocks.status', error)
 }
 
+/** Reschedule a locked plan block — the Dagplanner's "move earlier/later" action. */
+export async function moveDayBlock(id: string, start: string, end: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('day_blocks').update({ start_time: start, end_time: end }).eq('id', id)
+  warnWrite('day_blocks.move', error)
+}
+
+/** Drop a locked plan block entirely — the Dagplanner's "reject" action on an already-locked block. */
+export async function deleteDayBlock(id: string): Promise<void> {
+  return deleteRow('day_blocks', id)
+}
+
 // Sentinel merchant wallet-ingest stores for a real-time bank notification
 // that carries only an amount, no merchant (e.g. ABN AMRO's generic "Er is
 // een bedrag afgeschreven" alert). MUST match PENDING_MERCHANT in
@@ -628,6 +640,58 @@ export async function fetchHealthDays(): Promise<HealthDay[]> {
       mood: 3,
     }
   })
+}
+
+/** Minutes since local midnight (Europe/Amsterdam) for an arbitrary ISO timestamp. */
+function amsterdamMinutesOfDay(iso: string): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+    timeZone: 'Europe/Amsterdam',
+  }).formatToParts(new Date(iso))
+  const h = Number(parts.find((p) => p.type === 'hour')?.value ?? 0)
+  const m = Number(parts.find((p) => p.type === 'minute')?.value ?? 0)
+  return h * 60 + m
+}
+
+export interface SleepWindow {
+  /** Learned average wake-up time, minutes since midnight — null with no real sleep data. */
+  wakeMinutes: number | null
+  /** Learned average bedtime, minutes since midnight — null with no real sleep data. */
+  bedMinutes: number | null
+}
+
+/**
+ * Learned wake/bed time-of-day, averaged over the last week of real sleep
+ * sessions (`health_sleep.start_time`/`end_time`, written by phone-events-ingest
+ * from MacroDroid's sleep detection). The day planner anchors the day's
+ * start/peak/wind-down to this instead of a fixed 06:00–23:00 guess. Bedtimes
+ * past midnight are folded onto "yesterday evening" (+24h) before averaging so
+ * a 23:40 night and a 00:20 night don't cancel out to noon.
+ */
+export async function fetchSleepWindow(): Promise<SleepWindow> {
+  const { data } = await supabase
+    .from('health_sleep')
+    .select('start_time,end_time')
+    .order('date', { ascending: false })
+    .limit(7)
+
+  const wakes: number[] = []
+  const beds: number[] = []
+  for (const r of data ?? []) {
+    if (r.end_time) wakes.push(amsterdamMinutesOfDay(r.end_time as string))
+    if (r.start_time) {
+      const m = amsterdamMinutesOfDay(r.start_time as string)
+      beds.push(m < 4 * 60 ? m + 24 * 60 : m) // fold "past midnight" onto the same evening
+    }
+  }
+  const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null)
+  const bedAvg = avg(beds)
+  return {
+    wakeMinutes: avg(wakes),
+    bedMinutes: bedAvg != null ? bedAvg % (24 * 60) : null,
+  }
 }
 
 // ── Daily check-in (energy / mood) ──────────────────────────────────────────
