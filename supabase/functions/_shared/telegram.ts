@@ -12,6 +12,27 @@ export interface InlineButton {
 }
 export type InlineKeyboard = InlineButton[][];
 
+// ── Automation tag: lets a phone-side tool (Tasker, MacroDroid) drive local
+// actions (set an alarm, toggle DND, ...) off a proactive OSLIFE message
+// without touching the human-readable text a person actually reads in
+// Telegram. See integrations/macrodroid/telegram-automation-tags.md for the
+// full convention and per-notification-kind payload shapes.
+
+export type AutomationPayload = Record<string, unknown>;
+
+const AUTOMATION_TAG_PREFIX = "##OSLIFE##";
+
+/**
+ * Append a one-line JSON tag after the message text: `{"type":<kind>,...payload}`.
+ * A Tasker/MacroDroid regex trigger on `##OSLIFE##(\{.*\})` captures just the
+ * JSON, so the same tag also survives Telegram's message-length limits and
+ * any client-side text reformatting (it's plain text, not a caption/entity).
+ */
+export function withAutomationTag(text: string, type: string, payload: AutomationPayload = {}): string {
+  const tag = JSON.stringify({ type, ...payload });
+  return `${text}\n\n${AUTOMATION_TAG_PREFIX}${tag}`;
+}
+
 function endpoint(token: string, method: string): string {
   return `${TELEGRAM_API}/bot${token}/${method}`;
 }

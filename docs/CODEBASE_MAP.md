@@ -447,7 +447,7 @@ For the design rationale behind Slices 0-4 (event-sourcing principles, the R1-R9
 | `heyra-brain` | client-invoked (`[verify_jwt]`) | Thin proxy to the Anthropic Messages API for all HEYRA agents — see `src/heyra/brainClient.ts`. |
 | `categorize-vendor` | client-invoked (`[verify_jwt]`) | Claude Haiku + web search → tags a merchant into `vendor_tags` — called by `src/heyra/agents/vendorAgent.ts`. |
 | `braindump-ingest` | client-invoked (`[verify_jwt]`) | Braindump v2 pipeline (text/link/image/pdf/social → Markdown via Claude); delegates video/audio to the external worker — called by `src/lib/braindump.ts`. |
-| `notify-tick` | cron every 5 min (bearer `CRON_SECRET`, no JWT) | Composes/sends proactive Telegram nudges (briefing, check-in, habit reminders, urgent alerts, inference digest). |
+| `notify-tick` | cron every 5 min (bearer `CRON_SECRET`, no JWT) | Composes/sends proactive Telegram nudges (briefing, check-in, habit reminders, urgent alerts, inference digest). Every message carries a trailing `##OSLIFE##{...}` JSON tag (`_shared/telegram.ts` `withAutomationTag`) so Tasker/MacroDroid can parse it and trigger phone-side actions — see `integrations/macrodroid/telegram-automation-tags.md`. |
 | `telegram-webhook` | webhook (Telegram, `X-Telegram-Bot-Api-Secret-Token`) | Receives Telegram updates (`/start`, `/today`, `/finance`, `/note`, inline confirm/reject buttons). |
 
 ---
