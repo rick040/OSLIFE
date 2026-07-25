@@ -14,6 +14,13 @@
  *   response: { ok: true, username, displayName, bio, imageUrl, statsText }
  *           | { ok: false, error: "<message>" }
  *
+ * Every *expected* outcome (bad url, private/blocked profile, no og tags)
+ * comes back as HTTP 200 with `ok: false` — never a non-2xx status. The
+ * supabase-js client discards the response body on a non-2xx status and
+ * only surfaces a generic "Edge Function returned a non-2xx status code",
+ * so a 4xx/5xx here would silently swallow the actual reason before the
+ * caller ever sees it. Non-2xx is reserved for genuine infra/auth failures.
+ *
  * Deploy:
  *   supabase functions deploy fetch-instagram-profile --project-ref nhyunnnmdcmojvkxrbpl
  */
@@ -41,7 +48,7 @@ Deno.serve(async (req) => {
   try {
     body = await req.json();
   } catch {
-    return json({ ok: false, error: "Invalid JSON" }, 400);
+    return json({ ok: false, error: "Ongeldig verzoek" }, 200);
   }
 
   let url: URL;
@@ -52,37 +59,43 @@ Deno.serve(async (req) => {
     // become a general-purpose URL-fetch proxy for an authenticated client.
     if (!/(^|\.)instagram\.com$/i.test(url.hostname)) throw new Error("not instagram.com");
   } catch {
-    return json({ ok: false, error: "A valid instagram.com profile URL is required" }, 400);
+    return json({ ok: false, error: "Dit is geen geldige instagram.com profiellink" }, 200);
   }
 
-  const html = await fetchText(url.toString());
-  if (!html) return json({ ok: false, error: "Kon het profiel niet ophalen (privé, verwijderd, of Instagram blokkeerde het verzoek)" }, 502);
+  try {
+    const html = await fetchText(url.toString());
+    if (!html) return json({ ok: false, error: "Kon het profiel niet ophalen (privé, verwijderd, of Instagram blokkeerde het verzoek)" }, 200);
 
-  const og = parseOG(html);
-  if (!og.title) return json({ ok: false, error: "Geen profielgegevens gevonden op deze pagina" }, 404);
+    const og = parseOG(html);
+    if (!og.title) return json({ ok: false, error: "Geen profielgegevens gevonden op deze pagina" }, 200);
 
-  const usernameFromTitle = og.title.match(/\(@([a-zA-Z0-9_.]+)\)/)?.[1] ?? null;
-  const username = usernameFromTitle ?? parseUsernameFromUrl(url);
-  const displayName = decodeEntities(og.title.replace(/\s*\(@[^)]+\)\s*(•.*)?$/, "").trim()) || null;
+    const usernameFromTitle = og.title.match(/\(@([a-zA-Z0-9_.]+)\)/)?.[1] ?? null;
+    const username = usernameFromTitle ?? parseUsernameFromUrl(url);
+    const displayName = decodeEntities(og.title.replace(/\s*\(@[^)]+\)\s*(•.*)?$/, "").trim()) || null;
 
-  let statsText: string | null = null;
-  let bio: string | null = null;
-  if (og.description) {
-    const statsMatch = og.description.match(STATS_RE);
-    if (statsMatch) {
-      statsText = statsMatch[1];
-    } else {
-      // Doesn't match the usual stats boilerplate — best-effort treat it as bio text.
-      bio = decodeEntities(og.description).trim() || null;
+    let statsText: string | null = null;
+    let bio: string | null = null;
+    if (og.description) {
+      const statsMatch = og.description.match(STATS_RE);
+      if (statsMatch) {
+        statsText = statsMatch[1];
+      } else {
+        // Doesn't match the usual stats boilerplate — best-effort treat it as bio text.
+        bio = decodeEntities(og.description).trim() || null;
+      }
     }
-  }
 
-  return json({
-    ok: true,
-    username,
-    displayName,
-    bio,
-    imageUrl: og.image ?? null,
-    statsText,
-  });
+    return json({
+      ok: true,
+      username,
+      displayName,
+      bio,
+      imageUrl: og.image ?? null,
+      statsText,
+    });
+  } catch (err) {
+    // Any unexpected failure still degrades to a readable 200 ok:false —
+    // never an opaque non-2xx the client would have to discard.
+    return json({ ok: false, error: `Onverwachte fout: ${String(err)}` }, 200);
+  }
 });
