@@ -1,6 +1,9 @@
 // OSLIFE · Relaties (rolodex) — tag presets, auto-tag heuristics, and the
 // connection-graph helpers shared between the list, form, and detail views.
-import type { Person, PersonConnection } from '../../types'
+import type { Person, PersonConnection, PersonKind } from '../../types'
+
+export const PERSON_KIND_LABEL: Record<PersonKind, string> = { network: 'Netwerk', business: 'Zakelijk', both: 'Beide' }
+export const PERSON_KIND_HEX: Record<PersonKind, string> = { network: '#60A5FA', business: '#A78BFA', both: '#34D399' }
 
 /** Curated starting set — the tag input still accepts any free-form text. */
 export const TAG_PRESETS = [

@@ -1,11 +1,12 @@
 // Shared UI primitives + constants for the native CRM (CRM / Projecten).
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { X, FolderKanban, Clock } from 'lucide-react'
 import { cn } from '../lib/utils'
-import type { ProjectStatus, ClientStatus, Priority, Domain, Project, Client } from '../types'
+import type { ProjectStatus, ClientStatus, Priority, Domain, Project, Client, Person } from '../types'
 import { deadlineInfo } from '../lib/dates'
 import { TODAY } from '../domains'
 import { clientHealth, FOLLOWUP_META } from '../lib/crm/followUp'
+import { PERSON_KIND_HEX } from '../lib/crm/relaties'
 import { DomainChip, Pill } from './ui'
 
 /** Small follow-up-health dot (green/yellow/red); hidden for never-contacted clients. */
@@ -343,5 +344,27 @@ export function ClientCard({ c, onClick }: { c: Client; onClick: () => void }) {
         <div className="flex items-center gap-1"><DomainChip domain={c.domain} small /></div>
       </div>
     </button>
+  )
+}
+
+/** Person's real photo (e.g. pulled from Instagram) when set, falling back to
+ *  a kind-colored initial circle — and back again if the image URL 404s/expires. */
+export function PersonAvatar({ person, className = 'h-10 w-10 text-sm' }: { person: Person; className?: string }) {
+  const [broken, setBroken] = useState(false)
+  const color = PERSON_KIND_HEX[person.kind]
+  if (person.avatarUrl && !broken) {
+    return (
+      <img
+        src={person.avatarUrl}
+        alt=""
+        className={`rounded-full object-cover shrink-0 border border-line ${className}`}
+        onError={() => setBroken(true)}
+      />
+    )
+  }
+  return (
+    <span className={`rounded-full flex items-center justify-center font-bold shrink-0 ${className}`} style={{ color, background: `${color}28` }}>
+      {person.displayName.slice(0, 1).toUpperCase()}
+    </span>
   )
 }

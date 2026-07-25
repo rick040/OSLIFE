@@ -286,6 +286,7 @@ export interface Person {
   linkedinUrl: string | null
   twitterUrl: string | null
   websiteUrl: string | null
+  avatarUrl: string | null
 }
 
 export type InteractionChannel = 'mail' | 'whatsapp' | 'call' | 'in_person' | 'fiverr' | 'note'
