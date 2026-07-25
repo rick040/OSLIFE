@@ -405,6 +405,8 @@ interface State {
   ) => void
   deleteWorkoutSession: (id: string) => void
   completeBlock: (id: string) => void
+  /** Turn a suggested block (heyra/blockSuggestions) into a real, persisted day_blocks row. */
+  addSuggestedBlock: (b: { title: string; domain: Domain; start: string; end: string; rationale?: string }) => void
   skipBlock: (id: string) => void
   resetBlock: (id: string) => void
   moveBlock: (id: string, dir: -1 | 1) => void
@@ -1362,6 +1364,31 @@ export const useStore = create<State>()(
           }
         })
         void persistBlockStatus(id, 'done')
+      },
+
+      addSuggestedBlock: (b) => {
+        const tempId = `tmp-block-${Math.random().toString(36).slice(2, 10)}`
+        const block: Block = {
+          id: tempId,
+          title: b.title,
+          domain: b.domain,
+          start: b.start,
+          end: b.end,
+          status: 'planned',
+          rationale: b.rationale ?? '',
+        }
+        set((s) => ({
+          blocks: [...s.blocks, block],
+          activity: pushSignal(s.activity, { text: `Blok toegevoegd: ${b.title}`, domain: b.domain, loop: 'fast' }),
+        }))
+        void insertDayBlock({
+          date: today(),
+          start: b.start,
+          end: b.end,
+          title: b.title,
+          description: b.rationale,
+          domain: b.domain,
+        }).then(swapTempId(set, 'blocks', tempId))
       },
 
       skipBlock: (id) => {
