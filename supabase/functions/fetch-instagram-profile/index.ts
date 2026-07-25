@@ -23,12 +23,22 @@
  *
  * Deploy:
  *   supabase functions deploy fetch-instagram-profile --project-ref nhyunnnmdcmojvkxrbpl
+ * Secrets: INSTAGRAM_COOKIE_HEADER (optional but in practice needed — see below).
  */
 
 import { CORS, bearerToken, corsPreflight, jsonResponder } from "../_shared/http.ts";
 import { fetchText, parseOG, decodeEntities } from "../_shared/webpage.ts";
 
 const json = jsonResponder(CORS);
+
+// Same fix as braindump-ingest's processSocial(): an unauthenticated request
+// increasingly gets redirected to Instagram's login wall (a page with no
+// og:title/og:description at all) instead of the real profile. Set this to a
+// real logged-in browser's `Cookie` header value (sessionid=...; csrftoken=...
+// etc., copied from devtools on instagram.com) to fetch as that session
+// instead. Every call here is restricted to instagram.com (validated below),
+// so there's no risk of the cookie leaking to any other host.
+const INSTAGRAM_COOKIE_HEADER = Deno.env.get("INSTAGRAM_COOKIE_HEADER") ?? "";
 
 /** Instagram's profile og:description reads like
  *  "123 Followers, 45 Following, 6 Posts - See Instagram photos and videos from Jane Doe (@janedoe)" */
@@ -63,11 +73,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const html = await fetchText(url.toString());
+    const cookieHeaders = INSTAGRAM_COOKIE_HEADER ? { cookie: INSTAGRAM_COOKIE_HEADER } : {};
+    const html = await fetchText(url.toString(), 9000, cookieHeaders);
     if (!html) return json({ ok: false, error: "Kon het profiel niet ophalen (privé, verwijderd, of Instagram blokkeerde het verzoek)" }, 200);
 
     const og = parseOG(html);
-    if (!og.title) return json({ ok: false, error: "Geen profielgegevens gevonden op deze pagina" }, 200);
+    if (!og.title) {
+      const hint = INSTAGRAM_COOKIE_HEADER
+        ? "Instagram gaf een pagina zonder profielgegevens terug (login-wall of geblokkeerd)."
+        : "Instagram gaf een login-pagina terug in plaats van het profiel — stel de INSTAGRAM_COOKIE_HEADER secret in (zelfde als bij de braindump) om als ingelogde sessie te lezen.";
+      return json({ ok: false, error: hint }, 200);
+    }
 
     const usernameFromTitle = og.title.match(/\(@([a-zA-Z0-9_.]+)\)/)?.[1] ?? null;
     const username = usernameFromTitle ?? parseUsernameFromUrl(url);
