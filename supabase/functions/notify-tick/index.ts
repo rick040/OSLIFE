@@ -140,6 +140,35 @@ async function reconcileOverdueInvoices(sb: any, today: string): Promise<void> {
     .lt("due_on", today);
 }
 
+// ── Today's calendar blocks (for the morning briefing's DND-scheduling tag) ──
+// Fed as-is into the automation payload so a Tasker/MacroDroid routine can
+// build a DND schedule around today's meeting blocks — OSLIFE itself makes
+// no judgment about which block_type deserves DND, that's a phone-side rule.
+
+interface DayBlock {
+  start: string | null;
+  end: string | null;
+  title: string;
+  blockType: string;
+}
+
+// deno-lint-ignore no-explicit-any
+async function todaysDayBlocks(sb: any, today: string): Promise<DayBlock[]> {
+  const { data } = await sb
+    .from("day_blocks")
+    .select("start_time,end_time,title,block_type")
+    .eq("user_id", USER_ID)
+    .eq("date", today)
+    .order("start_time");
+  // deno-lint-ignore no-explicit-any
+  return ((data ?? []) as any[]).map((b) => ({
+    start: (b.start_time as string | null)?.slice(0, 5) ?? null,
+    end: (b.end_time as string | null)?.slice(0, 5) ?? null,
+    title: (b.title as string) || "",
+    blockType: (b.block_type as string) ?? "personal",
+  }));
+}
+
 // ── Morning briefing (server-side subset of src/derive.ts buildNudge()) ─────
 
 // deno-lint-ignore no-explicit-any
@@ -412,7 +441,7 @@ async function urgentAlerts(sb: any, today: string): Promise<UrgentAlert[]> {
   // Keyed by the due date so it nudges once per missed cycle, not every tick.
   const { data: clientRows } = await sb
     .from("clients")
-    .select("id,name,last_contacted_at,follow_up_cycle_days")
+    .select("id,name,email,last_contacted_at,follow_up_cycle_days")
     .eq("user_id", USER_ID)
     .not("last_contacted_at", "is", null);
   for (const c of clientRows ?? []) {
@@ -427,7 +456,7 @@ async function urgentAlerts(sb: any, today: string): Promise<UrgentAlert[]> {
         kind: "urgent_followup",
         dedupKey: `${c.id}:${dueStr}`,
         text: `📇 Tijd om ${c.name} op te volgen — al ${daysSince} dag(en) geen contact.`,
-        payload: { id: c.id, name: c.name, daysSince },
+        payload: { id: c.id, name: c.name, email: c.email ?? null, daysSince },
       });
     }
   }
@@ -457,7 +486,8 @@ Deno.serve(async (req) => {
 
   try {
     if (prefs.morning_briefing && withinWindow(prefs.morning_time, nowMinutes) && (await claim(sb, "morning", today))) {
-      await sendClaimed(sb, "morning", today, BOT_TOKEN, chatId, await buildMorningBriefing(sb, today), undefined, {});
+      const payload: AutomationPayload = { blocks: await todaysDayBlocks(sb, today) };
+      await sendClaimed(sb, "morning", today, BOT_TOKEN, chatId, await buildMorningBriefing(sb, today), undefined, payload);
       sent.push("morning");
     }
 

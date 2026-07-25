@@ -34,7 +34,7 @@ Elk getagd bericht ziet er zo uit:
 
 | `type` | Velden | Wanneer |
 |---|---|---|
-| `morning` | *(geen)* | Ochtendbriefing |
+| `morning` | `blocks: [{start, end, title, blockType}]` | Ochtendbriefing — vandaags agenda uit `day_blocks` |
 | `evening_checkin` | *(geen)* | Avond check-in vraag |
 | `habit_reminder` | `habits: [{id, name, icon, streak}]` | Nog openstaande gewoontes |
 | `inference_digest` | `count` | Batch afleidingen ter bevestiging |
@@ -43,11 +43,28 @@ Elk getagd bericht ziet er zo uit:
 | `urgent_thread` | `id, title, owedTo, daysOverdue` | Open loop te laat |
 | `urgent_project_blocked` | `id, name` | Project geblokkeerd |
 | `urgent_invoice_overdue` | `id, number, amount, due` | Factuur te laat |
-| `urgent_followup` | `id, name, daysSince` | Klant-follow-up verlopen |
+| `urgent_followup` | `id, name, email, daysSince` | Klant-follow-up verlopen |
 
-`morning` en `evening_checkin` hebben geen extra velden omdat er (nog) geen
-gestructureerde tijd/locatie aan hangt — je kunt op `type` alleen filteren om
-bijvoorbeeld altijd DND aan te zetten tijdens de avond-check-in.
+`evening_checkin` heeft geen extra velden omdat er geen gestructureerde
+tijd/locatie aan hangt — je kunt op `type` alleen filteren om bijvoorbeeld
+altijd DND aan te zetten tijdens de avond-check-in.
+
+## Twee uitgewerkte voorbeelden
+
+**Ochtendbriefing → DND tijdens agendablokken.** `blocks` is de rauwe
+`day_blocks`-rij voor vandaag (`start`/`end` als `HH:MM`, `blockType` zoals
+`work`/`meeting`/`personal`). In Tasker: **For-loop** over `%blocks` (Tasker's
+JSON-array-iteratie, of `%blocks()` na een Parse JSON-actie), en per item met
+`blockType != "personal"` een **Time**-conditie plus **DND → Priority only**
+tussen `start` en `end` inplannen. Zo hoef je nooit meer zelf DND aan te
+zetten voor een call.
+
+**Verlopen follow-up → contact direct openen.** `email` is het e-mailadres
+uit de CRM-klantkaart (`clients.email`, kan `null` zijn als het ontbreekt).
+In MacroDroid: **If** `%email` is niet leeg → **Compose Email** action met
+`%email` als ontvanger en een vaste onderwerpregel (`"Follow-up: %name"`), zo
+sta je één tik verwijderd van het bericht in plaats van alleen een
+herinnering te krijgen.
 
 ## Tasker — profiel + regex
 
