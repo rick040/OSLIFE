@@ -297,7 +297,11 @@ export function AgendaCard({
 }) {
   const done = status === 'done'
   return (
-    <div className="card p-4 w-[220px] shrink-0 flex flex-col justify-between gap-8 min-h-[176px]">
+    <div
+      className={`card p-4 w-[220px] shrink-0 flex flex-col justify-between gap-8 min-h-[176px] transition-opacity ${
+        done ? 'bg-sunken opacity-60' : ''
+      }`}
+    >
       <div className="flex items-start justify-between gap-2">
         <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide ${done ? 'text-faint' : TONE_TEXT[tone]}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${done ? 'bg-line' : TONE_BG[tone].replace('/15', '')}`} />

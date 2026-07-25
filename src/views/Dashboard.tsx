@@ -165,7 +165,12 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const today = healthDays.find((d) => d.date === TODAY) ?? healthDays[healthDays.length - 1]
   // Vandaag: every scheduled block today, soonest first — skipped ones drop
   // off the agenda row since they're no longer part of today's actual plan.
-  const todaysBlocks = [...blocks].filter((b) => b.status !== 'skipped').sort((a, b) => a.start.localeCompare(b.start))
+  // Checking one off pushes it after every still-open block (each group still
+  // soonest-first) instead of leaving a done card sitting mid-row, so the
+  // overview opens on what's actually still ahead of you.
+  const todaysBlocks = [...blocks]
+    .filter((b) => b.status !== 'skipped')
+    .sort((a, b) => (a.status === 'done') === (b.status === 'done') ? a.start.localeCompare(b.start) : a.status === 'done' ? 1 : -1)
 
   // Step sync from the phone can land hours after sleep/energy are already
   // logged — a bare "0.0k" then reads as "you haven't moved" rather than
