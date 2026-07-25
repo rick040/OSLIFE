@@ -106,6 +106,20 @@ describe('suggestTodayBlocks', () => {
     }
   })
 
+  it('still proposes blocks late in the evening instead of going silent', () => {
+    // Regression: DAY_END used to cut off at 22:00, so a 22:48 check-in with
+    // plenty pending (overdue payment, unread mail) got zero suggestions.
+    const out = suggestTodayBlocks(
+      baseCtx({
+        nowMinutes: toMin('22:48'),
+        overduePayments: [{ domain: 'personal' }],
+        unreadImportantMailCount: 3,
+      }),
+    )
+    expect(out.length).toBeGreaterThan(0)
+    for (const s of out) expect(toMin(s.start)).toBeGreaterThanOrEqual(toMin('22:48'))
+  })
+
   it('caps the number of suggestions at `max`', () => {
     const out = suggestTodayBlocks(
       baseCtx({
