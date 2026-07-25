@@ -278,9 +278,27 @@ export interface Person {
   clientId: string | null
   notes: string | null
   tier: Tier
+  /** Free-form category tags (e.g. "Familie", "Klant") — manual or auto-suggested. */
+  tags: string[]
+  company: string | null
+  jobTitle: string | null
+  instagramUrl: string | null
+  linkedinUrl: string | null
+  twitterUrl: string | null
+  websiteUrl: string | null
 }
 
-export type InteractionChannel = 'mail' | 'whatsapp' | 'call' | 'in_person' | 'fiverr'
+export type InteractionChannel = 'mail' | 'whatsapp' | 'call' | 'in_person' | 'fiverr' | 'note'
+
+/** A named link between two people in the rolodex (e.g. "collega van", "partner"). Undirected — one row per pair. */
+export interface PersonConnection {
+  id: string
+  personAId: string
+  personBId: string
+  label: string
+  note: string | null
+  createdAt: string
+}
 
 /** One contact moment with a person. owedReply feeds the open-loops. */
 export interface Interaction {

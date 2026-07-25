@@ -1,14 +1,18 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
-import { Empty, Overlay } from '../components/ui'
-import { UserPlus, MessageCircle, Trash2, AlertCircle, Users, X } from 'lucide-react'
-import type { PersonKind } from '../types'
+import { Empty, Pill } from '../components/ui'
+import { UserPlus, AlertCircle, Users, Search, Link2 } from 'lucide-react'
+import type { Person, PersonKind } from '../types'
+import { connectionsForPerson } from '../lib/crm/relaties'
+import PersonForm from './PersonForm'
+import PersonDetail from './PersonDetail'
 
 const KIND_LABEL: Record<PersonKind, string> = {
   network: 'Netwerk',
   business: 'Zakelijk',
   both: 'Beide',
 }
+const KIND_HEX: Record<PersonKind, string> = { network: '#60A5FA', business: '#A78BFA', both: '#34D399' }
 
 function daysSince(iso: string | null): number | null {
   if (!iso) return null
@@ -17,11 +21,11 @@ function daysSince(iso: string | null): number | null {
 }
 
 export default function Relaties() {
-  const { people, interactions, addPerson, deletePerson, logInteraction } = useStore()
+  const { people, interactions, personConnections } = useStore()
   const [showAdd, setShowAdd] = useState(false)
-  const [name, setName] = useState('')
-  const [kind, setKind] = useState<PersonKind>('network')
-  const [email, setEmail] = useState('')
+  const [open, setOpen] = useState<Person | null>(null)
+  const [query, setQuery] = useState('')
+  const [tagFilter, setTagFilter] = useState<string | null>(null)
 
   const owedByPerson = useMemo(() => {
     const m = new Map<string, number>()
@@ -31,23 +35,25 @@ export default function Relaties() {
     return m
   }, [interactions])
 
-  const submit = () => {
-    if (!name.trim()) return
-    addPerson({
-      displayName: name.trim(),
-      kind,
-      emails: email.trim() ? [email.trim().toLowerCase()] : [],
-      phones: [],
-      birthday: null,
-      cadenceDays: null,
-      lastInteractionAt: null,
-      clientId: null,
-      notes: null,
-      tier: 'normaal',
+  const allTags = useMemo(() => {
+    const s = new Set<string>()
+    for (const p of people) for (const t of p.tags) s.add(t)
+    return Array.from(s).sort()
+  }, [people])
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return people.filter((p) => {
+      if (tagFilter && !p.tags.includes(tagFilter)) return false
+      if (!q) return true
+      return (
+        p.displayName.toLowerCase().includes(q) ||
+        (p.company ?? '').toLowerCase().includes(q) ||
+        p.emails.some((e) => e.toLowerCase().includes(q)) ||
+        p.tags.some((t) => t.toLowerCase().includes(q))
+      )
     })
-    setName(''); setEmail(''); setKind('network')
-    setShowAdd(false)
-  }
+  }, [people, query, tagFilter])
 
   return (
     <div className="flex flex-col gap-7 max-w-3xl mx-auto">
@@ -63,67 +69,85 @@ export default function Relaties() {
         </button>
       </div>
 
-      {showAdd && (
-        <Overlay tone="black" onClose={() => setShowAdd(false)} panelClassName="card w-full max-w-md p-5 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-medium">Persoon toevoegen</div>
-            <button onClick={() => setShowAdd(false)} className="text-faint hover:text-ink p-1 shrink-0" aria-label="Sluiten">
-              <X className="h-4 w-4" />
-            </button>
+      {people.length > 0 && (
+        <div className="flex flex-col gap-2.5">
+          <div className="relative">
+            <Search className="h-4 w-4 text-faint absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Zoek op naam, bedrijf, e-mail of tag…"
+              className="input w-full pl-9"
+            />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Naam" className="input" autoFocus />
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail (voor mail-matching)" className="input" />
-          </div>
-          <select value={kind} onChange={(e) => setKind(e.target.value as PersonKind)} className="input w-full">
-            {(['network', 'business', 'both'] as PersonKind[]).map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}
-          </select>
-          <button onClick={submit} disabled={!name.trim()} className="btn-primary w-full">
-            <UserPlus className="h-4 w-4" /> Toevoegen
-          </button>
-        </Overlay>
+          {allTags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setTagFilter(null)}
+                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${tagFilter === null ? 'bg-forest text-white border-forest' : 'bg-sunken border-line text-muted hover:text-ink'}`}
+              >
+                Alle
+              </button>
+              {allTags.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTagFilter(t === tagFilter ? null : t)}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${tagFilter === t ? 'bg-forest text-white border-forest' : 'bg-sunken border-line text-muted hover:text-ink'}`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
+      {showAdd && <PersonForm person={null} onClose={() => setShowAdd(false)} />}
+      {open && <PersonDetail person={open} onClose={() => setOpen(null)} />}
+
       {people.length === 0 ? (
-        <Empty>Nog geen mensen vastgelegd. Voeg iemand toe om contact te gaan volgen.</Empty>
+        <Empty>Nog geen mensen vastgelegd. Voeg iemand toe om je rolodex te starten.</Empty>
+      ) : filtered.length === 0 ? (
+        <Empty>Geen contacten gevonden voor deze zoekopdracht.</Empty>
       ) : (
         <div className="space-y-2 animate-fade-up">
-          {people.map((p) => {
+          {filtered.map((p) => {
             const since = daysSince(p.lastInteractionAt)
             const overdue = p.cadenceDays != null && since != null && since > p.cadenceDays
             const owed = owedByPerson.get(p.id) ?? 0
+            const connCount = connectionsForPerson(p.id, personConnections, people).length
+            const color = KIND_HEX[p.kind]
             return (
-              <div key={p.id} className="card p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{p.displayName}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-line text-muted">{KIND_LABEL[p.kind]}</span>
+              <button key={p.id} onClick={() => setOpen(p)} className="card p-4 w-full text-left hover:bg-sunken transition-colors">
+                <div className="flex items-start gap-3">
+                  <span className="h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0" style={{ color, background: `${color}28` }}>
+                    {p.displayName.slice(0, 1).toUpperCase()}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium truncate">{p.displayName}</span>
+                      <Pill hex={color} className="text-[10px] px-1.5 py-0.5 rounded-full shrink-0">{KIND_LABEL[p.kind]}</Pill>
+                      {p.tags.slice(0, 2).map((t) => (
+                        <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-line text-muted shrink-0">{t}</span>
+                      ))}
                       {owed > 0 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cross/15 text-cross-deep flex items-center gap-1">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-cross/15 text-cross-deep flex items-center gap-1 shrink-0">
                           <AlertCircle className="h-3 w-3" /> {owed} openstaand
                         </span>
                       )}
                     </div>
-                    {p.emails.length > 0 && <div className="text-xs text-faint mt-0.5 truncate">{p.emails.join(', ')}</div>}
-                    <div className={`text-xs mt-1 ${overdue ? 'text-cross' : 'text-muted'}`}>
-                      {since == null ? 'Nog geen contact gelogd' : `Laatste contact: ${since} dag(en) geleden`}
-                      {overdue && ' — tijd om bij te praten'}
+                    {(p.jobTitle || p.company) && (
+                      <div className="text-xs text-faint mt-0.5 truncate">{[p.jobTitle, p.company].filter(Boolean).join(' bij ')}</div>
+                    )}
+                    <div className={`text-xs mt-1 flex items-center gap-2 flex-wrap ${overdue ? 'text-cross' : 'text-muted'}`}>
+                      <span>{since == null ? 'Nog geen contact gelogd' : `Laatste contact: ${since} dag(en) geleden`}{overdue && ' — tijd om bij te praten'}</span>
+                      {connCount > 0 && (
+                        <span className="inline-flex items-center gap-1 text-faint"><Link2 className="h-3 w-3" /> {connCount}</span>
+                      )}
                     </div>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <button
-                      title="Contact loggen"
-                      onClick={() => logInteraction({ personId: p.id, channel: 'call', direction: 'out', summary: null, owedReply: false, occurredAt: new Date().toISOString() })}
-                      className="p-2 rounded-lg hover:bg-sunken text-muted">
-                      <MessageCircle className="h-4 w-4" />
-                    </button>
-                    <button title="Verwijderen" onClick={() => deletePerson(p.id)} className="p-2 rounded-lg hover:bg-sunken text-muted">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
                 </div>
-              </div>
+              </button>
             )
           })}
         </div>
