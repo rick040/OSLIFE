@@ -66,7 +66,10 @@ export interface BlockSuggestionContext {
 }
 
 const DAY_START = 6 * 60
-const DAY_END = 22 * 60
+// Late enough that a real evening still gets suggestions (a 22:48 check-in
+// should still be able to fit a 20-minute block before bed), but not so late
+// it proposes starting something at 23:58.
+const DAY_END = 23 * 60 + 45
 
 export const toMin = (hhmm: string): number => {
   const [h, m] = hhmm.split(':').map((n) => parseInt(n, 10))
