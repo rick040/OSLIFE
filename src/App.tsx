@@ -24,6 +24,7 @@ import StrategieHQ from './views/StrategieHQ'
 import Buurtkaart from './views/Buurtkaart'
 import InboxView from './views/Inbox'
 import NorthStar from './views/NorthStar'
+import ProfileScreen from './views/Profile'
 import Mindmap from './views/Mindmap'
 import Relaties from './views/Relaties'
 import HuisAdmin from './views/HuisAdmin'
@@ -99,6 +100,7 @@ export default function App() {
     projects: <Projects />,
     inbox: <InboxView />,
     northstar: <NorthStar />,
+    profile: <ProfileScreen />,
     heyra: <Heyra onNav={(v) => setView(v as View)} />,
     capture: <Capture />,
     memory: <Memory />,

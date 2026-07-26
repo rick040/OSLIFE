@@ -57,6 +57,9 @@ import type {
   WorkoutExercise,
   WorkoutSession,
   WorkoutSet,
+  IdentityProfile,
+  IdentitySnapshot,
+  Landscape,
 } from '../types'
 import { today, habitStreak } from '../domains'
 import { CATEGORY_META, type LearnedFact, type LearningCategory } from '../heyra/learning'
@@ -2469,6 +2472,52 @@ export async function fetchProfileFacts(): Promise<ProfileFact[]> {
     tier: (r.tier as ProfileFact['tier']) ?? 'normaal',
     createdAt: (r.created_at as string) ?? '',
   }))
+}
+
+// ── Identity profile (huidig / droom / landschap) ─────────────────────────────
+
+const EMPTY_SNAPSHOT: IdentitySnapshot = {
+  summary: '',
+  traits: [],
+  strengths: [],
+  weaknesses: [],
+  accelerators: [],
+  generatedAt: null,
+}
+
+const EMPTY_LANDSCAPE: Landscape = {
+  summary: '',
+  people: [],
+  habits: [],
+  environment: [],
+  generatedAt: null,
+}
+
+export async function fetchIdentityProfile(): Promise<IdentityProfile> {
+  const { data } = await supabase.from('identity_profile').select('current,dream_md,landscape').maybeSingle()
+  if (!data) return { current: EMPTY_SNAPSHOT, dreamMd: '', landscape: EMPTY_LANDSCAPE }
+  return {
+    current: { ...EMPTY_SNAPSHOT, ...(data.current as Partial<IdentitySnapshot>) },
+    dreamMd: (data.dream_md as string) ?? '',
+    landscape: { ...EMPTY_LANDSCAPE, ...(data.landscape as Partial<Landscape>) },
+  }
+}
+
+export async function upsertIdentityProfile(patch: Partial<IdentityProfile>): Promise<boolean> {
+  const user_id = await currentUserId()
+  if (!user_id) return false
+  const { error } = await supabase.from('identity_profile').upsert(
+    {
+      user_id,
+      ...(patch.current !== undefined && { current: patch.current }),
+      ...(patch.dreamMd !== undefined && { dream_md: patch.dreamMd }),
+      ...(patch.landscape !== undefined && { landscape: patch.landscape }),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id' },
+  )
+  warnWrite('identity_profile', error)
+  return !error
 }
 
 // ── Geheugen & retrieval (Slice 3) ────────────────────────────────────────────
