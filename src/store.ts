@@ -435,6 +435,11 @@ interface State {
   addWorkoutExercise: (planId: string, ex: Omit<WorkoutExercise, 'id' | 'planId'>) => void
   updateWorkoutExercise: (id: string, patch: Partial<WorkoutExercise>) => void
   deleteWorkoutExercise: (id: string) => void
+  /** Creates a plan and its exercises together, awaiting the plan's real id before writing exercise rows — used by the auto-generator, which (unlike manual add) writes children right after the parent instead of giving the round-trip time to land. */
+  addWorkoutPlanWithExercises: (
+    plan: Omit<WorkoutPlan, 'id' | 'orderIdx' | 'active'>,
+    exercises: Omit<WorkoutExercise, 'id' | 'planId'>[],
+  ) => Promise<void>
   /** Log a completed (or in-progress) workout — creates the session + every set in one go. */
   logWorkoutSession: (
     session: Omit<WorkoutSession, 'id' | 'sets'>,
@@ -1428,6 +1433,26 @@ export const useStore = create<State>()(
         const tempId = uid('wex')
         set((s) => ({ workoutExercises: [...s.workoutExercises, { ...ex, id: tempId, planId }] }))
         void createWorkoutExerciseRow(planId, ex).then(swapTempId(set, 'workoutExercises', tempId))
+      },
+
+      addWorkoutPlanWithExercises: async (plan, exercises) => {
+        const orderIdx = get().workoutPlans.length
+        const tempPlanId = uid('wp')
+        const tempExercises = exercises.map((ex) => ({ ...ex, id: uid('wex'), planId: tempPlanId }))
+        set((s) => ({
+          workoutPlans: [...s.workoutPlans, { ...plan, id: tempPlanId, orderIdx, active: true }],
+          workoutExercises: [...s.workoutExercises, ...tempExercises],
+        }))
+        const realPlanId = await createWorkoutPlanRow({ ...plan, orderIdx, active: true })
+        if (!realPlanId) return
+        set((s) => ({
+          workoutPlans: s.workoutPlans.map((p) => (p.id === tempPlanId ? { ...p, id: realPlanId } : p)),
+          workoutExercises: s.workoutExercises.map((e) => (e.planId === tempPlanId ? { ...e, planId: realPlanId } : e)),
+        }))
+        for (const ex of tempExercises) {
+          const realExId = await createWorkoutExerciseRow(realPlanId, ex)
+          if (realExId) set((s) => ({ workoutExercises: s.workoutExercises.map((e) => (e.id === ex.id ? { ...e, id: realExId } : e)) }))
+        }
       },
 
       updateWorkoutExercise: (id, patch) => {

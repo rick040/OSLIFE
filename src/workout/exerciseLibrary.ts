@@ -1,9 +1,11 @@
 // Exercise picker data — trimmed from hasaneyldrm/exercises-dataset
-// (https://github.com/hasaneyldrm/exercises-dataset, MIT-licensed dataset;
-// media assets are excluded here since those carry a separate gymvisual.com
-// license). Only name/body-part/target-muscle/equipment/instructions kept —
-// dropped the other 9 instruction languages and every image/gif reference to
-// keep this a ~200KB lazy-loaded chunk instead of the original ~17MB.
+// (https://github.com/hasaneyldrm/exercises-dataset, MIT-licensed dataset).
+// Only English instructions are kept — dropped the other 9 instruction
+// languages to keep this a ~1MB lazy-loaded chunk instead of the original
+// ~17MB. `image`/`gifUrl` are hotlinked raw.githubusercontent.com URLs
+// rather than bundled assets: the stills/GIFs themselves are © Gym visual
+// (https://gymvisual.com/) and redistributed by the dataset under its own
+// terms, not ours to vendor. Regenerate via scripts/build-exercise-library.mjs.
 
 export interface LibraryExercise {
   id: string
@@ -13,6 +15,8 @@ export interface LibraryExercise {
   secondaryMuscles: string[]
   equipment: string
   instructions: string[]
+  image: string
+  gifUrl: string
 }
 
 /** Coarse body-part facets for the picker's filter chips. */

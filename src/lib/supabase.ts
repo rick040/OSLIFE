@@ -2828,7 +2828,7 @@ export async function deactivateWorkoutPlanRow(id: string): Promise<void> {
 }
 
 export async function fetchWorkoutExercises(): Promise<WorkoutExercise[]> {
-  return fetchRows('workout_exercises', 'id,plan_id,name,muscle_group,target_sets,target_reps,order_idx', { column: 'order_idx', ascending: true }, (r) => ({
+  return fetchRows('workout_exercises', 'id,plan_id,name,muscle_group,target_sets,target_reps,order_idx,image_url,gif_url', { column: 'order_idx', ascending: true }, (r) => ({
     id: r.id as string,
     planId: r.plan_id as string,
     name: r.name as string,
@@ -2836,6 +2836,8 @@ export async function fetchWorkoutExercises(): Promise<WorkoutExercise[]> {
     targetSets: (r.target_sets as number) ?? 3,
     targetReps: (r.target_reps as string) ?? '8-12',
     orderIdx: (r.order_idx as number) ?? 0,
+    imageUrl: (r.image_url as string) ?? null,
+    gifUrl: (r.gif_url as string) ?? null,
   }))
 }
 
@@ -2851,6 +2853,8 @@ export async function createWorkoutExerciseRow(
     target_sets: ex.targetSets,
     target_reps: ex.targetReps,
     order_idx: ex.orderIdx,
+    image_url: ex.imageUrl ?? null,
+    gif_url: ex.gifUrl ?? null,
   })
 }
 
@@ -2860,6 +2864,8 @@ const WORKOUT_EXERCISE_COLS: Record<string, string> = {
   targetSets: 'target_sets',
   targetReps: 'target_reps',
   orderIdx: 'order_idx',
+  imageUrl: 'image_url',
+  gifUrl: 'gif_url',
 }
 
 export async function updateWorkoutExerciseRow(id: string, patch: Partial<WorkoutExercise>): Promise<void> {
