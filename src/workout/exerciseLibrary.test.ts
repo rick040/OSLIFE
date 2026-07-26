@@ -22,8 +22,8 @@ describe('exerciseLibrary', () => {
 
   it('searchExercises filters by name, target and body part', () => {
     const data: LibraryExercise[] = [
-      { id: '1', name: 'Barbell Bench Press', bodyPart: 'chest', target: 'pectorals', secondaryMuscles: [], equipment: 'barbell', instructions: [] },
-      { id: '2', name: 'Alternate Lateral Pulldown', bodyPart: 'back', target: 'lats', secondaryMuscles: [], equipment: 'cable', instructions: [] },
+      { id: '1', name: 'Barbell Bench Press', bodyPart: 'chest', target: 'pectorals', secondaryMuscles: [], equipment: 'barbell', instructions: [], image: '', gifUrl: '' },
+      { id: '2', name: 'Alternate Lateral Pulldown', bodyPart: 'back', target: 'lats', secondaryMuscles: [], equipment: 'cable', instructions: [], image: '', gifUrl: '' },
     ]
     expect(searchExercises(data, 'bench', null)).toHaveLength(1)
     expect(searchExercises(data, '', 'back')).toHaveLength(1)

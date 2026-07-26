@@ -504,6 +504,8 @@ export interface WorkoutExercise {
   targetSets: number
   targetReps: string // free text, e.g. "8-12"
   orderIdx: number
+  imageUrl?: string | null // library thumbnail, snapshotted at add-time; null for custom exercises
+  gifUrl?: string | null // library animation, same as above
 }
 
 /** One logged set within a session. Exercise name/muscle snapshotted so history survives an edited/deleted exercise. */
