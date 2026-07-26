@@ -32,6 +32,7 @@ import type {
   NotificationPrefs,
   VendorTag,
   BraindumpEntry,
+  BraindumpLink,
   WikiEntry,
   AppSettings,
   PlanBlock,
@@ -977,6 +978,65 @@ export async function resetBraindumpEntryRow(id: string): Promise<void> {
     .update({ status: 'pending', error: null })
     .eq('id', id)
   warnWrite('braindump_entries.reset', error)
+}
+
+/** Manual override of Claude's domain/kind/tags — e.g. re-filing a capture
+ *  or fixing a miscategorised one. RLS confines this to the caller's own rows. */
+export async function updateBraindumpEntryRow(
+  id: string,
+  patch: Partial<{ domain: Domain | null; kind: BraindumpEntry['kind']; tags: string[] }>,
+): Promise<void> {
+  if (!isDbId(id)) return
+  const row: Record<string, unknown> = {}
+  if ('domain' in patch) row.domain = patch.domain
+  if ('kind' in patch) row.kind = patch.kind
+  if ('tags' in patch) row.tags = patch.tags
+  if (!Object.keys(row).length) return
+  const { error } = await supabase.from('braindump_entries').update(row).eq('id', id)
+  warnWrite('braindump_entries.update', error)
+}
+
+// ── Braindump links: "apply this to somewhere" (a task or Kennisbank entry) ────
+
+function mapBraindumpLinkRow(r: Record<string, unknown>): BraindumpLink {
+  return {
+    id: r.id as string,
+    createdAt: (r.created_at as string) ?? new Date().toISOString(),
+    braindumpEntryId: r.braindump_entry_id as string,
+    linkedType: r.linked_type as BraindumpLink['linkedType'],
+    linkedId: r.linked_id as string,
+  }
+}
+
+export async function fetchBraindumpLinks(): Promise<BraindumpLink[]> {
+  return fetchRows(
+    'braindump_links',
+    'id,created_at,braindump_entry_id,linked_type,linked_id',
+    { column: 'created_at', ascending: false, limit: 2000 },
+    mapBraindumpLinkRow,
+  )
+}
+
+export async function insertBraindumpLink(
+  braindumpEntryId: string,
+  linkedType: BraindumpLink['linkedType'],
+  linkedId: string,
+): Promise<BraindumpLink | null> {
+  const user_id = await currentUserId()
+  if (!user_id || !isDbId(braindumpEntryId)) return null
+  const { data, error } = await supabase
+    .from('braindump_links')
+    .insert({ user_id, braindump_entry_id: braindumpEntryId, linked_type: linkedType, linked_id: linkedId })
+    .select('id,created_at,braindump_entry_id,linked_type,linked_id')
+    .single()
+  warnWrite('braindump_links.insert', error)
+  return data ? mapBraindumpLinkRow(data) : null
+}
+
+export async function deleteBraindumpLinkRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('braindump_links').delete().eq('id', id)
+  warnWrite('braindump_links.delete', error)
 }
 
 /**

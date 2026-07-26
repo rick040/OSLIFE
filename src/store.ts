@@ -41,6 +41,8 @@ import type {
   VendorTag,
   BraindumpEntry,
   BraindumpInput,
+  BraindumpLink,
+  BraindumpLinkType,
   AppSettings,
   GoalProposal,
   PlanBlock,
@@ -150,6 +152,10 @@ import {
   insertReadyBraindumpEntries,
   deleteBraindumpEntryRow,
   resetBraindumpEntryRow,
+  updateBraindumpEntryRow,
+  fetchBraindumpLinks,
+  insertBraindumpLink,
+  deleteBraindumpLinkRow,
   persistEmailRead,
   persistAllEmailsRead,
   summarizeEmail,
@@ -339,6 +345,7 @@ interface State {
   learnedFacts: LearnedFact[]
   vendorTags: VendorTag[]
   braindumpEntries: BraindumpEntry[]
+  braindumpLinks: BraindumpLink[]
   inferences: InferredItem[]
   wikiEntries: WikiEntry[]
   people: Person[]
@@ -388,6 +395,13 @@ interface State {
   braindumpCapture: (input: BraindumpInput) => Promise<BraindumpEntry | null>
   deleteBraindumpEntry: (id: string) => void
   retryBraindumpEntry: (id: string) => void
+  // Manual override of the AI-picked domain/kind/tags (or an outright fix) —
+  // applied optimistically, then persisted; RLS/realtime keep it in sync.
+  updateBraindumpEntry: (id: string, patch: Partial<Pick<BraindumpEntry, 'domain' | 'kind' | 'tags'>>) => void
+  // "Apply this to somewhere": file a braindump entry under an existing task
+  // or Kennisbank entry, beyond just tagging/domaining it.
+  linkBraindumpEntry: (braindumpEntryId: string, linkedType: BraindumpLinkType, linkedId: string) => void
+  unlinkBraindumpEntry: (linkId: string) => void
   // Import a parsed claude.ai chat export as `ready` knowledge entries so HEYRA
   // can search/reference past Claude conversations. Skips ones already imported
   // (matched on meta.conversationId) so re-uploading the same export is safe.
@@ -709,6 +723,7 @@ const seed = () => ({
   learnedFacts: [] as LearnedFact[],
   vendorTags: [] as VendorTag[],
   braindumpEntries: [] as BraindumpEntry[],
+  braindumpLinks: [] as BraindumpLink[],
   inferences: [] as InferredItem[],
   wikiEntries: [] as WikiEntry[],
   people: [] as Person[],
@@ -1037,6 +1052,29 @@ export const useStore = create<State>()(
           ),
         }))
         void resetBraindumpEntryRow(id).then(() => invokeBraindumpIngest(id))
+      },
+
+      updateBraindumpEntry: (id, patch) => {
+        set((s) => ({
+          braindumpEntries: s.braindumpEntries.map((e) => (e.id === id ? { ...e, ...patch } : e)),
+        }))
+        void updateBraindumpEntryRow(id, patch)
+      },
+
+      linkBraindumpEntry: (braindumpEntryId, linkedType, linkedId) => {
+        if (get().braindumpLinks.some((l) => l.braindumpEntryId === braindumpEntryId && l.linkedType === linkedType && l.linkedId === linkedId)) return
+        const tempId = uid('bdl')
+        const optimistic: BraindumpLink = { id: tempId, createdAt: new Date().toISOString(), braindumpEntryId, linkedType, linkedId }
+        set((s) => ({ braindumpLinks: [optimistic, ...s.braindumpLinks] }))
+        void insertBraindumpLink(braindumpEntryId, linkedType, linkedId).then((row) => {
+          if (!row) { set((s) => ({ braindumpLinks: s.braindumpLinks.filter((l) => l.id !== tempId) })); return }
+          set((s) => ({ braindumpLinks: s.braindumpLinks.map((l) => (l.id === tempId ? row : l)) }))
+        })
+      },
+
+      unlinkBraindumpEntry: (linkId) => {
+        removeFromSlice(set, 'braindumpLinks', linkId)
+        void deleteBraindumpLinkRow(linkId)
       },
 
       importClaudeConversations: async (records) => {
@@ -2773,7 +2811,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, identityProfile] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, braindumpLinks, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, identityProfile] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -2784,6 +2822,7 @@ export const useStore = create<State>()(
             fetchLearnedFacts(),
             fetchVendorTags(),
             fetchBraindumpEntries(),
+            fetchBraindumpLinks(),
             fetchAppSettings(),
             fetchPendingInferences(),
             fetchWikiEntries(),
@@ -2850,6 +2889,7 @@ export const useStore = create<State>()(
             // Braindump is app-owned (no mock fallback) — set directly so an empty
             // result genuinely means "nothing captured yet".
             braindumpEntries,
+            braindumpLinks,
             // Inference review queue is app-owned too — set directly.
             inferences,
             // Kennisbank suggest-queue is app-owned too — set directly.
@@ -2965,6 +3005,7 @@ export const useStore = create<State>()(
           { table: 'client_messages', onChange: () => fetchClientMessages().then((d) => set({ messages: d })) },
           { table: 'heyra_memory', onChange: () => fetchLearnedFacts().then((d) => set({ learnedFacts: d })) },
           { table: 'braindump_entries', onChange: () => fetchBraindumpEntries().then((d) => set({ braindumpEntries: d })) },
+          { table: 'braindump_links', onChange: () => fetchBraindumpLinks().then((d) => set({ braindumpLinks: d })) },
           { table: 'wiki_entries', onChange: () => fetchWikiEntries().then((d) => set({ wikiEntries: d })) },
           { table: 'app_settings', onChange: () => fetchAppSettings().then((p) => { if (p) set({ settings: p }) }) },
           { table: 'app_settings', onChange: () => fetchDogProfile().then((p) => { if (p) set({ dogProfile: p }) }) },
