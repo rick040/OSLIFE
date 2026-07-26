@@ -352,6 +352,8 @@ interface State {
   settings: AppSettings
   dataSource: 'mock' | 'live'
   isLoading: boolean
+  /** ISO timestamp of the last successful full load or realtime slice refresh — lets the UI show "bijgewerkt Xm geleden" instead of a static "live" label. */
+  lastSyncedAt: string | null
 
   /** Merges newly-seen extra fields (beyond an action kind's hard-coded baseline) into its cached template, incrementing seenCount so a recurring one keeps a stable label/type instead of being re-guessed every time. Best-effort, fire-and-forget persistence. */
   recordCardTemplateUsage: (templateKey: string, kind: ActionKind, seen: { key: string; label: string; type: ActionFieldType }[]) => void
@@ -708,6 +710,7 @@ const seed = () => ({
   settings: { hourlyRate: 0 } as AppSettings,
   dataSource: 'mock' as const,
   isLoading: true,
+  lastSyncedAt: null as string | null,
 })
 
 // ── Persisted-state rehydration ──────────────────────────────────────────────
@@ -2760,6 +2763,7 @@ export const useStore = create<State>()(
             bodyWeight,
             dataSource: 'live',
             isLoading: false,
+            lastSyncedAt: new Date().toISOString(),
           })
           // REMEMBER + SURFACE run off live data: rebuild essentials, threads,
           // dayLogs, baseline patterns and today's nudge now that it has loaded.
@@ -2872,7 +2876,11 @@ export const useStore = create<State>()(
         liveChannel = syncSlices
           .reduce(
             (channel, slice) =>
-              channel.on('postgres_changes', { event: '*', schema: 'public', table: slice.table }, slice.onChange),
+              channel.on('postgres_changes', { event: '*', schema: 'public', table: slice.table }, () => {
+                // Stamp the sync clock once this slice's refetch actually lands,
+                // so "bijgewerkt Xm geleden" reflects real data, not just a tick.
+                void Promise.resolve(slice.onChange()).then(() => set({ lastSyncedAt: new Date().toISOString() }))
+              }),
             supabase.channel('oslife-live'),
           )
           .subscribe()
