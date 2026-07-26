@@ -11,6 +11,12 @@ RUN apt-get update \
 WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev
+# Headless Chromium, for Pinterest only (notePinterestPin() in server.mjs):
+# Pinterest's bot-management hard-blocks plain HTTP fetches (and even yt-dlp
+# with valid cookies), so pulling a pin's title/image needs a real browser
+# render instead. Instagram/YouTube don't use this at all.
+RUN npx playwright install --with-deps chromium \
+  && rm -rf /var/lib/apt/lists/*
 COPY server.mjs ./
 
 ENV PORT=8080
