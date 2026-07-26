@@ -16,6 +16,7 @@ import {
   Compass,
   Map,
   Dog,
+  Fingerprint,
   CheckSquare,
   Contact,
   FileText,
@@ -44,6 +45,7 @@ export type View =
   | 'dog'
   | 'relaties'
   | 'huisadmin'
+  | 'profile'
   | 'heyra'
   | 'capture'
   | 'memory'
@@ -82,6 +84,7 @@ export const SCREENS: Screen[] = [
   { id: 'huisadmin', label: 'Huis & Admin', icon: FileText, layer: 'Leven · admin', group: 'Life', accent: 'text-buurtkaart' },
   { id: 'inbox', label: 'Inbox', icon: Mail, layer: 'Leven · mail', group: 'Life', accent: 'text-parkingyou' },
   { id: 'northstar', label: 'Noordster', icon: Target, layer: 'Leven · doelen', group: 'Life', accent: 'text-prjct' },
+  { id: 'profile', label: 'Profiel', icon: Fingerprint, layer: 'Leven · wie je nu bent & wordt', group: 'Life', accent: 'text-personal' },
 
   // Business
   { id: 'crm', label: 'CRM', icon: Users, layer: 'Business · klanten', group: 'Business', primary: true, accent: 'text-prjct' },

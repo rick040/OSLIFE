@@ -59,7 +59,7 @@ Routing is **not** URL-based (no react-router) — it's a single `useState<View>
 
 ## 3. Screens
 
-27 `View`s across 5 `ScreenGroup`s, plus several modal-only screens that aren't in `nav.ts` at all (opened via local component state instead of navigation).
+28 `View`s across 5 `ScreenGroup`s, plus several modal-only screens that aren't in `nav.ts` at all (opened via local component state instead of navigation).
 
 ### Surface (daily-use core)
 
@@ -84,6 +84,7 @@ Routing is **not** URL-based (no react-router) — it's a single `useState<View>
 | HuisAdmin (Huis & Admin) | `src/views/HuisAdmin.tsx` | `huisadmin` | Household admin/contract tracker (insurance, warranties, subscriptions-admin) with renewal/notice-period countdown. `adminItems`. |
 | Inbox | `src/views/Inbox.tsx` | `inbox` | Gmail-synced inbox viewer. `emails` + local importance classifier (`lib/crm/emailClassify.ts`, ignores the synced `importance` field as unreliable) and domain-tag filter chips. Thread-grouping, mark read/all-read, deep link to Gmail. |
 | NorthStar (Noordster) | `src/views/NorthStar.tsx` | `northstar` | Goals + milestones. `goals, milestones, goalProposals`, including HEYRA-authored goal proposals (`proposeGoals()` → `heyra/goals.ts`) that can be accepted/dismissed. |
+| Profile (Profiel) | `src/views/Profile.tsx` | `profile` | Identity/personality profile screen, 3 tabs over `store.identityProfile`: **Huidig** — AI-synthesized current-state read (traits/strengths/weaknesses/accelerators) from learned facts, patterns, profile facts, braindumps and habits (`generateCurrentProfile()` → `heyra/identity.ts:synthesizeCurrentProfile`, brain-first with rule-based fallback, same honesty contract as `goals.ts`); **Droom** — hand-written free-form markdown dream profile (`updateDreamProfile()`), filled in by Rick, never AI-generated; **Landschap** — AI-synthesized environment that bridges current → dream (people/habits/environment, `generateLandscape()` → `heyra/identity.ts:synthesizeLandscape`), gated on a non-empty dream profile. Persisted to the one-row `identity_profile` table. |
 
 ### Business
 
@@ -269,6 +270,7 @@ Rule-based-first, LLM-second ("brain-first with rule-based fallback"): every net
 - **`cards.ts`** — dynamic reply-card builders. `buildSearchCard`, `buildChartCard` (picks metric matching the question: spend/energy/steps/habit-streak/open-loops-by-domain), `findProject`.
 - **`suggestions.ts`** — proactive chip suggestions. `contextualSuggestions(ctx)` (10 candidate prompts scored from live data), `followUpSuggestions(topic, ctx, extra?)`.
 - **`goals.ts`** — North Star goal proposer. `proposeGoals(ctx)` (brain-first, falls back to `ruleBasedProposals`: revenue-doubling from top domain, sleep goal, "open loops under 5").
+- **`identity.ts`** — Profile screen synthesizer, same brain-first/rule-fallback contract. `synthesizeCurrentProfile(ctx)` distills learned facts/patterns/profile facts/braindumps/habits into an `IdentitySnapshot` (traits/strengths/weaknesses/accelerators); falls back to a rule-based read of live patterns/habits on brain failure. `synthesizeLandscape(ctx)` proposes the `Landscape` (people/habits/environment) bridging current → dream profile — requires a non-empty hand-written dream profile, returns `null` otherwise.
 - **`planner.ts`** — day/week planner. `ruleBasedDayPlan(date, ctx)`, `generateAIPlan(dates, ctx)` (brain call, validated against fixed events/bounds/dedup), `buildWeekPlan(dates, ctx)` (brain first, rule-based fallback), `weekDates(fromIso)`.
 
 **The 12 agents (`src/heyra/agents/`)** — shared contract in **`types.ts`**: `Store`, `AgentContext { store, memory, item }`, `AgentResult { text, topic, draft?, search?, chart?, project?, clientIntake?, entity?, fromBrain? }`, `type Agent = (input, ctx) => Promise<AgentResult>`.
@@ -424,6 +426,7 @@ All tables are owner-scoped via `user_id` + an `owner` RLS policy. Passively-ing
 | 27 | `20260714170000_app_sessions.sql` | Creates `app_sessions` (per-app foreground time from a MacroDroid stopwatch macro); derives daily per-app totals into `screentime`. **Superseded** by #29 below — table dropped. |
 | 28 | `20260714170000_cleaning_schedule.sql` | Creates `cleaning_log` (per-task-per-day completion; schedule content itself lives in `src/cleaning/schedule.ts`). |
 | 29 | `20260725050000_screentime_app_events.sql` | Drops `app_sessions` (stopwatch approach retired). Creates `screentime_events` (raw MacroDroid App Opened/Closed log, direct — no sheet, no stopwatch); `screentime-app-ingest` derives per-app daily totals from it into `screentime`. Truncates `screentime` to clear the old sheet-imported rows. |
+| 30 | `20260726120000_identity_profile.sql` | Creates `identity_profile` (one owner-scoped row, `heyra_memory`-style jsonb blobs): `current` (AI-synthesized current-state snapshot), `dream_md` (hand-written free-form dream profile), `landscape` (AI-synthesized environment bridging the two). Backs the Profile screen. |
 
 > Migrations #27 and #28 share the same timestamp prefix — harmless (Postgres/tooling sorts by full filename) but worth flagging if migration tooling ever sorts strictly by numeric prefix. (This table isn't kept in lockstep with every migration added after 2026-07-14 — only screen-time-relevant entries are added here.)
 

@@ -774,6 +774,37 @@ export interface GoalProposal {
   source: 'ai' | 'rule'
 }
 
+// ── Profile: current-state identity + dream profile + landscape ─────────────
+// Distinct from `ProfileFact` (rule-derived, versioned facts feeding the
+// inference engine) — this is HEYRA's holistic read of "who Rick is right now"
+// vs. "who Rick needs to become" vs. the environment that bridges the two,
+// synthesized on demand from learned facts, patterns, profile facts and
+// braindumps. Same brain-first/rule-fallback contract as goals.ts; grounded
+// only in what's actually been captured.
+
+export interface IdentitySnapshot {
+  summary: string
+  traits: string[]
+  strengths: string[]
+  weaknesses: string[]
+  accelerators: string[]
+  generatedAt: string | null
+}
+
+export interface Landscape {
+  summary: string
+  people: string[]
+  habits: string[]
+  environment: string[]
+  generatedAt: string | null
+}
+
+export interface IdentityProfile {
+  current: IdentitySnapshot
+  dreamMd: string
+  landscape: Landscape
+}
+
 // ── Dagplanner: an AI-proposed / calendar block on a specific day ─────────────
 
 export type PlanBlockKind =

@@ -65,6 +65,7 @@ import type {
   WorkoutExercise,
   WorkoutSession,
   WorkoutSet,
+  IdentityProfile,
 } from './types'
 import { vendorKey, isUntagged, isTransfer } from './finance/categories'
 import { categorizeVendor } from './heyra/agents/vendorAgent'
@@ -84,6 +85,7 @@ import { buildDogCoachPrompt } from './dog/dogCoach'
 import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
 import type { CardTemplate, ActionKind, ActionFieldType } from './heyra/actions/types'
 import { proposeGoals as proposeGoalsAI } from './heyra/goals'
+import { synthesizeCurrentProfile, synthesizeLandscape } from './heyra/identity'
 import { buildWeekPlan, weekDates, dayBounds, type DayBounds } from './heyra/planner'
 import {
   deriveEssentials,
@@ -252,6 +254,8 @@ import {
   invokeIdeaElaborate,
   fetchCardTemplates,
   upsertCardTemplate,
+  fetchIdentityProfile,
+  upsertIdentityProfile,
 } from './lib/supabase'
 
 // The single Realtime channel opened by loadLiveData(). Held at module scope so
@@ -346,6 +350,12 @@ interface State {
   budgetCaps: BudgetCap[]
   profileFacts: ProfileFact[]
   summaries: MemorySummary[]
+  // Profile screen: huidig profiel (AI-synthesized) / droomprofiel (hand-written) / landschap (AI-synthesized).
+  identityProfile: IdentityProfile
+  generatingProfile: boolean
+  lastProfileError: string | null
+  generatingLandscape: boolean
+  lastLandscapeError: string | null
   businessIdeas: BusinessIdea[]
   /** Cached extra fields per HEYRA action kind (proposeAction.ts) — see recordCardTemplateUsage. */
   cardTemplates: CardTemplate[]
@@ -478,6 +488,11 @@ interface State {
   proposeGoals: () => Promise<void>
   acceptGoalProposal: (id: string) => void
   dismissGoalProposal: (id: string) => void
+  // Profile screen — huidig profiel is AI-synthesized on demand; droomprofiel is
+  // hand-written by Rick; landschap is AI-synthesized from the other two.
+  generateCurrentProfile: () => Promise<void>
+  updateDreamProfile: (md: string) => void
+  generateLandscape: () => Promise<void>
   // Dagplanner — generate/lock/dismiss the weekly day plan.
   generateWeekPlan: () => Promise<void>
   lockPlanBlock: (id: string) => void
@@ -705,6 +720,15 @@ const seed = () => ({
   budgetCaps: [] as BudgetCap[],
   profileFacts: [] as ProfileFact[],
   summaries: [] as MemorySummary[],
+  identityProfile: {
+    current: { summary: '', traits: [], strengths: [], weaknesses: [], accelerators: [], generatedAt: null },
+    dreamMd: '',
+    landscape: { summary: '', people: [], habits: [], environment: [], generatedAt: null },
+  } as IdentityProfile,
+  generatingProfile: false,
+  lastProfileError: null as string | null,
+  generatingLandscape: false,
+  lastLandscapeError: null as string | null,
   businessIdeas: [] as BusinessIdea[],
   cardTemplates: [] as CardTemplate[],
   settings: { hourlyRate: 0 } as AppSettings,
@@ -759,6 +783,17 @@ export function applyPersistDefaults(
   state.loadingQuotes = false
   state.financeCoachLoading = false
   state.dogCoachLoading = false
+  state.generatingProfile = false
+  state.generatingLandscape = false
+  if (!state.identityProfile) {
+    state.identityProfile = {
+      current: { summary: '', traits: [], strengths: [], weaknesses: [], accelerators: [], generatedAt: null },
+      dreamMd: '',
+      landscape: { summary: '', people: [], habits: [], environment: [], generatedAt: null },
+    }
+  }
+  if (state.lastProfileError === undefined) state.lastProfileError = null
+  if (state.lastLandscapeError === undefined) state.lastLandscapeError = null
   if (!state.stockQuotes) state.stockQuotes = {}
   if (state.financeCoach === undefined) state.financeCoach = null
   if (state.dogCoach === undefined) state.dogCoach = null
@@ -1685,6 +1720,61 @@ export const useStore = create<State>()(
 
       dismissGoalProposal: (id) =>
         set((s) => ({ goalProposals: s.goalProposals.filter((x) => x.id !== id) })),
+
+      generateCurrentProfile: async () => {
+        set({ generatingProfile: true, lastProfileError: null })
+        const s = get()
+        try {
+          const current = await synthesizeCurrentProfile({
+            learnedFacts: s.learnedFacts,
+            patterns: s.patterns,
+            profileFacts: s.profileFacts,
+            braindumpEntries: s.braindumpEntries,
+            habits: s.habits,
+          })
+          set((st) => ({
+            identityProfile: { ...st.identityProfile, current },
+            generatingProfile: false,
+            activity: pushSignal(st.activity, { text: 'Huidig profiel bijgewerkt', domain: 'cross', loop: 'slow' }),
+          }))
+          void upsertIdentityProfile({ current })
+        } catch (err) {
+          console.warn('[OSLIFE] profile synthesis failed', err)
+          set({ generatingProfile: false, lastProfileError: 'HEYRA kon het profiel nu niet bijwerken — probeer het zo nog eens.' })
+        }
+      },
+
+      updateDreamProfile: (md) => {
+        set((s) => ({ identityProfile: { ...s.identityProfile, dreamMd: md } }))
+        void upsertIdentityProfile({ dreamMd: md })
+      },
+
+      generateLandscape: async () => {
+        set({ generatingLandscape: true, lastLandscapeError: null })
+        const s = get()
+        try {
+          const landscape = await synthesizeLandscape({
+            current: s.identityProfile.current,
+            dreamMd: s.identityProfile.dreamMd,
+          })
+          if (!landscape) {
+            set({
+              generatingLandscape: false,
+              lastLandscapeError: 'Vul eerst je droomprofiel in — daar bouwt het landschap op voort.',
+            })
+            return
+          }
+          set((st) => ({
+            identityProfile: { ...st.identityProfile, landscape },
+            generatingLandscape: false,
+            activity: pushSignal(st.activity, { text: 'Landschap bijgewerkt', domain: 'cross', loop: 'slow' }),
+          }))
+          void upsertIdentityProfile({ landscape })
+        } catch (err) {
+          console.warn('[OSLIFE] landscape synthesis failed', err)
+          set({ generatingLandscape: false, lastLandscapeError: 'HEYRA kon het landschap nu niet genereren — probeer het zo nog eens.' })
+        }
+      },
 
       generateWeekPlan: async () => {
         set({ planningWeek: true, lastPlanError: null })
@@ -2683,7 +2773,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, identityProfile] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -2717,6 +2807,7 @@ export const useStore = create<State>()(
             fetchWorkoutExercises(),
             fetchWorkoutSessions(),
             fetchLatestBodyWeight(),
+            fetchIdentityProfile(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -2782,6 +2873,7 @@ export const useStore = create<State>()(
             workoutExercises,
             workoutSessions,
             bodyWeight,
+            identityProfile,
             dataSource: 'live',
             isLoading: false,
             lastSyncedAt: new Date().toISOString(),
