@@ -73,6 +73,11 @@ function NudgeRow({ nudge, onNav }: { nudge: DashNudge; onNav: (v: string) => vo
       <p className="text-sm text-ink line-clamp-2 flex-1 min-w-0">
         <MarkdownInline text={nudge.text} />
       </p>
+      {nudge.badge && (
+        <span className="shrink-0 rounded-full bg-sunken px-2 py-0.5 text-[10px] font-medium tabular-nums text-faint">
+          {nudge.badge}
+        </span>
+      )}
       {nudge.cta && (
         <button
           onClick={() => onNav(nudge.cta!.view)}

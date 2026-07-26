@@ -17,7 +17,7 @@ const CADENCE_NL: Record<Cadence, string> = {
   quarterly: 'per kwartaal',
   yearly: 'per jaar',
 }
-function monthly(amount: number, cadence: Cadence): number {
+export function monthly(amount: number, cadence: Cadence): number {
   switch (cadence) {
     case 'weekly': return (amount * 52) / 12
     case 'monthly': return amount
