@@ -1,16 +1,26 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { SectionTitle, Empty, DomainChip, Overlay } from '../components/ui'
 import { BraindumpCard, BraindumpDetail, SOURCE_LABEL } from '../components/BraindumpCard'
 import { detectTextShare } from '../lib/braindump'
+import { uploadBraindumpFile } from '../lib/supabase'
 import { parseClaudeExport } from '../lib/claudeImport'
 import type { BraindumpEntry, BraindumpSourceKind, Domain } from '../types'
-import { Inbox, Search, Share2, Loader2, Upload, Sparkles, X } from 'lucide-react'
+import { Inbox, Search, Share2, Loader2, Upload, Sparkles, X, Mic, Square } from 'lucide-react'
+
+// Recording longer than this auto-stops and submits — keeps a slip of the
+// finger from turning into an hour-long upload; matches the worker's own
+// ffmpeg transcode timeout (20 min) with headroom to spare.
+const MAX_RECORD_SECS = 15 * 60
 
 const DOMAINS: Domain[] = ['parkingyou', 'prjct', 'buurtkaart', 'personal', 'cross']
 
 export default function Capture() {
-  const { braindumpEntries, braindumpCapture, deleteBraindumpEntry, retryBraindumpEntry, importClaudeConversations } = useStore()
+  const {
+    braindumpEntries, braindumpCapture, deleteBraindumpEntry, retryBraindumpEntry, updateBraindumpEntry,
+    braindumpLinks, linkBraindumpEntry, unlinkBraindumpEntry, threads, wikiEntries,
+    importClaudeConversations,
+  } = useStore()
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
   const [open, setOpen] = useState<BraindumpEntry | null>(null)
@@ -64,12 +74,109 @@ export default function Capture() {
     setSaving(false)
   }
 
+  // Voice capture: record in-browser with MediaRecorder, upload the raw audio,
+  // and let the existing braindump-worker pipeline (ffmpeg → Groq Whisper →
+  // Claude) transcribe + summarise it server-side — the same accurate path
+  // already used for shared audio/video, instead of the flaky browser
+  // Speech Recognition API HEYRA's voice input relies on.
+  const [recording, setRecording] = useState(false)
+  const [recordSecs, setRecordSecs] = useState(0)
+  const [uploadingVoice, setUploadingVoice] = useState(false)
+  const [micError, setMicError] = useState<string | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+  const streamRef = useRef<MediaStream | null>(null)
+  const timerRef = useRef<number | null>(null)
+  const secsRef = useRef(0)
+
+  useEffect(() => () => {
+    // Stop any open mic + timer if the user navigates away mid-recording.
+    if (timerRef.current) window.clearInterval(timerRef.current)
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+  }, [])
+
+  async function startRecording() {
+    setMicError(null)
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMicError('Opnemen wordt niet ondersteund in deze browser.')
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : ''
+      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+      chunksRef.current = []
+      mr.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data) }
+      mr.onstop = onRecordingStop
+      mr.start()
+      mediaRecorderRef.current = mr
+      setRecording(true)
+      secsRef.current = 0
+      setRecordSecs(0)
+      // Ticks a plain ref + a same-value state set, rather than deriving the
+      // next value inside setRecordSecs's updater — React 18 StrictMode
+      // double-invokes updaters to catch impure ones, which would double-fire
+      // the side-effecting stopRecording() call below.
+      timerRef.current = window.setInterval(() => {
+        secsRef.current += 1
+        setRecordSecs(secsRef.current)
+        if (secsRef.current >= MAX_RECORD_SECS) stopRecording()
+      }, 1000)
+    } catch {
+      setMicError('Kon niet bij de microfoon — check de toestemming in je browser.')
+    }
+  }
+
+  function stopRecording() {
+    if (timerRef.current) { window.clearInterval(timerRef.current); timerRef.current = null }
+    mediaRecorderRef.current?.stop()
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+    setRecording(false)
+  }
+
+  async function onRecordingStop() {
+    const blob = new Blob(chunksRef.current, { type: mediaRecorderRef.current?.mimeType || 'audio/webm' })
+    chunksRef.current = []
+    if (blob.size < 800) return // accidental tap, nothing worth transcribing
+    setUploadingVoice(true)
+    try {
+      const path = await uploadBraindumpFile(blob, `voice-${Date.now()}.webm`)
+      if (!path) { setMicError('Uploaden van de opname is mislukt — probeer het nog eens.'); return }
+      const row = await braindumpCapture({ sourceKind: 'audio', storagePath: path, sourceTag: 'voice-record' })
+      if (!row) setMicError('Opslaan van de opname is mislukt — probeer het nog eens.')
+    } finally {
+      setUploadingVoice(false)
+    }
+  }
+
+  function fmtSecs(s: number) {
+    const m = Math.floor(s / 60)
+    const r = s % 60
+    return `${m}:${r.toString().padStart(2, '0')}`
+  }
+
   // kinds actually present, for the filter chip row
   const presentKinds = useMemo(() => {
     const set = new Set<BraindumpSourceKind>()
     braindumpEntries.forEach((e) => set.add(e.sourceKind))
     return [...set]
   }, [braindumpEntries])
+
+  // every tag used across your own braindumps, for the tag-editor's autocomplete
+  const allTags = useMemo(() => {
+    const set = new Set<string>()
+    braindumpEntries.forEach((e) => e.tags.forEach((t) => set.add(t)))
+    return [...set].sort()
+  }, [braindumpEntries])
+
+  // "apply this to somewhere" — pick lists for the link editor
+  const taskOptions = useMemo(
+    () => threads.filter((t) => t.status === 'open').map((t) => ({ id: t.id, title: t.title })),
+    [threads],
+  )
+  const wikiOptions = useMemo(() => wikiEntries.map((w) => ({ id: w.id, title: w.title })), [wikiEntries])
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
@@ -107,15 +214,47 @@ export default function Capture() {
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit() }}
           rows={3}
           placeholder="Wat er ook in je hoofd zit… (plak gerust een link)"
-          className="w-full rounded-xl bg-surface border border-line px-4 py-3 text-sm outline-none focus:border-buurtkaart/50 resize-none"
+          disabled={recording}
+          className="w-full rounded-xl bg-surface border border-line px-4 py-3 text-sm outline-none focus:border-buurtkaart/50 resize-none disabled:opacity-50"
         />
+
+        {recording && (
+          <div className="mt-3 flex items-center gap-2 rounded-xl bg-cross/10 px-3 py-2 text-sm text-cross-deep">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inline-flex h-full w-full rounded-full bg-cross opacity-75 animate-ping" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cross" />
+            </span>
+            Aan het opnemen… {fmtSecs(recordSecs)}
+          </div>
+        )}
+        {micError && !recording && (
+          <p className="mt-3 text-xs text-cross-deep">{micError}</p>
+        )}
+
         <div className="flex items-center justify-between mt-3">
           <span className="text-[11px] text-faint flex items-center gap-1.5">
             <Share2 className="h-3.5 w-3.5" /> Of deel iets vanaf je telefoon naar “Braindump”.
           </span>
-          <button className="btn-primary" onClick={submit} disabled={!text.trim() || saving}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Opslaan
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className={recording ? 'btn-primary !bg-cross' : 'btn-ghost'}
+              onClick={recording ? stopRecording : startRecording}
+              disabled={uploadingVoice}
+              title={recording ? 'Opname stoppen' : 'Spraakmemo opnemen'}
+            >
+              {uploadingVoice ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : recording ? (
+                <Square className="h-4 w-4" />
+              ) : (
+                <Mic className="h-4 w-4" />
+              )}
+              {recording ? 'Stop' : uploadingVoice ? 'Opslaan…' : 'Spreek in'}
+            </button>
+            <button className="btn-primary" onClick={submit} disabled={!text.trim() || saving || recording}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Opslaan
+            </button>
+          </div>
         </div>
       </div>
 
@@ -194,6 +333,13 @@ export default function Capture() {
           onClose={() => setOpen(null)}
           onDelete={deleteBraindumpEntry}
           onRetry={retryBraindumpEntry}
+          onUpdate={updateBraindumpEntry}
+          allTags={allTags}
+          links={braindumpLinks.filter((l) => l.braindumpEntryId === openLive.id)}
+          taskOptions={taskOptions}
+          wikiOptions={wikiOptions}
+          onLink={linkBraindumpEntry}
+          onUnlink={unlinkBraindumpEntry}
         />
       )}
     </div>

@@ -107,6 +107,18 @@ export interface WikiEntry {
   braindumpEntryId: string | null
 }
 
+/** "Apply this to somewhere": a braindump entry filed under an existing task or
+ *  Kennisbank entry, not just tagged/domained. Polymorphic on `linkedType`. */
+export type BraindumpLinkType = 'task' | 'wiki_entry'
+
+export interface BraindumpLink {
+  id: string
+  createdAt: string // ISO
+  braindumpEntryId: string
+  linkedType: BraindumpLinkType
+  linkedId: string
+}
+
 /** Raw payload the share sheet / capture box hands to store.braindumpCapture(). */
 export interface BraindumpInput {
   sourceKind: BraindumpSourceKind

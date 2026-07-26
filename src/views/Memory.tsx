@@ -153,6 +153,11 @@ export default function Memory() {
     braindumpEntries,
     deleteBraindumpEntry,
     retryBraindumpEntry,
+    updateBraindumpEntry,
+    braindumpLinks,
+    linkBraindumpEntry,
+    unlinkBraindumpEntry,
+    wikiEntries,
     closeThread,
     reopenThread,
     dataSource,
@@ -258,6 +263,16 @@ export default function Memory() {
     [braindumpEntries],
   )
   const openLiveEntry = openEntry ? readyBraindumps.find((e) => e.id === openEntry.id) ?? openEntry : null
+  const allBraindumpTags = useMemo(() => {
+    const set = new Set<string>()
+    ;(braindumpEntries ?? []).forEach((e) => e.tags.forEach((t) => set.add(t)))
+    return [...set].sort()
+  }, [braindumpEntries])
+  const taskOptions = useMemo(
+    () => threads.filter((t) => t.status === 'open').map((t) => ({ id: t.id, title: t.title })),
+    [threads],
+  )
+  const wikiOptions = useMemo(() => (wikiEntries ?? []).map((w) => ({ id: w.id, title: w.title })), [wikiEntries])
 
   const tabs: { id: Tab; label: string; icon: typeof Lock; count: number; desc: string }[] = [
     { id: 'essentials', label: 'Basis', icon: Lock, count: essentials.length, desc: 'Permanente, structurele feiten. Ze veranderen niet en verlopen niet.' },
@@ -546,6 +561,13 @@ export default function Memory() {
           onClose={() => setOpenEntry(null)}
           onDelete={deleteBraindumpEntry}
           onRetry={retryBraindumpEntry}
+          onUpdate={updateBraindumpEntry}
+          allTags={allBraindumpTags}
+          links={(braindumpLinks ?? []).filter((l) => l.braindumpEntryId === openLiveEntry.id)}
+          taskOptions={taskOptions}
+          wikiOptions={wikiOptions}
+          onLink={linkBraindumpEntry}
+          onUnlink={unlinkBraindumpEntry}
         />
       )}
     </div>
