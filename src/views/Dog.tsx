@@ -8,6 +8,7 @@ import { SectionTitle, Empty, Overlay } from '../components/ui'
 import { Markdown } from '../components/Markdown'
 import { TaskRow } from '../components/v3'
 import HealthConditions from '../components/HealthConditions'
+import WalkRouteCard from '../components/WalkRouteCard'
 import { useLongPress } from '../lib/useLongPress'
 import { isoToDatetimeLocal, nowDatetimeLocal } from '../lib/datetimeLocal'
 import type { DogKind, DogEntry, DogMedicalType, DogProfile } from '../types'
@@ -704,6 +705,9 @@ export default function Dog() {
           </div>
         )}
       </div>
+
+      {/* Auto-tracked walk routes (standalone Android app) */}
+      <WalkRouteCard />
 
       {/* Weight chart */}
       {weights.length > 1 && (

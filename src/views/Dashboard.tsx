@@ -8,7 +8,9 @@ import { OPENING_BALANCE } from '../mockData'
 import { clientHealth } from '../lib/crm/followUp'
 import { classifyImportance } from '../lib/crm/emailClassify'
 import { SetupHint, Sparkline, Ring } from '../components/ui'
-import { GreetingHeader, HeroStat, MetricTile, GoalRow, AgendaCard, type Tone } from '../components/v3'
+import { GreetingHeader, HeroStat, MetricTile, GoalRow, AgendaCard, SuggestedBlockCard, type Tone } from '../components/v3'
+import { suggestTodayBlocks, toMin } from '../heyra/blockSuggestions'
+import { usePersistedState } from '../lib/usePersistedState'
 import { useWeather, weatherMeta } from '../hooks/useWeather'
 import { PriorityList, storeNudgeToDash, type DashNudge, type NudgeTone } from '../components/NudgeCard'
 import { MarkdownInline } from '../components/Markdown'
@@ -119,6 +121,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     dogReminders,
     clients,
     completeBlock,
+    addSuggestedBlock,
     tickHabit,
     toggleMilestone,
     loadLiveData,
@@ -162,7 +165,12 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const today = healthDays.find((d) => d.date === TODAY) ?? healthDays[healthDays.length - 1]
   // Vandaag: every scheduled block today, soonest first — skipped ones drop
   // off the agenda row since they're no longer part of today's actual plan.
-  const todaysBlocks = [...blocks].filter((b) => b.status !== 'skipped').sort((a, b) => a.start.localeCompare(b.start))
+  // Checking one off pushes it after every still-open block (each group still
+  // soonest-first) instead of leaving a done card sitting mid-row, so the
+  // overview opens on what's actually still ahead of you.
+  const todaysBlocks = [...blocks]
+    .filter((b) => b.status !== 'skipped')
+    .sort((a, b) => (a.status === 'done') === (b.status === 'done') ? a.start.localeCompare(b.start) : a.status === 'done' ? 1 : -1)
 
   // Step sync from the phone can land hours after sleep/energy are already
   // logged — a bare "0.0k" then reads as "you haven't moved" rather than
@@ -250,6 +258,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const projectById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
   const notBlocked = (projectId: string) => projectById.get(projectId)?.status !== 'blocked'
   const dueToday = projectTasks.filter((t) => !t.done && t.dueDate && t.dueDate <= TODAY && notBlocked(t.projectId))
+  const focusTasks = [...dueToday].sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? '')).slice(0, 5)
 
   // Nudge inputs: every currently-true thing that actually needs attention.
   const overduePay = openPayments.filter((p) => p.due && daysBetween(TODAY, p.due) < 0)
@@ -269,6 +278,33 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   // permanence problem as an unpaid invoice, just for a relationship instead
   // of money.
   const clientsNeedingFollowUp = clients.filter((c) => clientHealth(c, TODAY) === 'red')
+
+  // Voorgesteld voor vandaag: real suggested blocks for whatever's left of the
+  // day — habits still open, tasks due, overdue money/mail, Kyra reminders,
+  // a lapsed follow-up, the next milestone, even last night's sleep — instead
+  // of the same generic set every time. Dismissals persist for the day so a
+  // reload doesn't resurrect something already waved off.
+  const [dismissedSuggestions, setDismissedSuggestions] = usePersistedState<string[]>(
+    `oslife.dismissedSuggestions.${TODAY}`,
+    [],
+  )
+  const suggestedBlocks = useMemo(() => {
+    const all = suggestTodayBlocks({
+      nowMinutes: amsterdamMinutesNow(),
+      busy: todaysBlocks.map((b) => [toMin(b.start), toMin(b.end)]),
+      todaysBlockTitles: todaysBlocks.map((b) => b.title.toLowerCase()),
+      habitsOpen: habitsLeft.map((h) => ({ id: h.id, name: h.name, emoji: h.emoji, streak: h.streak })),
+      dogDue: dogDue.map((r) => ({ id: r.id, title: r.title })),
+      overduePayments: overduePay.map((p) => ({ domain: p.domain })),
+      unreadImportantMailCount: unreadImportant.length,
+      focusTasks: focusTasks.slice(0, 2).map((t) => ({ id: t.id, name: t.name, domain: projectById.get(t.projectId)?.domain ?? 'prjct' })),
+      clientsNeedingFollowUp: clientsNeedingFollowUp.slice(0, 1).map((c) => ({ id: c.id, name: c.name, domain: c.domain })),
+      nextMilestone: nextMilestone ? { title: nextMilestone.title, domain: revenueGoal?.domain ?? 'personal' } : null,
+      sleepHours: today && today.date === TODAY && today.sleepHours > 0 ? today.sleepHours : null,
+    })
+    return all.filter((s) => !dismissedSuggestions.includes(s.id))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todaysBlocks, habitsLeft, dogDue, overduePay, unreadImportant, focusTasks, clientsNeedingFollowUp, nextMilestone, revenueGoal, today, dismissedSuggestions, projectById])
 
   // Vraagt om aandacht: every currently-true thing that needs attention, most
   // urgent first, each stating what ignoring it actually costs — not just
@@ -612,6 +648,29 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         <SetupHint icon={CalendarDays} title="Nog niks ingepland vandaag" cta="Bouw je dag" onCta={() => onNav('daybuilder')}>
           Laat de planner je dag vullen met taken, routines en pauzes.
         </SetupHint>
+      )}
+
+      {/* ── voorgesteld voor vandaag: fresh, data-driven block proposals for the
+          rest of the day — never the same fixed set, since every candidate is
+          conditional on something actually being true right now ──────────── */}
+      {suggestedBlocks.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted px-1">Voorgesteld voor vandaag</p>
+          <div className="flex gap-2.5 overflow-x-auto pb-1 -mx-1 px-1">
+            {suggestedBlocks.map((s) => (
+              <SuggestedBlockCard
+                key={s.id}
+                emoji={s.emoji}
+                title={s.title}
+                start={s.start}
+                domain={s.domain}
+                rationale={s.rationale}
+                onAdd={() => addSuggestedBlock({ title: s.title, domain: s.domain, start: s.start, end: s.end, rationale: s.rationale })}
+                onDismiss={() => setDismissedSuggestions((prev) => (prev.includes(s.id) ? prev : [...prev, s.id]))}
+              />
+            ))}
+          </div>
+        </div>
       )}
 
       {/* ── lichaam & gewoontes: the daily-maintenance rings and habit chips

@@ -52,3 +52,16 @@ export function dueLabel(
   if (active && d < 0) return { label: overdueLabel(d), overdue: true }
   return { label: `${prefix}${fmtDate(iso)}`, overdue: false }
 }
+
+/** Compact "how long ago" label for a sync/updated-at timestamp: "net nu", "5m geleden", "3u geleden". */
+export function timeAgo(iso: string | null, nowMs: number = Date.now()): string {
+  if (!iso) return 'nog niet gesynchroniseerd'
+  const seconds = Math.max(0, Math.round((nowMs - new Date(iso).getTime()) / 1000))
+  if (seconds < 45) return 'net nu'
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes}m geleden`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours}u geleden`
+  const days = Math.round(hours / 24)
+  return `${days}d geleden`
+}

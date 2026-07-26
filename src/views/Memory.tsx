@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { fmtDate } from '../domains'
-import { dueLabel } from '../lib/dates'
+import { dueLabel, daysUntil, timeAgo } from '../lib/dates'
 import { DomainChip, ConfidenceBar, Empty } from '../components/ui'
 import { BraindumpCard, BraindumpDetail } from '../components/BraindumpCard'
 import { searchMemory } from '../lib/supabase'
 import { cogneeSearch } from '../heyra/agents/cognee'
-import type { BraindumpEntry, MemoryHit, InferredItem } from '../types'
+import type { BraindumpEntry, MemoryHit, InferredItem, Thread } from '../types'
 import { CATEGORY_META, type FactCategory } from '../heyra/learning'
 import {
   Lock,
@@ -27,6 +27,8 @@ import {
   Trash2,
   Sparkles,
   Check,
+  ChevronDown,
+  RefreshCw,
 } from 'lucide-react'
 
 type Tab = 'essentials' | 'learned' | 'threads' | 'patterns' | 'summaries' | 'braindumps' | 'inferences'
@@ -97,6 +99,43 @@ function InferenceCard({ item, onResolve }: {
   )
 }
 
+function ThreadRow({ t, onClose, onReopen }: {
+  t: Thread
+  onClose: (id: string) => void
+  onReopen: (id: string) => void
+}) {
+  const due = dueLabel(t.due, { prefix: 'deadline ', none: 'geen deadline', active: t.status === 'open' })
+  return (
+    <div className={`card p-3 flex items-center justify-between gap-3 ${t.status === 'closed' ? 'opacity-50' : ''}`}>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <DomainChip domain={t.domain} small />
+          {t.status === 'closed' ? (
+            <span className="chip bg-buurtkaart/15 text-buurtkaart-deep">gesloten</span>
+          ) : (
+            <span className={`text-[11px] ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>
+              {due.label}
+            </span>
+          )}
+        </div>
+        <p className={`text-sm mt-0.5 truncate ${t.status === 'closed' ? 'line-through text-faint' : 'text-ink'}`}>
+          {t.title}
+        </p>
+        <p className="text-[11px] text-faint">{'→'} {t.owedTo}</p>
+      </div>
+      {t.status === 'open' ? (
+        <button className="btn-ghost shrink-0 !py-1.5" onClick={() => onClose(t.id)}>
+          <CheckCircle2 className="h-4 w-4" /> Sluiten
+        </button>
+      ) : (
+        <button className="btn-ghost shrink-0 !py-1.5" onClick={() => onReopen(t.id)}>
+          <RotateCcw className="h-4 w-4" /> Heropenen
+        </button>
+      )}
+    </div>
+  )
+}
+
 const SOURCE_LABEL: Record<string, string> = {
   braindump: 'Braindump',
   interaction: 'Contact',
@@ -114,9 +153,16 @@ export default function Memory() {
     braindumpEntries,
     deleteBraindumpEntry,
     retryBraindumpEntry,
+    updateBraindumpEntry,
+    braindumpLinks,
+    linkBraindumpEntry,
+    unlinkBraindumpEntry,
+    wikiEntries,
     closeThread,
     reopenThread,
     dataSource,
+    lastSyncedAt,
+    loadLiveData,
     inferences,
     resolveInference,
     loadInferences,
@@ -124,6 +170,50 @@ export default function Memory() {
   const [tab, setTab] = useState<Tab>('threads')
   const [openEntry, setOpenEntry] = useState<BraindumpEntry | null>(null)
   const [learnedFilter, setLearnedFilter] = useState<FactCategory | 'all'>('all')
+  const [showClosedThreads, setShowClosedThreads] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const handleRefresh = async () => {
+    if (syncing) return
+    setSyncing(true)
+    try {
+      await loadLiveData()
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  // Relative "Xm geleden" sync label — re-render every 30s so it stays fresh
+  // without needing new data to actually arrive.
+  const [clockTick, setClockTick] = useState(0)
+  useEffect(() => {
+    const id = window.setInterval(() => setClockTick((n) => n + 1), 30_000)
+    return () => window.clearInterval(id)
+  }, [])
+  const syncLabel = useMemo(() => timeAgo(lastSyncedAt), [lastSyncedAt, clockTick])
+
+  const openThreads = useMemo(
+    () =>
+      threads
+        .filter((t) => t.status === 'open')
+        .slice()
+        .sort((a, b) => {
+          const da = daysUntil(a.due)
+          const db = daysUntil(b.due)
+          if (da === null && db === null) return a.createdAt < b.createdAt ? 1 : -1
+          if (da === null) return 1
+          if (db === null) return -1
+          return da - db
+        }),
+    [threads],
+  )
+  const closedThreads = useMemo(
+    () =>
+      threads
+        .filter((t) => t.status === 'closed')
+        .slice()
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
+    [threads],
+  )
   const visibleLearnedFacts = useMemo(
     () => (learnedFilter === 'all' ? learnedFacts : learnedFacts.filter((f) => f.category === learnedFilter)),
     [learnedFacts, learnedFilter],
@@ -173,6 +263,16 @@ export default function Memory() {
     [braindumpEntries],
   )
   const openLiveEntry = openEntry ? readyBraindumps.find((e) => e.id === openEntry.id) ?? openEntry : null
+  const allBraindumpTags = useMemo(() => {
+    const set = new Set<string>()
+    ;(braindumpEntries ?? []).forEach((e) => e.tags.forEach((t) => set.add(t)))
+    return [...set].sort()
+  }, [braindumpEntries])
+  const taskOptions = useMemo(
+    () => threads.filter((t) => t.status === 'open').map((t) => ({ id: t.id, title: t.title })),
+    [threads],
+  )
+  const wikiOptions = useMemo(() => (wikiEntries ?? []).map((w) => ({ id: w.id, title: w.title })), [wikiEntries])
 
   const tabs: { id: Tab; label: string; icon: typeof Lock; count: number; desc: string }[] = [
     { id: 'essentials', label: 'Basis', icon: Lock, count: essentials.length, desc: 'Permanente, structurele feiten. Ze veranderen niet en verlopen niet.' },
@@ -193,10 +293,16 @@ export default function Memory() {
           </span>
           <h1 className="text-xl font-medium text-ink">Geheugen</h1>
         </div>
-        <span className="flex items-center gap-1.5 text-[11px] text-faint shrink-0">
+        <button
+          onClick={handleRefresh}
+          disabled={syncing}
+          className="flex items-center gap-1.5 text-[11px] text-faint shrink-0 hover:text-muted disabled:opacity-70"
+          title="Nu vernieuwen"
+        >
           <span className={`h-1.5 w-1.5 rounded-full ${dataSource === 'live' ? 'bg-forest' : 'bg-faint'}`} />
-          {dataSource === 'live' ? 'live · bijgewerkt in realtime' : 'mock data'}
-        </span>
+          {dataSource === 'live' ? `bijgewerkt ${syncLabel}` : 'mock data'}
+          <RefreshCw className={`h-3 w-3 ${syncing ? 'animate-spin' : ''}`} />
+        </button>
       </div>
 
       {/* search */}
@@ -352,46 +458,29 @@ export default function Memory() {
 
           {tab === 'threads' && (
             <div className="space-y-2 animate-fade-up">
-              {threads.length ? (
-                threads.map((t) => {
-                  const due = dueLabel(t.due, { prefix: 'deadline ', none: 'geen deadline', active: t.status === 'open' })
-                  return (
-                    <div
-                      key={t.id}
-                      className={`card p-3 flex items-center justify-between gap-3 ${
-                        t.status === 'closed' ? 'opacity-50' : ''
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <DomainChip domain={t.domain} small />
-                          {t.status === 'closed' ? (
-                            <span className="chip bg-buurtkaart/15 text-buurtkaart-deep">gesloten</span>
-                          ) : (
-                            <span className={`text-[11px] ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>
-                              {due.label}
-                            </span>
-                          )}
-                        </div>
-                        <p className={`text-sm mt-0.5 truncate ${t.status === 'closed' ? 'line-through text-faint' : 'text-ink'}`}>
-                          {t.title}
-                        </p>
-                        <p className="text-[11px] text-faint">{'→'} {t.owedTo}</p>
-                      </div>
-                      {t.status === 'open' ? (
-                        <button className="btn-ghost shrink-0 !py-1.5" onClick={() => closeThread(t.id)}>
-                          <CheckCircle2 className="h-4 w-4" /> Sluiten
-                        </button>
-                      ) : (
-                        <button className="btn-ghost shrink-0 !py-1.5" onClick={() => reopenThread(t.id)}>
-                          <RotateCcw className="h-4 w-4" /> Heropenen
-                        </button>
-                      )}
-                    </div>
-                  )
-                })
+              {openThreads.length ? (
+                openThreads.map((t) => <ThreadRow key={t.id} t={t} onClose={closeThread} onReopen={reopenThread} />)
+              ) : closedThreads.length ? (
+                <Empty>Geen open loops — mooi zo.</Empty>
               ) : (
                 <Empty>Nog geen threads.</Empty>
+              )}
+
+              {closedThreads.length > 0 && (
+                <div className="pt-1">
+                  <button
+                    onClick={() => setShowClosedThreads((v) => !v)}
+                    className="flex items-center gap-1.5 text-xs text-faint hover:text-muted py-1.5"
+                  >
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showClosedThreads ? 'rotate-180' : ''}`} />
+                    {showClosedThreads ? 'Verberg' : 'Toon'} gesloten loops ({closedThreads.length})
+                  </button>
+                  {showClosedThreads && (
+                    <div className="space-y-2 mt-1">
+                      {closedThreads.map((t) => <ThreadRow key={t.id} t={t} onClose={closeThread} onReopen={reopenThread} />)}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -472,6 +561,13 @@ export default function Memory() {
           onClose={() => setOpenEntry(null)}
           onDelete={deleteBraindumpEntry}
           onRetry={retryBraindumpEntry}
+          onUpdate={updateBraindumpEntry}
+          allTags={allBraindumpTags}
+          links={(braindumpLinks ?? []).filter((l) => l.braindumpEntryId === openLiveEntry.id)}
+          taskOptions={taskOptions}
+          wikiOptions={wikiOptions}
+          onLink={linkBraindumpEntry}
+          onUnlink={unlinkBraindumpEntry}
         />
       )}
     </div>

@@ -13,6 +13,8 @@ import type {
   Goal,
   DogEntry,
   DogProfile,
+  Walk,
+  WalkPoint,
   Block,
   Thread,
   Priority,
@@ -32,6 +34,7 @@ import type {
   NotificationPrefs,
   VendorTag,
   BraindumpEntry,
+  BraindumpLink,
   WikiEntry,
   AppSettings,
   PlanBlock,
@@ -39,6 +42,7 @@ import type {
   InferenceDecision,
   LifeDomain,
   Person,
+  PersonConnection,
   Interaction,
   AdminItem,
   HealthCondition,
@@ -56,6 +60,9 @@ import type {
   WorkoutExercise,
   WorkoutSession,
   WorkoutSet,
+  IdentityProfile,
+  IdentitySnapshot,
+  Landscape,
 } from '../types'
 import { today, habitStreak } from '../domains'
 import { CATEGORY_META, type LearnedFact, type LearningCategory } from '../heyra/learning'
@@ -267,6 +274,18 @@ export async function persistBlockStatus(id: string, status: Block['status']): P
   if (!isDbId(id)) return
   const { error } = await supabase.from('day_blocks').update({ status }).eq('id', id)
   warnWrite('day_blocks.status', error)
+}
+
+/** Reschedule a locked plan block — the Dagplanner's "move earlier/later" action. */
+export async function moveDayBlock(id: string, start: string, end: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('day_blocks').update({ start_time: start, end_time: end }).eq('id', id)
+  warnWrite('day_blocks.move', error)
+}
+
+/** Drop a locked plan block entirely — the Dagplanner's "reject" action on an already-locked block. */
+export async function deleteDayBlock(id: string): Promise<void> {
+  return deleteRow('day_blocks', id)
 }
 
 // Sentinel merchant wallet-ingest stores for a real-time bank notification
@@ -630,6 +649,58 @@ export async function fetchHealthDays(): Promise<HealthDay[]> {
   })
 }
 
+/** Minutes since local midnight (Europe/Amsterdam) for an arbitrary ISO timestamp. */
+function amsterdamMinutesOfDay(iso: string): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+    timeZone: 'Europe/Amsterdam',
+  }).formatToParts(new Date(iso))
+  const h = Number(parts.find((p) => p.type === 'hour')?.value ?? 0)
+  const m = Number(parts.find((p) => p.type === 'minute')?.value ?? 0)
+  return h * 60 + m
+}
+
+export interface SleepWindow {
+  /** Learned average wake-up time, minutes since midnight — null with no real sleep data. */
+  wakeMinutes: number | null
+  /** Learned average bedtime, minutes since midnight — null with no real sleep data. */
+  bedMinutes: number | null
+}
+
+/**
+ * Learned wake/bed time-of-day, averaged over the last week of real sleep
+ * sessions (`health_sleep.start_time`/`end_time`, written by phone-events-ingest
+ * from MacroDroid's sleep detection). The day planner anchors the day's
+ * start/peak/wind-down to this instead of a fixed 06:00–23:00 guess. Bedtimes
+ * past midnight are folded onto "yesterday evening" (+24h) before averaging so
+ * a 23:40 night and a 00:20 night don't cancel out to noon.
+ */
+export async function fetchSleepWindow(): Promise<SleepWindow> {
+  const { data } = await supabase
+    .from('health_sleep')
+    .select('start_time,end_time')
+    .order('date', { ascending: false })
+    .limit(7)
+
+  const wakes: number[] = []
+  const beds: number[] = []
+  for (const r of data ?? []) {
+    if (r.end_time) wakes.push(amsterdamMinutesOfDay(r.end_time as string))
+    if (r.start_time) {
+      const m = amsterdamMinutesOfDay(r.start_time as string)
+      beds.push(m < 4 * 60 ? m + 24 * 60 : m) // fold "past midnight" onto the same evening
+    }
+  }
+  const avg = (xs: number[]) => (xs.length ? Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) : null)
+  const bedAvg = avg(beds)
+  return {
+    wakeMinutes: avg(wakes),
+    bedMinutes: bedAvg != null ? bedAvg % (24 * 60) : null,
+  }
+}
+
 // ── Daily check-in (energy / mood) ──────────────────────────────────────────
 
 export async function fetchCheckins(): Promise<Checkin[]> {
@@ -909,6 +980,65 @@ export async function resetBraindumpEntryRow(id: string): Promise<void> {
     .update({ status: 'pending', error: null })
     .eq('id', id)
   warnWrite('braindump_entries.reset', error)
+}
+
+/** Manual override of Claude's domain/kind/tags — e.g. re-filing a capture
+ *  or fixing a miscategorised one. RLS confines this to the caller's own rows. */
+export async function updateBraindumpEntryRow(
+  id: string,
+  patch: Partial<{ domain: Domain | null; kind: BraindumpEntry['kind']; tags: string[] }>,
+): Promise<void> {
+  if (!isDbId(id)) return
+  const row: Record<string, unknown> = {}
+  if ('domain' in patch) row.domain = patch.domain
+  if ('kind' in patch) row.kind = patch.kind
+  if ('tags' in patch) row.tags = patch.tags
+  if (!Object.keys(row).length) return
+  const { error } = await supabase.from('braindump_entries').update(row).eq('id', id)
+  warnWrite('braindump_entries.update', error)
+}
+
+// ── Braindump links: "apply this to somewhere" (a task or Kennisbank entry) ────
+
+function mapBraindumpLinkRow(r: Record<string, unknown>): BraindumpLink {
+  return {
+    id: r.id as string,
+    createdAt: (r.created_at as string) ?? new Date().toISOString(),
+    braindumpEntryId: r.braindump_entry_id as string,
+    linkedType: r.linked_type as BraindumpLink['linkedType'],
+    linkedId: r.linked_id as string,
+  }
+}
+
+export async function fetchBraindumpLinks(): Promise<BraindumpLink[]> {
+  return fetchRows(
+    'braindump_links',
+    'id,created_at,braindump_entry_id,linked_type,linked_id',
+    { column: 'created_at', ascending: false, limit: 2000 },
+    mapBraindumpLinkRow,
+  )
+}
+
+export async function insertBraindumpLink(
+  braindumpEntryId: string,
+  linkedType: BraindumpLink['linkedType'],
+  linkedId: string,
+): Promise<BraindumpLink | null> {
+  const user_id = await currentUserId()
+  if (!user_id || !isDbId(braindumpEntryId)) return null
+  const { data, error } = await supabase
+    .from('braindump_links')
+    .insert({ user_id, braindump_entry_id: braindumpEntryId, linked_type: linkedType, linked_id: linkedId })
+    .select('id,created_at,braindump_entry_id,linked_type,linked_id')
+    .single()
+  warnWrite('braindump_links.insert', error)
+  return data ? mapBraindumpLinkRow(data) : null
+}
+
+export async function deleteBraindumpLinkRow(id: string): Promise<void> {
+  if (!isDbId(id)) return
+  const { error } = await supabase.from('braindump_links').delete().eq('id', id)
+  warnWrite('braindump_links.delete', error)
 }
 
 /**
@@ -1436,6 +1566,26 @@ export async function fetchDogEntries(): Promise<DogEntry[]> {
       location: (r.location as string) ?? null,
       poopConsistency: (r.poop_consistency as DogEntry['poopConsistency']) ?? null,
       trainingType: (r.training_type as string) ?? null,
+    }),
+  )
+}
+
+// ── Walks (Android walk-tracker routes) ──────────────────────────────────────
+
+export async function fetchWalks(): Promise<Walk[]> {
+  return fetchRows(
+    'walks',
+    'id,started_at,ended_at,duration_min,distance_km,points,trigger_source,dog_log_id',
+    { column: 'started_at', ascending: false, limit: 100 },
+    (r) => ({
+      id: r.id as string,
+      startedAt: r.started_at as string,
+      endedAt: r.ended_at as string,
+      durationMin: r.duration_min as number,
+      distanceKm: r.distance_km as number,
+      points: (r.points as WalkPoint[]) ?? [],
+      triggerSource: (r.trigger_source as string) ?? null,
+      dogLogId: (r.dog_log_id as string) ?? null,
     }),
   )
 }
@@ -2087,32 +2237,49 @@ export async function confirmInference(id: string, decision: InferenceDecision):
 // ── Mensen / relaties (Slice 2) ───────────────────────────────────────────────
 
 export async function fetchPeople(): Promise<Person[]> {
-  return fetchRows('person', 'id,display_name,kind,emails,phones,birthday,cadence_days,last_interaction_at,client_id,notes,tier', { column: 'display_name' }, (r) => ({
-    id: r.id as string,
-    displayName: (r.display_name as string) ?? '',
-    kind: (r.kind as Person['kind']) ?? 'network',
-    emails: (r.emails as string[]) ?? [],
-    phones: (r.phones as string[]) ?? [],
-    birthday: (r.birthday as string) ?? null,
-    cadenceDays: (r.cadence_days as number) ?? null,
-    lastInteractionAt: (r.last_interaction_at as string) ?? null,
-    clientId: (r.client_id as string) ?? null,
-    notes: (r.notes as string) ?? null,
-    tier: (r.tier as Person['tier']) ?? 'normaal',
-  }))
+  return fetchRows(
+    'person',
+    'id,display_name,kind,emails,phones,birthday,cadence_days,last_interaction_at,client_id,notes,tier,tags,company,job_title,instagram_url,linkedin_url,twitter_url,website_url,avatar_url',
+    { column: 'display_name' },
+    (r) => ({
+      id: r.id as string,
+      displayName: (r.display_name as string) ?? '',
+      kind: (r.kind as Person['kind']) ?? 'network',
+      emails: (r.emails as string[]) ?? [],
+      phones: (r.phones as string[]) ?? [],
+      birthday: (r.birthday as string) ?? null,
+      cadenceDays: (r.cadence_days as number) ?? null,
+      lastInteractionAt: (r.last_interaction_at as string) ?? null,
+      clientId: (r.client_id as string) ?? null,
+      notes: (r.notes as string) ?? null,
+      tier: (r.tier as Person['tier']) ?? 'normaal',
+      tags: (r.tags as string[]) ?? [],
+      company: (r.company as string) ?? null,
+      jobTitle: (r.job_title as string) ?? null,
+      instagramUrl: (r.instagram_url as string) ?? null,
+      linkedinUrl: (r.linkedin_url as string) ?? null,
+      twitterUrl: (r.twitter_url as string) ?? null,
+      websiteUrl: (r.website_url as string) ?? null,
+      avatarUrl: (r.avatar_url as string) ?? null,
+    }),
+  )
 }
 
 const PERSON_COLS: Record<string, string> = {
   displayName: 'display_name', kind: 'kind', emails: 'emails', phones: 'phones',
   birthday: 'birthday', cadenceDays: 'cadence_days', lastInteractionAt: 'last_interaction_at',
-  clientId: 'client_id', notes: 'notes', tier: 'tier',
+  clientId: 'client_id', notes: 'notes', tier: 'tier', tags: 'tags', company: 'company',
+  jobTitle: 'job_title', instagramUrl: 'instagram_url', linkedinUrl: 'linkedin_url',
+  twitterUrl: 'twitter_url', websiteUrl: 'website_url', avatarUrl: 'avatar_url',
 }
 
 export async function createPersonRow(p: Omit<Person, 'id'>): Promise<string | null> {
   return insertRow('person', {
     display_name: p.displayName, kind: p.kind, emails: p.emails, phones: p.phones,
     birthday: p.birthday, cadence_days: p.cadenceDays, client_id: p.clientId,
-    notes: p.notes, tier: p.tier,
+    notes: p.notes, tier: p.tier, tags: p.tags, company: p.company, job_title: p.jobTitle,
+    instagram_url: p.instagramUrl, linkedin_url: p.linkedinUrl, twitter_url: p.twitterUrl,
+    website_url: p.websiteUrl, avatar_url: p.avatarUrl,
   })
 }
 
@@ -2122,6 +2289,63 @@ export async function updatePersonRow(id: string, patch: Partial<Person>): Promi
 
 export async function deletePersonRow(id: string): Promise<void> {
   return deleteRow('person', id)
+}
+
+// ── Connecties tussen mensen (rolodex-netwerk) ────────────────────────────────
+
+export async function fetchPersonConnections(): Promise<PersonConnection[]> {
+  return fetchRows('person_connection', 'id,person_a_id,person_b_id,label,note,created_at', { column: 'created_at', ascending: false }, (r) => ({
+    id: r.id as string,
+    personAId: r.person_a_id as string,
+    personBId: r.person_b_id as string,
+    label: (r.label as string) ?? 'Connectie',
+    note: (r.note as string) ?? null,
+    createdAt: r.created_at as string,
+  }))
+}
+
+export async function createPersonConnectionRow(c: Omit<PersonConnection, 'id' | 'createdAt'>): Promise<string | null> {
+  return insertRow('person_connection', {
+    person_a_id: c.personAId, person_b_id: c.personBId, label: c.label, note: c.note,
+  })
+}
+
+export async function deletePersonConnectionRow(id: string): Promise<void> {
+  return deleteRow('person_connection', id)
+}
+
+export interface InstagramProfileFetch {
+  username: string | null
+  displayName: string | null
+  bio: string | null
+  imageUrl: string | null
+  statsText: string | null
+}
+
+/**
+ * Best-effort pull of a public Instagram profile's link-preview metadata
+ * (display name, photo, follower-count line) via the fetch-instagram-profile
+ * edge function — never a logged-in scrape. Returns `{ ok: false, error }`
+ * on anything from a private/removed profile to Instagram just blocking the
+ * request; the caller shows that inline rather than silently doing nothing.
+ */
+export async function fetchInstagramProfile(url: string): Promise<{ ok: true; profile: InstagramProfileFetch } | { ok: false; error: string }> {
+  const { data, error } = await supabase.functions.invoke('fetch-instagram-profile', { body: { url } })
+  if (error || !data?.ok) {
+    const message = (data?.error as string) ?? error?.message ?? 'onbekende fout'
+    console.warn('[OSLIFE] fetch-instagram-profile failed', message)
+    return { ok: false, error: message }
+  }
+  return {
+    ok: true,
+    profile: {
+      username: (data.username as string) ?? null,
+      displayName: (data.displayName as string) ?? null,
+      bio: (data.bio as string) ?? null,
+      imageUrl: (data.imageUrl as string) ?? null,
+      statsText: (data.statsText as string) ?? null,
+    },
+  }
 }
 
 export async function fetchInteractions(): Promise<Interaction[]> {
@@ -2330,6 +2554,52 @@ export async function fetchProfileFacts(): Promise<ProfileFact[]> {
     tier: (r.tier as ProfileFact['tier']) ?? 'normaal',
     createdAt: (r.created_at as string) ?? '',
   }))
+}
+
+// ── Identity profile (huidig / droom / landschap) ─────────────────────────────
+
+const EMPTY_SNAPSHOT: IdentitySnapshot = {
+  summary: '',
+  traits: [],
+  strengths: [],
+  weaknesses: [],
+  accelerators: [],
+  generatedAt: null,
+}
+
+const EMPTY_LANDSCAPE: Landscape = {
+  summary: '',
+  people: [],
+  habits: [],
+  environment: [],
+  generatedAt: null,
+}
+
+export async function fetchIdentityProfile(): Promise<IdentityProfile> {
+  const { data } = await supabase.from('identity_profile').select('current,dream_md,landscape').maybeSingle()
+  if (!data) return { current: EMPTY_SNAPSHOT, dreamMd: '', landscape: EMPTY_LANDSCAPE }
+  return {
+    current: { ...EMPTY_SNAPSHOT, ...(data.current as Partial<IdentitySnapshot>) },
+    dreamMd: (data.dream_md as string) ?? '',
+    landscape: { ...EMPTY_LANDSCAPE, ...(data.landscape as Partial<Landscape>) },
+  }
+}
+
+export async function upsertIdentityProfile(patch: Partial<IdentityProfile>): Promise<boolean> {
+  const user_id = await currentUserId()
+  if (!user_id) return false
+  const { error } = await supabase.from('identity_profile').upsert(
+    {
+      user_id,
+      ...(patch.current !== undefined && { current: patch.current }),
+      ...(patch.dreamMd !== undefined && { dream_md: patch.dreamMd }),
+      ...(patch.landscape !== undefined && { landscape: patch.landscape }),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id' },
+  )
+  warnWrite('identity_profile', error)
+  return !error
 }
 
 // ── Geheugen & retrieval (Slice 3) ────────────────────────────────────────────
@@ -2580,7 +2850,7 @@ export async function deactivateWorkoutPlanRow(id: string): Promise<void> {
 }
 
 export async function fetchWorkoutExercises(): Promise<WorkoutExercise[]> {
-  return fetchRows('workout_exercises', 'id,plan_id,name,muscle_group,target_sets,target_reps,order_idx', { column: 'order_idx', ascending: true }, (r) => ({
+  return fetchRows('workout_exercises', 'id,plan_id,name,muscle_group,target_sets,target_reps,order_idx,image_url,gif_url', { column: 'order_idx', ascending: true }, (r) => ({
     id: r.id as string,
     planId: r.plan_id as string,
     name: r.name as string,
@@ -2588,6 +2858,8 @@ export async function fetchWorkoutExercises(): Promise<WorkoutExercise[]> {
     targetSets: (r.target_sets as number) ?? 3,
     targetReps: (r.target_reps as string) ?? '8-12',
     orderIdx: (r.order_idx as number) ?? 0,
+    imageUrl: (r.image_url as string) ?? null,
+    gifUrl: (r.gif_url as string) ?? null,
   }))
 }
 
@@ -2603,6 +2875,8 @@ export async function createWorkoutExerciseRow(
     target_sets: ex.targetSets,
     target_reps: ex.targetReps,
     order_idx: ex.orderIdx,
+    image_url: ex.imageUrl ?? null,
+    gif_url: ex.gifUrl ?? null,
   })
 }
 
@@ -2612,6 +2886,8 @@ const WORKOUT_EXERCISE_COLS: Record<string, string> = {
   targetSets: 'target_sets',
   targetReps: 'target_reps',
   orderIdx: 'order_idx',
+  imageUrl: 'image_url',
+  gifUrl: 'gif_url',
 }
 
 export async function updateWorkoutExerciseRow(id: string, patch: Partial<WorkoutExercise>): Promise<void> {

@@ -1,4 +1,4 @@
-import { Check, Video } from 'lucide-react'
+import { Check, Video, Sparkles, X, Plus } from 'lucide-react'
 import type { Domain } from '../types'
 import { DOMAIN_META } from '../domains'
 import { DomainChip } from './ui'
@@ -297,7 +297,11 @@ export function AgendaCard({
 }) {
   const done = status === 'done'
   return (
-    <div className="card p-4 w-[220px] shrink-0 flex flex-col justify-between gap-8 min-h-[176px]">
+    <div
+      className={`card p-4 w-[220px] shrink-0 flex flex-col justify-between gap-8 min-h-[176px] transition-opacity ${
+        done ? 'bg-sunken opacity-60' : ''
+      }`}
+    >
       <div className="flex items-start justify-between gap-2">
         <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide ${done ? 'text-faint' : TONE_TEXT[tone]}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${done ? 'bg-line' : TONE_BG[tone].replace('/15', '')}`} />
@@ -323,6 +327,66 @@ export function AgendaCard({
             </button>
           )
         )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Horizontal-scroll suggestion card — a proposed-but-not-yet-real block for
+ * the rest of today (heyra/blockSuggestions). Mirrors AgendaCard's shape so
+ * suggestions read as the same family, but leads with the "why" and offers
+ * add/dismiss instead of a single complete action.
+ */
+export function SuggestedBlockCard({
+  emoji,
+  title,
+  start,
+  domain,
+  rationale,
+  onAdd,
+  onDismiss,
+}: {
+  emoji: string
+  title: string
+  start: string
+  domain: Domain
+  rationale: string
+  onAdd: () => void
+  onDismiss: () => void
+}) {
+  return (
+    <div className="card p-4 w-[220px] shrink-0 flex flex-col justify-between gap-3 min-h-[176px] border-dashed border-line/80">
+      <div className="flex items-start justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-personal-deep">
+          <Sparkles className="h-3 w-3" /> voorstel
+        </span>
+        <span className="chip bg-sunken text-ink-soft shrink-0 tabular-nums">{start}</span>
+      </div>
+      <div className="flex-1">
+        <p className="text-lg leading-snug text-ink font-medium">
+          {emoji} {title}
+        </p>
+        <p className="text-xs text-faint mt-1 leading-snug line-clamp-3">{rationale}</p>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <DomainChip domain={domain} small />
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={onDismiss}
+            aria-label="Negeer voorstel"
+            className="shrink-0 h-9 w-9 rounded-full bg-sunken text-ink-soft flex items-center justify-center outline-none transition-colors hover:bg-line focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <button
+            onClick={onAdd}
+            aria-label="Toevoegen aan vandaag"
+            className="shrink-0 h-9 w-9 rounded-full bg-ink text-canvas flex items-center justify-center outline-none transition-[background-color,transform] duration-150 hover:bg-ink/85 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+          >
+            <Plus className="h-4 w-4" strokeWidth={2.5} />
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -107,6 +107,18 @@ export interface WikiEntry {
   braindumpEntryId: string | null
 }
 
+/** "Apply this to somewhere": a braindump entry filed under an existing task or
+ *  Kennisbank entry, not just tagged/domained. Polymorphic on `linkedType`. */
+export type BraindumpLinkType = 'task' | 'wiki_entry'
+
+export interface BraindumpLink {
+  id: string
+  createdAt: string // ISO
+  braindumpEntryId: string
+  linkedType: BraindumpLinkType
+  linkedId: string
+}
+
 /** Raw payload the share sheet / capture box hands to store.braindumpCapture(). */
 export interface BraindumpInput {
   sourceKind: BraindumpSourceKind
@@ -278,9 +290,28 @@ export interface Person {
   clientId: string | null
   notes: string | null
   tier: Tier
+  /** Free-form category tags (e.g. "Familie", "Klant") — manual or auto-suggested. */
+  tags: string[]
+  company: string | null
+  jobTitle: string | null
+  instagramUrl: string | null
+  linkedinUrl: string | null
+  twitterUrl: string | null
+  websiteUrl: string | null
+  avatarUrl: string | null
 }
 
-export type InteractionChannel = 'mail' | 'whatsapp' | 'call' | 'in_person' | 'fiverr'
+export type InteractionChannel = 'mail' | 'whatsapp' | 'call' | 'in_person' | 'fiverr' | 'note'
+
+/** A named link between two people in the rolodex (e.g. "collega van", "partner"). Undirected — one row per pair. */
+export interface PersonConnection {
+  id: string
+  personAId: string
+  personBId: string
+  label: string
+  note: string | null
+  createdAt: string
+}
 
 /** One contact moment with a person. owedReply feeds the open-loops. */
 export interface Interaction {
@@ -473,6 +504,8 @@ export interface WorkoutExercise {
   targetSets: number
   targetReps: string // free text, e.g. "8-12"
   orderIdx: number
+  imageUrl?: string | null // library thumbnail, snapshotted at add-time; null for custom exercises
+  gifUrl?: string | null // library animation, same as above
 }
 
 /** One logged set within a session. Exercise name/muscle snapshotted so history survives an edited/deleted exercise. */
@@ -755,6 +788,37 @@ export interface GoalProposal {
   source: 'ai' | 'rule'
 }
 
+// ── Profile: current-state identity + dream profile + landscape ─────────────
+// Distinct from `ProfileFact` (rule-derived, versioned facts feeding the
+// inference engine) — this is HEYRA's holistic read of "who Rick is right now"
+// vs. "who Rick needs to become" vs. the environment that bridges the two,
+// synthesized on demand from learned facts, patterns, profile facts and
+// braindumps. Same brain-first/rule-fallback contract as goals.ts; grounded
+// only in what's actually been captured.
+
+export interface IdentitySnapshot {
+  summary: string
+  traits: string[]
+  strengths: string[]
+  weaknesses: string[]
+  accelerators: string[]
+  generatedAt: string | null
+}
+
+export interface Landscape {
+  summary: string
+  people: string[]
+  habits: string[]
+  environment: string[]
+  generatedAt: string | null
+}
+
+export interface IdentityProfile {
+  current: IdentitySnapshot
+  dreamMd: string
+  landscape: Landscape
+}
+
 // ── Dagplanner: an AI-proposed / calendar block on a specific day ─────────────
 
 export type PlanBlockKind =
@@ -900,6 +964,30 @@ export interface DogProfile {
   weightKg: number
   vet: string
   photo?: string | null
+}
+
+/** GPS point in a tracked walk's route. */
+export interface WalkPoint {
+  lat: number
+  lon: number
+  t?: string | null // ISO datetime, optional
+}
+
+/**
+ * A dog walk auto-detected and tracked by the standalone Android app (see
+ * /android), posted once via walk-ingest. Every walk also writes a matching
+ * DogEntry (kind='walk') — this carries the extra route/GPS detail for the
+ * map card, keyed to that entry via dogLogId.
+ */
+export interface Walk {
+  id: string
+  startedAt: string // ISO datetime
+  endedAt: string // ISO datetime
+  durationMin: number
+  distanceKm: number
+  points: WalkPoint[]
+  triggerSource: string | null // 'home' | 'car_forest' | 'manual' | ...
+  dogLogId: string | null
 }
 
 // ── Subscriptions (recurring spend) ──────────────────────────────────────────

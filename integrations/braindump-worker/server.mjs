@@ -107,6 +107,7 @@ const isInstagramUrl = (url) => /(^|\.)instagram\.com/i.test(url || '')
 /** yt-dlp --cookies for whichever platform this URL belongs to (or none). */
 function cookieArgsFor(url) {
   if (isInstagramUrl(url)) return HAS_IG_COOKIES ? ['--cookies', IG_COOKIES_PATH] : []
+  if (isPinterestUrl(url)) return HAS_PINTEREST_COOKIES ? ['--cookies', PINTEREST_COOKIES_PATH] : []
   return cookieArgs()
 }
 
@@ -134,6 +135,42 @@ function cookieHeaderFromNetscapeFile(path) {
 }
 
 const IG_COOKIE_HEADER = HAS_IG_COOKIES ? cookieHeaderFromNetscapeFile(IG_COOKIES_PATH) : ''
+
+// Pinterest, for the browser-based notePinterestPin() below (separate from
+// everything above — Instagram/YouTube's plain-fetch/yt-dlp paths don't touch
+// this). Pinterest's bot-management blocks a plain fetch outright (confirmed:
+// pinterest.com, pin.it, and even its own oembed.json endpoint all return a
+// hard 403 to a scripted request, and yt-dlp gets the same treatment even
+// with valid cookies — https://github.com/yt-dlp/yt-dlp/issues/13554), so a
+// real logged-in session is worth attaching to the browser context on top of
+// the browser render itself.
+const PINTEREST_COOKIES_PATH = process.env.PINTEREST_COOKIES_PATH || '/etc/secrets/pinterest-cookies.txt'
+const HAS_PINTEREST_COOKIES = existsSync(PINTEREST_COOKIES_PATH)
+console.log(`[braindump-worker] Pinterest cookies file ${HAS_PINTEREST_COOKIES ? 'FOUND' : 'NOT FOUND'} at ${PINTEREST_COOKIES_PATH}`)
+
+const isPinterestUrl = (url) => /(^|\.)pinterest\.[a-z.]+/i.test(url || '') || /(^|\/\/)pin\.it/i.test(url || '')
+
+/** Same Netscape cookies.txt format as cookieHeaderFromNetscapeFile above, but
+ * shaped for Playwright's context.addCookies() instead of a header string. */
+function pinterestCookiesForPlaywright() {
+  if (!HAS_PINTEREST_COOKIES) return []
+  try {
+    const cookies = []
+    for (const line of readFileSync(PINTEREST_COOKIES_PATH, 'utf8').split('\n')) {
+      const t = line.trim()
+      if (!t || t.startsWith('#')) continue
+      const cols = t.split('\t')
+      if (cols.length < 7) continue
+      cookies.push({
+        domain: cols[0], path: cols[2] || '/', secure: cols[3] === 'TRUE',
+        expires: Number(cols[4]) || undefined, name: cols[5], value: cols[6],
+      })
+    }
+    return cookies
+  } catch {
+    return []
+  }
+}
 // Distinguishes "post genuinely has no image / is deleted" from "Instagram
 // served us the login wall" — the latter needs a fresh cookies.txt, the
 // former doesn't.
@@ -322,6 +359,87 @@ async function noteFromImagePost(url) {
   return { note, thumbUrl: image }
 }
 
+/**
+ * Render a Pinterest pin in a real headless browser and pull its og:title /
+ * og:description / og:image out of the rendered page. Separate from
+ * noteFromImagePost() above (Instagram's working path, left untouched) —
+ * Pinterest needs a different tool entirely. A plain fetch() (what
+ * noteFromImagePost uses) gets a hard 403 from Pinterest's bot-management,
+ * confirmed by directly testing pinterest.com, pin.it, and even Pinterest's
+ * own oembed.json endpoint: all reject a scripted request outright, and
+ * yt-dlp is reported blocked the same way even with valid cookies
+ * (https://github.com/yt-dlp/yt-dlp/issues/13554). A real browser presents a
+ * genuine TLS/JS fingerprint a plain HTTP client can't fake, which is what
+ * actually has a chance of getting through. Best-effort: null on any failure
+ * (launch error, navigation timeout) so the caller degrades gracefully.
+ */
+async function fetchPinterestOgViaBrowser(url) {
+  let browser
+  try {
+    const { chromium } = await import('playwright')
+    browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] })
+    const context = await browser.newContext({ userAgent: BROWSER_UA, locale: 'nl-NL' })
+    const cookies = pinterestCookiesForPlaywright()
+    if (cookies.length) await context.addCookies(cookies)
+    const page = await context.newPage()
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 })
+    // pin.it short links redirect client-side — give that a moment to land on the real pin page.
+    await page.waitForURL(/pinterest\.[a-z.]+\/pin\//i, { timeout: 8000 }).catch(() => {})
+    const html = await page.content()
+    const descRaw = ogTag(html, 'og:description')
+    return {
+      title: ogTag(html, 'og:title'),
+      description: descRaw ? extractCaption(descRaw) : null,
+      image: ogTag(html, 'og:image'),
+    }
+  } catch (err) {
+    console.error(`[braindump-worker] pinterest browser fetch failed for ${url}:`, err?.message || String(err))
+    return null
+  } finally {
+    await browser?.close().catch(() => {})
+  }
+}
+
+/**
+ * Pinterest counterpart to noteFromImagePost() — same Claude-vision note
+ * shape (reuses IMAGE_SYSTEM/ANTHROPIC_MODEL/parseNote), just sourced from
+ * fetchPinterestOgViaBrowser() above instead of a plain fetch. Kept as its
+ * own function rather than folded into noteFromImagePost() so Instagram's
+ * already-working path stays exactly as it is.
+ */
+async function notePinterestPin(url) {
+  const og = await fetchPinterestOgViaBrowser(url)
+  if (!og) throw new Error('pinterest: kon de pagina niet laden')
+  const { title, description, image } = og
+  if (!image && !title && !description) throw new Error('pinterest: geen titel, omschrijving of afbeelding gevonden')
+
+  const content = [
+    {
+      type: 'text',
+      text: [
+        `Gedeelde social post: ${url}`,
+        title ? `Titel: ${title}` : '',
+        description ? `Bijschrift: ${description}` : '',
+        image
+          ? 'Hieronder de afbeelding van de pin — beschrijf wat te zien is en neem eventuele tekst (OCR) op.'
+          : 'Geen afbeelding beschikbaar — maak een korte notitie op basis van titel/bijschrift.',
+      ].filter(Boolean).join('\n'),
+    },
+    ...(image ? [{ type: 'image', source: { type: 'url', url: image } }] : []),
+  ]
+  const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 1500, system: IMAGE_SYSTEM, messages: [{ role: 'user', content }] }),
+  })
+  if (!apiRes.ok) throw new Error(`anthropic ${apiRes.status}: ${await apiRes.text()}`)
+  const data = await apiRes.json()
+  const text = (Array.isArray(data.content) ? data.content : []).filter((b) => b.type === 'text').map((b) => b.text).join('\n')
+  const note = parseNote(text)
+  if (!note) throw new Error('convert failed')
+  return { note, thumbUrl: image }
+}
+
 // ── media acquisition ──────────────────────────────────────────────────────────
 
 /** Title/channel/thumbnail via YouTube's public oEmbed endpoint — a plain fetch,
@@ -431,6 +549,45 @@ async function fetchFromUrl(url, dir) {
   const audio = files.find((f) => f.startsWith('audio.'))
   if (!audio) throw new Error('yt-dlp produced no audio')
   return { audioPath: join(dir, audio), meta }
+}
+
+/**
+ * Separate from the transcript/summary pipeline above (fetchFromUrl /
+ * transcribeFile / summarise) — that flow is untouched by this function.
+ * Instagram reels get their thumbnail today from meta.thumbnail, a signed
+ * Instagram CDN URL from yt-dlp's generic --dump-single-json (fetchYoutubeMeta)
+ * that expires after a while, so the note's thumbnail eventually breaks. This
+ * downloads the reel's actual thumbnail file with yt-dlp and re-uploads it to
+ * Supabase Storage (same pattern as braindump-ingest's makeThumb for photo
+ * uploads), so the note gets a permanent signed URL instead. Best-effort:
+ * null on any failure, never throws — a missing thumbnail must never fail
+ * the whole entry.
+ */
+async function fetchInstagramReelThumbnail(url, dir) {
+  try {
+    const out = join(dir, 'reel_thumb.%(ext)s')
+    await execFileP('yt-dlp', [
+      '--no-playlist', '--no-warnings', '--quiet', '--skip-download',
+      '--write-thumbnail', '--convert-thumbnails', 'jpg',
+      ...cookieArgsFor(url),
+      '-o', out, url,
+    ], { maxBuffer: 1024 * 1024 * 64, timeout: 1000 * 60 * 2 })
+    const files = await readdir(dir)
+    const thumbFile = files.find((f) => f.startsWith('reel_thumb.') && f.endsWith('.jpg'))
+    if (!thumbFile) return null
+    const bytes = await readFile(join(dir, thumbFile))
+    const path = `instagram-thumbs/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`
+    const { error } = await sb.storage.from('braindump').upload(path, bytes, {
+      contentType: 'image/jpeg',
+      upsert: true,
+    })
+    if (error) return null
+    const YEAR = 60 * 60 * 24 * 365
+    const { data } = await sb.storage.from('braindump').createSignedUrl(path, YEAR)
+    return data?.signedUrl ?? null
+  } catch {
+    return null
+  }
 }
 
 /** Pull a shared file from Supabase Storage and transcode it to compact audio. */
@@ -670,7 +827,7 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
         // post) — yt-dlp fails to find a downloadable stream, so describe
         // the og:image instead of failing the whole entry.
         if ((sourceKind === 'instagram' || sourceKind === 'pinterest') && sourceUrl) {
-          const fallback = await noteFromImagePost(sourceUrl)
+          const fallback = sourceKind === 'pinterest' ? await notePinterestPin(sourceUrl) : await noteFromImagePost(sourceUrl)
           await finishReady(entryId, userId, tier, fallback.note, {
             thumbUrl: fallback.thumbUrl, meta: { transcript: false, url: sourceUrl }, contentHash, url: sourceUrl,
           })
@@ -701,8 +858,13 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
       markdown: `# ${meta.title ?? 'Transcript'}\n\n${transcript}\n\n${sourceUrl ? `[bron](${sourceUrl})` : ''}`,
     }
 
+    // Additive only — the transcript/summary this note was built from above is
+    // untouched. Only for Instagram reels: fetch a permanent thumbnail via the
+    // separate function above, falling back to the existing behaviour if that fails.
+    const igThumbUrl = sourceKind === 'instagram' && sourceUrl ? await fetchInstagramReelThumbnail(sourceUrl, dir) : null
+
     await finishReady(entryId, userId, tier, note, {
-      thumbUrl: (sourceKind === 'youtube' && sourceUrl ? youtubeThumbUrl(sourceUrl) : null) ?? meta.thumbnail ?? null,
+      thumbUrl: (sourceKind === 'youtube' && sourceUrl ? youtubeThumbUrl(sourceUrl) : null) ?? igThumbUrl ?? meta.thumbnail ?? null,
       meta: { transcript: true, captionSource, channel: meta.channel ?? null, duration: meta.duration ?? null, url: sourceUrl ?? null },
       contentHash,
       url: sourceUrl ?? null,

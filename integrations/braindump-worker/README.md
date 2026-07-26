@@ -117,6 +117,38 @@ alert fires (once per process lifetime) the first time the login wall shows
 up so a stale export gets noticed instead of every capture quietly degrading
 to a title-only note.
 
+## Pinterest (headless-browser fetch, not just cookies)
+
+Pinterest is a harder block than Instagram's: `pinterest.com`, `pin.it`, and
+even Pinterest's own `oembed.json` endpoint return a flat `403` to any plain
+scripted request, and yt-dlp gets the same treatment even with valid cookies
+(a known, unresolved yt-dlp issue). Cookies alone don't fix that — a real
+browser's TLS/JS fingerprint does, so `notePinterestPin()` in `server.mjs`
+launches headless Chromium (via Playwright, installed in the Docker image)
+to render the pin and read its `og:title`/`og:description`/`og:image`
+straight out of the page. This is entirely separate code from Instagram's
+plain-fetch path (`noteFromImagePost()`), which is untouched.
+
+Optional cookies still help on top of that (a logged-in session is less
+likely to trip the bot-check in the first place):
+
+1. While logged into Pinterest in your own browser, export cookies in
+   Netscape format (e.g. "Get cookies.txt LOCALLY").
+2. Upload it as a **Secret File** named `pinterest-cookies.txt` (Render:
+   service → Environment → Secret Files). Mounted at
+   `/etc/secrets/pinterest-cookies.txt` (override via `PINTEREST_COOKIES_PATH`).
+3. No file present → the browser just runs without a logged-in session,
+   which is often enough on its own.
+
+Boot logs print `Pinterest cookies file FOUND/NOT FOUND at <path>`, same as
+the YouTube/Instagram cookie files.
+
+This only runs for Pinterest posts routed to this worker (i.e.
+`BRAINDUMP_WORKER_URL`/`WORKER_SECRET` set on `braindump-ingest` — see
+above). Without the worker, Pinterest links fall back to the edge function's
+own OG-scrape, which hits the same 403 wall with no browser available to get
+past it.
+
 ## Notes
 
 - Audio is transcoded to 16 kHz mono opus, which keeps most content under Groq's

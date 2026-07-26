@@ -28,6 +28,7 @@ import type {
   Message,
   Subscription,
   DogEntry,
+  Walk,
   DogMedical,
   DogReminder,
   DogProfile,
@@ -41,6 +42,8 @@ import type {
   VendorTag,
   BraindumpEntry,
   BraindumpInput,
+  BraindumpLink,
+  BraindumpLinkType,
   AppSettings,
   GoalProposal,
   PlanBlock,
@@ -48,6 +51,7 @@ import type {
   InferenceDecision,
   WikiEntry,
   Person,
+  PersonConnection,
   Interaction,
   AdminItem,
   HealthCondition,
@@ -64,6 +68,7 @@ import type {
   WorkoutExercise,
   WorkoutSession,
   WorkoutSet,
+  IdentityProfile,
 } from './types'
 import { vendorKey, isUntagged, isTransfer } from './finance/categories'
 import { categorizeVendor } from './heyra/agents/vendorAgent'
@@ -72,6 +77,7 @@ import type { ActivityAnalysis } from './lib/crm/activityAnalyzer'
 import { unbilledBillableHours, sumHours, invoiceAmountFromHours } from './lib/crm/invoicing'
 import { parseWhatsapp } from './lib/crm/whatsapp'
 import { classifyImportance, emailTaskDomain } from './lib/crm/emailClassify'
+import { clientHealth } from './lib/crm/followUp'
 import { classifyWithBrain, type Classification } from './understand'
 import { invokeBraindumpIngest } from './lib/braindump'
 import type { ClaudeImportRecord } from './lib/claudeImport'
@@ -82,7 +88,8 @@ import { buildDogCoachPrompt } from './dog/dogCoach'
 import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
 import type { CardTemplate, ActionKind, ActionFieldType } from './heyra/actions/types'
 import { proposeGoals as proposeGoalsAI } from './heyra/goals'
-import { buildWeekPlan, weekDates } from './heyra/planner'
+import { synthesizeCurrentProfile, synthesizeLandscape } from './heyra/identity'
+import { buildWeekPlan, weekDates, dayBounds, type DayBounds } from './heyra/planner'
 import {
   deriveEssentials,
   deriveThreads,
@@ -92,7 +99,7 @@ import {
   applyCheckins,
   buildNudge,
 } from './derive'
-import { today, habitStreak, DOMAIN_META, KIND_LABEL } from './domains'
+import { today, habitStreak, DOMAIN_META, KIND_LABEL, daysBetween } from './domains'
 import { logKey } from './cleaning/gamify'
 import * as mock from './mockData'
 import {
@@ -111,7 +118,11 @@ import {
   deleteGoalRow,
   fetchBlocksRange,
   insertDayBlock,
+  moveDayBlock,
+  deleteDayBlock,
+  fetchSleepWindow,
   fetchDogEntries,
+  fetchWalks,
   fetchBrainState,
   fetchTasks,
   insertTaskRow,
@@ -143,6 +154,10 @@ import {
   insertReadyBraindumpEntries,
   deleteBraindumpEntryRow,
   resetBraindumpEntryRow,
+  updateBraindumpEntryRow,
+  fetchBraindumpLinks,
+  insertBraindumpLink,
+  deleteBraindumpLinkRow,
   persistEmailRead,
   persistAllEmailsRead,
   summarizeEmail,
@@ -221,6 +236,9 @@ import {
   createPersonRow,
   updatePersonRow,
   deletePersonRow,
+  fetchPersonConnections,
+  createPersonConnectionRow,
+  deletePersonConnectionRow,
   fetchInteractions,
   createInteractionRow,
   fetchAdminItems,
@@ -244,6 +262,8 @@ import {
   invokeIdeaElaborate,
   fetchCardTemplates,
   upsertCardTemplate,
+  fetchIdentityProfile,
+  upsertIdentityProfile,
 } from './lib/supabase'
 
 // The single Realtime channel opened by loadLiveData(). Held at module scope so
@@ -302,6 +322,8 @@ interface State {
   lastGoalProposalError: string | null
   weekPlan: PlanBlock[]
   weekPlanAt: string | null
+  /** The day bounds actually used for the last plan (wake/bed-anchored when real sleep data exists) — DayBuilder's banner reads this instead of the fixed defaults. */
+  weekPlanBounds: DayBounds | null
   planningWeek: boolean
   /** Same idea as lastGoalProposalError, for generateWeekPlan(). */
   lastPlanError: string | null
@@ -322,12 +344,16 @@ interface State {
   dogReminders: DogReminder[]
   dogCoach: { text: string; generatedAt: string } | null
   dogCoachLoading: boolean
+  /** GPS routes tracked by the standalone Android walk-tracker app (see /android). */
+  walks: Walk[]
   learnedFacts: LearnedFact[]
   vendorTags: VendorTag[]
   braindumpEntries: BraindumpEntry[]
+  braindumpLinks: BraindumpLink[]
   inferences: InferredItem[]
   wikiEntries: WikiEntry[]
   people: Person[]
+  personConnections: PersonConnection[]
   interactions: Interaction[]
   adminItems: AdminItem[]
   healthConditions: HealthCondition[]
@@ -335,12 +361,20 @@ interface State {
   budgetCaps: BudgetCap[]
   profileFacts: ProfileFact[]
   summaries: MemorySummary[]
+  // Profile screen: huidig profiel (AI-synthesized) / droomprofiel (hand-written) / landschap (AI-synthesized).
+  identityProfile: IdentityProfile
+  generatingProfile: boolean
+  lastProfileError: string | null
+  generatingLandscape: boolean
+  lastLandscapeError: string | null
   businessIdeas: BusinessIdea[]
   /** Cached extra fields per HEYRA action kind (proposeAction.ts) — see recordCardTemplateUsage. */
   cardTemplates: CardTemplate[]
   settings: AppSettings
   dataSource: 'mock' | 'live'
   isLoading: boolean
+  /** ISO timestamp of the last successful full load or realtime slice refresh — lets the UI show "bijgewerkt Xm geleden" instead of a static "live" label. */
+  lastSyncedAt: string | null
 
   /** Merges newly-seen extra fields (beyond an action kind's hard-coded baseline) into its cached template, incrementing seenCount so a recurring one keeps a stable label/type instead of being re-guessed every time. Best-effort, fire-and-forget persistence. */
   recordCardTemplateUsage: (templateKey: string, kind: ActionKind, seen: { key: string; label: string; type: ActionFieldType }[]) => void
@@ -365,6 +399,13 @@ interface State {
   braindumpCapture: (input: BraindumpInput) => Promise<BraindumpEntry | null>
   deleteBraindumpEntry: (id: string) => void
   retryBraindumpEntry: (id: string) => void
+  // Manual override of the AI-picked domain/kind/tags (or an outright fix) —
+  // applied optimistically, then persisted; RLS/realtime keep it in sync.
+  updateBraindumpEntry: (id: string, patch: Partial<Pick<BraindumpEntry, 'domain' | 'kind' | 'tags'>>) => void
+  // "Apply this to somewhere": file a braindump entry under an existing task
+  // or Kennisbank entry, beyond just tagging/domaining it.
+  linkBraindumpEntry: (braindumpEntryId: string, linkedType: BraindumpLinkType, linkedId: string) => void
+  unlinkBraindumpEntry: (linkId: string) => void
   // Import a parsed claude.ai chat export as `ready` knowledge entries so HEYRA
   // can search/reference past Claude conversations. Skips ones already imported
   // (matched on meta.conversationId) so re-uploading the same export is safe.
@@ -398,6 +439,11 @@ interface State {
   addWorkoutExercise: (planId: string, ex: Omit<WorkoutExercise, 'id' | 'planId'>) => void
   updateWorkoutExercise: (id: string, patch: Partial<WorkoutExercise>) => void
   deleteWorkoutExercise: (id: string) => void
+  /** Creates a plan and its exercises together, awaiting the plan's real id before writing exercise rows — used by the auto-generator, which (unlike manual add) writes children right after the parent instead of giving the round-trip time to land. */
+  addWorkoutPlanWithExercises: (
+    plan: Omit<WorkoutPlan, 'id' | 'orderIdx' | 'active'>,
+    exercises: Omit<WorkoutExercise, 'id' | 'planId'>[],
+  ) => Promise<void>
   /** Log a completed (or in-progress) workout — creates the session + every set in one go. */
   logWorkoutSession: (
     session: Omit<WorkoutSession, 'id' | 'sets'>,
@@ -405,6 +451,8 @@ interface State {
   ) => void
   deleteWorkoutSession: (id: string) => void
   completeBlock: (id: string) => void
+  /** Turn a suggested block (heyra/blockSuggestions) into a real, persisted day_blocks row. */
+  addSuggestedBlock: (b: { title: string; domain: Domain; start: string; end: string; rationale?: string }) => void
   skipBlock: (id: string) => void
   resetBlock: (id: string) => void
   moveBlock: (id: string, dir: -1 | 1) => void
@@ -439,6 +487,8 @@ interface State {
   addPerson: (p: Omit<Person, 'id'>) => void
   updatePerson: (id: string, patch: Partial<Person>) => void
   deletePerson: (id: string) => void
+  addPersonConnection: (c: Omit<PersonConnection, 'id' | 'createdAt'>) => void
+  deletePersonConnection: (id: string) => void
   logInteraction: (i: Omit<Interaction, 'id'>) => void
   addAdminItem: (a: Omit<AdminItem, 'id'>) => void
   updateAdminItem: (id: string, patch: Partial<AdminItem>) => void
@@ -461,10 +511,17 @@ interface State {
   proposeGoals: () => Promise<void>
   acceptGoalProposal: (id: string) => void
   dismissGoalProposal: (id: string) => void
+  // Profile screen — huidig profiel is AI-synthesized on demand; droomprofiel is
+  // hand-written by Rick; landschap is AI-synthesized from the other two.
+  generateCurrentProfile: () => Promise<void>
+  updateDreamProfile: (md: string) => void
+  generateLandscape: () => Promise<void>
   // Dagplanner — generate/lock/dismiss the weekly day plan.
   generateWeekPlan: () => Promise<void>
   lockPlanBlock: (id: string) => void
   dismissPlanBlock: (id: string) => void
+  /** Shift a plan block earlier/later by `deltaMin` (e.g. -15/+15), clamped to the day and persisted when already locked. */
+  movePlanBlock: (id: string, deltaMin: number) => void
   markEmailRead: (id: string) => void
   markAllEmailsRead: () => void
   // Patch an already-fetched email row with an AI summary result (on-demand
@@ -653,6 +710,7 @@ const seed = () => ({
   lastGoalProposalError: null as string | null,
   weekPlan: [] as PlanBlock[],
   weekPlanAt: null as string | null,
+  weekPlanBounds: null as DayBounds | null,
   planningWeek: false,
   lastPlanError: null as string | null,
   emails: mock.emails,
@@ -671,12 +729,15 @@ const seed = () => ({
   dogReminders: mock.dogReminders,
   dogCoach: null as { text: string; generatedAt: string } | null,
   dogCoachLoading: false,
+  walks: [] as Walk[],
   learnedFacts: [] as LearnedFact[],
   vendorTags: [] as VendorTag[],
   braindumpEntries: [] as BraindumpEntry[],
+  braindumpLinks: [] as BraindumpLink[],
   inferences: [] as InferredItem[],
   wikiEntries: [] as WikiEntry[],
   people: [] as Person[],
+  personConnections: [] as PersonConnection[],
   interactions: [] as Interaction[],
   adminItems: [] as AdminItem[],
   healthConditions: [] as HealthCondition[],
@@ -684,11 +745,21 @@ const seed = () => ({
   budgetCaps: [] as BudgetCap[],
   profileFacts: [] as ProfileFact[],
   summaries: [] as MemorySummary[],
+  identityProfile: {
+    current: { summary: '', traits: [], strengths: [], weaknesses: [], accelerators: [], generatedAt: null },
+    dreamMd: '',
+    landscape: { summary: '', people: [], habits: [], environment: [], generatedAt: null },
+  } as IdentityProfile,
+  generatingProfile: false,
+  lastProfileError: null as string | null,
+  generatingLandscape: false,
+  lastLandscapeError: null as string | null,
   businessIdeas: [] as BusinessIdea[],
   cardTemplates: [] as CardTemplate[],
   settings: { hourlyRate: 0 } as AppSettings,
   dataSource: 'mock' as const,
   isLoading: true,
+  lastSyncedAt: null as string | null,
 })
 
 // ── Persisted-state rehydration ──────────────────────────────────────────────
@@ -710,6 +781,7 @@ const EMPTY_WHEN_FALSY = [
   'projectActivity', 'checkins', 'learnedFacts', 'vendorTags', 'braindumpEntries',
   'goalProposals', 'weekPlan', 'businessIdeas', 'wikiEntries',
   'holdings', 'balanceCheckpoints', 'workoutPlans', 'workoutExercises', 'workoutSessions',
+  'walks',
 ] as const
 
 /**
@@ -737,10 +809,22 @@ export function applyPersistDefaults(
   state.loadingQuotes = false
   state.financeCoachLoading = false
   state.dogCoachLoading = false
+  state.generatingProfile = false
+  state.generatingLandscape = false
+  if (!state.identityProfile) {
+    state.identityProfile = {
+      current: { summary: '', traits: [], strengths: [], weaknesses: [], accelerators: [], generatedAt: null },
+      dreamMd: '',
+      landscape: { summary: '', people: [], habits: [], environment: [], generatedAt: null },
+    }
+  }
+  if (state.lastProfileError === undefined) state.lastProfileError = null
+  if (state.lastLandscapeError === undefined) state.lastLandscapeError = null
   if (!state.stockQuotes) state.stockQuotes = {}
   if (state.financeCoach === undefined) state.financeCoach = null
   if (state.dogCoach === undefined) state.dogCoach = null
   if (state.weekPlanAt === undefined) state.weekPlanAt = null
+  if (state.weekPlanBounds === undefined) state.weekPlanBounds = null
   if (state.lastGoalProposalError === undefined) state.lastGoalProposalError = null
   if (state.lastPlanError === undefined) state.lastPlanError = null
 }
@@ -759,6 +843,25 @@ function pushSignal(activity: ActivitySignal[], s: Omit<ActivitySignal, 'id' | '
 
 /** True for threads derived live from projects/clients (not worth persisting). */
 const isDerivedThreadId = (id: string) => /^thr-(prj|cli)-/.test(id)
+
+/**
+ * True for a derived thread whose source project/client row has been fully
+ * deleted (not just marked done) — a ghost that recomputeBrain's merge would
+ * otherwise carry forward into brain_state.threads forever, since nothing
+ * else ever prunes it. A derived thread for a still-existing (even 'done')
+ * project/client is real history and is kept.
+ */
+function isOrphanedDerivedThread(t: Thread, projects: Project[], clients: Client[]): boolean {
+  if (t.id.startsWith('thr-prj-')) {
+    const projectId = t.id.slice('thr-prj-'.length)
+    return !projects.some((p) => p.id === projectId)
+  }
+  if (t.id.startsWith('thr-cli-')) {
+    const clientId = t.id.slice('thr-cli-'.length)
+    return !clients.some((c) => c.id === clientId)
+  }
+  return false
+}
 
 /** True for a thread that's a real row in the `tasks` table — a Supabase id that isn't a derived project/client loop. Used to merge tasks-table refetches with brain_state.threads (legacy/derived) without either clobbering the other. */
 const isTaskRow = (t: Thread) => isDbId(t.id) && !isDerivedThreadId(t.id)
@@ -960,6 +1063,29 @@ export const useStore = create<State>()(
           ),
         }))
         void resetBraindumpEntryRow(id).then(() => invokeBraindumpIngest(id))
+      },
+
+      updateBraindumpEntry: (id, patch) => {
+        set((s) => ({
+          braindumpEntries: s.braindumpEntries.map((e) => (e.id === id ? { ...e, ...patch } : e)),
+        }))
+        void updateBraindumpEntryRow(id, patch)
+      },
+
+      linkBraindumpEntry: (braindumpEntryId, linkedType, linkedId) => {
+        if (get().braindumpLinks.some((l) => l.braindumpEntryId === braindumpEntryId && l.linkedType === linkedType && l.linkedId === linkedId)) return
+        const tempId = uid('bdl')
+        const optimistic: BraindumpLink = { id: tempId, createdAt: new Date().toISOString(), braindumpEntryId, linkedType, linkedId }
+        set((s) => ({ braindumpLinks: [optimistic, ...s.braindumpLinks] }))
+        void insertBraindumpLink(braindumpEntryId, linkedType, linkedId).then((row) => {
+          if (!row) { set((s) => ({ braindumpLinks: s.braindumpLinks.filter((l) => l.id !== tempId) })); return }
+          set((s) => ({ braindumpLinks: s.braindumpLinks.map((l) => (l.id === tempId ? row : l)) }))
+        })
+      },
+
+      unlinkBraindumpEntry: (linkId) => {
+        removeFromSlice(set, 'braindumpLinks', linkId)
+        void deleteBraindumpLinkRow(linkId)
       },
 
       importClaudeConversations: async (records) => {
@@ -1315,6 +1441,26 @@ export const useStore = create<State>()(
         void createWorkoutExerciseRow(planId, ex).then(swapTempId(set, 'workoutExercises', tempId))
       },
 
+      addWorkoutPlanWithExercises: async (plan, exercises) => {
+        const orderIdx = get().workoutPlans.length
+        const tempPlanId = uid('wp')
+        const tempExercises = exercises.map((ex) => ({ ...ex, id: uid('wex'), planId: tempPlanId }))
+        set((s) => ({
+          workoutPlans: [...s.workoutPlans, { ...plan, id: tempPlanId, orderIdx, active: true }],
+          workoutExercises: [...s.workoutExercises, ...tempExercises],
+        }))
+        const realPlanId = await createWorkoutPlanRow({ ...plan, orderIdx, active: true })
+        if (!realPlanId) return
+        set((s) => ({
+          workoutPlans: s.workoutPlans.map((p) => (p.id === tempPlanId ? { ...p, id: realPlanId } : p)),
+          workoutExercises: s.workoutExercises.map((e) => (e.planId === tempPlanId ? { ...e, planId: realPlanId } : e)),
+        }))
+        for (const ex of tempExercises) {
+          const realExId = await createWorkoutExerciseRow(realPlanId, ex)
+          if (realExId) set((s) => ({ workoutExercises: s.workoutExercises.map((e) => (e.id === ex.id ? { ...e, id: realExId } : e)) }))
+        }
+      },
+
       updateWorkoutExercise: (id, patch) => {
         patchSlice(set, 'workoutExercises', id, patch)
         void updateWorkoutExerciseRow(id, patch)
@@ -1362,6 +1508,44 @@ export const useStore = create<State>()(
           }
         })
         void persistBlockStatus(id, 'done')
+      },
+
+      addSuggestedBlock: (b) => {
+        const tempId = `tmp-block-${Math.random().toString(36).slice(2, 10)}`
+        const date = today()
+        const block: Block = {
+          id: tempId,
+          title: b.title,
+          domain: b.domain,
+          start: b.start,
+          end: b.end,
+          status: 'planned',
+          rationale: b.rationale ?? '',
+        }
+        set((s) => ({
+          blocks: [...s.blocks, block],
+          // Mirror into weekPlan too (when a plan covering today already
+          // exists) so Dagplanner doesn't sit stale until the realtime
+          // round-trip catches up — the two screens read the same table.
+          weekPlan: s.weekPlan.some((x) => x.date === date)
+            ? [
+                ...s.weekPlan,
+                { id: tempId, date, title: b.title, domain: b.domain, start: b.start, end: b.end, rationale: b.rationale ?? '', kind: 'personal', source: 'rule', locked: true },
+              ]
+            : s.weekPlan,
+          activity: pushSignal(s.activity, { text: `Blok toegevoegd: ${b.title}`, domain: b.domain, loop: 'fast' }),
+        }))
+        void insertDayBlock({
+          date,
+          start: b.start,
+          end: b.end,
+          title: b.title,
+          description: b.rationale,
+          domain: b.domain,
+        }).then((realId) => {
+          swapTempId(set, 'blocks', tempId)(realId)
+          swapTempId(set, 'weekPlan', tempId)(realId)
+        })
       },
 
       skipBlock: (id) => {
@@ -1606,11 +1790,69 @@ export const useStore = create<State>()(
       dismissGoalProposal: (id) =>
         set((s) => ({ goalProposals: s.goalProposals.filter((x) => x.id !== id) })),
 
+      generateCurrentProfile: async () => {
+        set({ generatingProfile: true, lastProfileError: null })
+        const s = get()
+        try {
+          const current = await synthesizeCurrentProfile({
+            learnedFacts: s.learnedFacts,
+            patterns: s.patterns,
+            profileFacts: s.profileFacts,
+            braindumpEntries: s.braindumpEntries,
+            habits: s.habits,
+          })
+          set((st) => ({
+            identityProfile: { ...st.identityProfile, current },
+            generatingProfile: false,
+            activity: pushSignal(st.activity, { text: 'Huidig profiel bijgewerkt', domain: 'cross', loop: 'slow' }),
+          }))
+          void upsertIdentityProfile({ current })
+        } catch (err) {
+          console.warn('[OSLIFE] profile synthesis failed', err)
+          set({ generatingProfile: false, lastProfileError: 'HEYRA kon het profiel nu niet bijwerken — probeer het zo nog eens.' })
+        }
+      },
+
+      updateDreamProfile: (md) => {
+        set((s) => ({ identityProfile: { ...s.identityProfile, dreamMd: md } }))
+        void upsertIdentityProfile({ dreamMd: md })
+      },
+
+      generateLandscape: async () => {
+        set({ generatingLandscape: true, lastLandscapeError: null })
+        const s = get()
+        try {
+          const landscape = await synthesizeLandscape({
+            current: s.identityProfile.current,
+            dreamMd: s.identityProfile.dreamMd,
+          })
+          if (!landscape) {
+            set({
+              generatingLandscape: false,
+              lastLandscapeError: 'Vul eerst je droomprofiel in — daar bouwt het landschap op voort.',
+            })
+            return
+          }
+          set((st) => ({
+            identityProfile: { ...st.identityProfile, landscape },
+            generatingLandscape: false,
+            activity: pushSignal(st.activity, { text: 'Landschap bijgewerkt', domain: 'cross', loop: 'slow' }),
+          }))
+          void upsertIdentityProfile({ landscape })
+        } catch (err) {
+          console.warn('[OSLIFE] landscape synthesis failed', err)
+          set({ generatingLandscape: false, lastLandscapeError: 'HEYRA kon het landschap nu niet genereren — probeer het zo nog eens.' })
+        }
+      },
+
       generateWeekPlan: async () => {
         set({ planningWeek: true, lastPlanError: null })
         try {
           const dates = weekDates(today())
-          const allEvents = await fetchBlocksRange(dates[0], dates[dates.length - 1])
+          const [allEvents, sleep] = await Promise.all([
+            fetchBlocksRange(dates[0], dates[dates.length - 1]),
+            fetchSleepWindow(),
+          ])
           const s = get()
           // Preserve blocks Rick already locked this session (not calendar rows,
           // and still within the current week) so a regenerate doesn't wipe them.
@@ -1623,16 +1865,29 @@ export const useStore = create<State>()(
           const lockedKeys = new Set(keepLocked.map((b) => `${b.date}|${b.start}|${b.title}`))
           const events = allEvents.filter((e) => !lockedKeys.has(`${e.date}|${e.start}|${e.title}`))
           const busy = [...events, ...keepLocked]
+          // "Nu openstaand" signals (overdue payments/mail/client follow-up) are
+          // only real for the nearest planned day — the planner itself gates
+          // them to dateIndex 0, but gathering them here (once) keeps this in
+          // one place rather than re-deriving Dashboard's logic twice.
+          const overduePayments = s.payments.filter((p) => p.status === 'open' && p.due && daysBetween(today(), p.due) < 0)
+          const importantUnread = s.emails.filter((e) => e.unread && classifyImportance(e) === 'high')
+          const lapsedClients = s.clients.filter((c) => clientHealth(c, today()) === 'red')
           const proposed = await buildWeekPlan(dates, {
             events: busy,
             habits: s.habits,
             goals: s.goals,
             threads: s.threads,
             patterns: s.patterns,
+            dogReminders: s.dogReminders,
+            overduePayments,
+            emails: importantUnread,
+            clients: lapsedClients,
+            sleep,
           })
           set((st) => ({
             weekPlan: [...events, ...keepLocked, ...proposed],
             weekPlanAt: new Date().toISOString(),
+            weekPlanBounds: dayBounds(sleep),
             planningWeek: false,
             activity: pushSignal(st.activity, {
               text: `Dagplan gegenereerd voor ${dates.length} dag(en)`,
@@ -1649,10 +1904,16 @@ export const useStore = create<State>()(
       lockPlanBlock: (id) => {
         const b = get().weekPlan.find((x) => x.id === id)
         if (!b || b.locked) return
+        const isToday = b.date === today()
         // Optimistic: mark locked (keeps its kind/rationale). It's now also a real
         // day_blocks row; generateWeekPlan dedupes that DB copy on the next run.
+        // Mirror into `blocks` too when it's today's — Dashboard reads that
+        // slice directly and shouldn't have to wait on the realtime round-trip.
         set((s) => ({
           weekPlan: s.weekPlan.map((x) => (x.id === id ? { ...x, locked: true } : x)),
+          blocks: isToday
+            ? [...s.blocks, { id, title: b.title, domain: b.domain, start: b.start, end: b.end, status: 'planned', rationale: b.rationale }]
+            : s.blocks,
           activity: pushSignal(s.activity, { text: `Blok vergrendeld: ${b.title}`, domain: b.domain, loop: 'fast' }),
         }))
         void insertDayBlock({
@@ -1662,13 +1923,44 @@ export const useStore = create<State>()(
           title: b.title,
           description: b.rationale,
           domain: b.domain,
-        }).then(swapTempId(set, 'weekPlan', id))
+        }).then((realId) => {
+          swapTempId(set, 'weekPlan', id)(realId)
+          if (isToday) swapTempId(set, 'blocks', id)(realId)
+        })
       },
 
       dismissPlanBlock: (id) => {
         const b = get().weekPlan.find((x) => x.id === id)
         if (!b || b.source === 'calendar') return // never drop a real appointment
         removeFromSlice(set, 'weekPlan', id)
+        if (b.locked) {
+          // A locked block is also a real day_blocks row by now — drop that too
+          // (not just the in-memory proposal), and mirror the removal into
+          // `blocks` when it's today's, so Dashboard doesn't keep showing it
+          // until the realtime round-trip catches up.
+          if (b.date === today()) removeFromSlice(set, 'blocks', id)
+          void deleteDayBlock(id)
+        }
+      },
+
+      movePlanBlock: (id, deltaMin) => {
+        const b = get().weekPlan.find((x) => x.id === id)
+        if (!b || b.source === 'calendar') return // fixed appointments aren't movable here
+        const [sh, sm] = b.start.split(':').map(Number)
+        const [eh, em] = b.end.split(':').map(Number)
+        const durMin = eh * 60 + em - (sh * 60 + sm)
+        const clampedStart = Math.max(0, Math.min(sh * 60 + sm + deltaMin, 24 * 60 - durMin))
+        const toHHMM = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`
+        const start = toHHMM(clampedStart)
+        const end = toHHMM(clampedStart + durMin)
+        const isToday = b.date === today()
+        set((s) => ({
+          weekPlan: s.weekPlan.map((x) => (x.id === id ? { ...x, start, end } : x)),
+          // Mirror the new time into `blocks` too, so Dashboard's Vandaag row
+          // (which reads that slice directly) doesn't show the old time.
+          blocks: isToday ? s.blocks.map((x) => (x.id === id ? { ...x, start, end } : x)) : s.blocks,
+        }))
+        if (b.locked) void moveDayBlock(id, start, end)
       },
 
       markEmailRead: (id) => {
@@ -2498,7 +2790,9 @@ export const useStore = create<State>()(
             const prev = existingById.get(t.id)
             return prev ? { ...t, status: prev.status } : t
           }),
-          ...s.threads.filter((t) => !derivedIds.has(t.id)),
+          ...s.threads.filter(
+            (t) => !derivedIds.has(t.id) && !isOrphanedDerivedThread(t, s.projects, s.clients),
+          ),
         ]
 
         // Patterns: keep what Reflect has already written; otherwise seed the
@@ -2548,7 +2842,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, appSettings, inferences, wikiEntries, people, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, braindumpLinks, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, identityProfile, walks] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -2559,10 +2853,12 @@ export const useStore = create<State>()(
             fetchLearnedFacts(),
             fetchVendorTags(),
             fetchBraindumpEntries(),
+            fetchBraindumpLinks(),
             fetchAppSettings(),
             fetchPendingInferences(),
             fetchWikiEntries(),
             fetchPeople(),
+            fetchPersonConnections(),
             fetchInteractions(),
             fetchAdminItems(),
             fetchHealthConditions(),
@@ -2581,6 +2877,8 @@ export const useStore = create<State>()(
             fetchWorkoutExercises(),
             fetchWorkoutSessions(),
             fetchLatestBodyWeight(),
+            fetchIdentityProfile(),
+            fetchWalks(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -2623,12 +2921,14 @@ export const useStore = create<State>()(
             // Braindump is app-owned (no mock fallback) — set directly so an empty
             // result genuinely means "nothing captured yet".
             braindumpEntries,
+            braindumpLinks,
             // Inference review queue is app-owned too — set directly.
             inferences,
             // Kennisbank suggest-queue is app-owned too — set directly.
             wikiEntries,
             // Slice 2 domains — app-owned, set directly (empty = none yet).
             people,
+            personConnections,
             interactions,
             adminItems,
             healthConditions,
@@ -2645,8 +2945,11 @@ export const useStore = create<State>()(
             workoutExercises,
             workoutSessions,
             bodyWeight,
+            identityProfile,
+            walks,
             dataSource: 'live',
             isLoading: false,
+            lastSyncedAt: new Date().toISOString(),
           })
           // REMEMBER + SURFACE run off live data: rebuild essentials, threads,
           // dayLogs, baseline patterns and today's nudge now that it has loaded.
@@ -2673,9 +2976,39 @@ export const useStore = create<State>()(
           { table: 'finance_tx', onChange: () => fetchTransactions().then((d) => { if (d.length > 0) { set({ transactions: d }); get().recomputeBrain(); void get().autoTagTransactions() } }) },
           { table: 'vendor_tags', onChange: () => fetchVendorTags().then((d) => { set({ vendorTags: d }); void get().autoTagTransactions() }) },
           { table: 'gmail_messages', onChange: () => fetchEmails().then((d) => { if (d.length > 0) { set({ emails: d }); void get().autoSummarizeImportantEmails() } }) },
-          { table: 'day_blocks', onChange: () => Promise.all([fetchBlocks(), fetchMeetingDays()]).then(([b, m]) => {
-            set({ ...(b.length > 0 && { blocks: b }), ...(m.length > 0 && { meetingDays: m }) })
-          }) },
+          { table: 'day_blocks', onChange: () => {
+            // Dashboard's `blocks` (today only) and Dagplanner's `weekPlan`
+            // (the whole week) are two separate cached reads of the same
+            // day_blocks table — a row inserted from either screen (a Vandaag
+            // suggestion added, or a Dagplanner block locked/moved/rejected)
+            // has to refresh BOTH, or the two screens silently drift apart.
+            const planDates = [...new Set(get().weekPlan.map((b) => b.date))].sort()
+            return Promise.all([
+              fetchBlocks(),
+              fetchMeetingDays(),
+              planDates.length ? fetchBlocksRange(planDates[0], planDates[planDates.length - 1]) : Promise.resolve([]),
+            ]).then(([b, m, weekEvents]) => {
+              set((s) => ({
+                ...(b.length > 0 && { blocks: b }),
+                ...(m.length > 0 && { meetingDays: m }),
+                ...(planDates.length && {
+                  weekPlan: (() => {
+                    // Keep this session's in-memory proposals (not persisted yet)
+                    // untouched, and reuse the richer locked copy we already know
+                    // (real kind/rationale/domain) instead of the flattened
+                    // "source: calendar" shape fetchBlocksRange returns for every
+                    // day_blocks row — same simplification generateWeekPlan()
+                    // already relies on. A genuinely new persisted row (locked
+                    // from elsewhere) has no rich copy yet, so it comes in plain.
+                    const proposals = s.weekPlan.filter((x) => !x.locked && x.source !== 'calendar')
+                    const richByKey = new Map(s.weekPlan.filter((x) => x.locked).map((x) => [`${x.date}|${x.start}|${x.title}`, x]))
+                    const merged = weekEvents.map((e) => richByKey.get(`${e.date}|${e.start}|${e.title}`) ?? e)
+                    return [...merged, ...proposals]
+                  })(),
+                }),
+              }))
+            })
+          } },
           { table: 'projects', onChange: () => fetchProjects().then((d) => { if (d.length > 0) { set({ projects: d }); get().recomputeBrain() } }) },
           { table: 'payments', onChange: () => fetchPayments().then((d) => d.length > 0 && set({ payments: d })) },
           { table: 'investment_holdings', onChange: () => fetchHoldings().then((d) => { set({ holdings: d }); void get().refreshStockQuotes() }) },
@@ -2705,10 +3038,12 @@ export const useStore = create<State>()(
           { table: 'client_messages', onChange: () => fetchClientMessages().then((d) => set({ messages: d })) },
           { table: 'heyra_memory', onChange: () => fetchLearnedFacts().then((d) => set({ learnedFacts: d })) },
           { table: 'braindump_entries', onChange: () => fetchBraindumpEntries().then((d) => set({ braindumpEntries: d })) },
+          { table: 'braindump_links', onChange: () => fetchBraindumpLinks().then((d) => set({ braindumpLinks: d })) },
           { table: 'wiki_entries', onChange: () => fetchWikiEntries().then((d) => set({ wikiEntries: d })) },
           { table: 'app_settings', onChange: () => fetchAppSettings().then((p) => { if (p) set({ settings: p }) }) },
           { table: 'app_settings', onChange: () => fetchDogProfile().then((p) => { if (p) set({ dogProfile: p }) }) },
           { table: 'person', onChange: () => fetchPeople().then((d) => set({ people: d })) },
+          { table: 'person_connection', onChange: () => fetchPersonConnections().then((d) => set({ personConnections: d })) },
           { table: 'interaction', onChange: () => fetchInteractions().then((d) => set({ interactions: d })) },
           { table: 'admin_item', onChange: () => fetchAdminItems().then((d) => set({ adminItems: d })) },
           { table: 'health_condition', onChange: () => fetchHealthConditions().then((d) => set({ healthConditions: d })) },
@@ -2718,6 +3053,11 @@ export const useStore = create<State>()(
           { table: 'workout_sessions', onChange: () => fetchWorkoutSessions().then((d) => set({ workoutSessions: d })) },
           { table: 'workout_sets', onChange: () => fetchWorkoutSessions().then((d) => set({ workoutSessions: d })) },
           { table: 'health_body_metrics', onChange: () => fetchLatestBodyWeight().then((d) => set({ bodyWeight: d })) },
+          { table: 'walks', onChange: () => fetchWalks().then((d) => set({ walks: d })) },
+          // dog_log itself has no realtime sync elsewhere (entries were always
+          // client-written before); walk-ingest is the first external writer, so
+          // a phone-posted walk needs this to show up in the Kyra timeline live.
+          { table: 'dog_log', onChange: () => fetchDogEntries().then((d) => { if (d.length > 0) set({ dogEntries: d }) }) },
         ]
         // Tear down any channel from a previous loadLiveData() before opening a
         // new one — otherwise each auth event leaks another full subscription.
@@ -2728,7 +3068,11 @@ export const useStore = create<State>()(
         liveChannel = syncSlices
           .reduce(
             (channel, slice) =>
-              channel.on('postgres_changes', { event: '*', schema: 'public', table: slice.table }, slice.onChange),
+              channel.on('postgres_changes', { event: '*', schema: 'public', table: slice.table }, () => {
+                // Stamp the sync clock once this slice's refetch actually lands,
+                // so "bijgewerkt Xm geleden" reflects real data, not just a tick.
+                void Promise.resolve(slice.onChange()).then(() => set({ lastSyncedAt: new Date().toISOString() }))
+              }),
             supabase.channel('oslife-live'),
           )
           .subscribe()
@@ -2844,6 +3188,15 @@ export const useStore = create<State>()(
       deletePerson: (id) => {
         set((s) => ({ people: s.people.filter((x) => x.id !== id) }))
         void deletePersonRow(id)
+      },
+      addPersonConnection: (c) => {
+        void createPersonConnectionRow(c).then((id) => {
+          if (id) fetchPersonConnections().then((d) => set({ personConnections: d }))
+        })
+      },
+      deletePersonConnection: (id) => {
+        set((s) => ({ personConnections: s.personConnections.filter((x) => x.id !== id) }))
+        void deletePersonConnectionRow(id)
       },
       logInteraction: (i) => {
         void createInteractionRow(i).then((id) => {

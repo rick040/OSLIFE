@@ -4,7 +4,10 @@ import { TODAY, DOMAIN_HEX } from '../domains'
 import { SectionTitle, Empty, SegmentedProgress, Overlay } from '../components/ui'
 import { humanizeAge } from '../lib/syncStatus'
 import { BODY_PARTS, TARGET_MUSCLES, titleCase, loadExerciseLibrary, searchExercises, type LibraryExercise } from '../workout/exerciseLibrary'
-import type { WorkoutPlan, WorkoutExercise, WorkoutSet } from '../types'
+import GeneratePlanModal from '../workout/GeneratePlanModal'
+import WorkoutMode from '../workout/WorkoutMode'
+import { buildPreviousByExercise } from '../workout/previousSets'
+import type { WorkoutPlan, WorkoutExercise } from '../types'
 import {
   Dumbbell,
   Plus,
@@ -17,9 +20,9 @@ import {
   Trash2,
   Pencil,
   Scale,
-  BarChart3,
   Search,
   ListPlus,
+  Wand2,
 } from 'lucide-react'
 
 const WEEKDAY_FULL = ['Zondag', 'Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag']
@@ -52,12 +55,14 @@ export default function Workout() {
     addWorkoutExercise,
     updateWorkoutExercise,
     deleteWorkoutExercise,
+    addWorkoutPlanWithExercises,
     logWorkoutSession,
     deleteWorkoutSession,
   } = useStore()
 
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null)
   const [planForm, setPlanForm] = useState(false)
+  const [generatePlanOpen, setGeneratePlanOpen] = useState(false)
   const [logPlan, setLogPlan] = useState<WorkoutPlan | null>(null)
 
   const selectedPlan = workoutPlans.find((p) => p.id === selectedPlanId) ?? null
@@ -97,20 +102,10 @@ export default function Workout() {
   }, [workoutExercises, allSets])
 
   /** Most recent logged sets per exercise (across all past sessions) — powers the "vorige keer" hints while logging. */
-  const previousByExercise = useMemo(() => {
-    const map = new Map<string, WorkoutSet[]>()
-    const sorted = [...workoutSessions].sort((a, b) => b.startedAt.localeCompare(a.startedAt))
-    for (const ex of workoutExercises) {
-      for (const s of sorted) {
-        const sets = s.sets.filter((x) => x.exerciseId === ex.id).sort((a, b) => a.setNumber - b.setNumber)
-        if (sets.length) {
-          map.set(ex.id, sets)
-          break
-        }
-      }
-    }
-    return map
-  }, [workoutSessions, workoutExercises])
+  const previousByExercise = useMemo(
+    () => buildPreviousByExercise(workoutSessions, workoutExercises),
+    [workoutSessions, workoutExercises],
+  )
 
   const planLastDone = (planId: string): string | null => {
     const sessions = workoutSessions.filter((s) => s.planId === planId)
@@ -129,10 +124,25 @@ export default function Workout() {
           </span>
           <h1 className="text-xl font-medium text-ink">Workout</h1>
         </div>
-        <button className="btn-primary !py-2" onClick={() => setPlanForm((f) => !f)}>
-          <Plus className="h-4 w-4" /> Nieuw plan
-        </button>
+        <div className="flex items-center gap-2">
+          <button className="btn-ghost !py-2" onClick={() => setGeneratePlanOpen(true)}>
+            <Wand2 className="h-4 w-4" /> Genereer plan
+          </button>
+          <button className="btn-primary !py-2" onClick={() => setPlanForm((f) => !f)}>
+            <Plus className="h-4 w-4" /> Nieuw plan
+          </button>
+        </div>
       </div>
+
+      {generatePlanOpen && (
+        <GeneratePlanModal
+          existingPlanCount={workoutPlans.length}
+          onClose={() => setGeneratePlanOpen(false)}
+          onCreate={async (drafts) => {
+            for (const d of drafts) await addWorkoutPlanWithExercises(d.plan, d.exercises)
+          }}
+        />
+      )}
 
       {planForm && (
         <PlanForm
@@ -298,7 +308,7 @@ export default function Workout() {
       )}
 
       {logPlan && (
-        <LogWorkoutModal
+        <WorkoutMode
           plan={logPlan}
           exercises={exercisesFor(logPlan.id)}
           previousByExercise={previousByExercise}
@@ -552,7 +562,8 @@ function PlanDetail({
       ) : (
         <div className="flex flex-col gap-2">
           {exercises.map((ex) => (
-            <div key={ex.id} className="flex items-center gap-2 rounded-2xl bg-sunken px-4 py-2.5">
+            <div key={ex.id} className="flex items-center gap-3 rounded-2xl bg-sunken px-4 py-2.5">
+              <ExerciseThumb src={ex.imageUrl} className="h-9 w-9 shrink-0" />
               <span className="flex-1 text-sm text-ink truncate">{ex.name}</span>
               <span className="chip bg-line text-ink-soft shrink-0">{ex.muscleGroup}</span>
               <input
@@ -598,7 +609,15 @@ function PlanDetail({
         <ExercisePicker
           onClose={() => setPicker(false)}
           onPick={(picked) => {
-            onAddExercise({ name: picked.name, muscleGroup: picked.muscleGroup, targetSets: 3, targetReps: '8-12', orderIdx: exercises.length })
+            onAddExercise({
+              name: picked.name,
+              muscleGroup: picked.muscleGroup,
+              targetSets: 3,
+              targetReps: '8-12',
+              orderIdx: exercises.length,
+              imageUrl: picked.imageUrl,
+              gifUrl: picked.gifUrl,
+            })
             setPicker(false)
           }}
           onCustom={() => { setPicker(false); setCustomForm(true) }}
@@ -608,13 +627,34 @@ function PlanDetail({
   )
 }
 
+/** Library thumbnail with a dumbbell-icon fallback for custom exercises or a broken/missing image. */
+function ExerciseThumb({ src, className = 'h-10 w-10' }: { src?: string | null; className?: string }) {
+  const [broken, setBroken] = useState(false)
+  if (!src || broken) {
+    return (
+      <span className={`inline-flex items-center justify-center rounded-xl bg-line ${className}`}>
+        <Dumbbell className="h-4 w-4 text-faint" />
+      </span>
+    )
+  }
+  return (
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      onError={() => setBroken(true)}
+      className={`rounded-xl object-cover bg-line ${className}`}
+    />
+  )
+}
+
 function ExercisePicker({
   onClose,
   onPick,
   onCustom,
 }: {
   onClose: () => void
-  onPick: (ex: { name: string; muscleGroup: string }) => void
+  onPick: (ex: { name: string; muscleGroup: string; imageUrl: string; gifUrl: string }) => void
   onCustom: () => void
 }) {
   const [library, setLibrary] = useState<LibraryExercise[] | null>(null)
@@ -658,9 +698,10 @@ function ExercisePicker({
             {results.map((ex) => (
               <button
                 key={ex.id}
-                onClick={() => onPick({ name: ex.name, muscleGroup: titleCase(ex.target) })}
+                onClick={() => onPick({ name: ex.name, muscleGroup: titleCase(ex.target), imageUrl: ex.image, gifUrl: ex.gifUrl })}
                 className="flex items-center gap-3 rounded-2xl px-3 py-2.5 hover:bg-sunken text-left transition-colors"
               >
+                <ExerciseThumb src={ex.image} className="h-11 w-11" />
                 <span className="flex-1 text-sm text-ink truncate">{ex.name}</span>
                 <span className="chip bg-sunken text-ink-soft shrink-0">{titleCase(ex.target)}</span>
                 <span className="text-[11px] text-faint w-20 text-right shrink-0 truncate">{titleCase(ex.equipment)}</span>
@@ -675,111 +716,8 @@ function ExercisePicker({
       <button onClick={onCustom} className="btn-ghost !py-2 mt-3 self-center text-xs shrink-0">
         <ListPlus className="h-3.5 w-3.5" /> Staat er niet bij — aangepaste oefening
       </button>
+      <p className="text-[10px] text-faint text-center mt-2 shrink-0">Oefeningfoto's © Gym visual — gymvisual.com</p>
     </Overlay>
   )
 }
 
-interface SetRow {
-  weight: string
-  reps: string
-}
-
-function LogWorkoutModal({
-  plan,
-  exercises,
-  previousByExercise,
-  onClose,
-  onSave,
-}: {
-  plan: WorkoutPlan
-  exercises: WorkoutExercise[]
-  previousByExercise: Map<string, WorkoutSet[]>
-  onClose: () => void
-  onSave: (sets: { exerciseId: string; exerciseName: string; muscleGroup: string; setNumber: number; weightKg: number | null; reps: number | null }[]) => void
-}) {
-  const [rows, setRows] = useState<Record<string, SetRow[]>>(() =>
-    Object.fromEntries(exercises.map((ex) => [ex.id, Array.from({ length: ex.targetSets }, () => ({ weight: '', reps: '' }))])),
-  )
-
-  const updateRow = (exId: string, idx: number, patch: Partial<SetRow>) =>
-    setRows((r) => ({ ...r, [exId]: r[exId].map((row, i) => (i === idx ? { ...row, ...patch } : row)) }))
-  const addRow = (exId: string) => setRows((r) => ({ ...r, [exId]: [...r[exId], { weight: '', reps: '' }] }))
-  const removeRow = (exId: string, idx: number) => setRows((r) => ({ ...r, [exId]: r[exId].filter((_, i) => i !== idx) }))
-
-  const submit = () => {
-    const sets: { exerciseId: string; exerciseName: string; muscleGroup: string; setNumber: number; weightKg: number | null; reps: number | null }[] = []
-    for (const ex of exercises) {
-      (rows[ex.id] ?? []).forEach((row, i) => {
-        if (!row.weight.trim() && !row.reps.trim()) return
-        sets.push({
-          exerciseId: ex.id,
-          exerciseName: ex.name,
-          muscleGroup: ex.muscleGroup,
-          setNumber: i + 1,
-          weightKg: row.weight.trim() ? Number(row.weight) : null,
-          reps: row.reps.trim() ? Number(row.reps) : null,
-        })
-      })
-    }
-    onSave(sets)
-  }
-
-  return (
-    <Overlay tone="black-blur" onClose={onClose} panelClassName="bg-surface rounded-3xl p-5 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
-      <div className="flex items-center justify-between mb-1">
-        <div className="font-semibold text-ink flex items-center gap-2"><Play className="h-4 w-4" /> {plan.name}</div>
-        <button onClick={onClose} className="text-faint hover:text-ink p-1" aria-label="Sluiten"><X className="h-4 w-4" /></button>
-      </div>
-      <p className="text-xs text-faint mb-4">Vul gewicht (kg) en reps in per set — leeg laten sla je die set over.</p>
-
-      <div className="flex flex-col gap-4">
-        {exercises.map((ex) => {
-          const prev = previousByExercise.get(ex.id) ?? []
-          return (
-            <div key={ex.id}>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-medium text-ink">{ex.name}</span>
-                <span className="text-xs text-faint">{ex.muscleGroup} · doel {ex.targetSets}×{ex.targetReps}</span>
-              </div>
-              {prev.length > 0 && (
-                <p className="text-[11px] text-faint mb-2">
-                  Vorige keer: {prev.map((p) => `${p.weightKg ?? '–'}kg×${p.reps ?? '–'}`).join(', ')}
-                </p>
-              )}
-              <div className="flex flex-col gap-1.5">
-                {(rows[ex.id] ?? []).map((row, i) => {
-                  const p = prev[i]
-                  return (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-xs text-faint w-5 shrink-0">{i + 1}</span>
-                      <input
-                        type="number" step="0.5" min="0" placeholder={p?.weightKg != null ? `${p.weightKg}` : 'kg'} value={row.weight}
-                        onChange={(e) => updateRow(ex.id, i, { weight: e.target.value })}
-                        className="input flex-1 text-center"
-                      />
-                      <input
-                        type="number" min="0" placeholder={p?.reps != null ? `${p.reps}` : 'reps'} value={row.reps}
-                        onChange={(e) => updateRow(ex.id, i, { reps: e.target.value })}
-                        className="input flex-1 text-center"
-                      />
-                      <button onClick={() => removeRow(ex.id, i)} className="text-faint hover:text-cross p-1 shrink-0" aria-label="Verwijder set">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-              <button onClick={() => addRow(ex.id)} className="text-xs text-muted hover:text-ink mt-1.5 flex items-center gap-1">
-                <Plus className="h-3 w-3" /> Set toevoegen
-              </button>
-            </div>
-          )
-        })}
-      </div>
-
-      <button onClick={submit} className="btn-primary w-full !py-2.5 mt-5">
-        <BarChart3 className="h-4 w-4" /> Training opslaan
-      </button>
-    </Overlay>
-  )
-}

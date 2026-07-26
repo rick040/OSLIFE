@@ -9,7 +9,10 @@
  *   Code.gs              (this file) — Gmail, Calendar, payments-calendar
  *   health-sheets.gs     — reads your Health sheet  (by id)  → health-sheets-ingest
  *   payments-sheet.gs    — reads your Betalingen sheet (by id) → payments-sheet-ingest
- *   screentime-sheet.gs  — reads your Schermtijd sheet (by id) → screentime-sheet-ingest
+ *
+ * Screen time no longer goes through a sheet: MacroDroid posts App
+ * Opened/Closed events straight to the screentime-app-ingest edge function —
+ * see integrations/macrodroid/app-timer.md.
  *
  * The sheet readers open your sheets BY ID (SpreadsheetApp.openById), so you do
  * NOT touch the existing Apps Script that fills each sheet — leave those as-is.
@@ -28,8 +31,6 @@
  *      HEALTH_SHEET_ID       <id from the Health sheet URL>
  *      PAYMENTS_SYNC_URL     https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/payments-sheet-ingest
  *      PAYMENTS_SHEET_ID     <id from the Betalingen sheet URL>
- *      SCREENTIME_SYNC_URL   https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/screentime-sheet-ingest
- *      SCREENTIME_SHEET_ID   <id from the Schermtijd sheet URL>
  *   (The sheet id is the long code in the URL:
  *    docs.google.com/spreadsheets/d/<THIS_IS_THE_ID>/edit )
  *
@@ -44,7 +45,7 @@ function installAllTriggers() {
   var wanted = {
     syncGmail: 15, syncPayments: 15,                                    // every N minutes
     syncCalendarBlocks: 60,                                             // hourly (minutes)
-    syncHealthSheet: 30, syncPaymentsSheet: 30, syncScreentimeSheet: 30,
+    syncHealthSheet: 30, syncPaymentsSheet: 30,
   };
   var existing = {};
   ScriptApp.getProjectTriggers().forEach(function (t) { existing[t.getHandlerFunction()] = true; });
@@ -178,7 +179,7 @@ function supabaseUpsert(table, rows, conflict, ignoreDuplicates) {
   }
 }
 
-// ── Shared helpers for the Google-Sheet readers (health/payments/screentime) ──
+// ── Shared helpers for the Google-Sheet readers (health/payments) ────────────
 // The sheet readers live in THIS same project and POST to Supabase edge
 // functions with INGEST_SECRET, so they reuse these helpers instead of carrying
 // their own copies.

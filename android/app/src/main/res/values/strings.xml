@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">OSLIFE Walk Tracker</string>
+    <string name="notif_channel_tracking">Wandeling volgen</string>
+    <string name="notif_tracking_title">Wandeling wordt gevolgd</string>
+</resources>
