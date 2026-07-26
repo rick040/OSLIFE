@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:id="@+id/titleText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/app_name"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Detecteert wandelingen automatisch (huis-geofence of net na een autorit) en logt ze naar OSLIFE."
+            android:textSize="13sp"
+            android:alpha="0.7"
+            android:layout_marginBottom="20dp" />
+
+        <!-- ── Live status ─────────────────────────────────────────────── -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Status"
+            android:textStyle="bold"
+            android:layout_marginBottom="4dp" />
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Idle"
+            android:textSize="16sp"
+            android:padding="12dp"
+            android:background="#1A34D399" />
+
+        <Button
+            android:id="@+id/forceEndButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Wandeling nu afronden en loggen" />
+
+        <Button
+            android:id="@+id/discardButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Huidige wandeling verwijderen (fout gedetecteerd)" />
+
+        <!-- ── Setup ───────────────────────────────────────────────────── -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Instellingen"
+            android:textStyle="bold"
+            android:layout_marginTop="28dp"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Edge function URL (walk-ingest)"
+            android:textSize="12sp"
+            android:alpha="0.7" />
+        <EditText
+            android:id="@+id/serverUrlInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="https://xxxx.supabase.co/functions/v1/walk-ingest"
+            android:inputType="textUri" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Webhook secret"
+            android:textSize="12sp"
+            android:alpha="0.7"
+            android:layout_marginTop="8dp" />
+        <EditText
+            android:id="@+id/secretInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="WALK_WEBHOOK_SECRET waarde"
+            android:inputType="textPassword" />
+
+        <Button
+            android:id="@+id/saveSettingsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Instellingen opslaan" />
+
+        <TextView
+            android:id="@+id/homeStatusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Thuislocatie: nog niet ingesteld"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/setHomeButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Huidige locatie instellen als thuis" />
+
+        <Button
+            android:id="@+id/requestPermissionsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="Rechten controleren / aanvragen" />
+
+        <TextView
+            android:id="@+id/permissionStatusText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:textSize="12sp"
+            android:alpha="0.7" />
+
+    </LinearLayout>
+</ScrollView>

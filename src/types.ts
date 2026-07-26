@@ -966,6 +966,30 @@ export interface DogProfile {
   photo?: string | null
 }
 
+/** GPS point in a tracked walk's route. */
+export interface WalkPoint {
+  lat: number
+  lon: number
+  t?: string | null // ISO datetime, optional
+}
+
+/**
+ * A dog walk auto-detected and tracked by the standalone Android app (see
+ * /android), posted once via walk-ingest. Every walk also writes a matching
+ * DogEntry (kind='walk') — this carries the extra route/GPS detail for the
+ * map card, keyed to that entry via dogLogId.
+ */
+export interface Walk {
+  id: string
+  startedAt: string // ISO datetime
+  endedAt: string // ISO datetime
+  durationMin: number
+  distanceKm: number
+  points: WalkPoint[]
+  triggerSource: string | null // 'home' | 'car_forest' | 'manual' | ...
+  dogLogId: string | null
+}
+
 // ── Subscriptions (recurring spend) ──────────────────────────────────────────
 export type Cadence = 'weekly' | 'monthly' | 'quarterly' | 'yearly'
 

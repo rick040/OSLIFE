@@ -13,6 +13,8 @@ import type {
   Goal,
   DogEntry,
   DogProfile,
+  Walk,
+  WalkPoint,
   Block,
   Thread,
   Priority,
@@ -1564,6 +1566,26 @@ export async function fetchDogEntries(): Promise<DogEntry[]> {
       location: (r.location as string) ?? null,
       poopConsistency: (r.poop_consistency as DogEntry['poopConsistency']) ?? null,
       trainingType: (r.training_type as string) ?? null,
+    }),
+  )
+}
+
+// ── Walks (Android walk-tracker routes) ──────────────────────────────────────
+
+export async function fetchWalks(): Promise<Walk[]> {
+  return fetchRows(
+    'walks',
+    'id,started_at,ended_at,duration_min,distance_km,points,trigger_source,dog_log_id',
+    { column: 'started_at', ascending: false, limit: 100 },
+    (r) => ({
+      id: r.id as string,
+      startedAt: r.started_at as string,
+      endedAt: r.ended_at as string,
+      durationMin: r.duration_min as number,
+      distanceKm: r.distance_km as number,
+      points: (r.points as WalkPoint[]) ?? [],
+      triggerSource: (r.trigger_source as string) ?? null,
+      dogLogId: (r.dog_log_id as string) ?? null,
     }),
   )
 }
