@@ -78,6 +78,15 @@ Deno.serve(async (req) => {
     if (!html) return json({ ok: false, error: "Kon het profiel niet ophalen (privé, verwijderd, of Instagram blokkeerde het verzoek)" }, 200);
 
     const og = parseOG(html);
+    // Temporary diagnostics — no cookie value, just shape/lengths. Surfaced
+    // via get_logs.
+    console.log("[fetch-instagram-profile]", JSON.stringify({
+      url: url.toString(),
+      hasCookie: !!INSTAGRAM_COOKIE_HEADER,
+      htmlLength: html.length,
+      ogTitle: og.title,
+      ogDescription: og.description?.slice(0, 200) ?? null,
+    }));
     if (!og.title) {
       const hint = INSTAGRAM_COOKIE_HEADER
         ? "Instagram gaf een pagina zonder profielgegevens terug (login-wall of geblokkeerd)."
@@ -86,6 +95,16 @@ Deno.serve(async (req) => {
     }
 
     const usernameFromTitle = og.title.match(/\(@([a-zA-Z0-9_.]+)\)/)?.[1] ?? null;
+    // A real profile's og:title ALWAYS contains "(@username)". If it doesn't,
+    // this is a generic/app-shell/login-wall page, not the actual profile —
+    // surface the raw title/description right in the error text (no server
+    // logs needed to diagnose from the app).
+    if (!usernameFromTitle) {
+      return json({
+        ok: false,
+        error: `Instagram gaf een algemene pagina terug, geen profiel. Debug: cookie=${!!INSTAGRAM_COOKIE_HEADER}, html=${html.length} tekens, title="${og.title}", desc="${(og.description ?? "").slice(0, 150)}"`,
+      }, 200);
+    }
     const username = usernameFromTitle ?? parseUsernameFromUrl(url);
     const displayName = decodeEntities(og.title.replace(/\s*\(@[^)]+\)\s*(•.*)?$/, "").trim()) || null;
 
