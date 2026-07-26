@@ -1,4 +1,19 @@
-import { AlertTriangle, Bell, Sparkles, ChevronRight, type LucideIcon } from 'lucide-react'
+import {
+  AlertTriangle,
+  Bell,
+  Sparkles,
+  ChevronRight,
+  Brain,
+  CheckCircle2,
+  FolderKanban,
+  Wallet,
+  Mail,
+  Users,
+  PawPrint,
+  Target,
+  Activity,
+  type LucideIcon,
+} from 'lucide-react'
 import type { Domain, Nudge } from '../types'
 import { MarkdownInline } from './Markdown'
 
@@ -20,6 +35,26 @@ const TONE: Record<NudgeTone, { hex: string; icon: LucideIcon }> = {
   urgent: { hex: '#F87171', icon: AlertTriangle },
   attention: { hex: '#FBBF24', icon: Bell },
   calm: { hex: '#34D399', icon: Sparkles },
+}
+
+/**
+ * CTA icon by destination screen — lets the jump button stay icon-only
+ * (a fixed "Naar X" label was wider than the nudge text it sat next to,
+ * pushing the actually-important content into a 2-line clamp) while still
+ * hinting where it goes. Falls back to a plain chevron for any view not
+ * worth a bespoke glyph.
+ */
+const VIEW_ICON: Record<string, LucideIcon> = {
+  memory: Brain,
+  habits: CheckCircle2,
+  projects: FolderKanban,
+  money: Wallet,
+  inbox: Mail,
+  crm: Users,
+  dog: PawPrint,
+  northstar: Target,
+  vitals: Activity,
+  reflect: Sparkles,
 }
 
 /**
@@ -81,11 +116,15 @@ function NudgeRow({ nudge, onNav }: { nudge: DashNudge; onNav: (v: string) => vo
       {nudge.cta && (
         <button
           onClick={() => onNav(nudge.cta!.view)}
-          className="shrink-0 inline-flex items-center gap-0.5 text-xs font-semibold rounded-lg px-2 py-1 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 hover:bg-sunken transition-colors"
+          aria-label={nudge.cta.label}
+          title={nudge.cta.label}
+          className="shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 hover:bg-sunken transition-colors"
           style={{ color: tone.hex }}
         >
-          {nudge.cta.label}
-          <ChevronRight className="h-3.5 w-3.5" />
+          {(() => {
+            const CtaIcon = VIEW_ICON[nudge.cta.view] ?? ChevronRight
+            return <CtaIcon className="h-4 w-4" />
+          })()}
         </button>
       )}
     </div>

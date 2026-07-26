@@ -589,8 +589,9 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           disappears just because something else is on fire. ─────────────── */}
       {overdueOutgoing.length > 0 ? (
         <HeroStat label="Te betalen (verlopen)" value={eur(overdueOutgoingTotal)}>
-          <button onClick={() => onNav('money')} className="chip bg-cross/15 text-cross-deep">
-            {overdueOutgoing.length} betaling{overdueOutgoing.length > 1 ? 'en' : ''} over de vervaldatum — bekijk in Geld →
+          <button onClick={() => onNav('money')} className="flex items-start gap-1.5 text-left text-sm font-medium text-cross-deep">
+            <span>{overdueOutgoing.length} betaling{overdueOutgoing.length > 1 ? 'en' : ''} over de vervaldatum — bekijk in Geld</span>
+            <ArrowRight className="h-3.5 w-3.5 shrink-0 mt-0.5" />
           </button>
           <p className="mt-3 text-[11px] leading-relaxed text-faint">
             Dit vak wisselt vanzelf terug naar "vandaag" zodra er niets dringends meer openstaat.
@@ -601,8 +602,11 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           <div className="mb-4 flex items-center justify-between gap-2">
             <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">
               Vandaag
-              <span className="chip bg-forest/15 !py-0.5 text-forest-hi">
-                <Sparkles className="h-3 w-3" /> automatisch gekozen
+              <span
+                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-forest/15 text-forest-hi"
+                title="Automatisch gekozen — dit vak toont altijd wat vandaag het meest telt"
+              >
+                <Sparkles className="h-3 w-3" />
               </span>
             </span>
             {healthSync && (
