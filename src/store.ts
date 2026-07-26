@@ -783,6 +783,25 @@ function pushSignal(activity: ActivitySignal[], s: Omit<ActivitySignal, 'id' | '
 /** True for threads derived live from projects/clients (not worth persisting). */
 const isDerivedThreadId = (id: string) => /^thr-(prj|cli)-/.test(id)
 
+/**
+ * True for a derived thread whose source project/client row has been fully
+ * deleted (not just marked done) — a ghost that recomputeBrain's merge would
+ * otherwise carry forward into brain_state.threads forever, since nothing
+ * else ever prunes it. A derived thread for a still-existing (even 'done')
+ * project/client is real history and is kept.
+ */
+function isOrphanedDerivedThread(t: Thread, projects: Project[], clients: Client[]): boolean {
+  if (t.id.startsWith('thr-prj-')) {
+    const projectId = t.id.slice('thr-prj-'.length)
+    return !projects.some((p) => p.id === projectId)
+  }
+  if (t.id.startsWith('thr-cli-')) {
+    const clientId = t.id.slice('thr-cli-'.length)
+    return !clients.some((c) => c.id === clientId)
+  }
+  return false
+}
+
 /** True for a thread that's a real row in the `tasks` table — a Supabase id that isn't a derived project/client loop. Used to merge tasks-table refetches with brain_state.threads (legacy/derived) without either clobbering the other. */
 const isTaskRow = (t: Thread) => isDbId(t.id) && !isDerivedThreadId(t.id)
 
@@ -2612,7 +2631,9 @@ export const useStore = create<State>()(
             const prev = existingById.get(t.id)
             return prev ? { ...t, status: prev.status } : t
           }),
-          ...s.threads.filter((t) => !derivedIds.has(t.id)),
+          ...s.threads.filter(
+            (t) => !derivedIds.has(t.id) && !isOrphanedDerivedThread(t, s.projects, s.clients),
+          ),
         ]
 
         // Patterns: keep what Reflect has already written; otherwise seed the
