@@ -1,6 +1,7 @@
 package nl.oslife.walktracker
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -16,6 +17,7 @@ import com.google.android.gms.tasks.CancellationTokenSource
 import nl.oslife.walktracker.databinding.ActivityMainBinding
 import nl.oslife.walktracker.detect.DetectionRegistrar
 import nl.oslife.walktracker.detect.WalkDetector
+import nl.oslife.walktracker.walks.WalksListActivity
 import nl.oslife.walktracker.widget.WidgetUpdateWorker
 
 class MainActivity : AppCompatActivity() {
@@ -86,6 +88,9 @@ class MainActivity : AppCompatActivity() {
         binding.discardButton.setOnClickListener {
             WalkDetector.discardWalk(this)
             Toast.makeText(this, "Wandeling verwijderd", Toast.LENGTH_SHORT).show()
+        }
+        binding.viewWalksButton.setOnClickListener {
+            startActivity(Intent(this, WalksListActivity::class.java))
         }
     }
 
