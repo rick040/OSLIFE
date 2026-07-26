@@ -1,7 +1,6 @@
-import { useState, useEffect } from 'react'
-import type { Session } from '@supabase/supabase-js'
-import { supabase } from './lib/supabase'
+import { useState } from 'react'
 import { useStore } from './store'
+import { useLiveSession } from './lib/useLiveSession'
 import LoginScreen from './components/LoginScreen'
 import Dashboard from './views/Dashboard'
 import Tasks from './views/Tasks'
@@ -29,6 +28,7 @@ import Mindmap from './views/Mindmap'
 import Relaties from './views/Relaties'
 import HuisAdmin from './views/HuisAdmin'
 import RedesignDemo from './design-demo/RedesignDemo'
+import TabletApp from './tablet/TabletApp'
 import LoopExplainer from './components/LoopExplainer'
 import SettingsModal from './components/SettingsModal'
 import AppGrid from './components/AppGrid'
@@ -44,51 +44,15 @@ export default function App() {
   // Standalone redesign preview (docs/design.md Part 2) — no auth required
   // so it's reviewable without logging in. See src/design-demo/RedesignDemo.tsx.
   const isDesignDemo = window.location.pathname === '/design-demo'
+  // Wall-mounted kiosk views (e.g. the gym tablet) — no nav chrome, own routing. See src/tablet/TabletApp.tsx.
+  const isTablet = window.location.pathname.startsWith('/tablet')
   const [showLoops, setShowLoops] = useState(false)
   const [showGrid, setShowGrid] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   // Which reset-demo confirm to show: the sidebar's full text or the top bar's short one.
   const [confirmReset, setConfirmReset] = useState<'full' | 'short' | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
-  const [authChecked, setAuthChecked] = useState(false)
-  const { resetDemo, runNightlyReflect, reflectCount, loadLiveData, dataSource, isLoading, healthDays, nudge } = useStore()
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
-      setAuthChecked(true)
-    })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s)
-    })
-    return () => subscription.unsubscribe()
-  }, [])
-
-  useEffect(() => {
-    if (session) loadLiveData()
-  }, [session])
-
-  // Realtime keeps things live while the tab stays open and connected, but
-  // mobile browsers freeze/drop that socket in the background — so on top of
-  // it, re-pull everything whenever the tab regains focus/visibility, plus a
-  // 5-minute fallback poll while it stays visible. Belt-and-suspenders against
-  // data quietly going stale.
-  useEffect(() => {
-    if (!session) return
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') void loadLiveData()
-    }
-    document.addEventListener('visibilitychange', onVisible)
-    window.addEventListener('focus', onVisible)
-    const id = window.setInterval(() => {
-      if (document.visibilityState === 'visible') void loadLiveData()
-    }, 5 * 60 * 1000)
-    return () => {
-      document.removeEventListener('visibilitychange', onVisible)
-      window.removeEventListener('focus', onVisible)
-      window.clearInterval(id)
-    }
-  }, [session, loadLiveData])
+  const { resetDemo, runNightlyReflect, reflectCount, dataSource, isLoading, healthDays, nudge } = useStore()
+  const { session, authChecked } = useLiveSession()
 
   const Current: Record<View, JSX.Element> = {
     dashboard: <Dashboard onNav={(v) => setView(v as View)} />,
@@ -119,6 +83,8 @@ export default function App() {
   }
 
   if (isDesignDemo) return <RedesignDemo />
+
+  if (isTablet) return <TabletApp />
 
   if (!authChecked) return (
     <div className="min-h-screen flex items-center justify-center bg-canvas">
