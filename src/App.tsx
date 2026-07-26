@@ -67,6 +67,28 @@ export default function App() {
     if (session) loadLiveData()
   }, [session])
 
+  // Realtime keeps things live while the tab stays open and connected, but
+  // mobile browsers freeze/drop that socket in the background — so on top of
+  // it, re-pull everything whenever the tab regains focus/visibility, plus a
+  // 5-minute fallback poll while it stays visible. Belt-and-suspenders against
+  // data quietly going stale.
+  useEffect(() => {
+    if (!session) return
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void loadLiveData()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    const id = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void loadLiveData()
+    }, 5 * 60 * 1000)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+      window.clearInterval(id)
+    }
+  }, [session, loadLiveData])
+
   const Current: Record<View, JSX.Element> = {
     dashboard: <Dashboard onNav={(v) => setView(v as View)} />,
     tasks: <Tasks />,
