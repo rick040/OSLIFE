@@ -6,7 +6,8 @@ import { humanizeAge } from '../lib/syncStatus'
 import { BODY_PARTS, TARGET_MUSCLES, titleCase, loadExerciseLibrary, searchExercises, type LibraryExercise } from '../workout/exerciseLibrary'
 import GeneratePlanModal from '../workout/GeneratePlanModal'
 import WorkoutMode from '../workout/WorkoutMode'
-import type { WorkoutPlan, WorkoutExercise, WorkoutSet } from '../types'
+import { buildPreviousByExercise } from '../workout/previousSets'
+import type { WorkoutPlan, WorkoutExercise } from '../types'
 import {
   Dumbbell,
   Plus,
@@ -101,20 +102,10 @@ export default function Workout() {
   }, [workoutExercises, allSets])
 
   /** Most recent logged sets per exercise (across all past sessions) — powers the "vorige keer" hints while logging. */
-  const previousByExercise = useMemo(() => {
-    const map = new Map<string, WorkoutSet[]>()
-    const sorted = [...workoutSessions].sort((a, b) => b.startedAt.localeCompare(a.startedAt))
-    for (const ex of workoutExercises) {
-      for (const s of sorted) {
-        const sets = s.sets.filter((x) => x.exerciseId === ex.id).sort((a, b) => a.setNumber - b.setNumber)
-        if (sets.length) {
-          map.set(ex.id, sets)
-          break
-        }
-      }
-    }
-    return map
-  }, [workoutSessions, workoutExercises])
+  const previousByExercise = useMemo(
+    () => buildPreviousByExercise(workoutSessions, workoutExercises),
+    [workoutSessions, workoutExercises],
+  )
 
   const planLastDone = (planId: string): string | null => {
     const sessions = workoutSessions.filter((s) => s.planId === planId)

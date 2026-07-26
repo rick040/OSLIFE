@@ -26,8 +26,8 @@ function ExerciseVisual({ ex }: { ex: WorkoutExercise }) {
   const [broken, setBroken] = useState(false)
   if (!src || broken) {
     return (
-      <div className="w-full max-w-xs aspect-square rounded-3xl bg-sunken flex items-center justify-center">
-        <Dumbbell className="h-14 w-14 text-faint" />
+      <div className="h-[20vh] sm:h-[22vh] md:h-[24vh] lg:h-[26vh] w-auto max-w-full aspect-square rounded-3xl bg-sunken flex items-center justify-center">
+        <Dumbbell className="h-14 w-14 md:h-20 md:w-20 text-faint" />
       </div>
     )
   }
@@ -36,7 +36,7 @@ function ExerciseVisual({ ex }: { ex: WorkoutExercise }) {
       src={src}
       alt={ex.name}
       onError={() => setBroken(true)}
-      className="w-full max-w-xs aspect-square rounded-3xl object-cover bg-sunken"
+      className="h-[20vh] sm:h-[22vh] md:h-[24vh] lg:h-[26vh] w-auto max-w-full aspect-square rounded-3xl object-cover bg-sunken"
     />
   )
 }
@@ -55,27 +55,27 @@ function BigStepper({
   onChange: (v: number) => void
 }) {
   return (
-    <div className="flex flex-col items-center gap-1.5 rounded-2xl bg-sunken py-3.5">
-      <div className="flex items-center gap-3">
+    <div className="flex flex-col items-center gap-1 md:gap-2 rounded-2xl bg-sunken py-3 md:py-4">
+      <div className="flex items-center gap-2 md:gap-4">
         <button
           type="button"
           onClick={() => onChange(Math.max(min, +(value - step).toFixed(2)))}
-          className="h-12 w-12 shrink-0 rounded-full bg-surface flex items-center justify-center active:scale-90 transition-transform"
+          className="h-12 w-12 md:h-14 md:w-14 shrink-0 rounded-full bg-surface flex items-center justify-center active:scale-90 transition-transform"
           aria-label={`${label} verlagen`}
         >
-          <Minus className="h-5 w-5 text-ink" />
+          <Minus className="h-5 w-5 md:h-6 md:w-6 text-ink" />
         </button>
-        <span className="text-4xl font-semibold tabular-nums w-16 text-center text-ink">{fmtWeight(value)}</span>
+        <span className="text-4xl md:text-5xl lg:text-6xl font-semibold tabular-nums w-16 md:w-24 text-center text-ink">{fmtWeight(value)}</span>
         <button
           type="button"
           onClick={() => onChange(+(value + step).toFixed(2))}
-          className="h-12 w-12 shrink-0 rounded-full bg-surface flex items-center justify-center active:scale-90 transition-transform"
+          className="h-12 w-12 md:h-14 md:w-14 shrink-0 rounded-full bg-surface flex items-center justify-center active:scale-90 transition-transform"
           aria-label={`${label} verhogen`}
         >
-          <Plus className="h-5 w-5 text-ink" />
+          <Plus className="h-5 w-5 md:h-6 md:w-6 text-ink" />
         </button>
       </div>
-      <span className="text-[11px] text-faint uppercase tracking-wide">{label}</span>
+      <span className="text-[11px] md:text-sm text-faint uppercase tracking-wide">{label}</span>
     </div>
   )
 }
@@ -184,79 +184,82 @@ export default function WorkoutMode({
     <Overlay tone="black" onClose={requestClose} className="fixed inset-0" panelClassName="absolute inset-0 bg-canvas flex flex-col outline-none">
       <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} className="flex flex-col h-full">
         {/* top bar */}
-        <div className="flex items-center gap-3 px-4 pt-4 shrink-0">
+        <div className="flex items-center gap-2 md:gap-4 px-4 md:px-10 pt-3 md:pt-5 shrink-0">
           <button onClick={requestClose} className="text-faint hover:text-ink p-1.5 shrink-0" aria-label="Sluiten workout mode">
-            <X className="h-5 w-5" />
+            <X className="h-5 w-5 md:h-7 md:w-7" />
           </button>
           <div className="flex-1 min-w-0">
             <SegmentedProgress done={exIdx + 1} total={exercises.length} />
           </div>
-          <button onClick={finish} className="btn-primary !py-1.5 !px-3 text-xs shrink-0">Voltooien</button>
+          <button onClick={finish} className="btn-primary !py-1.5 !px-3 md:!py-2.5 md:!px-5 text-xs md:text-base shrink-0">Voltooien</button>
         </div>
-        <div className="text-center text-[11px] text-faint pt-1.5 pb-1 shrink-0">
+        <div className="text-center text-[11px] md:text-sm text-faint pt-1 pb-0.5 md:pt-1.5 md:pb-1 shrink-0">
           {plan.name} · oefening {exIdx + 1}/{exercises.length}
         </div>
 
-        {/* visual + info */}
-        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center gap-3 px-6 py-3">
-          <ExerciseVisual ex={ex} />
-          <div className="text-xl font-medium text-ink text-center">{ex.name}</div>
-          <div className="flex items-center gap-2">
-            <span className="chip bg-sunken text-ink-soft">{ex.muscleGroup}</span>
-            <span className="chip bg-sunken text-ink-soft">{ex.targetSets}×{ex.targetReps}</span>
+        {/* visual + info — m-auto (not justify-center) so on a short viewport where
+            this overflows, it scrolls from the top instead of clipping the top half */}
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center px-6 py-2">
+          <div className="m-auto flex flex-col items-center gap-2 md:gap-3">
+            <ExerciseVisual ex={ex} />
+            <div className="text-lg md:text-2xl lg:text-3xl font-medium text-ink text-center">{ex.name}</div>
+            <div className="flex items-center gap-2 md:gap-3">
+              <span className="chip bg-sunken text-ink-soft md:text-base md:px-3 md:py-1">{ex.muscleGroup}</span>
+              <span className="chip bg-sunken text-ink-soft md:text-base md:px-3 md:py-1">{ex.targetSets}×{ex.targetReps}</span>
+            </div>
+            {prev[setIdx] && (
+              <p className="text-xs md:text-base text-faint">Vorige keer set {setIdx + 1}: {prev[setIdx].weightKg ?? '–'}kg × {prev[setIdx].reps ?? '–'}</p>
+            )}
           </div>
-          {prev[setIdx] && (
-            <p className="text-xs text-faint">Vorige keer set {setIdx + 1}: {prev[setIdx].weightKg ?? '–'}kg × {prev[setIdx].reps ?? '–'}</p>
-          )}
         </div>
 
         {/* set pills */}
-        <div className="flex justify-center gap-2 pb-2 shrink-0">
+        <div className="flex justify-center gap-2 md:gap-3 pb-2 md:pb-3 shrink-0">
           {exRows.map((r, i) => (
             <button
               key={i}
               onClick={() => setSetIdx(i)}
-              className={`h-8 w-8 rounded-full text-xs font-medium flex items-center justify-center transition-colors ${
+              className={`h-8 w-8 md:h-10 md:w-10 rounded-full text-xs md:text-base font-medium flex items-center justify-center transition-colors ${
                 r.logged ? 'bg-forest text-canvas' : i === setIdx ? 'bg-ink text-canvas' : 'bg-sunken text-muted'
               }`}
               aria-label={`Set ${i + 1}`}
             >
-              {r.logged ? <Check className="h-4 w-4" /> : i + 1}
+              {r.logged ? <Check className="h-4 w-4 md:h-5 md:w-5" /> : i + 1}
             </button>
           ))}
         </div>
 
         {/* steppers */}
-        <div className="grid grid-cols-2 gap-3 px-6 pb-3 shrink-0">
+        <div className="grid grid-cols-2 gap-3 md:gap-5 px-6 md:px-10 pb-2 md:pb-4 shrink-0 max-w-3xl mx-auto w-full">
           <BigStepper label="kg" value={row.weight} step={2.5} onChange={(v) => patchRow({ weight: v })} />
           <BigStepper label="reps" value={row.reps} step={1} onChange={(v) => patchRow({ reps: v })} />
         </div>
 
         {/* log button */}
-        <div className="px-6 pb-3 shrink-0">
-          <button onClick={logSet} className="btn-primary w-full !py-3.5 text-base">
-            <Check className="h-4 w-4" /> {row.logged ? 'Set opnieuw loggen' : 'Set loggen'}
+        <div className="px-6 md:px-10 pb-2 md:pb-4 shrink-0 max-w-3xl mx-auto w-full">
+          <button onClick={logSet} className="btn-primary w-full !py-3.5 md:!py-4 text-base md:text-xl">
+            <Check className="h-4 w-4 md:h-6 md:w-6" /> {row.logged ? 'Set opnieuw loggen' : 'Set loggen'}
           </button>
         </div>
 
         {/* nav */}
-        <div className="flex items-center justify-between px-6 pb-6 shrink-0">
+        <div className="flex items-center justify-between px-6 md:px-14 pb-4 md:pb-6 shrink-0">
           <button
             onClick={goPrev}
             disabled={exIdx === 0}
-            className="h-12 w-12 rounded-full bg-sunken flex items-center justify-center disabled:opacity-30"
+            className="h-12 w-12 md:h-14 md:w-14 rounded-full bg-sunken flex items-center justify-center disabled:opacity-30"
             aria-label="Vorige oefening"
           >
-            <ChevronLeft className="h-5 w-5" />
+            <ChevronLeft className="h-5 w-5 md:h-6 md:w-6" />
           </button>
-          <span className="text-[11px] text-faint">swipe voor volgende oefening</span>
+          <span className="text-[11px] md:text-sm text-faint">swipe voor volgende oefening</span>
           <button
             onClick={goNext}
             disabled={exIdx === exercises.length - 1}
-            className="h-12 w-12 rounded-full bg-sunken flex items-center justify-center disabled:opacity-30"
+            className="h-12 w-12 md:h-14 md:w-14 rounded-full bg-sunken flex items-center justify-center disabled:opacity-30"
             aria-label="Volgende oefening"
           >
-            <ChevronRight className="h-5 w-5" />
+            <ChevronRight className="h-5 w-5 md:h-6 md:w-6" />
           </button>
         </div>
       </div>
