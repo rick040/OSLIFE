@@ -51,6 +51,18 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".widget.DailyGlanceWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="nl.oslife.walktracker.widget.ACTION_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_daily_glance_info" />
+        </receiver>
+
     </application>
 
 </manifest>

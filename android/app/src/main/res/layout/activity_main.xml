@@ -100,6 +100,56 @@
             android:layout_marginTop="8dp"
             android:text="Instellingen opslaan" />
 
+        <!-- ── Home-screen widget ──────────────────────────────────────── -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Widget (Vandaag in één oogopslag)"
+            android:textStyle="bold"
+            android:layout_marginTop="28dp"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Edge function URL (widget-summary)"
+            android:textSize="12sp"
+            android:alpha="0.7" />
+        <EditText
+            android:id="@+id/widgetUrlInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="https://xxxx.supabase.co/functions/v1/widget-summary"
+            android:inputType="textUri" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Widget secret"
+            android:textSize="12sp"
+            android:alpha="0.7"
+            android:layout_marginTop="8dp" />
+        <EditText
+            android:id="@+id/widgetSecretInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="WIDGET_SUMMARY_SECRET waarde"
+            android:inputType="textPassword" />
+
+        <Button
+            android:id="@+id/saveWidgetSettingsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Widget-instellingen opslaan" />
+
+        <Button
+            android:id="@+id/refreshWidgetButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Widget nu verversen" />
+
         <TextView
             android:id="@+id/homeStatusText"
             android:layout_width="match_parent"

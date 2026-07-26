@@ -16,6 +16,7 @@ import com.google.android.gms.tasks.CancellationTokenSource
 import nl.oslife.walktracker.databinding.ActivityMainBinding
 import nl.oslife.walktracker.detect.DetectionRegistrar
 import nl.oslife.walktracker.detect.WalkDetector
+import nl.oslife.walktracker.widget.WidgetUpdateWorker
 
 class MainActivity : AppCompatActivity() {
 
@@ -54,6 +55,8 @@ class MainActivity : AppCompatActivity() {
 
         binding.serverUrlInput.setText(prefs.serverUrl)
         binding.secretInput.setText(prefs.secret)
+        binding.widgetUrlInput.setText(prefs.widgetSummaryUrl)
+        binding.widgetSecretInput.setText(prefs.widgetSummarySecret)
         renderHomeStatus()
         renderPermissionStatus()
 
@@ -61,6 +64,17 @@ class MainActivity : AppCompatActivity() {
             prefs.serverUrl = binding.serverUrlInput.text.toString().trim()
             prefs.secret = binding.secretInput.text.toString().trim()
             Toast.makeText(this, "Opgeslagen", Toast.LENGTH_SHORT).show()
+        }
+
+        binding.saveWidgetSettingsButton.setOnClickListener {
+            prefs.widgetSummaryUrl = binding.widgetUrlInput.text.toString().trim()
+            prefs.widgetSummarySecret = binding.widgetSecretInput.text.toString().trim()
+            Toast.makeText(this, "Widget-instellingen opgeslagen", Toast.LENGTH_SHORT).show()
+        }
+
+        binding.refreshWidgetButton.setOnClickListener {
+            WidgetUpdateWorker.refreshNow(this)
+            Toast.makeText(this, "Widget wordt ververst…", Toast.LENGTH_SHORT).show()
         }
 
         binding.setHomeButton.setOnClickListener { captureHomeLocation() }

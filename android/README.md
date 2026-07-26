@@ -114,6 +114,44 @@ Play Store.
    automatic from here. The status card in the app shows "Idle" vs "Wandeling
    bezig" live if you want to check it's working.
 
+## Home-screen widget ("OSLIFE · Vandaag")
+
+The same app also provides a 4×2 home-screen widget with four glanceable
+lines, refreshed every ~30 minutes (WorkManager periodic job, not the
+widget's own OS-level alarm) plus a manual refresh tap:
+
+```
+🐕 Laatste wandeling: 3u geleden · 2 vandaag, 4.2 km
+✅ 3 te doen vandaag · 7 open in totaal
+🔥 2/3 gewoontes gedaan vandaag · reeks: 5 d (Mediteren)
+📅 Volgende: Team sync om 14:00
+```
+
+It fetches this from one Supabase Edge Function (`widget-summary`) that
+aggregates `dog_log`/`walks`, `tasks`, `habits`/`habit_log`, and `day_blocks`
+server-side with the service-role key — the widget itself never touches
+Supabase Auth, it just does one authenticated GET, same shared-secret
+pattern as `walk-ingest`. Tapping the widget body opens the app; tapping the
+small sync icon forces an immediate refresh.
+
+**Setup:**
+1. Deploy the function and set its secret:
+   ```bash
+   supabase functions deploy widget-summary --project-ref nhyunnnmdcmojvkxrbpl
+   supabase secrets set WIDGET_SUMMARY_SECRET=<random 32+ char secret> --project-ref nhyunnnmdcmojvkxrbpl
+   ```
+2. In the app → **Widget (Vandaag in één oogopslag)**: paste the function URL
+   (`https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/widget-summary`)
+   and the same secret → **Widget-instellingen opslaan**.
+3. Long-press the home screen → Widgets → **OSLIFE Walk Tracker** → drag
+   "OSLIFE · Vandaag" onto the home screen.
+4. Tap **Widget nu verversen** in the app (or the widget's sync icon) to
+   confirm it's wired up correctly.
+
+Until step 2 is done, the widget shows "Widget nog niet ingesteld" instead
+of guessing at data. A failed refresh (no network, server error) leaves the
+last good snapshot on screen rather than clearing it.
+
 ## Tuning
 
 All thresholds live in `Constants.kt`:
