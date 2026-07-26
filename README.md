@@ -71,6 +71,7 @@ ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betaling
 | Inbox / mail | **Gmail** | Code.gs `syncGmail` | `gmail_messages` |
 | Dagplanner / agenda | **Google Calendar** | Code.gs `syncCalendarBlocks` | `day_blocks` |
 | Gewoonten · Doelen · Kyra · Abonnementen | in-app (handmatig) | app write-back | `habits`, `goals`, `dog_log`, `subscriptions` |
+| Kyra · wandelroutes | **standalone Android app** (`/android`) — auto-detects real walks (home-geofence / car-ride triggers) | `walk-ingest` | `walks`, `dog_log` |
 | Geheugen / Reflectie | afgeleid in-app | reflect engine | `brain_state` |
 
 ### Native CRM (Projecten / Klanten)
@@ -131,6 +132,19 @@ app's most recent unmatched Opened, computes the session length, and recomputes
 that day's per-app total into `screentime` from the raw log (so retries never
 double-count) — exactly like pickups are recomputed from `phone_events`. Setup:
 `integrations/macrodroid/app-timer.md`.
+
+### Android walk tracker: auto-detected dog walks
+A standalone Android app (`/android` — not published to the Play Store, sideloaded) tracks
+real walks with the dog, no third-party fitness app involved. It runs on two free,
+battery-cheap Play Services signals — Activity Recognition (WALKING/STILL/IN_VEHICLE
+transitions) and one "home" geofence — never polling continuous GPS except during an
+actual detected walk. A walk starts when WALKING follows either a home-geofence exit or a
+just-finished car ride (the "drove to the forest" case), ends at the home geofence or back
+in the car, merges through STILL pauses (sniffing, playing) up to a timeout, and is
+discarded outright if under 5 minutes — see `/android/README.md` for the full rule set and
+tuning knobs. The finished route posts once to `walk-ingest`, which writes both a `dog_log`
+row (shows up in the Kyra timeline like a manual entry) and a `walks` row (the GPS route,
+rendered as a Leaflet/OpenStreetMap map card on the Kyra screen — free, no Maps API key).
 
 ### Obsidian integration: read the vault, write via an inbox
 Two independent, optional directions over Supabase Storage's S3 protocol — full setup in
