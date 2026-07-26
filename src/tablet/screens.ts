@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
-import { Dumbbell } from 'lucide-react'
+import { Dumbbell, FolderKanban } from 'lucide-react'
 import GymWorkoutKiosk from './GymWorkoutKiosk'
+import ProjectDeskKiosk from './ProjectDeskKiosk'
 
 /**
  * Registry of wall-mounted kiosk views, reached at /tablet/<key>. Each is a
@@ -17,4 +18,5 @@ export interface TabletScreen {
 
 export const TABLET_SCREENS: TabletScreen[] = [
   { key: 'workout', label: 'Workout', icon: Dumbbell, component: GymWorkoutKiosk },
+  { key: 'projects', label: 'Projecten', icon: FolderKanban, component: ProjectDeskKiosk },
 ]
