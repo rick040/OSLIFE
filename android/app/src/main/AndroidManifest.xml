@@ -30,6 +30,16 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".walks.WalksListActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
+        <activity
+            android:name=".walks.WalkDetailActivity"
+            android:exported="false"
+            android:parentActivityName=".walks.WalksListActivity" />
+
         <service
             android:name=".tracking.WalkTrackingService"
             android:exported="false"

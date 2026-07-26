@@ -57,6 +57,13 @@
             android:layout_marginTop="4dp"
             android:text="Huidige wandeling verwijderen (fout gedetecteerd)" />
 
+        <Button
+            android:id="@+id/viewWalksButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Bekijk wandelingen (kaart)" />
+
         <!-- ── Setup ───────────────────────────────────────────────────── -->
         <TextView
             android:layout_width="wrap_content"

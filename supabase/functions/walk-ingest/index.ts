@@ -17,9 +17,16 @@
  *     and coach exactly like a manually logged walk.
  *   - `walks` — the GPS route detail (points/trigger_source) for the map card.
  *
+ * Also serves GET, so the Android app itself can show a walk-history screen
+ * (cards + map, same shared secret) without a second function to deploy.
+ *
  *   request:  POST { started_at, ended_at, duration_min, distance_km,
  *                    points: [{lat, lon, t}], trigger_source? }
  *   response: { ok: true, walk_id, dog_log_id } | { ok: false, error: "..." }
+ *
+ *   request:  GET ?limit=30 (optional, default 30, max 100)
+ *   response: { ok: true, walks: [{ id, started_at, ended_at, duration_min,
+ *                                    distance_km, points, trigger_source }] }
  *
  * Deploy:
  *   supabase functions deploy walk-ingest --project-ref nhyunnnmdcmojvkxrbpl
@@ -58,14 +65,31 @@ function num(v: unknown): number | null {
 }
 
 Deno.serve(async (req) => {
-  if (req.method !== 'POST') {
+  if (req.method !== 'POST' && req.method !== 'GET') {
     return json({ ok: false, error: 'Method not allowed' }, 405)
   }
 
   // Fail CLOSED: an unset secret must not leave this service-role endpoint open.
-  const secret = req.headers.get('x-webhook-secret') ?? new URL(req.url).searchParams.get('secret') ?? ''
+  const url = new URL(req.url)
+  const secret = req.headers.get('x-webhook-secret') ?? url.searchParams.get('secret') ?? ''
   if (!WEBHOOK_SECRET || secret !== WEBHOOK_SECRET) {
     return json({ ok: false, error: 'Unauthorized' }, 401)
+  }
+
+  if (req.method === 'GET') {
+    const limit = Math.min(Math.max(num(url.searchParams.get('limit')) ?? 30, 1), 100)
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+    const { data, error } = await supabase
+      .from('walks')
+      .select('id,started_at,ended_at,duration_min,distance_km,points,trigger_source')
+      .eq('user_id', USER_ID)
+      .order('started_at', { ascending: false })
+      .limit(limit)
+    if (error) {
+      console.error('walks list error:', error)
+      return json({ ok: false, error: error.message }, 500)
+    }
+    return json({ ok: true, walks: data ?? [] })
   }
 
   let body: Body

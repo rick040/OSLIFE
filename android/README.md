@@ -114,6 +114,21 @@ Play Store.
    automatic from here. The status card in the app shows "Idle" vs "Wandeling
    bezig" live if you want to check it's working.
 
+## Walk history screen (cards + map)
+
+Tapping **"Bekijk wandelingen (kaart)"** on the main screen opens a card list
+of recent tracked walks (date, distance, duration, how it was triggered);
+tapping a card opens that walk's route drawn on a map.
+
+- The card list and the map both read from the *same* `walk-ingest` function
+  and URL/secret you already configured above — `walk-ingest` now also
+  answers `GET ?limit=30`, so there's nothing extra to deploy or configure.
+- The map is [osmdroid](https://github.com/osmdroid/osmdroid) — free
+  OpenStreetMap tiles, no Google Maps API key or billing, the same choice the
+  web dashboard's Leaflet map card makes.
+- If the list is empty, either no walk has been tracked yet, or the settings
+  above aren't filled in/saved yet.
+
 ## Home-screen widget ("OSLIFE · Vandaag")
 
 The same app also provides a 4×2 home-screen widget with four glanceable
