@@ -433,6 +433,45 @@ async function fetchFromUrl(url, dir) {
   return { audioPath: join(dir, audio), meta }
 }
 
+/**
+ * Separate from the transcript/summary pipeline above (fetchFromUrl /
+ * transcribeFile / summarise) — that flow is untouched by this function.
+ * Instagram reels get their thumbnail today from meta.thumbnail, a signed
+ * Instagram CDN URL from yt-dlp's generic --dump-single-json (fetchYoutubeMeta)
+ * that expires after a while, so the note's thumbnail eventually breaks. This
+ * downloads the reel's actual thumbnail file with yt-dlp and re-uploads it to
+ * Supabase Storage (same pattern as braindump-ingest's makeThumb for photo
+ * uploads), so the note gets a permanent signed URL instead. Best-effort:
+ * null on any failure, never throws — a missing thumbnail must never fail
+ * the whole entry.
+ */
+async function fetchInstagramReelThumbnail(url, dir) {
+  try {
+    const out = join(dir, 'reel_thumb.%(ext)s')
+    await execFileP('yt-dlp', [
+      '--no-playlist', '--no-warnings', '--quiet', '--skip-download',
+      '--write-thumbnail', '--convert-thumbnails', 'jpg',
+      ...cookieArgsFor(url),
+      '-o', out, url,
+    ], { maxBuffer: 1024 * 1024 * 64, timeout: 1000 * 60 * 2 })
+    const files = await readdir(dir)
+    const thumbFile = files.find((f) => f.startsWith('reel_thumb.') && f.endsWith('.jpg'))
+    if (!thumbFile) return null
+    const bytes = await readFile(join(dir, thumbFile))
+    const path = `instagram-thumbs/${Date.now()}_${Math.random().toString(36).slice(2)}.jpg`
+    const { error } = await sb.storage.from('braindump').upload(path, bytes, {
+      contentType: 'image/jpeg',
+      upsert: true,
+    })
+    if (error) return null
+    const YEAR = 60 * 60 * 24 * 365
+    const { data } = await sb.storage.from('braindump').createSignedUrl(path, YEAR)
+    return data?.signedUrl ?? null
+  } catch {
+    return null
+  }
+}
+
 /** Pull a shared file from Supabase Storage and transcode it to compact audio. */
 async function fetchFromStorage(storagePath, dir) {
   const { data, error } = await sb.storage.from('braindump').download(storagePath)
@@ -701,8 +740,13 @@ async function runJob({ entryId, sourceUrl, storagePath, sourceKind }) {
       markdown: `# ${meta.title ?? 'Transcript'}\n\n${transcript}\n\n${sourceUrl ? `[bron](${sourceUrl})` : ''}`,
     }
 
+    // Additive only — the transcript/summary this note was built from above is
+    // untouched. Only for Instagram reels: fetch a permanent thumbnail via the
+    // separate function above, falling back to the existing behaviour if that fails.
+    const igThumbUrl = sourceKind === 'instagram' && sourceUrl ? await fetchInstagramReelThumbnail(sourceUrl, dir) : null
+
     await finishReady(entryId, userId, tier, note, {
-      thumbUrl: (sourceKind === 'youtube' && sourceUrl ? youtubeThumbUrl(sourceUrl) : null) ?? meta.thumbnail ?? null,
+      thumbUrl: (sourceKind === 'youtube' && sourceUrl ? youtubeThumbUrl(sourceUrl) : null) ?? igThumbUrl ?? meta.thumbnail ?? null,
       meta: { transcript: true, captionSource, channel: meta.channel ?? null, duration: meta.duration ?? null, url: sourceUrl ?? null },
       contentHash,
       url: sourceUrl ?? null,
