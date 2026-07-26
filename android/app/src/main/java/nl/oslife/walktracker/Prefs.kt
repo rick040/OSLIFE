@@ -22,6 +22,16 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_SECRET, "") ?: ""
         set(value) = sp.edit().putString(KEY_SECRET, value).apply()
 
+    // ── Home-screen widget (widget-summary edge function) ────────────────────
+
+    var widgetSummaryUrl: String
+        get() = sp.getString(KEY_WIDGET_SUMMARY_URL, "") ?: ""
+        set(value) = sp.edit().putString(KEY_WIDGET_SUMMARY_URL, value).apply()
+
+    var widgetSummarySecret: String
+        get() = sp.getString(KEY_WIDGET_SUMMARY_SECRET, "") ?: ""
+        set(value) = sp.edit().putString(KEY_WIDGET_SUMMARY_SECRET, value).apply()
+
     var homeLat: Double
         get() = java.lang.Double.longBitsToDouble(sp.getLong(KEY_HOME_LAT, 0L))
         set(value) = sp.edit().putLong(KEY_HOME_LAT, java.lang.Double.doubleToLongBits(value)).apply()
@@ -62,6 +72,8 @@ class Prefs(context: Context) {
     companion object {
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_SECRET = "secret"
+        private const val KEY_WIDGET_SUMMARY_URL = "widget_summary_url"
+        private const val KEY_WIDGET_SUMMARY_SECRET = "widget_summary_secret"
         private const val KEY_HOME_LAT = "home_lat"
         private const val KEY_HOME_LON = "home_lon"
         private const val KEY_WALK_ACTIVE = "walk_active"
