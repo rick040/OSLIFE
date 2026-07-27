@@ -788,19 +788,35 @@ export interface GoalProposal {
   source: 'ai' | 'rule'
 }
 
-// ── Profile: current-state identity + dream profile + landscape ─────────────
+// ── Profile: current-state identity + desired profile + landscape ───────────
 // Distinct from `ProfileFact` (rule-derived, versioned facts feeding the
 // inference engine) — this is HEYRA's holistic read of "who Rick is right now"
-// vs. "who Rick needs to become" vs. the environment that bridges the two,
-// synthesized on demand from learned facts, patterns, profile facts and
-// braindumps. Same brain-first/rule-fallback contract as goals.ts; grounded
-// only in what's actually been captured. Deliberately structured, not
-// narrative: each category holds short, discrete items — never a paragraph —
-// so current and dream read as two comparable versions of the same persona.
+// vs. "who Rick needs to become" vs. the environment that bridges the two.
+// Modeled directly on Rick's own self-model interview (src/selfModel.ts) and
+// its own spec for what the answers become: self/current (5 categories, each
+// item a hypothesis until confirmed by real data), self/desired (identity
+// sketch / aspirations / no-gos), the interview itself (preserved, editable),
+// and a list of tensions between the two. Deliberately structured, not
+// narrative: each category holds short, discrete items — never a paragraph.
 // The canonical category keys/labels live in src/profile.ts, not here.
 
+/** One current-profile item. `hypothesis` = distilled from the interview, unconfirmed; `confirmed` = backed by real behavioral data or hand-asserted. */
+export interface ProfileItem {
+  text: string
+  status: 'hypothesis' | 'confirmed'
+}
+
 export interface IdentitySnapshot {
-  /** category key (see src/profile.ts's PERSONA_CATEGORIES) → short discrete items */
+  /** category key (see src/profile.ts's CURRENT_CATEGORIES) → items with confidence status */
+  categories: Record<string, ProfileItem[]>
+  /** last successful synthesizeCurrentFromData() run */
+  generatedAt: string | null
+  /** last successful synthesizeCurrentHypotheses() (interview distill) run */
+  hypothesesAt: string | null
+}
+
+export interface DesiredProfile {
+  /** category key (see src/profile.ts's DESIRED_CATEGORIES) → short discrete items */
   categories: Record<string, string[]>
   generatedAt: string | null
 }
@@ -808,15 +824,18 @@ export interface IdentitySnapshot {
 export interface Landscape {
   /** category key (see src/profile.ts's LANDSCAPE_CATEGORIES) → short discrete items */
   categories: Record<string, string[]>
+  /** Concrete named gaps between current and desired — "the first gaps the engine will work on". */
+  tensions: string[]
   generatedAt: string | null
 }
 
 export interface IdentityProfile {
   current: IdentitySnapshot
-  /** Raw free-form text Rick writes himself (e.g. a self-interview) — never AI-generated, preserved verbatim. Source material `dream` can be distilled from. */
-  dreamNotes: string
-  /** Structured dream persona — same category shape as `current`, either distilled from dreamNotes via HEYRA or hand-edited directly. */
-  dream: IdentitySnapshot
+  /** Structured answers to the self-model interview (src/selfModel.ts), keyed by question id — the source material both `current` hypotheses and `desired` are distilled from. */
+  interview: { answers: Record<string, string>; updatedAt: string | null }
+  /** The original pasted interview blob, preserved verbatim for reference — never edited, backfilled once into `interview.answers` via selfModel.ts's deterministic parser. */
+  legacyNotes: string
+  desired: DesiredProfile
   landscape: Landscape
 }
 

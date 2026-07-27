@@ -62,9 +62,11 @@ import type {
   WorkoutSet,
   IdentityProfile,
   IdentitySnapshot,
+  DesiredProfile,
   Landscape,
 } from '../types'
 import { today, habitStreak } from '../domains'
+import { parseLegacyInterviewText } from '../selfModel'
 import { CATEGORY_META, type LearnedFact, type LearningCategory } from '../heyra/learning'
 import type { CardTemplate, CardTemplateExtraField } from '../heyra/actions/types'
 
@@ -2556,26 +2558,69 @@ export async function fetchProfileFacts(): Promise<ProfileFact[]> {
   }))
 }
 
-// ── Identity profile (huidig / droom / landschap) ─────────────────────────────
+// ── Identity profile (huidig / droom-interview / landschap) ──────────────────
 
-const EMPTY_SNAPSHOT: IdentitySnapshot = { categories: {}, generatedAt: null }
-const EMPTY_LANDSCAPE: Landscape = { categories: {}, generatedAt: null }
+const EMPTY_CURRENT: IdentitySnapshot = { categories: {}, generatedAt: null, hypothesesAt: null }
+const EMPTY_DESIRED: DesiredProfile = { categories: {}, generatedAt: null }
+const EMPTY_LANDSCAPE: Landscape = { categories: {}, tensions: [], generatedAt: null }
+const EMPTY_INTERVIEW = { answers: {} as Record<string, string>, updatedAt: null as string | null }
 
-/** Defensive coercion — a jsonb column with the old (pre-categories) shape, or a corrupt/partial value, must never crash the caller. */
-function coerceSnapshot(raw: unknown): IdentitySnapshot {
+/** Defensive coercion — a jsonb column with an old/pre-migration shape, or a corrupt/partial value, must never crash the caller. */
+function coerceCurrent(raw: unknown): IdentitySnapshot {
   const r = (raw as Partial<IdentitySnapshot>) ?? {}
+  const categories = r.categories && typeof r.categories === 'object' ? r.categories : {}
+  return {
+    categories,
+    generatedAt: typeof r.generatedAt === 'string' ? r.generatedAt : null,
+    hypothesesAt: typeof r.hypothesesAt === 'string' ? r.hypothesesAt : null,
+  }
+}
+
+function coerceDesired(raw: unknown): DesiredProfile {
+  const r = (raw as Partial<DesiredProfile>) ?? {}
   const categories = r.categories && typeof r.categories === 'object' ? r.categories : {}
   return { categories, generatedAt: typeof r.generatedAt === 'string' ? r.generatedAt : null }
 }
 
+function coerceLandscape(raw: unknown): Landscape {
+  const r = (raw as Partial<Landscape>) ?? {}
+  const categories = r.categories && typeof r.categories === 'object' ? r.categories : {}
+  const tensions = Array.isArray(r.tensions) ? (r.tensions as string[]) : []
+  return { categories, tensions, generatedAt: typeof r.generatedAt === 'string' ? r.generatedAt : null }
+}
+
+function coerceInterview(raw: unknown): { answers: Record<string, string>; updatedAt: string | null } {
+  const r = (raw as { answers?: unknown; updatedAt?: unknown }) ?? {}
+  const answers = r.answers && typeof r.answers === 'object' ? (r.answers as Record<string, string>) : {}
+  return { answers, updatedAt: typeof r.updatedAt === 'string' ? r.updatedAt : null }
+}
+
 export async function fetchIdentityProfile(): Promise<IdentityProfile> {
-  const { data } = await supabase.from('identity_profile').select('current,dream_notes,dream,landscape').maybeSingle()
-  if (!data) return { current: EMPTY_SNAPSHOT, dreamNotes: '', dream: EMPTY_SNAPSHOT, landscape: EMPTY_LANDSCAPE }
+  const { data } = await supabase.from('identity_profile').select('current,legacy_notes,interview,desired,landscape').maybeSingle()
+  if (!data) {
+    return { current: EMPTY_CURRENT, interview: EMPTY_INTERVIEW, legacyNotes: '', desired: EMPTY_DESIRED, landscape: EMPTY_LANDSCAPE }
+  }
+  const legacyNotes = (data.legacy_notes as string) ?? ''
+  let interview = coerceInterview(data.interview)
+
+  // One-time deterministic backfill: the legacy pasted blob already holds real
+  // per-question answers (from before the structured interview UI existed) —
+  // split it once and persist, so nothing the user already wrote is lost or
+  // needs re-typing. No AI involved — same reliability as a code migration.
+  if (Object.keys(interview.answers).length === 0 && legacyNotes.trim()) {
+    const parsed = parseLegacyInterviewText(legacyNotes)
+    if (Object.keys(parsed).length > 0) {
+      interview = { answers: parsed, updatedAt: null }
+      void upsertIdentityProfile({ interview })
+    }
+  }
+
   return {
-    current: coerceSnapshot(data.current),
-    dreamNotes: (data.dream_notes as string) ?? '',
-    dream: coerceSnapshot(data.dream),
-    landscape: coerceSnapshot(data.landscape) as Landscape,
+    current: coerceCurrent(data.current),
+    interview,
+    legacyNotes,
+    desired: coerceDesired(data.desired),
+    landscape: coerceLandscape(data.landscape),
   }
 }
 
@@ -2586,8 +2631,8 @@ export async function upsertIdentityProfile(patch: Partial<IdentityProfile>): Pr
     {
       user_id,
       ...(patch.current !== undefined && { current: patch.current }),
-      ...(patch.dreamNotes !== undefined && { dream_notes: patch.dreamNotes }),
-      ...(patch.dream !== undefined && { dream: patch.dream }),
+      ...(patch.interview !== undefined && { interview: patch.interview }),
+      ...(patch.desired !== undefined && { desired: patch.desired }),
       ...(patch.landscape !== undefined && { landscape: patch.landscape }),
       updated_at: new Date().toISOString(),
     },
