@@ -69,6 +69,7 @@ import type {
   WorkoutSession,
   WorkoutSet,
   IdentityProfile,
+  ProfileItem,
 } from './types'
 import { vendorKey, isUntagged, isTransfer } from './finance/categories'
 import { categorizeVendor } from './heyra/agents/vendorAgent'
@@ -88,7 +89,8 @@ import { buildDogCoachPrompt } from './dog/dogCoach'
 import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
 import type { CardTemplate, ActionKind, ActionFieldType } from './heyra/actions/types'
 import { proposeGoals as proposeGoalsAI } from './heyra/goals'
-import { synthesizeCurrentProfile, synthesizeLandscape } from './heyra/identity'
+import { synthesizeCurrentFromData, synthesizeCurrentHypotheses, synthesizeDesiredProfile, synthesizeTensionsAndLandscape } from './heyra/identity'
+import { emptySnapshot, emptyDesired, emptyLandscape } from './profile'
 import { buildWeekPlan, weekDates, dayBounds, type DayBounds } from './heyra/planner'
 import {
   deriveEssentials,
@@ -361,10 +363,13 @@ interface State {
   budgetCaps: BudgetCap[]
   profileFacts: ProfileFact[]
   summaries: MemorySummary[]
-  // Profile screen: huidig profiel (AI-synthesized) / droomprofiel (hand-written) / landschap (AI-synthesized).
+  // Profile screen: huidig profiel (data-driven, confirmed) / interview-hypotheses + droomprofiel (interview-driven) / landschap (AI-synthesized).
   identityProfile: IdentityProfile
   generatingProfile: boolean
   lastProfileError: string | null
+  /** distillFromInterview() — populates current's hypotheses + the desired profile in one call. */
+  distillingInterview: boolean
+  lastDistillError: string | null
   generatingLandscape: boolean
   lastLandscapeError: string | null
   businessIdeas: BusinessIdea[]
@@ -511,10 +516,19 @@ interface State {
   proposeGoals: () => Promise<void>
   acceptGoalProposal: (id: string) => void
   dismissGoalProposal: (id: string) => void
-  // Profile screen — huidig profiel is AI-synthesized on demand; droomprofiel is
-  // hand-written by Rick; landschap is AI-synthesized from the other two.
+  // Profile screen — current is data-driven (confirmed items); the interview
+  // seeds both current's hypotheses and the desired profile; landschap is
+  // AI-synthesized from current + desired (+ tensions) once desired has signal.
   generateCurrentProfile: () => Promise<void>
-  updateDreamProfile: (md: string) => void
+  /** Manual add/remove primitives behind the Profile screen's category editors. */
+  setCurrentItems: (key: string, items: ProfileItem[]) => void
+  setDesiredItems: (key: string, items: string[]) => void
+  setLandscapeItems: (key: string, items: string[]) => void
+  setTensions: (items: string[]) => void
+  /** Flips one current-profile item's status hypothesis → confirmed. */
+  confirmCurrentItem: (key: string, index: number) => void
+  updateInterviewAnswer: (questionId: string, text: string) => void
+  distillFromInterview: () => Promise<void>
   generateLandscape: () => Promise<void>
   // Dagplanner — generate/lock/dismiss the weekly day plan.
   generateWeekPlan: () => Promise<void>
@@ -746,12 +760,16 @@ const seed = () => ({
   profileFacts: [] as ProfileFact[],
   summaries: [] as MemorySummary[],
   identityProfile: {
-    current: { summary: '', traits: [], strengths: [], weaknesses: [], accelerators: [], generatedAt: null },
-    dreamMd: '',
-    landscape: { summary: '', people: [], habits: [], environment: [], generatedAt: null },
+    current: emptySnapshot(),
+    interview: { answers: {} as Record<string, string>, updatedAt: null as string | null },
+    legacyNotes: '',
+    desired: emptyDesired(),
+    landscape: emptyLandscape(),
   } as IdentityProfile,
   generatingProfile: false,
   lastProfileError: null as string | null,
+  distillingInterview: false,
+  lastDistillError: null as string | null,
   generatingLandscape: false,
   lastLandscapeError: null as string | null,
   businessIdeas: [] as BusinessIdea[],
@@ -810,15 +828,32 @@ export function applyPersistDefaults(
   state.financeCoachLoading = false
   state.dogCoachLoading = false
   state.generatingProfile = false
+  state.distillingInterview = false
   state.generatingLandscape = false
-  if (!state.identityProfile) {
+  // A persisted blob from before the interview-model rewrite (or any shape
+  // missing `categories`/`interview`) can't be rendered — loadLiveData()
+  // overwrites this from Supabase moments later anyway, so reset rather than
+  // crash in between.
+  const isLegacyOrMissing = (snap: unknown): boolean =>
+    !snap || typeof snap !== 'object' || !('categories' in (snap as Record<string, unknown>))
+  if (
+    !state.identityProfile ||
+    isLegacyOrMissing(state.identityProfile.current) ||
+    isLegacyOrMissing(state.identityProfile.desired) ||
+    isLegacyOrMissing(state.identityProfile.landscape) ||
+    typeof state.identityProfile.interview?.answers !== 'object' ||
+    typeof state.identityProfile.legacyNotes !== 'string'
+  ) {
     state.identityProfile = {
-      current: { summary: '', traits: [], strengths: [], weaknesses: [], accelerators: [], generatedAt: null },
-      dreamMd: '',
-      landscape: { summary: '', people: [], habits: [], environment: [], generatedAt: null },
+      current: { categories: {}, generatedAt: null, hypothesesAt: null },
+      interview: { answers: {}, updatedAt: null },
+      legacyNotes: '',
+      desired: { categories: {}, generatedAt: null },
+      landscape: { categories: {}, tensions: [], generatedAt: null },
     }
   }
   if (state.lastProfileError === undefined) state.lastProfileError = null
+  if (state.lastDistillError === undefined) state.lastDistillError = null
   if (state.lastLandscapeError === undefined) state.lastLandscapeError = null
   if (!state.stockQuotes) state.stockQuotes = {}
   if (state.financeCoach === undefined) state.financeCoach = null
@@ -839,6 +874,56 @@ const uid = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1000
 
 function pushSignal(activity: ActivitySignal[], s: Omit<ActivitySignal, 'id' | 'ts'>): ActivitySignal[] {
   return [{ id: uid('sig'), ts: new Date().toISOString(), ...s }, ...activity].slice(0, 30)
+}
+
+// ── Profile screen: merge helpers ────────────────────────────────────────────
+// Regenerating (current/hypotheses/landscape) or re-distilling the interview
+// must never silently discard manual edits or previously-confirmed items —
+// so every synthesis result is merged in (dedup by trimmed lowercase text),
+// never a wholesale replace. Caps guard against unbounded growth across many
+// regenerations.
+const PROFILE_ITEM_CAP = 10
+
+function mergeStringItems(existing: string[], incoming: string[], cap = PROFILE_ITEM_CAP): string[] {
+  const seen = new Set(existing.map((s) => s.trim().toLowerCase()))
+  const merged = [...existing]
+  for (const s of incoming) {
+    const key = s.trim().toLowerCase()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    merged.push(s)
+  }
+  return merged.slice(0, cap)
+}
+
+function mergeStringCategories(
+  existing: Record<string, string[]>,
+  incoming: Record<string, string[]>,
+): Record<string, string[]> {
+  const out: Record<string, string[]> = { ...existing }
+  for (const [key, items] of Object.entries(incoming)) out[key] = mergeStringItems(out[key] ?? [], items)
+  return out
+}
+
+function mergeProfileItems(existing: ProfileItem[], incoming: ProfileItem[], cap = PROFILE_ITEM_CAP): ProfileItem[] {
+  const seen = new Set(existing.map((i) => i.text.trim().toLowerCase()))
+  const merged = [...existing]
+  for (const item of incoming) {
+    const key = item.text.trim().toLowerCase()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    merged.push(item)
+  }
+  return merged.slice(0, cap)
+}
+
+function mergeCurrentCategories(
+  existing: Record<string, ProfileItem[]>,
+  incoming: Record<string, ProfileItem[]>,
+): Record<string, ProfileItem[]> {
+  const out: Record<string, ProfileItem[]> = { ...existing }
+  for (const [key, items] of Object.entries(incoming)) out[key] = mergeProfileItems(out[key] ?? [], items)
+  return out
 }
 
 /** True for threads derived live from projects/clients (not worth persisting). */
@@ -1803,7 +1888,7 @@ export const useStore = create<State>()(
         set({ generatingProfile: true, lastProfileError: null })
         const s = get()
         try {
-          const current = await synthesizeCurrentProfile({
+          const incoming = await synthesizeCurrentFromData({
             learnedFacts: s.learnedFacts,
             patterns: s.patterns,
             profileFacts: s.profileFacts,
@@ -1811,29 +1896,130 @@ export const useStore = create<State>()(
             habits: s.habits,
           })
           set((st) => ({
-            identityProfile: { ...st.identityProfile, current },
+            identityProfile: {
+              ...st.identityProfile,
+              current: {
+                ...st.identityProfile.current,
+                categories: mergeCurrentCategories(st.identityProfile.current.categories, incoming),
+                generatedAt: new Date().toISOString(),
+              },
+            },
             generatingProfile: false,
             activity: pushSignal(st.activity, { text: 'Huidig profiel bijgewerkt', domain: 'cross', loop: 'slow' }),
           }))
-          void upsertIdentityProfile({ current })
+          void upsertIdentityProfile({ current: get().identityProfile.current })
         } catch (err) {
           console.warn('[OSLIFE] profile synthesis failed', err)
           set({ generatingProfile: false, lastProfileError: 'HEYRA kon het profiel nu niet bijwerken — probeer het zo nog eens.' })
         }
       },
 
-      updateDreamProfile: (md) => {
-        set((s) => ({ identityProfile: { ...s.identityProfile, dreamMd: md } }))
-        void upsertIdentityProfile({ dreamMd: md })
+      setCurrentItems: (key, items) => {
+        set((s) => ({
+          identityProfile: {
+            ...s.identityProfile,
+            current: { ...s.identityProfile.current, categories: { ...s.identityProfile.current.categories, [key]: items } },
+          },
+        }))
+        void upsertIdentityProfile({ current: get().identityProfile.current })
+      },
+
+      setDesiredItems: (key, items) => {
+        set((s) => ({
+          identityProfile: {
+            ...s.identityProfile,
+            desired: { ...s.identityProfile.desired, categories: { ...s.identityProfile.desired.categories, [key]: items } },
+          },
+        }))
+        void upsertIdentityProfile({ desired: get().identityProfile.desired })
+      },
+
+      setLandscapeItems: (key, items) => {
+        set((s) => ({
+          identityProfile: {
+            ...s.identityProfile,
+            landscape: { ...s.identityProfile.landscape, categories: { ...s.identityProfile.landscape.categories, [key]: items } },
+          },
+        }))
+        void upsertIdentityProfile({ landscape: get().identityProfile.landscape })
+      },
+
+      setTensions: (items) => {
+        set((s) => ({ identityProfile: { ...s.identityProfile, landscape: { ...s.identityProfile.landscape, tensions: items } } }))
+        void upsertIdentityProfile({ landscape: get().identityProfile.landscape })
+      },
+
+      confirmCurrentItem: (key, index) => {
+        set((s) => {
+          const items = s.identityProfile.current.categories[key] ?? []
+          if (!items[index] || items[index].status === 'confirmed') return {}
+          const next = items.map((it, i) => (i === index ? { ...it, status: 'confirmed' as const } : it))
+          return {
+            identityProfile: {
+              ...s.identityProfile,
+              current: { ...s.identityProfile.current, categories: { ...s.identityProfile.current.categories, [key]: next } },
+            },
+          }
+        })
+        void upsertIdentityProfile({ current: get().identityProfile.current })
+      },
+
+      updateInterviewAnswer: (questionId, text) => {
+        set((s) => ({
+          identityProfile: {
+            ...s.identityProfile,
+            interview: { answers: { ...s.identityProfile.interview.answers, [questionId]: text }, updatedAt: new Date().toISOString() },
+          },
+        }))
+        void upsertIdentityProfile({ interview: get().identityProfile.interview })
+      },
+
+      distillFromInterview: async () => {
+        set({ distillingInterview: true, lastDistillError: null })
+        const answers = get().identityProfile.interview.answers
+        if (!Object.values(answers).some((t) => t.trim())) {
+          set({ distillingInterview: false, lastDistillError: 'Vul eerst (een deel van) het interview in — daar destilleert HEYRA uit.' })
+          return
+        }
+        try {
+          const [hypotheses, desiredCategories] = await Promise.all([
+            synthesizeCurrentHypotheses(answers),
+            synthesizeDesiredProfile(answers),
+          ])
+          if (!Object.keys(hypotheses).length && !desiredCategories) {
+            set({ distillingInterview: false, lastDistillError: 'HEYRA kon hier nu niets uit destilleren — probeer het zo nog eens.' })
+            return
+          }
+          set((st) => ({
+            identityProfile: {
+              ...st.identityProfile,
+              current: {
+                ...st.identityProfile.current,
+                categories: mergeCurrentCategories(st.identityProfile.current.categories, hypotheses),
+                hypothesesAt: new Date().toISOString(),
+              },
+              desired: desiredCategories
+                ? { categories: mergeStringCategories(st.identityProfile.desired.categories, desiredCategories), generatedAt: new Date().toISOString() }
+                : st.identityProfile.desired,
+            },
+            distillingInterview: false,
+            activity: pushSignal(st.activity, { text: 'Interview gedestilleerd', domain: 'cross', loop: 'slow' }),
+          }))
+          const updated = get().identityProfile
+          void upsertIdentityProfile({ current: updated.current, desired: updated.desired })
+        } catch (err) {
+          console.warn('[OSLIFE] interview distillation failed', err)
+          set({ distillingInterview: false, lastDistillError: 'HEYRA kon hier nu niets uit destilleren — probeer het zo nog eens.' })
+        }
       },
 
       generateLandscape: async () => {
         set({ generatingLandscape: true, lastLandscapeError: null })
         const s = get()
         try {
-          const landscape = await synthesizeLandscape({
+          const landscape = await synthesizeTensionsAndLandscape({
             current: s.identityProfile.current,
-            dreamMd: s.identityProfile.dreamMd,
+            desired: s.identityProfile.desired,
           })
           if (!landscape) {
             set({
@@ -1842,12 +2028,22 @@ export const useStore = create<State>()(
             })
             return
           }
-          set((st) => ({
-            identityProfile: { ...st.identityProfile, landscape },
-            generatingLandscape: false,
-            activity: pushSignal(st.activity, { text: 'Landschap bijgewerkt', domain: 'cross', loop: 'slow' }),
-          }))
-          void upsertIdentityProfile({ landscape })
+          set((st) => {
+            const prev = st.identityProfile.landscape
+            return {
+              identityProfile: {
+                ...st.identityProfile,
+                landscape: {
+                  categories: mergeStringCategories(prev.categories, landscape.categories),
+                  tensions: mergeStringItems(prev.tensions, landscape.tensions),
+                  generatedAt: landscape.generatedAt,
+                },
+              },
+              generatingLandscape: false,
+              activity: pushSignal(st.activity, { text: 'Landschap bijgewerkt', domain: 'cross', loop: 'slow' }),
+            }
+          })
+          void upsertIdentityProfile({ landscape: get().identityProfile.landscape })
         } catch (err) {
           console.warn('[OSLIFE] landscape synthesis failed', err)
           set({ generatingLandscape: false, lastLandscapeError: 'HEYRA kon het landschap nu niet genereren — probeer het zo nog eens.' })

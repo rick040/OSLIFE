@@ -1,25 +1,76 @@
 // ── HEYRA · identity profile synthesizer ─────────────────────────────────────
-// Two brain-first/rule-fallback syntheses, same honesty contract as goals.ts
-// and reflect.ts (never invent — say less when there's not enough signal):
+// Modeled directly on Rick's own self-model interview (src/selfModel.ts) and
+// its own spec for what the answers become. Same honesty contract as goals.ts
+// and reflect.ts throughout (never invent — say less when there's not enough
+// signal):
 //
-//  - synthesizeCurrentProfile: reads what's actually known about Rick (learned
-//    facts, reinforced patterns, recurring braindump themes, habit streaks)
-//    and distills a current-state read — traits, strengths, weaknesses
-//    ("potholes"), accelerators.
-//  - synthesizeLandscape: given the current profile + Rick's own dream-profile
-//    text (written by hand, filled in later — never invented here), proposes
-//    the environment that bridges the two: the kind of people to be around,
-//    habits to build, structural/environment changes. Never names real
-//    contacts — only archetypes/roles, since the goal is a description of
-//    environment, not a to-do list naming people from `people`/`clients`.
+//  - synthesizeCurrentFromData: reads what's actually known about Rick from
+//    live behavioral data (learned facts, reinforced patterns, recurring
+//    braindump themes, habit streaks) into the 5 self/current categories
+//    (profile.ts's CURRENT_CATEGORIES), tagged `status: 'confirmed'`.
+//    Falls back to a rule-based bucketing when the brain is unavailable.
+//  - synthesizeCurrentHypotheses: distills the SAME 5 categories from Rick's
+//    own interview answers instead — tagged `status: 'hypothesis'`, since
+//    self-report isn't yet confirmed by real data. Brain-only, no rule
+//    fallback (free prose can't be bucketed reliably without it).
+//  - synthesizeDesiredProfile: distills the interview answers into the 3
+//    self/desired categories (identity sketch / aspirations / no-gos).
+//    Brain-only.
+//  - synthesizeTensionsAndLandscape: given current + desired, first derives
+//    concrete tensions between them, then proposes the landscape
+//    (people/habits/time/money/balance/focus/environment) that bridges the
+//    gap, informed by those tensions. One call, two internal brain steps.
 
-import type { Pattern, ProfileFact, BraindumpEntry, Habit, IdentitySnapshot, Landscape } from '../types'
+import type { Pattern, ProfileFact, BraindumpEntry, Habit, IdentitySnapshot, DesiredProfile, Landscape, ProfileItem } from '../types'
 import type { LearnedFact } from './learning'
-import { renderLearnedFacts } from './learning'
 import { askBrain } from './brainClient'
 import { parseBrainJson } from './brainJson'
+import { CURRENT_CATEGORIES, DESIRED_CATEGORIES, LANDSCAPE_CATEGORIES } from '../profile'
 
-export interface CurrentProfileContext {
+const MAX_ITEMS_PER_CATEGORY = 6
+const MAX_ITEM_LENGTH = 140
+
+function toStringItems(list: unknown): string[] {
+  if (!Array.isArray(list)) return []
+  const items: string[] = []
+  for (const entry of list) {
+    const s = String(entry ?? '').trim()
+    if (s && s.length <= MAX_ITEM_LENGTH) items.push(s)
+    if (items.length >= MAX_ITEMS_PER_CATEGORY) break
+  }
+  return items
+}
+
+/** Parse a brain JSON object into a plain string-list category record, keeping only known keys. */
+function toCategoryRecord(raw: unknown, defs: { key: string }[]): Record<string, string[]> {
+  const out: Record<string, string[]> = {}
+  if (!raw || typeof raw !== 'object') return out
+  const obj = raw as Record<string, unknown>
+  for (const { key } of defs) {
+    const items = toStringItems(obj[key])
+    if (items.length) out[key] = items
+  }
+  return out
+}
+
+/** Same as toCategoryRecord, but wraps each item as a ProfileItem with a fixed status. */
+function toProfileItemRecord(raw: unknown, defs: { key: string }[], status: ProfileItem['status']): Record<string, ProfileItem[]> {
+  const strings = toCategoryRecord(raw, defs)
+  const out: Record<string, ProfileItem[]> = {}
+  for (const [key, items] of Object.entries(strings)) out[key] = items.map((text) => ({ text, status }))
+  return out
+}
+
+const CURRENT_KEY_LIST = CURRENT_CATEGORIES.map((c) => c.key).join('", "')
+const CURRENT_CATEGORY_GUIDE = `- values: waarden die uit zijn gedrag/keuzes blijken (niet wat hij beweert, maar wat hij doet)
+- workstyle: hoe zijn werk er daadwerkelijk uitziet — wat hem trekt, wat hem sleept
+- energy_mood: wanneer hij scherp is, wanneer hij crasht, wat hem in flow brengt of leegzuigt
+- decision_style: hoe hij beslist, hoe hij vastloopt, en wat dat doorbreekt
+- anti_patterns: terugkerende patronen die hem tegenwerken — inclusief dingen waar hij zich een beetje voor schaamt`
+
+// ── Current profile — from live behavioral data (confirmed) ─────────────────
+
+export interface CurrentFromDataContext {
   learnedFacts: LearnedFact[]
   patterns: Pattern[]
   profileFacts: ProfileFact[]
@@ -27,25 +78,25 @@ export interface CurrentProfileContext {
   habits: Habit[]
 }
 
-const CURRENT_SYSTEM = `Je bent de introspectie-laag van HEYRA (OSLIFE). Je leest wat er echt over Rick vastligt (geleerde feiten, patronen, terugkerende thema's, braindumps, gewoontes) en vat dat samen tot een eerlijk huidig profiel: wie hij nu is, wat werkt en wat niet.
+const CURRENT_FROM_DATA_SYSTEM = `Je bent de introspectie-laag van HEYRA (OSLIFE). Je leest wat er echt over Rick vastligt (geleerde feiten, patronen, terugkerende thema's, braindumps, gewoontes) en zet dat om in een CONCREET, GESTRUCTUREERD huidig-profiel — geen lopend verhaal, alleen korte losse punten per categorie.
+
+Categorieën (gebruik exact deze keys): "${CURRENT_KEY_LIST}"
+${CURRENT_CATEGORY_GUIDE}
 
 Regels:
-- Baseer je ALLEEN op wat je aangeleverd krijgt — verzin niets. Bij te weinig signaal: geef minder items terug in plaats van te verzinnen.
-- summary: 2-3 zinnen, eerlijk en direct, geen fluff.
-- traits: 3-6 korte eigenschappen/gedragspatronen die opvallen.
-- strengths: 3-6 dingen waar Rick sterk in is / vaardigheden die er echt zijn.
-- weaknesses: 3-6 valkuilen ("potholes") — dingen die hem vertragen of tegenwerken.
-- accelerators: 2-4 dingen die, wanneer aanwezig, zijn energie/output merkbaar verhogen.
-- Elk item is een korte Nederlandse zin, geen enkel woord.
+- Baseer je ALLEEN op wat je aangeleverd krijgt — verzin niets. Te weinig signaal voor een categorie? Laat hem leeg.
+- Elk item is kort en concreet (max ~12 woorden) — het feit/de eigenschap zelf, geen verhalende zin.
+- 0-6 items per categorie.
 
 Antwoord ALLEEN met een fenced \`\`\`json blok, geen andere tekst:
-{"summary":"...","traits":["..."],"strengths":["..."],"weaknesses":["..."],"accelerators":["..."]}`
+{"values":["..."],"workstyle":["..."],"energy_mood":["..."],"decision_style":["..."],"anti_patterns":["..."]}`
 
-function buildCurrentContext(ctx: CurrentProfileContext): string {
+function buildCurrentFromDataContext(ctx: CurrentFromDataContext): string {
   const parts: string[] = []
 
-  const learned = renderLearnedFacts(ctx.learnedFacts)
-  if (learned) parts.push(learned)
+  if (ctx.learnedFacts.length) {
+    parts.push(`Geleerde feiten:\n${ctx.learnedFacts.map((f) => `- [${f.category}] ${f.text}`).join('\n')}`)
+  }
 
   const strong = ctx.patterns.filter((p) => p.confidence >= 0.5).slice(0, 12)
   if (strong.length) {
@@ -75,131 +126,203 @@ function buildCurrentContext(ctx: CurrentProfileContext): string {
   return parts.length ? parts.join('\n\n') : '(nog niets vastgelegd)'
 }
 
-/** Cap + trim a candidate list from the brain into short, non-empty strings. */
-function toStringList(raw: unknown, max: number): string[] {
-  if (!Array.isArray(raw)) return []
-  const out: string[] = []
-  for (const item of raw) {
-    const s = String(item ?? '').trim()
-    if (s && s.length <= 200) out.push(s)
-    if (out.length >= max) break
+/** Rule-based fallback when the brain is unavailable — buckets only real signal, never invents. */
+function ruleBasedCurrentFromData(ctx: CurrentFromDataContext): Record<string, ProfileItem[]> {
+  const categories: Record<string, ProfileItem[]> = {}
+  const push = (key: string, text: string) => {
+    const list = categories[key] ?? (categories[key] = [])
+    if (list.length < MAX_ITEMS_PER_CATEGORY) list.push({ text, status: 'confirmed' })
   }
-  return out
-}
 
-/** Rule-based fallback when the brain is unavailable — derives only what real signal supports. */
-function ruleBasedCurrentSnapshot(ctx: CurrentProfileContext): IdentitySnapshot {
-  const strengths: string[] = []
-  const weaknesses: string[] = []
-  const traits: string[] = []
-  const accelerators: string[] = []
-
-  for (const p of ctx.patterns.filter((x) => x.confidence >= 0.5)) {
-    if (p.trend === 'up') strengths.push(p.text)
-    else if (p.trend === 'down') weaknesses.push(p.text)
-    else traits.push(p.text)
-  }
+  for (const p of ctx.patterns.filter((x) => x.confidence >= 0.5)) push('energy_mood', p.text)
 
   for (const f of ctx.learnedFacts) {
-    if (f.category === 'workflow') traits.push(f.text)
-    if (f.category === 'goal') accelerators.push(f.text)
+    if (f.category === 'workflow' || f.category === 'business_system' || f.category === 'business_practice' || f.category === 'implementation') {
+      push('workstyle', f.text)
+    } else if (f.category === 'preference' || f.category === 'way_of_living' || f.category === 'life_lesson' || f.category === 'goal') {
+      push('values', f.text)
+    }
   }
 
   for (const h of ctx.habits) {
-    if (h.streak >= 7) strengths.push(`Consistent met "${h.name}" (${h.streak} dagen op rij)`)
+    if (h.streak >= 7) push('workstyle', `Consistent met "${h.name}" (${h.streak} dagen op rij)`)
   }
 
-  const hasSignal = strengths.length || weaknesses.length || traits.length || accelerators.length
-  return {
-    summary: hasSignal
-      ? 'Automatisch samengesteld uit patronen, feiten en gewoontes — nog niet door HEYRA doorgesproken.'
-      : 'Nog niet genoeg vastgelegd om een profiel te schetsen — leg meer braindumps, patronen en gewoontes vast en probeer het opnieuw.',
-    traits: traits.slice(0, 6),
-    strengths: strengths.slice(0, 6),
-    weaknesses: weaknesses.slice(0, 6),
-    accelerators: accelerators.slice(0, 4),
-    generatedAt: new Date().toISOString(),
-  }
+  return categories
 }
 
 /**
- * Synthesize the current-state identity snapshot. Brain-first; falls back to
- * a rule-based read of live patterns/facts/habits on any brain failure.
+ * Synthesize current-profile items from live behavioral data. Brain-first;
+ * falls back to a rule-based bucketing of live patterns/facts/habits on any
+ * brain failure. Every returned item is `status: 'confirmed'`.
  */
-export async function synthesizeCurrentProfile(ctx: CurrentProfileContext): Promise<IdentitySnapshot> {
-  const raw = await askBrain(CURRENT_SYSTEM, buildCurrentContext(ctx), { maxTokens: 700, timeoutMs: 9000 })
+export async function synthesizeCurrentFromData(ctx: CurrentFromDataContext): Promise<Record<string, ProfileItem[]>> {
+  const raw = await askBrain(CURRENT_FROM_DATA_SYSTEM, buildCurrentFromDataContext(ctx), { maxTokens: 700, timeoutMs: 9000 })
   if (raw) {
-    const parsed = parseBrainJson(raw) as Record<string, unknown> | null
-    if (parsed) {
-      const summary = String(parsed.summary ?? '').trim().slice(0, 400)
-      const traits = toStringList(parsed.traits, 6)
-      const strengths = toStringList(parsed.strengths, 6)
-      const weaknesses = toStringList(parsed.weaknesses, 6)
-      const accelerators = toStringList(parsed.accelerators, 4)
-      if (summary || traits.length || strengths.length || weaknesses.length) {
-        return { summary, traits, strengths, weaknesses, accelerators, generatedAt: new Date().toISOString() }
-      }
-    }
+    const parsed = parseBrainJson(raw)
+    const categories = toProfileItemRecord(parsed, CURRENT_CATEGORIES, 'confirmed')
+    if (Object.keys(categories).length) return categories
   }
-  return ruleBasedCurrentSnapshot(ctx)
+  return ruleBasedCurrentFromData(ctx)
+}
+
+// ── Current profile — from the interview (hypotheses) ────────────────────────
+
+function renderInterviewAnswers(answers: Record<string, string>): string {
+  const entries = Object.entries(answers).filter(([, text]) => text.trim())
+  if (!entries.length) return ''
+  return entries.map(([id, text]) => `${id}: ${text.trim()}`).join('\n\n')
+}
+
+const CURRENT_HYPOTHESES_SYSTEM = `Je bent de introspectie-laag van HEYRA (OSLIFE). Rick heeft een zelf-interview ingevuld (over identiteit, denken/beslissen, energie, worstelingen, werk). Destilleer daaruit HYPOTHESES voor zijn huidige profiel — dingen die hij zelf beschrijft, nog niet bevestigd door harde gedragsdata.
+
+Categorieën (gebruik exact deze keys): "${CURRENT_KEY_LIST}"
+${CURRENT_CATEGORY_GUIDE}
+
+Regels:
+- Baseer je UITSLUITEND op de aangeleverde interviewtekst — verzin niets, lees niet tussen de regels door wat er niet staat.
+- Elk item is kort en concreet (max ~12 woorden), geen verhalende zin.
+- 0-6 items per categorie. Geen signaal voor een categorie? Laat hem leeg.
+
+Antwoord ALLEEN met een fenced \`\`\`json blok, geen andere tekst:
+{"values":["..."],"workstyle":["..."],"energy_mood":["..."],"decision_style":["..."],"anti_patterns":["..."]}`
+
+/**
+ * Distill current-profile hypotheses from Rick's interview answers. Brain-only
+ * — no rule-based fallback, since free prose can't be bucketed reliably
+ * without it. Returns an empty record on failure/no signal. Every returned
+ * item is `status: 'hypothesis'`.
+ */
+export async function synthesizeCurrentHypotheses(answers: Record<string, string>): Promise<Record<string, ProfileItem[]>> {
+  const text = renderInterviewAnswers(answers)
+  if (!text) return {}
+  const raw = await askBrain(CURRENT_HYPOTHESES_SYSTEM, text.slice(0, 16000), { maxTokens: 700, timeoutMs: 12000 })
+  if (!raw) return {}
+  const parsed = parseBrainJson(raw)
+  return toProfileItemRecord(parsed, CURRENT_CATEGORIES, 'hypothesis')
+}
+
+// ── Desired profile — from the interview ─────────────────────────────────────
+
+const DESIRED_KEY_LIST = DESIRED_CATEGORIES.map((c) => c.key).join('", "')
+
+const DESIRED_SYSTEM = `Je bent de introspectie-laag van HEYRA (OSLIFE). Destilleer uit Ricks zelf-interview zijn DROOMPROFIEL — het gewenste zelfbeeld, niet de huidige staat.
+
+Categorieën (gebruik exact deze keys): "${DESIRED_KEY_LIST}"
+- identity_sketch: "ik ben iemand die…" — de aspiratieversie van zichzelf
+- aspirations: waar hij consistent naartoe wil groeien, wat hij zou willen (blijven) doen
+- no_gos: wie hij nooit wil worden, harde grenzen die hij niet overschrijdt
+
+Regels:
+- Baseer je UITSLUITEND op de aangeleverde interviewtekst — verzin niets.
+- Elk item is kort en concreet (max ~12 woorden), geen verhalende zin.
+- 0-6 items per categorie. Geen signaal voor een categorie? Laat hem leeg.
+
+Antwoord ALLEEN met een fenced \`\`\`json blok, geen andere tekst:
+{"identity_sketch":["..."],"aspirations":["..."],"no_gos":["..."]}`
+
+/**
+ * Distill the desired/dream profile from Rick's interview answers. Brain-only,
+ * same reasoning as synthesizeCurrentHypotheses. Returns null on failure/no
+ * signal so the caller can say so rather than silently doing nothing.
+ */
+export async function synthesizeDesiredProfile(answers: Record<string, string>): Promise<Record<string, string[]> | null> {
+  const text = renderInterviewAnswers(answers)
+  if (!text) return null
+  const raw = await askBrain(DESIRED_SYSTEM, text.slice(0, 16000), { maxTokens: 700, timeoutMs: 12000 })
+  if (!raw) return null
+  const parsed = parseBrainJson(raw)
+  const categories = toCategoryRecord(parsed, DESIRED_CATEGORIES)
+  return Object.keys(categories).length ? categories : null
+}
+
+// ── Tensions + landscape ──────────────────────────────────────────────────────
+
+const TENSIONS_SYSTEM = `Je bent de introspectie-laag van HEYRA (OSLIFE). Vergelijk Ricks HUIDIGE profiel met zijn DROOMPROFIEL en benoem concrete spanningen — plekken waar zijn huidige gedrag botst met wat hij wil zijn of bereiken.
+
+Regels:
+- Baseer je op de aangeleverde profielen — verzin niets.
+- Elke spanning is één korte, concrete zin (bv. "Zegt sociaal te zijn, maar verlaat het huis nauwelijks.").
+- 0-6 spanningen.
+
+Antwoord ALLEEN met een fenced \`\`\`json blok, geen andere tekst:
+{"tensions":["..."]}`
+
+function renderCategories(label: string, categories: Record<string, unknown>): string {
+  const entries = Object.entries(categories).filter(([, v]) => Array.isArray(v) && v.length)
+  if (!entries.length) return ''
+  const line = (items: unknown[]) => items.map((it) => (typeof it === 'string' ? it : (it as ProfileItem).text)).join('; ')
+  return `${label}:\n${entries.map(([key, items]) => `- ${key}: ${line(items as unknown[])}`).join('\n')}`
+}
+
+async function synthesizeTensions(current: IdentitySnapshot, desired: DesiredProfile): Promise<string[]> {
+  const parts: string[] = []
+  const currentText = renderCategories('Huidig profiel', current.categories)
+  if (currentText) parts.push(currentText)
+  const desiredText = renderCategories('Droomprofiel', desired.categories)
+  if (desiredText) parts.push(desiredText)
+  if (!parts.length) return []
+
+  const raw = await askBrain(TENSIONS_SYSTEM, parts.join('\n\n'), { maxTokens: 500, timeoutMs: 9000 })
+  if (!raw) return []
+  const parsed = parseBrainJson(raw) as { tensions?: unknown } | null
+  return toStringItems(parsed?.tensions)
 }
 
 export interface LandscapeContext {
   current: IdentitySnapshot
-  dreamMd: string
+  desired: DesiredProfile
 }
 
-const LANDSCAPE_SYSTEM = `Je bent de omgevingsarchitect van HEYRA (OSLIFE). Op basis van Ricks HUIDIGE profiel en zijn DROOMPROFIEL (het profiel dat hij nodig heeft om te leven zoals hij wil) beschrijf je het landschap dat de kloof overbrugt.
+const LANDSCAPE_KEY_LIST = LANDSCAPE_CATEGORIES.map((c) => c.key).join('", "')
+
+const LANDSCAPE_SYSTEM = `Je bent de omgevingsarchitect van HEYRA (OSLIFE). Op basis van Ricks HUIDIGE profiel, zijn DROOMPROFIEL en de spanningen daartussen beschrijf je CONCREET, per categorie, het landschap dat de kloof overbrugt — geen lopend verhaal, losse concrete punten per categorie.
+
+Categorieën (gebruik exact deze keys): "${LANDSCAPE_KEY_LIST}"
+- people: type mensen/rollen om je mee te omringen (archetypes/rollen, NOOIT een bestaande naam)
+- habits: gewoontes om op te bouwen
+- time: hoe tijd gestructureerd moet worden (planning, ritme, prioritering)
+- money: hoe financiën/inkomen georganiseerd moeten zijn
+- balance: balans tussen werk/rust, actie/reflectie, sociaal/alleen
+- focus: waar aandacht/energie primair naartoe moet
+- environment: fysieke/structurele omgevingsveranderingen (plek, werkplek, setup)
 
 Regels:
-- Baseer je op de aangeleverde profielen — verzin geen namen van bestaande contacten; beschrijf archetypes/rollen (bv. "een mentor die al ondernemer is"), nooit een echte naam.
-- summary: 2-3 zinnen die de kloof tussen huidig en droom samenvatten en de aanpak schetsen.
-- people: 3-5 type mensen/rollen om je mee te omringen.
-- habits: 3-6 concrete gewoontes om op te bouwen.
-- environment: 3-5 omgevings- of structuurveranderingen (werk, geld, plek, routine) die het verschil maken.
+- Baseer je op de aangeleverde profielen/spanningen — verzin geen namen van bestaande contacten.
+- Elk item is kort en concreet (max ~12 woorden), geen verhalende zin.
+- 0-6 items per categorie.
 
 Antwoord ALLEEN met een fenced \`\`\`json blok, geen andere tekst:
-{"summary":"...","people":["..."],"habits":["..."],"environment":["..."]}`
+{"people":["..."],"habits":["..."],"time":["..."],"money":["..."],"balance":["..."],"focus":["..."],"environment":["..."]}`
 
-function buildLandscapeContext(ctx: LandscapeContext): string {
+function buildLandscapeContext(ctx: LandscapeContext, tensions: string[]): string {
   const parts: string[] = []
-  parts.push(
-    `Huidig profiel:\n${ctx.current.summary || '(nog geen samenvatting)'}` +
-      (ctx.current.traits.length ? `\nEigenschappen: ${ctx.current.traits.join('; ')}` : '') +
-      (ctx.current.strengths.length ? `\nSterke punten: ${ctx.current.strengths.join('; ')}` : '') +
-      (ctx.current.weaknesses.length ? `\nValkuilen: ${ctx.current.weaknesses.join('; ')}` : ''),
-  )
-  parts.push(`Droomprofiel (het doel):\n${ctx.dreamMd.trim()}`)
+  const current = renderCategories('Huidig profiel', ctx.current.categories)
+  if (current) parts.push(current)
+  const desired = renderCategories('Droomprofiel', ctx.desired.categories)
+  if (desired) parts.push(desired)
+  if (tensions.length) parts.push(`Spanningen:\n${tensions.map((t) => `- ${t}`).join('\n')}`)
   return parts.join('\n\n')
 }
 
 /**
- * Synthesize the landscape that bridges current → dream. Requires a non-empty
- * dream profile — returns an empty (ungenerated) landscape otherwise, since
- * there's nothing yet to bridge toward.
+ * Derive tensions between current and desired, then synthesize the landscape
+ * that bridges them — one user-facing action, two internal brain calls, one
+ * persisted result. Requires some desired signal — returns null otherwise,
+ * since there's nothing yet to bridge toward.
  */
-export async function synthesizeLandscape(ctx: LandscapeContext): Promise<Landscape | null> {
-  if (!ctx.dreamMd.trim()) return null
+export async function synthesizeTensionsAndLandscape(ctx: LandscapeContext): Promise<Landscape | null> {
+  if (!Object.values(ctx.desired.categories).some((items) => items.length)) return null
 
-  const raw = await askBrain(LANDSCAPE_SYSTEM, buildLandscapeContext(ctx), { maxTokens: 700, timeoutMs: 9000 })
+  const tensions = await synthesizeTensions(ctx.current, ctx.desired)
+
+  const raw = await askBrain(LANDSCAPE_SYSTEM, buildLandscapeContext(ctx, tensions), { maxTokens: 700, timeoutMs: 9000 })
   if (raw) {
-    const parsed = parseBrainJson(raw) as Record<string, unknown> | null
-    if (parsed) {
-      const summary = String(parsed.summary ?? '').trim().slice(0, 400)
-      const people = toStringList(parsed.people, 5)
-      const habits = toStringList(parsed.habits, 6)
-      const environment = toStringList(parsed.environment, 5)
-      if (summary || people.length || habits.length || environment.length) {
-        return { summary, people, habits, environment, generatedAt: new Date().toISOString() }
-      }
+    const parsed = parseBrainJson(raw)
+    const categories = toCategoryRecord(parsed, LANDSCAPE_CATEGORIES)
+    if (Object.keys(categories).length || tensions.length) {
+      return { categories, tensions, generatedAt: new Date().toISOString() }
     }
   }
-
-  return {
-    summary: 'HEYRA kon dit nu niet genereren — probeer het zo nog eens.',
-    people: [],
-    habits: [],
-    environment: [],
-    generatedAt: new Date().toISOString(),
-  }
+  return tensions.length ? { categories: {}, tensions, generatedAt: new Date().toISOString() } : null
 }
