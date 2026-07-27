@@ -262,6 +262,7 @@ import {
   updateBusinessIdeaRow,
   deleteBusinessIdeaRow,
   invokeIdeaElaborate,
+  invokeIdeaMvpPlan,
   fetchCardTemplates,
   upsertCardTemplate,
   fetchIdentityProfile,
@@ -424,6 +425,8 @@ interface State {
   deleteBusinessIdea: (id: string) => void
   retryIdeaElaboration: (id: string) => void
   toggleIdeaMilestone: (id: string, index: number) => void
+  generateMvpPlan: (id: string) => void
+  toggleMvpRoadmapTask: (id: string, phaseIndex: number, taskIndex: number) => void
 
   // HEYRA Taakmaker — commit a parsed task draft as an open loop (thread)
   addTask: (draft: TaskDraft) => string
@@ -1253,6 +1256,9 @@ export const useStore = create<State>()(
           swot: { strengths: [], weaknesses: [], opportunities: [], threats: [] },
           markdown: null,
           tier: 'normaal',
+          mvpPlanStatus: null,
+          mvpPlanError: null,
+          mvpPlan: null,
         }
         set((s) => ({
           businessIdeas: [optimistic, ...s.businessIdeas],
@@ -1324,6 +1330,33 @@ export const useStore = create<State>()(
           businessIdeas: s.businessIdeas.map((x) => (x.id === id ? { ...x, milestones } : x)),
         }))
         void updateBusinessIdeaRow(id, { milestones })
+      },
+
+      generateMvpPlan: (id) => {
+        // No real row, nothing an edge function could work with — same guard
+        // as retryIdeaElaboration.
+        if (!isDbId(id)) return
+        set((s) => ({
+          businessIdeas: s.businessIdeas.map((x) =>
+            x.id === id ? { ...x, mvpPlanStatus: 'pending', mvpPlanError: null } : x,
+          ),
+        }))
+        void invokeIdeaMvpPlan(id)
+      },
+
+      toggleMvpRoadmapTask: (id, phaseIndex, taskIndex) => {
+        const idea = get().businessIdeas.find((x) => x.id === id)
+        if (!idea?.mvpPlan) return
+        const roadmap = idea.mvpPlan.roadmap.map((phase, pi) =>
+          pi === phaseIndex
+            ? { ...phase, tasks: phase.tasks.map((t, ti) => (ti === taskIndex ? { ...t, done: !t.done } : t)) }
+            : phase,
+        )
+        const mvpPlan = { ...idea.mvpPlan, roadmap }
+        set((s) => ({
+          businessIdeas: s.businessIdeas.map((x) => (x.id === id ? { ...x, mvpPlan } : x)),
+        }))
+        void updateBusinessIdeaRow(id, { mvpPlan })
       },
 
       learnFromExchange: async (userText, heyraText) => {

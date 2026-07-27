@@ -2709,7 +2709,7 @@ export async function searchMemory(query: string, limit = 8): Promise<MemoryHit[
 // returns array/object shapes so the UI never has to null-check.
 
 const BUSINESS_IDEA_COLS =
-  'id,created_at,updated_at,source,raw_input,elaboration_status,error,status,title,overview,domain,tags,feasibility_score,feasibility_reasoning,timeline,milestones,financials,risks,opportunities,swot,markdown,tier'
+  'id,created_at,updated_at,source,raw_input,elaboration_status,error,status,title,overview,domain,tags,feasibility_score,feasibility_reasoning,timeline,milestones,financials,risks,opportunities,swot,markdown,tier,mvp_plan_status,mvp_plan_error,mvp_plan'
 
 function mapBusinessIdeaRow(r: Record<string, unknown>): BusinessIdea {
   const financials = (r.financials as Record<string, unknown>) ?? {}
@@ -2748,6 +2748,9 @@ function mapBusinessIdeaRow(r: Record<string, unknown>): BusinessIdea {
     },
     markdown: (r.markdown as string) ?? null,
     tier: (r.tier as BusinessIdea['tier']) ?? 'normaal',
+    mvpPlanStatus: (r.mvp_plan_status as BusinessIdea['mvpPlanStatus']) ?? null,
+    mvpPlanError: (r.mvp_plan_error as string) ?? null,
+    mvpPlan: (r.mvp_plan as BusinessIdea['mvpPlan']) ?? null,
   }
 }
 
@@ -2795,6 +2798,7 @@ const BUSINESS_IDEA_COL_MAP: Record<string, string> = {
   swot: 'swot',
   markdown: 'markdown',
   tier: 'tier',
+  mvpPlan: 'mvp_plan',
 }
 
 /** Manual edit from the detail/edit form — only the fields users can actually change. */
@@ -2818,6 +2822,7 @@ export async function updateBusinessIdeaRow(
       | 'swot'
       | 'markdown'
       | 'tier'
+      | 'mvpPlan'
     >
   >,
 ): Promise<void> {
@@ -2841,6 +2846,19 @@ export async function invokeIdeaElaborate(ideaId: string): Promise<void> {
     await supabase.functions.invoke('idea-elaborate', { body: { entryId: ideaId } })
   } catch (err) {
     console.warn('[OSLIFE] idea-elaborate invoke failed', err)
+  }
+}
+
+/**
+ * Fire the idea-mvp-plan pipeline for an entry — unlike idea-elaborate this is
+ * always user-triggered, never automatic. Same best-effort contract: on
+ * failure the row flips to mvp_plan_status='failed' and the UI offers a retry.
+ */
+export async function invokeIdeaMvpPlan(ideaId: string): Promise<void> {
+  try {
+    await supabase.functions.invoke('idea-mvp-plan', { body: { entryId: ideaId } })
+  } catch (err) {
+    console.warn('[OSLIFE] idea-mvp-plan invoke failed', err)
   }
 }
 

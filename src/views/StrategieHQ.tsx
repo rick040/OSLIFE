@@ -4,7 +4,7 @@ import {
 } from 'recharts'
 import {
   Plus, Mic, MicOff, Loader2, AlertTriangle, RotateCcw, Trash2, X, Pencil, Check,
-  Sparkles, TrendingUp, Target, ShieldAlert, Lightbulb, Grid2x2,
+  Sparkles, TrendingUp, Target, ShieldAlert, Lightbulb, Grid2x2, Rocket, Mail, Radar,
 } from 'lucide-react'
 import type { View } from '../nav'
 import type { BusinessIdea, IdeaLifecycleStatus, ImpactLevel, Domain } from '../types'
@@ -46,6 +46,8 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
   const deleteBusinessIdea = useStore((s) => s.deleteBusinessIdea)
   const retryIdeaElaboration = useStore((s) => s.retryIdeaElaboration)
   const toggleIdeaMilestone = useStore((s) => s.toggleIdeaMilestone)
+  const generateMvpPlan = useStore((s) => s.generateMvpPlan)
+  const toggleMvpRoadmapTask = useStore((s) => s.toggleMvpRoadmapTask)
 
   const [statusFilter, setStatusFilter] = useState<IdeaLifecycleStatus | 'all'>('all')
   const [newOpen, setNewOpen] = useState(false)
@@ -129,6 +131,8 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
           onDelete={() => { deleteBusinessIdea(detail.id); setDetailId(null) }}
           onRetry={() => retryIdeaElaboration(detail.id)}
           onToggleMilestone={(idx) => toggleIdeaMilestone(detail.id, idx)}
+          onGenerateMvpPlan={() => generateMvpPlan(detail.id)}
+          onToggleMvpTask={(phaseIdx, taskIdx) => toggleMvpRoadmapTask(detail.id, phaseIdx, taskIdx)}
         />
       )}
     </div>
@@ -303,6 +307,8 @@ function IdeaDetailModal({
   onDelete,
   onRetry,
   onToggleMilestone,
+  onGenerateMvpPlan,
+  onToggleMvpTask,
 }: {
   idea: BusinessIdea
   onClose: () => void
@@ -310,6 +316,8 @@ function IdeaDetailModal({
   onDelete: () => void
   onRetry: () => void
   onToggleMilestone: (index: number) => void
+  onGenerateMvpPlan: () => void
+  onToggleMvpTask: (phaseIndex: number, taskIndex: number) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [showFullDoc, setShowFullDoc] = useState(false)
@@ -563,6 +571,8 @@ function IdeaDetailModal({
                   </div>
                 )}
 
+                <MvpPlanSection idea={idea} onGenerate={onGenerateMvpPlan} onToggleTask={onToggleMvpTask} />
+
                 {idea.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {idea.tags.map((t) => <span key={t} className="chip bg-line text-muted text-[11px]">#{t}</span>)}
@@ -600,6 +610,177 @@ function IdeaDetailModal({
         />
       )}
     </Overlay>
+  )
+}
+
+// ── MVP Launch Plan: lean validation before building anything ────────────────
+// Low effort is the *good* outcome here (opposite of risk-impact), so the
+// color mapping is inverted relative to RISK_HEX.
+const EFFORT_HEX: Record<ImpactLevel, string> = { low: '#6ee7b7', medium: '#fcd34d', high: '#fca5a5' }
+
+function MvpPlanSection({
+  idea,
+  onGenerate,
+  onToggleTask,
+}: {
+  idea: BusinessIdea
+  onGenerate: () => void
+  onToggleTask: (phaseIndex: number, taskIndex: number) => void
+}) {
+  const status = idea.mvpPlanStatus
+  const busy = status === 'pending' || status === 'processing'
+
+  return (
+    <div>
+      <SectionLabel icon={Rocket}>MVP Launch Plan</SectionLabel>
+
+      {!status && (
+        <div className="card p-3.5 space-y-2.5">
+          <p className="text-xs text-muted leading-relaxed">
+            Test met minimale moeite en kosten of hier écht vraag naar is voordat je iets bouwt — geen koude
+            e-mails die toch niet beantwoord worden, maar concrete, goedkope experimenten met een duidelijk
+            signaal.
+          </p>
+          <button onClick={onGenerate} className="btn-primary !py-2 text-sm w-full justify-center">
+            <Rocket className="h-4 w-4" /> Genereer MVP Launch Plan
+          </button>
+        </div>
+      )}
+
+      {busy && (
+        <div className="flex items-center gap-2 text-sm text-muted card p-3.5">
+          <Loader2 className="h-4 w-4 animate-spin text-buurtkaart" /> HEYRA stelt een validatieplan op…
+        </div>
+      )}
+
+      {status === 'failed' && (
+        <div className="rounded-xl bg-personal/10 p-3 text-sm text-personal-deep flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="font-medium">Opstellen mislukt</p>
+            {idea.mvpPlanError && <p className="text-xs mt-0.5 opacity-80">{idea.mvpPlanError}</p>}
+          </div>
+          <button onClick={onGenerate} className="btn-ghost !py-1 text-xs shrink-0">
+            <RotateCcw className="h-3.5 w-3.5" /> Opnieuw
+          </button>
+        </div>
+      )}
+
+      {status === 'ready' && idea.mvpPlan && (
+        <div className="space-y-3">
+          <div className="card p-3.5 space-y-2">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">Hypothese</div>
+              <p className="text-sm text-ink-soft leading-relaxed">{idea.mvpPlan.hypothesis}</p>
+            </div>
+            {idea.mvpPlan.riskiestAssumption && (
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">Grootste risico-aanname</div>
+                <p className="text-sm text-ink-soft leading-relaxed">{idea.mvpPlan.riskiestAssumption}</p>
+              </div>
+            )}
+            {idea.mvpPlan.targetCustomer && (
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">Eerste doelgroep</div>
+                <p className="text-sm text-ink-soft leading-relaxed">{idea.mvpPlan.targetCustomer}</p>
+              </div>
+            )}
+          </div>
+
+          {idea.mvpPlan.emailCaveat && (
+            <div className="rounded-xl bg-personal/10 p-3 text-xs text-ink-soft leading-relaxed flex items-start gap-2">
+              <Mail className="h-4 w-4 mt-0.5 shrink-0 text-personal-deep" />
+              <span>{idea.mvpPlan.emailCaveat}</span>
+            </div>
+          )}
+
+          {idea.mvpPlan.channels.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">Kanalen</div>
+              {idea.mvpPlan.channels.map((c, i) => (
+                <div key={i} className="card p-3 text-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-medium text-ink-soft flex-1">{c.name}</span>
+                    <span className="chip text-[10px] px-2 py-0 shrink-0" style={{ color: EFFORT_HEX[c.effort as ImpactLevel] ?? EFFORT_HEX.medium, background: `${EFFORT_HEX[c.effort as ImpactLevel] ?? EFFORT_HEX.medium}1f` }}>
+                      {IMPACT_LABEL[c.effort as ImpactLevel] ?? c.effort} · {c.cost}
+                    </span>
+                  </div>
+                  {c.why && <p className="text-xs text-faint mt-1">{c.why}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {idea.mvpPlan.experiments.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">Experimenten</div>
+              {idea.mvpPlan.experiments.map((e, i) => (
+                <div key={i} className="card p-3 text-sm space-y-1">
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="font-medium text-ink-soft flex-1">{e.title}</span>
+                    <span className="chip text-[10px] px-2 py-0 shrink-0" style={{ color: EFFORT_HEX[e.effort as ImpactLevel] ?? EFFORT_HEX.medium, background: `${EFFORT_HEX[e.effort as ImpactLevel] ?? EFFORT_HEX.medium}1f` }}>
+                      {IMPACT_LABEL[e.effort as ImpactLevel] ?? e.effort} · {e.cost}
+                    </span>
+                  </div>
+                  {e.description && <p className="text-xs text-faint">{e.description}</p>}
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-faint">
+                    {e.channel && <span>Kanaal: {e.channel}</span>}
+                    {e.timeframe && <span>Duur: {e.timeframe}</span>}
+                  </div>
+                  {e.successSignal && (
+                    <p className="text-xs text-ink-soft"><span className="font-medium">Signaal:</span> {e.successSignal}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {idea.mvpPlan.roadmap.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">Roadmap</div>
+              {idea.mvpPlan.roadmap.map((phase, pi) => (
+                <div key={pi} className="card p-3 space-y-1.5">
+                  <div>
+                    <div className="text-sm font-semibold text-ink-soft">{phase.phase}</div>
+                    {phase.goal && <p className="text-xs text-faint mt-0.5">{phase.goal}</p>}
+                  </div>
+                  <div className="space-y-1">
+                    {phase.tasks.map((t, ti) => (
+                      <label key={ti} className="flex items-center gap-2.5 py-0.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={t.done}
+                          onChange={() => onToggleTask(pi, ti)}
+                          className="h-4 w-4 rounded accent-forest shrink-0"
+                        />
+                        <span className={`text-xs flex-1 ${t.done ? 'line-through text-faint' : 'text-ink-soft'}`}>{t.title}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {idea.mvpPlan.signalsToWatch.length > 0 && (
+            <div className="card p-3.5 space-y-1">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-faint flex items-center gap-1.5">
+                <Radar className="h-3 w-3" /> Signalen om bij te houden
+              </div>
+              <ul className="space-y-0.5">
+                {idea.mvpPlan.signalsToWatch.map((s, i) => (
+                  <li key={i} className="text-xs text-ink-soft leading-snug">· {s}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <button onClick={onGenerate} className="btn-ghost !py-1.5 text-xs w-full justify-center">
+            <RotateCcw className="h-3.5 w-3.5" /> Opnieuw genereren
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
