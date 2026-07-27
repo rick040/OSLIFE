@@ -1545,6 +1545,15 @@ export const useStore = create<State>()(
         }).then((realId) => {
           swapTempId(set, 'blocks', tempId)(realId)
           swapTempId(set, 'weekPlan', tempId)(realId)
+          // If the user completed/skipped this block in the window between
+          // the optimistic insert and the real id landing, persistBlockStatus
+          // silently no-ops against a temp id (it's not a real UUID yet) —
+          // replay whatever status it ended up with now that it's real, or
+          // that action is lost on the next reload.
+          if (realId) {
+            const current = get().blocks.find((x) => x.id === realId)
+            if (current && current.status !== 'planned') void persistBlockStatus(realId, current.status)
+          }
         })
       },
 
