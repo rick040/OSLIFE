@@ -253,7 +253,7 @@ zelf, in deze volgorde:
 | Databron | Nodig |
 |---|---|
 | Projecten / CRM (native, in-app) | geen — geen externe sync |
-| Strategie HQ (business ideas) | `ANTHROPIC_API_KEY` (voor `idea-elaborate`) |
+| Strategie HQ (business ideas) | `ANTHROPIC_API_KEY` (voor `idea-elaborate` en `idea-mvp-plan`) |
 | Buurtkaart (WordPress API) | `GBK_API_KEY` |
 | Geld · Betalingen-sheet | `INGEST_SECRET`, `OSLIFE_USER_ID` (+ Apps Script props) |
 | Geld · Wallet | `WALLET_WEBHOOK_SECRET`, `OSLIFE_USER_ID` |

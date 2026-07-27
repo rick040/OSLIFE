@@ -61,7 +61,7 @@ ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betaling
 |--------|--------|----------|----------|
 | Projecten | **In-app (native CRM)** — full CRUD | app write-back (Supabase) | `projects`, `project_tasks`, `project_milestones`, `project_hours`, `project_invoices`, `project_activity` |
 | CRM / Klanten | **In-app (native CRM)** — full CRUD | app write-back (Supabase) | `clients`, `client_messages` |
-| Strategie HQ (business ideas) | **In-app** — capture + HEYRA elaboration | `idea-elaborate` edge function | `business_ideas` |
+| Strategie HQ (business ideas) | **In-app** — capture + HEYRA elaboration + opt-in MVP validation plan | `idea-elaborate`, `idea-mvp-plan` edge functions | `business_ideas` |
 | Buurtkaart/Eyes/Dakmeester side-business screens | in-app (static config) | — | — |
 | Buurtkaart beheer | **Geldrop Buurtkaart WordPress API** | `gbk-overview` (header `X-GBK-Key`) | — (live read) |
 | Geld · transacties | **Betalingen Google Sheet** + **ABN AMRO CSV** (in-app) + Google Wallet | `payments-sheet-ingest` · in-app import · `wallet-ingest` | `finance_tx` |
@@ -101,6 +101,17 @@ cognee (reachable in-process here, unlike the frontend's `cognee-search` round t
 best-effort with a bounded timeout; a failure or empty result just means the elaboration
 proceeds without that context, same graceful-degradation contract as every other HEYRA recall
 path.
+
+Elaboration answers "is this idea any good on paper" — it never asks whether anyone would
+actually want it. For that, the idea detail view has a second, opt-in "Genereer MVP Launch
+Plan" button: it fires `idea-mvp-plan`, which asks Claude for a lean-startup validation plan
+grounded in the idea's own analysis — the riskiest assumption, cheap high-signal channels,
+a handful of concrete experiments with a falsifiable success signal each, a short phased
+roadmap with checkable tasks, and signals to watch. It's explicitly biased against a cold
+email blast as the primary validation method (low reply rate, easy to ignore) in favour of
+things like landing-page + waitlist, one-on-one conversations, or a manual concierge test —
+and calls that trade-off out directly in an `emailCaveat` field. Unlike elaboration this never
+runs automatically; it's a deliberate, per-idea action.
 
 ### Auto-categorisation (vendor cache)
 New transactions tag themselves. When a merchant HEYRA has never seen shows up

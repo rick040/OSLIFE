@@ -1147,13 +1147,63 @@ export interface IdeaSwot {
   threats: string[]
 }
 
+export type MvpPlanStatus = 'pending' | 'processing' | 'ready' | 'failed'
+
+export interface MvpChannel {
+  name: string // e.g. "Landingspagina + waitlist", "1-op-1 gesprekken", "Community post"
+  why: string // why this beats a cold email blast for this idea
+  effort: ImpactLevel
+  cost: string // free-text, e.g. "€0" or "~€20 advertentiebudget"
+}
+
+export interface MvpExperiment {
+  title: string
+  description: string
+  channel: string
+  effort: ImpactLevel
+  cost: string
+  timeframe: string // e.g. "2-3 dagen"
+  successSignal: string // concrete, falsifiable signal of real interest (not vanity metrics)
+}
+
+export interface MvpRoadmapTask {
+  title: string
+  done: boolean
+}
+
+export interface MvpRoadmapPhase {
+  phase: string // e.g. "Week 1: valideren"
+  goal: string
+  tasks: MvpRoadmapTask[]
+}
+
+/**
+ * The MVP Launch Plan: a lean-startup validation plan generated on-demand
+ * (never automatically) for a business idea — cheapest-possible experiments
+ * to test real customer interest before committing to building anything.
+ * `emailCaveat` specifically addresses cold email's typically low reply
+ * rate and points at higher-signal alternatives.
+ */
+export interface MvpPlan {
+  hypothesis: string
+  riskiestAssumption: string
+  targetCustomer: string
+  channels: MvpChannel[]
+  experiments: MvpExperiment[]
+  roadmap: MvpRoadmapPhase[]
+  signalsToWatch: string[]
+  emailCaveat: string
+}
+
 /**
  * One business idea on Strategie HQ. Captured as a voice note or typed text
  * (`rawInput`), then elaborated by the idea-elaborate edge function into a
  * full strategic write-up — `markdown` is the complete document; every other
  * analysis field is the same content pulled out into structured data for the
  * UI's visualizations. `elaborationStatus` tracks that pipeline; `status` is
- * the separate, user-managed lifecycle stage.
+ * the separate, user-managed lifecycle stage. `mvpPlan*` is a second, opt-in
+ * pipeline (idea-mvp-plan edge function) Rick triggers explicitly per idea —
+ * unlike elaboration it never runs automatically and most ideas have none.
  */
 export interface BusinessIdea {
   id: string
@@ -1178,4 +1228,7 @@ export interface BusinessIdea {
   swot: IdeaSwot
   markdown: string | null
   tier: Tier
+  mvpPlanStatus: MvpPlanStatus | null
+  mvpPlanError: string | null
+  mvpPlan: MvpPlan | null
 }
