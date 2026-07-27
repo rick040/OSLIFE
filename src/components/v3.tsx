@@ -284,48 +284,67 @@ export function AgendaCard({
   urgencyLabel,
   isCall,
   onComplete,
+  onSkip,
 }: {
   domain: Domain
   title: string
   start: string
-  status: 'planned' | 'done' | 'skipped'
+  /** `missed` is a display-only derivation (a planned block whose end time
+   * has passed) — never persisted, so it's not part of the real Block type. */
+  status: 'planned' | 'done' | 'skipped' | 'missed'
   tone: Tone
   urgencyLabel: string
   /** swaps the action glyph for a video icon — a call/meeting, not a task */
   isCall?: boolean
   onComplete?: () => void
+  /** wire this up to offer an explicit "skip" action, e.g. on a missed block */
+  onSkip?: () => void
 }) {
   const done = status === 'done'
+  const missed = status === 'missed'
   return (
-    <div
-      className={`card p-4 w-[220px] shrink-0 flex flex-col justify-between gap-8 min-h-[176px] transition-opacity ${
-        done ? 'bg-sunken opacity-60' : ''
-      }`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide ${done ? 'text-faint' : TONE_TEXT[tone]}`}>
-          <span className={`h-1.5 w-1.5 rounded-full ${done ? 'bg-line' : TONE_BG[tone].replace('/15', '')}`} />
-          {done ? 'klaar' : urgencyLabel}
+    <div className={`card p-4 flex items-center gap-4 transition-opacity ${done || missed ? 'bg-sunken opacity-70' : ''}`}>
+      <div className="flex w-16 shrink-0 flex-col items-center gap-1">
+        <span className={`text-lg font-medium tabular-nums ${done || missed ? 'text-faint' : 'text-ink'}`}>{start}</span>
+        <span className={`inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide ${done || missed ? 'text-faint' : TONE_TEXT[tone]}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${done || missed ? 'bg-line' : TONE_BG[tone].replace('/15', '')}`} />
+          {done ? 'klaar' : missed ? 'gemist' : urgencyLabel}
         </span>
-        <span className="chip bg-sunken text-ink-soft shrink-0 tabular-nums">{start}</span>
       </div>
-      <p className={`text-lg leading-snug ${done ? 'line-through text-faint' : 'text-ink font-medium'}`}>{title}</p>
-      <div className="flex items-center justify-between gap-2">
-        <DomainChip domain={domain} small />
+      <div className="min-w-0 flex-1">
+        <p className={`text-lg leading-snug ${done ? 'line-through text-faint' : missed ? 'text-muted' : 'text-ink font-medium'}`}>{title}</p>
+        <div className="mt-1.5">
+          <DomainChip domain={domain} small />
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
         {done ? (
-          <span className="shrink-0 h-9 w-9 rounded-full bg-buurtkaart/15 text-buurtkaart-deep flex items-center justify-center">
+          <span className="h-10 w-10 rounded-full bg-buurtkaart/15 text-buurtkaart-deep flex items-center justify-center">
             <Check className="h-4 w-4" strokeWidth={2.5} />
           </span>
         ) : (
-          onComplete && (
-            <button
-              onClick={onComplete}
-              aria-label="Afronden"
-              className="shrink-0 h-9 w-9 rounded-full bg-ink text-canvas flex items-center justify-center outline-none transition-[background-color,transform] duration-150 hover:bg-ink/85 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
-            >
-              {isCall ? <Video className="h-4 w-4" /> : <Check className="h-4 w-4" strokeWidth={2.5} />}
-            </button>
-          )
+          <>
+            {onSkip && (
+              <button
+                onClick={onSkip}
+                aria-label="Overslaan"
+                title="Overslaan"
+                className="shrink-0 h-10 w-10 rounded-full bg-sunken text-ink-soft flex items-center justify-center outline-none transition-colors hover:bg-line focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+            {onComplete && (
+              <button
+                onClick={onComplete}
+                aria-label="Afronden"
+                title="Afronden"
+                className="shrink-0 h-10 w-10 rounded-full bg-ink text-canvas flex items-center justify-center outline-none transition-[background-color,transform] duration-150 hover:bg-ink/85 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+              >
+                {isCall ? <Video className="h-4 w-4" /> : <Check className="h-4 w-4" strokeWidth={2.5} />}
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -356,37 +375,39 @@ export function SuggestedBlockCard({
   onDismiss: () => void
 }) {
   return (
-    <div className="card p-4 w-[220px] shrink-0 flex flex-col justify-between gap-3 min-h-[176px] border-dashed border-line/80">
-      <div className="flex items-start justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-personal-deep">
+    <div className="card p-4 flex items-center gap-4 border-dashed border-line/80">
+      <div className="flex w-16 shrink-0 flex-col items-center gap-1">
+        <span className="text-lg font-medium tabular-nums text-ink-soft">{start}</span>
+        <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-personal-deep">
           <Sparkles className="h-3 w-3" /> voorstel
         </span>
-        <span className="chip bg-sunken text-ink-soft shrink-0 tabular-nums">{start}</span>
       </div>
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         <p className="text-lg leading-snug text-ink font-medium">
           {emoji} {title}
         </p>
-        <p className="text-xs text-faint mt-1 leading-snug line-clamp-3">{rationale}</p>
-      </div>
-      <div className="flex items-center justify-between gap-2">
-        <DomainChip domain={domain} small />
-        <div className="flex items-center gap-1.5">
-          <button
-            onClick={onDismiss}
-            aria-label="Negeer voorstel"
-            className="shrink-0 h-9 w-9 rounded-full bg-sunken text-ink-soft flex items-center justify-center outline-none transition-colors hover:bg-line focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
-          >
-            <X className="h-4 w-4" />
-          </button>
-          <button
-            onClick={onAdd}
-            aria-label="Toevoegen aan vandaag"
-            className="shrink-0 h-9 w-9 rounded-full bg-ink text-canvas flex items-center justify-center outline-none transition-[background-color,transform] duration-150 hover:bg-ink/85 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
-          >
-            <Plus className="h-4 w-4" strokeWidth={2.5} />
-          </button>
+        <p className="text-sm text-faint mt-1 leading-snug line-clamp-2">{rationale}</p>
+        <div className="mt-1.5">
+          <DomainChip domain={domain} small />
         </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <button
+          onClick={onDismiss}
+          aria-label="Negeer voorstel"
+          title="Negeer voorstel"
+          className="shrink-0 h-10 w-10 rounded-full bg-sunken text-ink-soft flex items-center justify-center outline-none transition-colors hover:bg-line focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        <button
+          onClick={onAdd}
+          aria-label="Toevoegen aan vandaag"
+          title="Toevoegen aan vandaag"
+          className="shrink-0 h-10 w-10 rounded-full bg-ink text-canvas flex items-center justify-center outline-none transition-[background-color,transform] duration-150 hover:bg-ink/85 active:scale-95 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
+        >
+          <Plus className="h-4 w-4" strokeWidth={2.5} />
+        </button>
       </div>
     </div>
   )

@@ -101,6 +101,21 @@ function blockUrgency(start: string): { tone: Tone; label: string } {
 /** Cosmetic only — swaps the agenda card's action glyph for a video icon. */
 const isCallBlock = (title: string) => /\b(call|bel|overleg|meeting)\b/i.test(title)
 
+/**
+ * A planned block whose end time has passed without being completed reads as
+ * "missed" instead of forever "nu bezig" — purely a display derivation (never
+ * written back to the store/DB), recomputed off a ticking clock so a block
+ * actually moves out of the way the moment its window closes, without
+ * needing a reload.
+ */
+function effectiveBlockStatus(
+  status: 'planned' | 'done' | 'skipped',
+  end: string,
+  nowMin: number,
+): 'planned' | 'done' | 'skipped' | 'missed' {
+  return status === 'planned' && toMin(end) <= nowMin ? 'missed' : status
+}
+
 export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const {
     threads,
@@ -121,6 +136,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     dogReminders,
     clients,
     completeBlock,
+    skipBlock,
     addSuggestedBlock,
     tickHabit,
     toggleMilestone,
@@ -162,6 +178,14 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   const todaysCheckin = checkins.find((c) => c.date === TODAY)
   const [checkinOpen, setCheckinOpen] = useState(false)
 
+  // Ticks once a minute so a block that just ran past its end time flips to
+  // "gemist" live, without needing a reload to notice the clock moved on.
+  const [nowMin, setNowMin] = useState(() => amsterdamMinutesNow())
+  useEffect(() => {
+    const id = setInterval(() => setNowMin(amsterdamMinutesNow()), 60_000)
+    return () => clearInterval(id)
+  }, [])
+
   const today = healthDays.find((d) => d.date === TODAY) ?? healthDays[healthDays.length - 1]
   // Vandaag: every scheduled block today, soonest first — skipped ones drop
   // off the agenda row since they're no longer part of today's actual plan.
@@ -170,7 +194,11 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   // overview opens on what's actually still ahead of you.
   const todaysBlocks = [...blocks]
     .filter((b) => b.status !== 'skipped')
-    .sort((a, b) => (a.status === 'done') === (b.status === 'done') ? a.start.localeCompare(b.start) : a.status === 'done' ? 1 : -1)
+    .sort((a, b) => {
+      const ra = a.status === 'done' || effectiveBlockStatus(a.status, a.end, nowMin) === 'missed'
+      const rb = b.status === 'done' || effectiveBlockStatus(b.status, b.end, nowMin) === 'missed'
+      return ra === rb ? a.start.localeCompare(b.start) : ra ? 1 : -1
+    })
 
   // Step sync from the phone can land hours after sleep/energy are already
   // logged — a bare "0.0k" then reads as "you haven't moved" rather than
@@ -625,24 +653,34 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         </div>
       ) : null}
 
-      {/* ── vandaag: every scheduled block today, horizontal, soonest first ─── */}
+      {/* ── vandaag: every scheduled block today, stacked, soonest-open first —
+          a block whose end time has passed auto-flips to "gemist" and sinks
+          to the bottom alongside done ones instead of sitting stuck at the
+          top forever reading "nu bezig". ───────────────────────────────── */}
       {todaysBlocks.length > 0 ? (
         <div className="flex flex-col gap-2">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted px-1">Vandaag</p>
-          <div className="flex gap-2.5 overflow-x-auto pb-1 -mx-1 px-1">
+          <div className="flex items-center justify-between px-1">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Vandaag</p>
+            <span className="text-xs text-muted tabular-nums">
+              {todaysBlocks.filter((b) => b.status === 'done').length}/{todaysBlocks.length} klaar
+            </span>
+          </div>
+          <div className="flex flex-col gap-2">
             {todaysBlocks.map((b) => {
-              const urgency = blockUrgency(b.start)
+              const status = effectiveBlockStatus(b.status, b.end, nowMin)
+              const urgency = status === 'missed' ? { tone: 'neutral' as Tone, label: 'gemist' } : blockUrgency(b.start)
               return (
                 <AgendaCard
                   key={b.id}
                   domain={b.domain}
                   title={b.title}
                   start={b.start}
-                  status={b.status}
+                  status={status}
                   tone={urgency.tone}
                   urgencyLabel={urgency.label}
                   isCall={isCallBlock(b.title)}
-                  onComplete={b.status === 'planned' ? () => completeBlock(b.id) : undefined}
+                  onComplete={status !== 'done' ? () => completeBlock(b.id) : undefined}
+                  onSkip={status === 'planned' || status === 'missed' ? () => skipBlock(b.id) : undefined}
                 />
               )
             })}
@@ -660,7 +698,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
       {suggestedBlocks.length > 0 && (
         <div className="flex flex-col gap-2">
           <p className="text-[11px] font-medium uppercase tracking-wider text-muted px-1">Voorgesteld voor vandaag</p>
-          <div className="flex gap-2.5 overflow-x-auto pb-1 -mx-1 px-1">
+          <div className="flex flex-col gap-2">
             {suggestedBlocks.map((s) => (
               <SuggestedBlockCard
                 key={s.id}
