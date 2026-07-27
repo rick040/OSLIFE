@@ -21,12 +21,18 @@ function fmtWeight(v: number): string {
   return Number.isInteger(v) ? String(v) : v.toFixed(1)
 }
 
+/**
+ * Sized by its flex-1 parent (h-full/max-h-full), not a fixed vh guess — it
+ * fills exactly whatever room is left after the name/chips/nav chrome below
+ * it, so it scales correctly on both a tall phone and a short landscape
+ * tablet without either overflowing or leaving a giant dead gap above it.
+ */
 function ExerciseVisual({ ex }: { ex: WorkoutExercise }) {
   const src = ex.gifUrl || ex.imageUrl
   const [broken, setBroken] = useState(false)
   if (!src || broken) {
     return (
-      <div className="h-[20vh] sm:h-[22vh] md:h-[24vh] lg:h-[26vh] w-auto max-w-full aspect-square rounded-3xl bg-sunken flex items-center justify-center">
+      <div className="h-full max-h-full w-auto max-w-full aspect-square rounded-3xl bg-sunken flex items-center justify-center">
         <Dumbbell className="h-14 w-14 md:h-20 md:w-20 text-faint" />
       </div>
     )
@@ -36,7 +42,7 @@ function ExerciseVisual({ ex }: { ex: WorkoutExercise }) {
       src={src}
       alt={ex.name}
       onError={() => setBroken(true)}
-      className="h-[20vh] sm:h-[22vh] md:h-[24vh] lg:h-[26vh] w-auto max-w-full aspect-square rounded-3xl object-cover bg-sunken"
+      className="h-full max-h-full w-auto max-w-full aspect-square rounded-3xl object-cover bg-sunken"
     />
   )
 }
@@ -197,11 +203,16 @@ export default function WorkoutMode({
           {plan.name} · oefening {exIdx + 1}/{exercises.length}
         </div>
 
-        {/* visual + info — m-auto (not justify-center) so on a short viewport where
-            this overflows, it scrolls from the top instead of clipping the top half */}
+        {/* visual + info — the image is the only flexible piece: it fills
+            whatever room is left above the fixed name/chips block, instead of
+            a fixed size that leaves a dead gap on a tall screen or overflows
+            a short one. overflow-y-auto is just a safety net for extreme cases
+            (e.g. a very long name wrapping on a tiny screen). */}
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center px-6 py-2">
-          <div className="m-auto flex flex-col items-center gap-2 md:gap-3">
+          <div className="flex-1 min-h-0 w-full flex items-center justify-center">
             <ExerciseVisual ex={ex} />
+          </div>
+          <div className="shrink-0 flex flex-col items-center gap-1.5 md:gap-2.5 pt-2 md:pt-3">
             <div className="text-lg md:text-2xl lg:text-3xl font-medium text-ink text-center">{ex.name}</div>
             <div className="flex items-center gap-2 md:gap-3">
               <span className="chip bg-sunken text-ink-soft md:text-base md:px-3 md:py-1">{ex.muscleGroup}</span>
