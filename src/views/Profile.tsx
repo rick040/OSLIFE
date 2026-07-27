@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { useStore } from '../store'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
-import { Empty, SetupHint } from '../components/ui'
-import { Fingerprint, Sparkles, Compass, Save, Users, Repeat, MapPin } from 'lucide-react'
+import { SetupHint } from '../components/ui'
+import { PERSONA_CATEGORIES, LANDSCAPE_CATEGORIES, hasAnyItems, type CategoryDef } from '../profile'
+import type { IdentitySnapshot, Landscape } from '../types'
+import { Fingerprint, Sparkles, Compass, Save, Plus, X } from 'lucide-react'
 
 type Tab = 'huidig' | 'droom' | 'landschap'
+type Section = 'current' | 'dream' | 'landscape'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'huidig', label: 'Huidig' },
@@ -19,25 +22,91 @@ function fmtWhen(iso: string | null): string | null {
   return `bijgewerkt ${d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} ${d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`
 }
 
-function ItemList({ items, empty }: { items: string[]; empty: string }) {
-  if (!items.length) return <p className="text-xs text-faint italic">{empty}</p>
+function CategoryCard({
+  def,
+  items,
+  onAdd,
+  onRemove,
+}: {
+  def: CategoryDef
+  items: string[]
+  onAdd: (text: string) => void
+  onRemove: (index: number) => void
+}) {
+  const [draft, setDraft] = useState('')
   return (
-    <ul className="space-y-1.5">
-      {items.map((t, i) => (
-        <li key={i} className="flex items-start gap-2 text-sm text-ink-soft">
-          <span className="mt-1.5 h-1 w-1 rounded-full bg-faint shrink-0" />
-          {t}
-        </li>
-      ))}
-    </ul>
+    <div className="card p-4">
+      <h3 className="text-[11px] uppercase tracking-wider text-muted">{def.label}</h3>
+      <p className="text-[11px] text-faint mt-0.5 mb-2 leading-snug">{def.hint}</p>
+
+      {items.length === 0 ? (
+        <p className="text-xs text-faint italic mb-2">Nog niets herkend.</p>
+      ) : (
+        <ul className="space-y-1 mb-2">
+          {items.map((t, i) => (
+            <li key={i} className="flex items-start gap-2 text-sm text-ink-soft group">
+              <span className="mt-1.5 h-1 w-1 rounded-full bg-faint shrink-0" />
+              <span className="flex-1">{t}</span>
+              <button
+                onClick={() => onRemove(i)}
+                className="text-faint hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                aria-label={`Verwijder "${t}"`}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          const t = draft.trim()
+          if (!t) return
+          onAdd(t)
+          setDraft('')
+        }}
+        className="flex gap-1.5"
+      >
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Toevoegen…"
+          className="flex-1 min-w-0 rounded-lg bg-sunken border border-line px-2 py-1 text-xs outline-none focus:border-prjct/60"
+        />
+        <button type="submit" className="btn-ghost !py-1 !px-2 text-xs shrink-0">
+          <Plus className="h-3 w-3" />
+        </button>
+      </form>
+    </div>
   )
 }
 
-function Section({ title, accent, items, empty }: { title: string; accent: string; items: string[]; empty: string }) {
+function CategoryGrid({
+  defs,
+  section,
+  snapshot,
+}: {
+  defs: CategoryDef[]
+  section: Section
+  snapshot: IdentitySnapshot | Landscape
+}) {
+  const setProfileCategoryItems = useStore((s) => s.setProfileCategoryItems)
   return (
-    <div className={`card p-4 border-l-2 ${accent}`}>
-      <h3 className="text-[11px] uppercase tracking-wider text-muted mb-2">{title}</h3>
-      <ItemList items={items} empty={empty} />
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {defs.map((def) => {
+        const items = snapshot.categories[def.key] ?? []
+        return (
+          <CategoryCard
+            key={def.key}
+            def={def}
+            items={items}
+            onAdd={(text) => setProfileCategoryItems(section, def.key, [...items, text])}
+            onRemove={(i) => setProfileCategoryItems(section, def.key, items.filter((_, idx) => idx !== i))}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -47,21 +116,25 @@ export default function Profile() {
     identityProfile,
     generatingProfile,
     lastProfileError,
+    generatingDream,
+    lastDreamError,
     generatingLandscape,
     lastLandscapeError,
     generateCurrentProfile,
-    updateDreamProfile,
+    updateDreamNotes,
+    distillDreamProfile,
     generateLandscape,
   } = useStore()
 
   const [tab, setTab] = useState<Tab>('huidig')
-  const [draftMd, setDraftMd] = useState(identityProfile.dreamMd)
-  const dreamDirty = draftMd !== identityProfile.dreamMd
+  const [draftNotes, setDraftNotes] = useState(identityProfile.dreamNotes)
+  const notesDirty = draftNotes !== identityProfile.dreamNotes
 
-  const { current, dreamMd, landscape } = identityProfile
+  const { current, dreamNotes, dream, landscape } = identityProfile
+  const dreamHasSignal = hasAnyItems(dream.categories) || dreamNotes.trim().length > 0
 
   return (
-    <div className="flex flex-col gap-6 max-w-3xl mx-auto">
+    <div className="flex flex-col gap-6 max-w-5xl mx-auto">
       <div className="flex items-center gap-3">
         <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
           <Fingerprint className="h-5 w-5 text-ink-soft" />
@@ -84,13 +157,11 @@ export default function Profile() {
         <TabsContent value="huidig" className="mt-6 space-y-4">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <p className="text-xs text-faint max-w-md">
-              Automatisch samengesteld door HEYRA uit je braindumps, patronen, geleerde feiten en gewoontes — hoe meer
-              vastgelegd, hoe scherper dit wordt.
+              Automatisch samengesteld door HEYRA uit je braindumps, patronen, geleerde feiten en gewoontes. Klopt iets
+              niet (meer) — pas het direct aan per categorie.
             </p>
             <div className="flex items-center gap-2 shrink-0">
-              {fmtWhen(current.generatedAt) && (
-                <span className="text-[11px] text-faint">{fmtWhen(current.generatedAt)}</span>
-              )}
+              {fmtWhen(current.generatedAt) && <span className="text-[11px] text-faint">{fmtWhen(current.generatedAt)}</span>}
               <button className="btn-ghost !py-1.5" onClick={() => generateCurrentProfile()} disabled={generatingProfile}>
                 {generatingProfile ? (
                   <span className="h-4 w-4 rounded-full border-2 border-prjct border-t-transparent animate-spin" />
@@ -106,26 +177,14 @@ export default function Profile() {
             <div className="card p-3 text-sm text-personal-deep bg-personal/10">{lastProfileError}</div>
           )}
 
-          {!current.generatedAt && !generatingProfile ? (
-            <Empty>Nog geen profiel gegenereerd. Klik op "Genereer profiel" om te beginnen.</Empty>
-          ) : (
-            <>
-              {current.summary && <div className="card p-4 text-sm text-ink-soft">{current.summary}</div>}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Section title="Eigenschappen" accent="border-prjct" items={current.traits} empty="Nog niets herkend." />
-                <Section title="Sterke punten" accent="border-buurtkaart" items={current.strengths} empty="Nog niets herkend." />
-                <Section title="Valkuilen" accent="border-personal" items={current.weaknesses} empty="Nog niets herkend." />
-                <Section title="Versnellers" accent="border-forest" items={current.accelerators} empty="Nog niets herkend." />
-              </div>
-            </>
-          )}
+          <CategoryGrid defs={PERSONA_CATEGORIES} section="current" snapshot={current} />
         </TabsContent>
 
         <TabsContent value="droom" className="mt-6 space-y-4">
           <div className="card p-4 text-sm text-ink-soft space-y-2">
             <p>
-              Beschrijf het profiel dat je nodig hebt om te leven zoals je wilt — de onderliggende eigenschappen, niet de
-              losse wensen.
+              Het profiel dat je nodig hebt om te leven zoals je wilt — de onderliggende eigenschappen, niet de losse
+              wensen.
             </p>
             <p className="text-xs text-faint">
               Bijvoorbeeld: niet "ergens een jaar wonen en dan verhuizen", maar "financieel onafhankelijk, geen baas,
@@ -133,50 +192,57 @@ export default function Profile() {
             </p>
           </div>
 
-          <textarea
-            value={draftMd}
-            onChange={(e) => setDraftMd(e.target.value)}
-            placeholder="Nog niet ingevuld — voeg hier je droomprofiel toe wanneer je zover bent."
-            rows={14}
-            className="w-full rounded-xl bg-sunken border border-line px-3 py-2.5 text-sm outline-none focus:border-prjct/60 leading-relaxed"
-          />
-          <div className="flex justify-end">
-            <button
-              className="btn-primary !py-1.5"
-              onClick={() => updateDreamProfile(draftMd)}
-              disabled={!dreamDirty}
-            >
-              <Save className="h-4 w-4" /> Opslaan
-            </button>
+          <div className="space-y-2">
+            <h2 className="text-[11px] uppercase tracking-wider text-muted">Ruwe notities</h2>
+            <textarea
+              value={draftNotes}
+              onChange={(e) => setDraftNotes(e.target.value)}
+              placeholder="Nog niet ingevuld — schrijf hier vrij over wie je wilt worden. HEYRA destilleert dit naar de categorieën hieronder."
+              rows={8}
+              className="w-full rounded-xl bg-sunken border border-line px-3 py-2.5 text-sm outline-none focus:border-prjct/60 leading-relaxed"
+            />
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <button className="btn-primary !py-1.5" onClick={() => updateDreamNotes(draftNotes)} disabled={!notesDirty}>
+                <Save className="h-4 w-4" /> Opslaan
+              </button>
+              <div className="flex items-center gap-2">
+                {fmtWhen(dream.generatedAt) && <span className="text-[11px] text-faint">{fmtWhen(dream.generatedAt)}</span>}
+                <button className="btn-ghost !py-1.5" onClick={() => distillDreamProfile()} disabled={generatingDream}>
+                  {generatingDream ? (
+                    <span className="h-4 w-4 rounded-full border-2 border-prjct border-t-transparent animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4 text-prjct" />
+                  )}
+                  {generatingDream ? 'Destilleert…' : 'Destilleer naar categorieën'}
+                </button>
+              </div>
+            </div>
           </div>
+
+          {lastDreamError && !generatingDream && (
+            <div className="card p-3 text-sm text-personal-deep bg-personal/10">{lastDreamError}</div>
+          )}
+
+          <CategoryGrid defs={PERSONA_CATEGORIES} section="dream" snapshot={dream} />
         </TabsContent>
 
         <TabsContent value="landschap" className="mt-6 space-y-4">
-          {!dreamMd.trim() ? (
-            <SetupHint
-              icon={Compass}
-              title="Vul eerst je droomprofiel in"
-              cta="Naar droomprofiel"
-              onCta={() => setTab('droom')}
-            >
-              Het landschap — de mensen, gewoontes en omgeving die de kloof overbruggen — bouwt voort op je droomprofiel.
+          {!dreamHasSignal ? (
+            <SetupHint icon={Compass} title="Vul eerst je droomprofiel in" cta="Naar droomprofiel" onCta={() => setTab('droom')}>
+              Het landschap — de mensen, gewoontes, tijd, geld, balans en focus die de kloof overbruggen — bouwt voort op
+              je droomprofiel.
             </SetupHint>
           ) : (
             <>
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <p className="text-xs text-faint max-w-md">
-                  De omgeving die de kloof tussen je huidige en je droomprofiel overbrugt: wie je om je heen nodig hebt,
-                  welke gewoontes je opbouwt, en welke omgeving dat mogelijk maakt.
+                  De omgeving die de kloof tussen je huidige en je droomprofiel overbrugt.
                 </p>
                 <div className="flex items-center gap-2 shrink-0">
                   {fmtWhen(landscape.generatedAt) && (
                     <span className="text-[11px] text-faint">{fmtWhen(landscape.generatedAt)}</span>
                   )}
-                  <button
-                    className="btn-ghost !py-1.5"
-                    onClick={() => generateLandscape()}
-                    disabled={generatingLandscape}
-                  >
+                  <button className="btn-ghost !py-1.5" onClick={() => generateLandscape()} disabled={generatingLandscape}>
                     {generatingLandscape ? (
                       <span className="h-4 w-4 rounded-full border-2 border-prjct border-t-transparent animate-spin" />
                     ) : (
@@ -191,33 +257,7 @@ export default function Profile() {
                 <div className="card p-3 text-sm text-personal-deep bg-personal/10">{lastLandscapeError}</div>
               )}
 
-              {!landscape.generatedAt && !generatingLandscape ? (
-                <Empty>Nog geen landschap gegenereerd. Klik op "Genereer landschap" om te beginnen.</Empty>
-              ) : (
-                <>
-                  {landscape.summary && <div className="card p-4 text-sm text-ink-soft">{landscape.summary}</div>}
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="card p-4 border-l-2 border-prjct">
-                      <h3 className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted mb-2">
-                        <Users className="h-3.5 w-3.5" /> Mensen
-                      </h3>
-                      <ItemList items={landscape.people} empty="Nog niets herkend." />
-                    </div>
-                    <div className="card p-4 border-l-2 border-buurtkaart">
-                      <h3 className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted mb-2">
-                        <Repeat className="h-3.5 w-3.5" /> Gewoontes
-                      </h3>
-                      <ItemList items={landscape.habits} empty="Nog niets herkend." />
-                    </div>
-                    <div className="card p-4 border-l-2 border-forest">
-                      <h3 className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted mb-2">
-                        <MapPin className="h-3.5 w-3.5" /> Omgeving
-                      </h3>
-                      <ItemList items={landscape.environment} empty="Nog niets herkend." />
-                    </div>
-                  </div>
-                </>
-              )}
+              <CategoryGrid defs={LANDSCAPE_CATEGORIES} section="landscape" snapshot={landscape} />
             </>
           )}
         </TabsContent>

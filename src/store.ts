@@ -88,7 +88,8 @@ import { buildDogCoachPrompt } from './dog/dogCoach'
 import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
 import type { CardTemplate, ActionKind, ActionFieldType } from './heyra/actions/types'
 import { proposeGoals as proposeGoalsAI } from './heyra/goals'
-import { synthesizeCurrentProfile, synthesizeLandscape } from './heyra/identity'
+import { synthesizeCurrentProfile, synthesizeDreamProfile, synthesizeLandscape } from './heyra/identity'
+import { emptySnapshot, emptyLandscape } from './profile'
 import { buildWeekPlan, weekDates, dayBounds, type DayBounds } from './heyra/planner'
 import {
   deriveEssentials,
@@ -365,6 +366,8 @@ interface State {
   identityProfile: IdentityProfile
   generatingProfile: boolean
   lastProfileError: string | null
+  generatingDream: boolean
+  lastDreamError: string | null
   generatingLandscape: boolean
   lastLandscapeError: string | null
   businessIdeas: BusinessIdea[]
@@ -514,7 +517,10 @@ interface State {
   // Profile screen — huidig profiel is AI-synthesized on demand; droomprofiel is
   // hand-written by Rick; landschap is AI-synthesized from the other two.
   generateCurrentProfile: () => Promise<void>
-  updateDreamProfile: (md: string) => void
+  /** Replace one category's item list for `current`/`dream`/`landscape` — the single primitive behind manual add/remove editing in the Profile screen. */
+  setProfileCategoryItems: (section: 'current' | 'dream' | 'landscape', key: string, items: string[]) => void
+  updateDreamNotes: (text: string) => void
+  distillDreamProfile: () => Promise<void>
   generateLandscape: () => Promise<void>
   // Dagplanner — generate/lock/dismiss the weekly day plan.
   generateWeekPlan: () => Promise<void>
@@ -746,12 +752,15 @@ const seed = () => ({
   profileFacts: [] as ProfileFact[],
   summaries: [] as MemorySummary[],
   identityProfile: {
-    current: { summary: '', traits: [], strengths: [], weaknesses: [], accelerators: [], generatedAt: null },
-    dreamMd: '',
-    landscape: { summary: '', people: [], habits: [], environment: [], generatedAt: null },
+    current: emptySnapshot(),
+    dreamNotes: '',
+    dream: emptySnapshot(),
+    landscape: emptyLandscape(),
   } as IdentityProfile,
   generatingProfile: false,
   lastProfileError: null as string | null,
+  generatingDream: false,
+  lastDreamError: null as string | null,
   generatingLandscape: false,
   lastLandscapeError: null as string | null,
   businessIdeas: [] as BusinessIdea[],
@@ -810,15 +819,29 @@ export function applyPersistDefaults(
   state.financeCoachLoading = false
   state.dogCoachLoading = false
   state.generatingProfile = false
+  state.generatingDream = false
   state.generatingLandscape = false
-  if (!state.identityProfile) {
+  // A persisted blob from before the categories rewrite (or any shape missing
+  // `categories`) can't be rendered — loadLiveData() overwrites this from
+  // Supabase moments later anyway, so reset rather than crash in between.
+  const isLegacyOrMissing = (snap: unknown): boolean =>
+    !snap || typeof snap !== 'object' || !('categories' in (snap as Record<string, unknown>))
+  if (
+    !state.identityProfile ||
+    isLegacyOrMissing(state.identityProfile.current) ||
+    isLegacyOrMissing(state.identityProfile.dream) ||
+    isLegacyOrMissing(state.identityProfile.landscape) ||
+    typeof state.identityProfile.dreamNotes !== 'string'
+  ) {
     state.identityProfile = {
-      current: { summary: '', traits: [], strengths: [], weaknesses: [], accelerators: [], generatedAt: null },
-      dreamMd: '',
-      landscape: { summary: '', people: [], habits: [], environment: [], generatedAt: null },
+      current: { categories: {}, generatedAt: null },
+      dreamNotes: '',
+      dream: { categories: {}, generatedAt: null },
+      landscape: { categories: {}, generatedAt: null },
     }
   }
   if (state.lastProfileError === undefined) state.lastProfileError = null
+  if (state.lastDreamError === undefined) state.lastDreamError = null
   if (state.lastLandscapeError === undefined) state.lastLandscapeError = null
   if (!state.stockQuotes) state.stockQuotes = {}
   if (state.financeCoach === undefined) state.financeCoach = null
@@ -1822,9 +1845,45 @@ export const useStore = create<State>()(
         }
       },
 
-      updateDreamProfile: (md) => {
-        set((s) => ({ identityProfile: { ...s.identityProfile, dreamMd: md } }))
-        void upsertIdentityProfile({ dreamMd: md })
+      setProfileCategoryItems: (section, key, items) => {
+        set((s) => {
+          const snap = s.identityProfile[section]
+          return {
+            identityProfile: { ...s.identityProfile, [section]: { ...snap, categories: { ...snap.categories, [key]: items } } },
+          }
+        })
+        void upsertIdentityProfile({ [section]: get().identityProfile[section] } as Partial<IdentityProfile>)
+      },
+
+      updateDreamNotes: (text) => {
+        set((s) => ({ identityProfile: { ...s.identityProfile, dreamNotes: text } }))
+        void upsertIdentityProfile({ dreamNotes: text })
+      },
+
+      distillDreamProfile: async () => {
+        set({ generatingDream: true, lastDreamError: null })
+        const s = get()
+        try {
+          const dream = await synthesizeDreamProfile(s.identityProfile.dreamNotes)
+          if (!dream) {
+            set({
+              generatingDream: false,
+              lastDreamError: s.identityProfile.dreamNotes.trim()
+                ? 'HEYRA kon hier nu niets uit destilleren — probeer het zo nog eens.'
+                : 'Schrijf eerst je droomprofiel-notities — daar destilleert HEYRA de categorieën uit.',
+            })
+            return
+          }
+          set((st) => ({
+            identityProfile: { ...st.identityProfile, dream },
+            generatingDream: false,
+            activity: pushSignal(st.activity, { text: 'Droomprofiel gedestilleerd', domain: 'cross', loop: 'slow' }),
+          }))
+          void upsertIdentityProfile({ dream })
+        } catch (err) {
+          console.warn('[OSLIFE] dream distillation failed', err)
+          set({ generatingDream: false, lastDreamError: 'HEYRA kon hier nu niets uit destilleren — probeer het zo nog eens.' })
+        }
       },
 
       generateLandscape: async () => {
@@ -1833,7 +1892,8 @@ export const useStore = create<State>()(
         try {
           const landscape = await synthesizeLandscape({
             current: s.identityProfile.current,
-            dreamMd: s.identityProfile.dreamMd,
+            dream: s.identityProfile.dream,
+            dreamNotes: s.identityProfile.dreamNotes,
           })
           if (!landscape) {
             set({

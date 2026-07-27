@@ -2558,30 +2558,24 @@ export async function fetchProfileFacts(): Promise<ProfileFact[]> {
 
 // ── Identity profile (huidig / droom / landschap) ─────────────────────────────
 
-const EMPTY_SNAPSHOT: IdentitySnapshot = {
-  summary: '',
-  traits: [],
-  strengths: [],
-  weaknesses: [],
-  accelerators: [],
-  generatedAt: null,
-}
+const EMPTY_SNAPSHOT: IdentitySnapshot = { categories: {}, generatedAt: null }
+const EMPTY_LANDSCAPE: Landscape = { categories: {}, generatedAt: null }
 
-const EMPTY_LANDSCAPE: Landscape = {
-  summary: '',
-  people: [],
-  habits: [],
-  environment: [],
-  generatedAt: null,
+/** Defensive coercion — a jsonb column with the old (pre-categories) shape, or a corrupt/partial value, must never crash the caller. */
+function coerceSnapshot(raw: unknown): IdentitySnapshot {
+  const r = (raw as Partial<IdentitySnapshot>) ?? {}
+  const categories = r.categories && typeof r.categories === 'object' ? r.categories : {}
+  return { categories, generatedAt: typeof r.generatedAt === 'string' ? r.generatedAt : null }
 }
 
 export async function fetchIdentityProfile(): Promise<IdentityProfile> {
-  const { data } = await supabase.from('identity_profile').select('current,dream_md,landscape').maybeSingle()
-  if (!data) return { current: EMPTY_SNAPSHOT, dreamMd: '', landscape: EMPTY_LANDSCAPE }
+  const { data } = await supabase.from('identity_profile').select('current,dream_notes,dream,landscape').maybeSingle()
+  if (!data) return { current: EMPTY_SNAPSHOT, dreamNotes: '', dream: EMPTY_SNAPSHOT, landscape: EMPTY_LANDSCAPE }
   return {
-    current: { ...EMPTY_SNAPSHOT, ...(data.current as Partial<IdentitySnapshot>) },
-    dreamMd: (data.dream_md as string) ?? '',
-    landscape: { ...EMPTY_LANDSCAPE, ...(data.landscape as Partial<Landscape>) },
+    current: coerceSnapshot(data.current),
+    dreamNotes: (data.dream_notes as string) ?? '',
+    dream: coerceSnapshot(data.dream),
+    landscape: coerceSnapshot(data.landscape) as Landscape,
   }
 }
 
@@ -2592,7 +2586,8 @@ export async function upsertIdentityProfile(patch: Partial<IdentityProfile>): Pr
     {
       user_id,
       ...(patch.current !== undefined && { current: patch.current }),
-      ...(patch.dreamMd !== undefined && { dream_md: patch.dreamMd }),
+      ...(patch.dreamNotes !== undefined && { dream_notes: patch.dreamNotes }),
+      ...(patch.dream !== undefined && { dream: patch.dream }),
       ...(patch.landscape !== undefined && { landscape: patch.landscape }),
       updated_at: new Date().toISOString(),
     },

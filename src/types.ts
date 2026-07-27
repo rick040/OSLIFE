@@ -794,28 +794,29 @@ export interface GoalProposal {
 // vs. "who Rick needs to become" vs. the environment that bridges the two,
 // synthesized on demand from learned facts, patterns, profile facts and
 // braindumps. Same brain-first/rule-fallback contract as goals.ts; grounded
-// only in what's actually been captured.
+// only in what's actually been captured. Deliberately structured, not
+// narrative: each category holds short, discrete items — never a paragraph —
+// so current and dream read as two comparable versions of the same persona.
+// The canonical category keys/labels live in src/profile.ts, not here.
 
 export interface IdentitySnapshot {
-  summary: string
-  traits: string[]
-  strengths: string[]
-  weaknesses: string[]
-  accelerators: string[]
+  /** category key (see src/profile.ts's PERSONA_CATEGORIES) → short discrete items */
+  categories: Record<string, string[]>
   generatedAt: string | null
 }
 
 export interface Landscape {
-  summary: string
-  people: string[]
-  habits: string[]
-  environment: string[]
+  /** category key (see src/profile.ts's LANDSCAPE_CATEGORIES) → short discrete items */
+  categories: Record<string, string[]>
   generatedAt: string | null
 }
 
 export interface IdentityProfile {
   current: IdentitySnapshot
-  dreamMd: string
+  /** Raw free-form text Rick writes himself (e.g. a self-interview) — never AI-generated, preserved verbatim. Source material `dream` can be distilled from. */
+  dreamNotes: string
+  /** Structured dream persona — same category shape as `current`, either distilled from dreamNotes via HEYRA or hand-edited directly. */
+  dream: IdentitySnapshot
   landscape: Landscape
 }
 
