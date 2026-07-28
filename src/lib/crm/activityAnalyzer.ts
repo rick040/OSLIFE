@@ -35,7 +35,7 @@ const STOP = new Set([
 // "done"-type intent.
 const DONE_WORDS = [
   'af', 'klaar', 'afgerond', 'afgemaakt', 'afgehandeld', 'gedaan', 'done', 'opgeleverd',
-  'voltooid', 'verstuurd', 'verzonden', 'gemaild', 'opgestuurd', 'ingeleverd', 'betaald',
+  'voltooid', 'verstuurd', 'verzonden', 'gestuurd', 'gemaild', 'opgestuurd', 'ingeleverd', 'betaald',
   'geregeld', 'finished', 'completed', 'sent', 'delivered',
 ]
 // "in progress"-type intent.

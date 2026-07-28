@@ -88,7 +88,7 @@ Onderscheid chat vs assistant scherp:
 
 2. Classificeer het bericht zelf:
 - domain: parkingyou, prjct, buurtkaart, personal, of cross
-- kind: task, note, vent, link, voice, transaction, event, health, email, of idea
+- kind: task, note, vent, link, voice, transaction, event, health, email, of idea. Onderscheid "event" en "note" scherp: "event" is een melding dat er al iets is GEBEURD of AFGEROND, of een concrete voortgangsupdate (bv. "ik heb de preview naar Kim gestuurd", "het telefoontje met de klant was goed", "de logo's zijn klaar") — dit kan een taak/mijlpaal/status raken en moet als zodanig herkenbaar zijn. "note" is een passieve gedachte, observatie of losse info zonder dat er iets concreets is gebeurd of veranderd (bv. "Sanne is aardig", "goed idee voor later", "interessant artikel"). Bij twijfel tussen "event" en "note" over een AFGERONDE actie: kies "event".
 - sentiment: positive, neutral, negative, of stressed
 - summary: korte natuurlijke samenvatting (max ~12 woorden), geen letterlijke kopie
 

@@ -77,7 +77,11 @@ const PROPOSE_ACTION_TOOL: BrainTool = {
   },
 }
 
-const SYSTEM = `Je bent de actie-detectielaag van HEYRA (OSLIFE). Rick praat tegen je; als hij iets meldt dat een wijziging in zijn eigen data betekent (een factuur is betaald, een taak is klaar, een project is verplaatst naar een andere status, een nieuwe klant of taak moet worden aangemaakt), roep dan propose_action aan met de juiste kind, entityMention (letterlijk de naam die Rick noemt voor het project/klant/taak/factuur) en values (alleen de nieuwe waarden). Verzin nooit een bedrag, datum of status die niet expliciet genoemd is. Als het bericht geen concrete actie beschrijft, roep de tool niet aan.`
+const SYSTEM = `Je bent de actie-detectielaag van HEYRA (OSLIFE). Rick praat tegen je; als hij iets meldt dat een wijziging in zijn eigen data betekent — een factuur is betaald, een taak is klaar, een project is verplaatst naar een andere status, een nieuwe klant of taak moet worden aangemaakt, OF een voortgangsupdate op een lopend project (bv. "ik heb de preview naar de klant gestuurd", "het logo is af", "het telefoontje met Kim is geweest") — roep dan propose_action aan met de juiste kind.
+
+Voor een voortgangsupdate die niet expliciet een factuur/klant/taakveld noemt: gebruik kind "log_project_activity". entityMention is dan de naam van het PROJECT (niet de taak of het losse woord uit de update), values.body is Ricks update in zijn eigen woorden (bijna letterlijk overgenomen) — het systeem herkent daarna zelf of dit een bestaande taak of mijlpaal van dat project afrondt, jij hoeft dat niet zelf te bepalen.
+
+Voor de overige kinds: entityMention is letterlijk de naam die Rick noemt voor het project/klant/taak/factuur, en values bevat alleen de nieuwe waarden. Verzin nooit een bedrag, datum of status die niet expliciet genoemd is. Als het bericht geen concrete actie beschrijft, roep de tool niet aan.`
 
 interface RawProposal {
   kind: ProposableKind
