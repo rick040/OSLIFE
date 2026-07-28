@@ -127,6 +127,7 @@ import {
   fetchDogEntries,
   fetchWalks,
   fetchLocationVisits,
+  insertLocationVisits,
   fetchBrainState,
   fetchTasks,
   insertTaskRow,
@@ -354,6 +355,9 @@ interface State {
   walks: Walk[]
   /** Geofence dwell sessions (Home, Albert Heijn, ...) from MacroDroid via geofence-ingest. */
   locationVisits: LocationVisit[]
+  importLocationVisits: (
+    visits: { placeName: string; enteredAt: string; leftAt: string | null }[],
+  ) => Promise<{ inserted: number; duplicates: number }>
   learnedFacts: LearnedFact[]
   vendorTags: VendorTag[]
   braindumpEntries: BraindumpEntry[]
@@ -2724,6 +2728,30 @@ export const useStore = create<State>()(
         // Categorise anything the rule-based guesser left as Uncategorized.
         void get().autoTagTransactions()
         return { inserted, duplicates: txns.length - inserted }
+      },
+
+      // Geofence CSV import (see src/locations/csvImport.ts, which already
+      // merges the raw Inside/Outside triggers into continuous sessions) →
+      // persists to location_visits, deduped against what's already loaded
+      // by (placeName, enteredAt). Reuses an existing place_id for a name
+      // that's already known so imported sessions merge with live ones on
+      // the Locaties map instead of appearing as a separate place.
+      importLocationVisits: async (visits) => {
+        if (!visits.length) return { inserted: 0, duplicates: 0 }
+        const existing = get().locationVisits
+        const key = (v: { placeName: string; enteredAt: string }) => `${v.placeName}|${v.enteredAt}`
+        const seen = new Set(existing.map(key))
+        const fresh = visits.filter((v) => !seen.has(key(v)))
+        if (!fresh.length) return { inserted: 0, duplicates: visits.length }
+
+        const placeIdByName = new Map<string, string | null>()
+        for (const v of existing) if (!placeIdByName.has(v.placeName)) placeIdByName.set(v.placeName, v.placeId)
+        const rows = fresh.map((v) => ({ ...v, placeId: placeIdByName.get(v.placeName) ?? null }))
+
+        const inserted = await insertLocationVisits(rows)
+        const data = await fetchLocationVisits()
+        if (data.length) set({ locationVisits: data })
+        return { inserted, duplicates: visits.length - inserted }
       },
 
       updateTransaction: (id, patch, opts) => {

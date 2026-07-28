@@ -5,13 +5,14 @@
 // per plek (aantal bezoeken, totale tijd, laatst bezocht) en toont dat op een
 // Leaflet-kaart (zelfde aanpak als WalkRouteCard: OpenStreetMap, geen API-key)
 // met cirkels die groter worden naarmate een plek vaker bezocht is.
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Tooltip as LeafletTooltip } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { MapPin, Clock } from 'lucide-react'
+import { MapPin, Clock, Upload } from 'lucide-react'
 import { useStore } from '../store'
 import { SectionTitle, Empty } from '../components/ui'
+import { parseGeofenceCsv } from '../locations/csvImport'
 import type { LocationVisit } from '../types'
 
 const MARKER_COLOR = '#60A5FA'
@@ -138,17 +139,46 @@ function PlacesMap({ places }: { places: PlaceStat[] }) {
 
 export default function Locations() {
   const locationVisits = useStore((s) => s.locationVisits)
+  const importLocationVisits = useStore((s) => s.importLocationVisits)
   const [showAll, setShowAll] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const places = useMemo(() => aggregate(locationVisits), [locationVisits])
   const mapPlaces = useMemo(() => places.filter((p) => p.hasCoords), [places])
 
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (!f) return
+    f.text().then(async (txt) => {
+      const visits = parseGeofenceCsv(txt)
+      if (!visits.length) {
+        alert('Geen herkenbare Inside/Outside-triggers gevonden in dit bestand.')
+        return
+      }
+      const { inserted, duplicates } = await importLocationVisits(visits)
+      alert(`${inserted} bezoek(en) geïmporteerd` + (duplicates ? `, ${duplicates} al bekend (overgeslagen).` : '.'))
+    })
+    e.target.value = ''
+  }
+
+  const importButton = (
+    <div className="flex items-center gap-2 shrink-0">
+      <button className="btn-primary" onClick={() => fileRef.current?.click()}>
+        <Upload className="h-4 w-4" /> Importeer CSV
+      </button>
+      <input ref={fileRef} type="file" accept=".csv,.txt,.tab" hidden onChange={onFile} />
+    </div>
+  )
+
   if (places.length === 0) {
     return (
       <div className="flex flex-col gap-7 max-w-3xl mx-auto">
-        <SectionTitle hint="Bezoeken die MacroDroid's geofence-triggers doorgeven (via geofence-ingest) komen hier binnen.">
-          <span className="flex items-center gap-2"><MapPin className="h-4 w-4 text-parkingyou" /> Locaties</span>
-        </SectionTitle>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <SectionTitle hint="Bezoeken die MacroDroid's geofence-triggers doorgeven (via geofence-ingest) komen hier binnen, of importeer een CSV-export.">
+            <span className="flex items-center gap-2"><MapPin className="h-4 w-4 text-parkingyou" /> Locaties</span>
+          </SectionTitle>
+          {importButton}
+        </div>
         <Empty>Nog geen locatiebezoek gelogd.</Empty>
       </div>
     )
@@ -158,9 +188,12 @@ export default function Locations() {
 
   return (
     <div className="flex flex-col gap-4 max-w-3xl mx-auto">
-      <SectionTitle hint="Cirkelgrootte = aantal bezoeken. Meer geofences kunnen later toegevoegd worden.">
-        <span className="flex items-center gap-2"><MapPin className="h-4 w-4 text-parkingyou" /> Locaties</span>
-      </SectionTitle>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <SectionTitle hint="Cirkelgrootte = aantal bezoeken. Meer geofences kunnen later toegevoegd worden.">
+          <span className="flex items-center gap-2"><MapPin className="h-4 w-4 text-parkingyou" /> Locaties</span>
+        </SectionTitle>
+        {importButton}
+      </div>
 
       {mapPlaces.length > 0 && (
         <div className="card p-2">
