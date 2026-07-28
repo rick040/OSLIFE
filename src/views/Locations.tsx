@@ -22,6 +22,7 @@ interface PlaceStat {
   placeType: string | null
   lat: number
   lon: number
+  hasCoords: boolean
   visitCount: number
   totalMinutes: number
   lastVisited: string
@@ -45,6 +46,7 @@ function aggregate(visits: LocationVisit[]): PlaceStat[] {
         placeType: v.placeType,
         lat: v.lat ?? 0,
         lon: v.lon ?? 0,
+        hasCoords: v.lat != null && v.lon != null,
         latSum: v.lat ?? 0,
         lonSum: v.lon ?? 0,
         coordCount: v.lat != null && v.lon != null ? 1 : 0,
@@ -71,8 +73,8 @@ function aggregate(visits: LocationVisit[]): PlaceStat[] {
       ...p,
       lat: p.coordCount > 0 ? p.latSum / p.coordCount : p.lat,
       lon: p.coordCount > 0 ? p.lonSum / p.coordCount : p.lon,
+      hasCoords: p.coordCount > 0,
     }))
-    .filter((p) => p.lat !== 0 || p.lon !== 0)
     .sort((a, b) => b.visitCount - a.visitCount)
 }
 
@@ -139,6 +141,7 @@ export default function Locations() {
   const [showAll, setShowAll] = useState(false)
 
   const places = useMemo(() => aggregate(locationVisits), [locationVisits])
+  const mapPlaces = useMemo(() => places.filter((p) => p.hasCoords), [places])
 
   if (places.length === 0) {
     return (
@@ -159,9 +162,11 @@ export default function Locations() {
         <span className="flex items-center gap-2"><MapPin className="h-4 w-4 text-parkingyou" /> Locaties</span>
       </SectionTitle>
 
-      <div className="card p-2">
-        <PlacesMap places={places} />
-      </div>
+      {mapPlaces.length > 0 && (
+        <div className="card p-2">
+          <PlacesMap places={mapPlaces} />
+        </div>
+      )}
 
       <div className="card divide-y divide-line">
         {visible.map((p) => (
