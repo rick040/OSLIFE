@@ -117,14 +117,17 @@ function isDuplicate(candidate: string, existing: LearnedFact[]): boolean {
 
 /**
  * Merge freshly extracted facts into the existing set: drop duplicates, then
- * keep the newest MAX_FACTS (oldest fall off the end). Returns the merged list
- * plus just the facts that were actually added, so the caller can surface
- * "onthouden: …" only for genuinely new knowledge.
+ * keep the newest MAX_FACTS (oldest fall off the end). Returns the merged list,
+ * just the facts that were actually added (so the caller can surface
+ * "onthouden: …" only for genuinely new knowledge), and any facts the cap
+ * pushed out this round — the caller archives those (see
+ * archiveEvictedFacts() in lib/supabase.ts) instead of letting them vanish
+ * with no trace, per this app's no-silent-overwrite principle.
  */
 export function mergeFacts(
   existing: LearnedFact[],
   incoming: LearnedFact[],
-): { merged: LearnedFact[]; added: LearnedFact[] } {
+): { merged: LearnedFact[]; added: LearnedFact[]; evicted: LearnedFact[] } {
   const added: LearnedFact[] = []
   const running = [...existing]
   for (const fact of incoming) {
@@ -133,11 +136,10 @@ export function mergeFacts(
     added.push(fact)
   }
   // newest first, capped
-  const merged = running
-    .slice()
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .slice(0, MAX_FACTS)
-  return { merged, added }
+  const sorted = running.slice().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  const merged = sorted.slice(0, MAX_FACTS)
+  const evicted = sorted.slice(MAX_FACTS)
+  return { merged, added, evicted }
 }
 
 /**

@@ -265,7 +265,6 @@ Rule-based-first, LLM-second ("brain-first with rule-based fallback"): every net
 - **`skills.ts`** — `SKILLS` (id/label/blurb per agent), `detectSkill(text)` (keyword-trigger scoring), `parseTaskDraft(text): TaskDraft` (combines `datetime.ts` + `understand.ts` classification + priority detection).
 - **`memory.ts`** — session-only conversation memory. `emptyMemory()`, `remember()`, `transcript()`.
 - **`learning.ts`** — durable cross-session "learn as we speak" memory. `type FactCategory`, `LearnedFact`, `MAX_FACTS=60`, `mergeFacts` (dedupe + cap + newest-first), `extractFacts(userText, heyraText, existing)` (brain call, `[]` on failure), `renderLearnedFacts(facts)`.
-- **`context.ts`** — context-assembly recipe that keeps `tier=geheim` data out of any cloud-AI call. `assembleContext(message, snap, search, opts?)`, `renderContext(ctx)`.
 - **`datetime.ts`** — NL+EN natural-language date/time parser. `parseWhen(text): ParsedWhen` (relative days, "over N dagen/weken", weekday names, month names, times), `relativeDue(iso)` (human label like "morgen", "2d te laat").
 - **`cards.ts`** — dynamic reply-card builders. `buildSearchCard`, `buildChartCard` (picks metric matching the question: spend/energy/steps/habit-streak/open-loops-by-domain), `findProject`.
 - **`suggestions.ts`** — proactive chip suggestions. `contextualSuggestions(ctx)` (10 candidate prompts scored from live data), `followUpSuggestions(topic, ctx, extra?)`.
@@ -290,7 +289,7 @@ Rule-based-first, LLM-second ("brain-first with rule-based fallback"): every net
 | Task | `taskAgent.ts` | Thin wrap of `parseTaskDraft` — no brain call (deliberately instant). |
 | Vendor | `vendorAgent.ts` | `categorizeVendor(vendor, opts)` — calls the `categorize-vendor` edge function (Haiku + web search); validates against `finance/categories.ts`. **This is HEYRA's one hard dependency on the finance module.** |
 
-Test files: `context.test.ts`, `datetime.test.ts`, `planner.test.ts`, `skills.test.ts`.
+Test files: `datetime.test.ts`, `planner.test.ts`, `skills.test.ts`.
 
 ### `src/graph.ts` + `src/graph/simulation.ts` — the "second brain" knowledge graph
 

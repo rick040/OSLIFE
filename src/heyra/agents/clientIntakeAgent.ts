@@ -8,6 +8,7 @@
 import { askBrain } from '../brainClient'
 import { parseBrainJson } from '../brainJson'
 import { enrichClient, guessWebsiteFromEmail, type ClientResearchNote } from './clientResearch'
+import { buildRecallSection } from './memoryContext'
 import type { Agent } from './types'
 import type { ClientIntakeDraft } from '../cards'
 import type { Channel, Client } from '../../types'
@@ -91,10 +92,15 @@ async function resolveResearchNote(matched: Client | null, emailResearch: Promis
 
 export const runClientIntakeAgent: Agent = async (input, ctx) => {
   const clientNames = ctx.store.clients.map((c) => c.name)
-  // Kicked off in parallel with the brain call below — it doesn't depend on
-  // the brain's answer, and best-effort research shouldn't add to the wait.
+  // Kicked off in parallel with the brain call below — neither depends on the
+  // other, and best-effort research/recall shouldn't add to the wait.
   const guessedWebsite = guessWebsiteFromEmail(extractEmail(input))
   const emailResearch = guessedWebsite ? enrichClient(guessedWebsite).catch(() => null) : Promise.resolve(null)
+  // Same semantic/graph recall chatAgent/assistantAgent use — a returning
+  // client's earlier braindumps/interactions/summaries were previously
+  // invisible to this agent, so a repeat inquiry got drafted as if it were
+  // the first contact ever. Best-effort: empty string on no signal or match.
+  const recallPromise = buildRecallSection(input)
 
   const system = `Je bent het "Klant-intake" brein van HEYRA, voor Rick van Mierlo (PRJCT Agency, KvK 89078802, Geldrop/Eindhoven). Rick plakt een ruw klantbericht (WhatsApp, e-mail of Fiverr) en jij:
 1. Herkent de taal: Nederlands voor lokale klanten, Engels voor Fiverr/internationale klanten.
@@ -102,11 +108,14 @@ export const runClientIntakeAgent: Agent = async (input, ctx) => {
 3. Stelt een deliverable/taken-opsplitsing voor, maar ALLEEN als er echt een project bedoeld wordt — bij een simpele prijsvraag laat je deliverables leeg.
 4. Schrijft een antwoord in Rick's toon: persoonlijk, warm-professioneel, geen corporate jargon, korte alinea's, "je/jij" (nooit "u"), eindigend met "Groet,\\nRick" (of "Best,\\nRick" in het Engels). Sluit af met een concrete volgende stap of vraag.
 5. Check of dit mogelijk een bestaande klant is uit deze lijst: ${clientNames.length ? clientNames.join(', ') : '(nog geen klanten bekend)'}. Vul "looksLikeExistingClient" ALLEEN met een naam die letterlijk in die lijst staat als je zeker weet dat het dezelfde klant is, anders null. Verzin nooit een naam die niet in de lijst staat.
+6. Als je hieronder een blok "Mogelijk relevant (geheugen)" krijgt met eerdere braindumps/contactmomenten/samenvattingen, gebruik dat om je antwoord persoonlijker te maken (bv. verwijs naar iets wat al eerder besproken is) — maar verzin nooit een detail dat er niet letterlijk in staat.
 
 Antwoord ALLEEN met een fenced \`\`\`json blok, geen andere tekst, exact dit schema (gebruik null waar iets niet bekend is):
 {"language":"nl"|"en","clientName":string,"email":string|null,"projectType":string[],"budgetGuess":number|null,"deadlineGuess":string|null,"deliverables":string[],"reply":string,"looksLikeExistingClient":string|null}`
 
-  const guess = await askBrain(system, `Klantbericht:\n"""\n${input}\n"""`, { maxTokens: 900, timeoutMs: 12000 })
+  const recall = await recallPromise
+  const userPrompt = recall ? `Klantbericht:\n"""\n${input}\n"""\n\n${recall}` : `Klantbericht:\n"""\n${input}\n"""`
+  const guess = await askBrain(system, userPrompt, { maxTokens: 900, timeoutMs: 12000 })
 
   let draft: ClientIntakeDraft | null = null
 

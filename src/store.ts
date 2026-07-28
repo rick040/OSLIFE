@@ -134,6 +134,7 @@ import {
   deleteTaskRow,
   fetchLearnedFacts,
   persistLearnedFacts,
+  archiveEvictedFacts,
   fetchScreenDays,
   fetchProjects,
   fetchClients,
@@ -1368,10 +1369,13 @@ export const useStore = create<State>()(
         const existing = get().learnedFacts
         const fresh = await extractFacts(userText, heyraText, existing)
         if (!fresh.length) return []
-        const { merged, added } = mergeFacts(existing, fresh)
+        const { merged, added, evicted } = mergeFacts(existing, fresh)
         if (!added.length) return []
         set({ learnedFacts: merged })
         void persistLearnedFacts(merged)
+        // A fact the MAX_FACTS cap pushed out never just disappears — archive
+        // it (heyra_memory.archived_facts) instead of silently losing it.
+        if (evicted.length) void archiveEvictedFacts(evicted)
         return added
       },
 
@@ -3412,10 +3416,11 @@ export const useStore = create<State>()(
               category: entry.category,
               createdAt: new Date().toISOString(),
             }
-            const { merged, added } = mergeFacts(get().learnedFacts, [fact])
+            const { merged, added, evicted } = mergeFacts(get().learnedFacts, [fact])
             if (added.length) {
               set({ learnedFacts: merged })
               void persistLearnedFacts(merged)
+              if (evicted.length) void archiveEvictedFacts(evicted)
             }
           }
         }

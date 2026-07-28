@@ -1651,6 +1651,26 @@ export async function persistLearnedFacts(facts: LearnedFact[]): Promise<void> {
   warnWrite('heyra_memory', error)
 }
 
+// Bounded archive for facts mergeFacts() evicted off the active MAX_FACTS
+// list — not infinite retention, but enough headroom that "what did HEYRA
+// used to know" stays inspectable instead of vanishing the moment a 61st
+// fact arrives (see 20260728000000_heyra_memory_archive.sql).
+const ARCHIVE_CAP = 500
+
+/** Append newly evicted facts to heyra_memory.archived_facts (oldest dropped past ARCHIVE_CAP). No-op when nothing was evicted. */
+export async function archiveEvictedFacts(evicted: LearnedFact[]): Promise<void> {
+  if (!evicted.length) return
+  const user_id = await currentUserId()
+  if (!user_id) return
+  const { data } = await supabase.from('heyra_memory').select('archived_facts').eq('user_id', user_id).maybeSingle()
+  const existing = (data?.archived_facts as LearnedFact[]) ?? []
+  const merged = [...existing, ...evicted].slice(-ARCHIVE_CAP)
+  const { error } = await supabase
+    .from('heyra_memory')
+    .upsert({ user_id, archived_facts: merged, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
+  warnWrite('heyra_memory', error)
+}
+
 // ── HEYRA card templates — cached extra fields per action kind ──────────────
 
 export async function fetchCardTemplates(): Promise<CardTemplate[]> {
