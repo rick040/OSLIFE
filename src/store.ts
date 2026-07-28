@@ -29,6 +29,7 @@ import type {
   Subscription,
   DogEntry,
   Walk,
+  LocationVisit,
   DogMedical,
   DogReminder,
   DogProfile,
@@ -125,6 +126,7 @@ import {
   fetchSleepWindow,
   fetchDogEntries,
   fetchWalks,
+  fetchLocationVisits,
   fetchBrainState,
   fetchTasks,
   insertTaskRow,
@@ -349,6 +351,8 @@ interface State {
   dogCoachLoading: boolean
   /** GPS routes tracked by the standalone Android walk-tracker app (see /android). */
   walks: Walk[]
+  /** Geofence dwell sessions (Home, Albert Heijn, ...) from MacroDroid via geofence-ingest. */
+  locationVisits: LocationVisit[]
   learnedFacts: LearnedFact[]
   vendorTags: VendorTag[]
   braindumpEntries: BraindumpEntry[]
@@ -747,6 +751,7 @@ const seed = () => ({
   dogCoach: null as { text: string; generatedAt: string } | null,
   dogCoachLoading: false,
   walks: [] as Walk[],
+  locationVisits: [] as LocationVisit[],
   learnedFacts: [] as LearnedFact[],
   vendorTags: [] as VendorTag[],
   braindumpEntries: [] as BraindumpEntry[],
@@ -802,7 +807,7 @@ const EMPTY_WHEN_FALSY = [
   'projectActivity', 'checkins', 'learnedFacts', 'vendorTags', 'braindumpEntries',
   'goalProposals', 'weekPlan', 'businessIdeas', 'wikiEntries',
   'holdings', 'balanceCheckpoints', 'workoutPlans', 'workoutExercises', 'workoutSessions',
-  'walks',
+  'walks', 'locationVisits',
 ] as const
 
 /**
@@ -3080,7 +3085,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, braindumpLinks, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, identityProfile, walks] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, braindumpLinks, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, identityProfile, walks, locationVisits] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -3117,6 +3122,7 @@ export const useStore = create<State>()(
             fetchLatestBodyWeight(),
             fetchIdentityProfile(),
             fetchWalks(),
+            fetchLocationVisits(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -3185,6 +3191,7 @@ export const useStore = create<State>()(
             bodyWeight,
             identityProfile,
             walks,
+            locationVisits,
             dataSource: 'live',
             isLoading: false,
             lastSyncedAt: new Date().toISOString(),
@@ -3292,6 +3299,7 @@ export const useStore = create<State>()(
           { table: 'workout_sets', onChange: () => fetchWorkoutSessions().then((d) => set({ workoutSessions: d })) },
           { table: 'health_body_metrics', onChange: () => fetchLatestBodyWeight().then((d) => set({ bodyWeight: d })) },
           { table: 'walks', onChange: () => fetchWalks().then((d) => set({ walks: d })) },
+          { table: 'location_visits', onChange: () => fetchLocationVisits().then((d) => set({ locationVisits: d })) },
           // dog_log itself has no realtime sync elsewhere (entries were always
           // client-written before); walk-ingest is the first external writer, so
           // a phone-posted walk needs this to show up in the Kyra timeline live.

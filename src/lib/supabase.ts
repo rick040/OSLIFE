@@ -15,6 +15,7 @@ import type {
   DogProfile,
   Walk,
   WalkPoint,
+  LocationVisit,
   Block,
   Thread,
   Priority,
@@ -1588,6 +1589,26 @@ export async function fetchWalks(): Promise<Walk[]> {
       points: (r.points as WalkPoint[]) ?? [],
       triggerSource: (r.trigger_source as string) ?? null,
       dogLogId: (r.dog_log_id as string) ?? null,
+    }),
+  )
+}
+
+// ── Location visits (geofence dwell sessions, Locaties screen) ──────────────
+
+export async function fetchLocationVisits(): Promise<LocationVisit[]> {
+  return fetchRows(
+    'location_visits',
+    'id,place_id,place_name,place_type,lat,lon,entered_at,left_at',
+    { column: 'entered_at', ascending: false, limit: 500 },
+    (r) => ({
+      id: r.id as string,
+      placeId: (r.place_id as string) ?? null,
+      placeName: r.place_name as string,
+      placeType: (r.place_type as string) ?? null,
+      lat: (r.lat as number) ?? null,
+      lon: (r.lon as number) ?? null,
+      enteredAt: r.entered_at as string,
+      leftAt: (r.left_at as string) ?? null,
     }),
   )
 }
