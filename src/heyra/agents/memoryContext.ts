@@ -115,6 +115,29 @@ function bounded<T>(p: Promise<T>, fallback: T): Promise<T> {
   ])
 }
 
+// cogneeSearch() is configured with its own, much longer 15s timeout
+// (heyra/agents/cognee.ts) because graph traversal is genuinely slower than
+// a plain completion — but here it's racing against RECALL_TIMEOUT_MS
+// (2.5s), so there was no visibility into how often the graph's real answer
+// actually made it into grounding vs. got silently cut off. Lightweight,
+// console-only observation (this app's existing logging convention, see
+// e.g. lib/supabase.ts's warnWrite) of the SAME promise passed into
+// bounded() below — never awaited here, so it adds no latency and can never
+// affect the race's outcome, just reports on it after the fact.
+function logCogneeRace(cognee: Promise<string | null>): void {
+  const startedAt = Date.now()
+  cognee.then((insight) => {
+    const elapsedMs = Date.now() - startedAt
+    const madeItInTime = elapsedMs <= RECALL_TIMEOUT_MS
+    console.info(
+      `[OSLIFE] cognee recall race: ${madeItInTime ? 'won' : 'LOST'} (${elapsedMs}ms vs ${RECALL_TIMEOUT_MS}ms ceiling), ${insight ? 'had' : 'no'} insight`,
+    )
+  })
+  // No .catch: cogneeSearch() never rejects (null-on-any-failure contract,
+  // see cognee.ts) — a rejection here would mean that contract broke, and
+  // is exactly the kind of thing worth an unhandled-rejection surfacing.
+}
+
 /**
  * Best-effort semantic (hybrid full-text + vector) and knowledge-graph recall
  * for a specific question, meant to be appended to buildMemorySnapshot()'s
@@ -126,9 +149,11 @@ function bounded<T>(p: Promise<T>, fallback: T): Promise<T> {
  */
 export async function buildRecallSection(input: string): Promise<string> {
   if (!input.trim()) return ''
+  const cognee = cogneeSearch(input)
+  logCogneeRace(cognee)
   const [hits, graphInsight] = await Promise.all([
     bounded(searchMemory(input, 6), [] as MemoryHit[]),
-    bounded(cogneeSearch(input), null as string | null),
+    bounded(cognee, null as string | null),
   ])
   const lines: string[] = hits.map((h) => `- [${h.source}] ${h.title}: ${h.snippet}`)
   if (graphInsight) lines.push(`- [kennisgraaf] ${graphInsight}`)
