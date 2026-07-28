@@ -38,8 +38,9 @@ Apps Script hub (Code.gs)                                                       
   Gmail  → gmail_messages        ┐                                              │ Zustand store
   Calendar → day_blocks          ├──▶ PostgREST ─▶ Postgres (RLS, per-user) ───▶│ live reads
   payments-calendar → payments   │                  + Realtime channel ─────────▶│ + realtime
+Tasker (Health Connect)          │
+  Steps/sleep → health-ingest    │
 Sheet-bound Apps Script          │
-  Health  → health-sheets-ingest │
   Betalingen → payments-sheet-ingest ─▶ Edge Functions ─▶ finance_tx
 Projecten/Klanten (native CRM, in-app only — no external sync)
 Geldrop Buurtkaart WordPress API ─▶ gbk-overview ─▶ Buurtkaart screen
@@ -67,7 +68,7 @@ ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betaling
 | Geld · transacties | **Betalingen Google Sheet** + **ABN AMRO CSV** (in-app) + Google Wallet | `payments-sheet-ingest` · in-app import · `wallet-ingest` | `finance_tx` |
 | Geld · Te betalen | **Payments Google Calendar** | Code.gs `syncPayments` | `payments` |
 | Schermtijd | **App-timer (MacroDroid)** — App Opened/Closed per app, rechtstreeks | `screentime-app-ingest` (`screentime_events` → `screentime`) | `screentime`, `screentime_events` |
-| Gezondheid | **Health Google Sheet** (slaap/activiteiten/gewicht/stappen) + **phone-afgeleide slaap** (MacroDroid) | `health-sheets-ingest` · `phone-events-ingest` | `health_daily_stats`, `health_sleep`, `health_body_metrics`, `phone_events` |
+| Gezondheid | **Health Connect** (stappen/slaap, via Tasker) + **scale-notificatie** (MacroDroid, gewicht) + **phone-afgeleide slaap** (MacroDroid fallback) | `health-ingest` · `weight-ingest` · `phone-events-ingest` | `health_daily_stats`, `health_sleep`, `health_body_metrics`, `phone_events` |
 | Inbox / mail | **Gmail** | Code.gs `syncGmail` | `gmail_messages` |
 | Dagplanner / agenda | **Google Calendar** | Code.gs `syncCalendarBlocks` | `day_blocks` |
 | Gewoonten · Doelen · Kyra · Abonnementen | in-app (handmatig) | app write-back | `habits`, `goals`, `dog_log`, `subscriptions` |

@@ -443,7 +443,7 @@ For the design rationale behind Slices 0-4 (event-sourcing principles, the R1-R9
 | Function | Trigger | Purpose |
 |---|---|---|
 | `gbk-overview` | client-invoked (`[verify_jwt]`) | Proxies the Geldrop Buurtkaart WordPress API with server-side `GBK_API_KEY`, consumed by Buurtkaart. |
-| `health-sheets-ingest` | webhook (Apps Script) | Upserts Google Sheets health payloads into `health_*` tables. |
+| `health-ingest` | webhook (Tasker / Health Connect, legacy Apps Script) | Upserts steps/sleep/weight payloads into `health_*` tables. |
 | `payments-sheet-ingest` | webhook (Apps Script) | Upserts payments-sheet rows into `payments`/`finance_tx`. |
 | `wallet-ingest` | webhook (MacroDroid) | Bank/wallet payment notifications → `finance_tx`, realtime. |
 | `phone-events-ingest` | webhook (MacroDroid) | Unlock/screen-off events → `phone_events`; derives `health_sleep` (source='phone') and `screentime_daily`. |

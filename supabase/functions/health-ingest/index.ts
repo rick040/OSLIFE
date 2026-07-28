@@ -1,18 +1,19 @@
 /**
- * Supabase Edge Function: health-sheets-ingest
+ * Supabase Edge Function: health-ingest
  * ---------------------------------------------
- * Receives POST from health-sheets.gs (Google Apps Script bound to your
- * Samsung Health export spreadsheet) and upserts into three Supabase tables:
+ * Generic health data intake — accepts the same {activity, body, sleep}
+ * payload from any caller (Tasker reading Health Connect, or the legacy
+ * health-sheets.gs Apps Script) and upserts into three Supabase tables:
  *   health_daily_stats  — steps, distance, calories, active duration
  *   health_body_metrics — weight, body fat
  *   health_sleep        — sleep sessions with stage breakdown
  *
  * Deploy:
- *   supabase functions deploy health-sheets-ingest --project-ref nhyunnnmdcmojvkxrbpl
+ *   supabase functions deploy health-ingest --project-ref nhyunnnmdcmojvkxrbpl
  *
  * Secrets (set once):
  *   supabase secrets set \
- *     INGEST_SECRET=<same value as in Apps Script properties> \
+ *     INGEST_SECRET=<same value as in Apps Script properties / Tasker header> \
  *     RICK_USER_ID=<your auth.users uuid> \
  *     --project-ref nhyunnnmdcmojvkxrbpl
  *

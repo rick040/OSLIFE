@@ -63,7 +63,7 @@ Er zijn geen GitHub Actions meer (de Spotify-workflow is verwijderd). Oude repo-
 | `OSLIFE_USER_ID` | jouw auth-UUID (zelfde als in Supabase) |
 | `PAYMENTS_CAL_ID` | id van je betalingen-Google Calendar |
 | `INGEST_SECRET` | **exact dezelfde** waarde als in Supabase |
-| `HEALTH_SYNC_URL` | `https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/health-sheets-ingest` |
+| `HEALTH_SYNC_URL` | `https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/health-ingest` |
 | `HEALTH_SHEET_ID` | id uit de Health-sheet URL |
 | `PAYMENTS_SYNC_URL` | `https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/payments-sheet-ingest` |
 | `PAYMENTS_SHEET_ID` | id uit de Betalingen-sheet URL |

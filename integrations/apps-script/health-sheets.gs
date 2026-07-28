@@ -2,7 +2,9 @@
  * OSLIFE Health-sheet reader — part of the standalone "OSLIFE ingest" project.
  * ---------------------------------------------------------------------------
  * Opens your Health Google Sheet BY ID (HEALTH_SHEET_ID) and POSTs to
- * health-sheets-ingest. Tailored to the Samsung-Health/Health-Sync export:
+ * health-ingest. Legacy fallback — Tasker now reads Health Connect directly
+ * for steps/sleep and posts to the same endpoint. Tailored to the
+ * Samsung-Health/Health-Sync export:
  *
  *   Tab "Stappen"      : Datum | Tijd | Stappen                 (per-interval → summed per day)
  *   Tab "Activiteiten" : … | Datum | … | Actieve tijd | Afstand (km)

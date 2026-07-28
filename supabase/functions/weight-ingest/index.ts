@@ -12,11 +12,12 @@
  * title/text is echoed back in the `{"ok":false,"error":"No weight found",...}`
  * response so you can tune the regex.
  *
- * This does NOT replace the Health-sheet weight import (health-sheets-ingest) —
- * it's an additional, faster path. Both write to the same table; because a
- * notification-derived reading and the later Samsung-Health sync rarely share
- * the exact same `datetime`, you may see two rows for one real weigh-in
- * (harmless — same value, no crash, just a duplicate point on the chart).
+ * This remains the primary weight path — Tasker/Health Connect (health-ingest)
+ * covers steps/sleep only. If Health Connect ever also reports weight, both
+ * would write to the same table; because a notification-derived reading and a
+ * Health Connect read rarely share the exact same `datetime`, you'd see two
+ * rows for one real weigh-in (harmless — same value, no crash, just a
+ * duplicate point on the chart).
  *
  * MacroDroid setup (on Samsung phone):
  *   Trigger:  Notification received → App: "Smart Life" (com.tuya.smartlife or similar)

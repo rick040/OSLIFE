@@ -14,7 +14,7 @@ de sheets vullen dus niet aan. Voeg alle bestanden toe aan dit ene project en ru
 | Bestand | Doet | Schrijft naar |
 |---------|------|---------------|
 | `Code.gs` | hub + gedeelde helpers + `installAllTriggers()` | Gmail→`gmail_messages`, Calendar→`day_blocks`, betalingen-agenda→`payments` (direct via PostgREST) |
-| `health-sheets.gs` | leest Health-sheet (id) | `health-sheets-ingest` → `health_*` |
+| `health-sheets.gs` | leest Health-sheet (id) — legacy fallback, wordt uitgefaseerd t.g.v. Tasker/Health Connect | `health-ingest` → `health_*` |
 | `payments-sheet.gs` | leest Betalingen-sheet (id) | `payments-sheet-ingest` → `finance_tx` |
 | `setup-health-sheet.gs` | eenmalig hulpscript (los te draaien) | maakt de Health-sheet tabs aan |
 | `appsscript.json` | manifest (Gmail/Calendar/Sheets scopes) | — |
@@ -27,8 +27,9 @@ maken niet uit. De verwachte tabs/kolommen + sheet-id properties staan boven in 
 
 - `gbk-overview` — proxyt de Geldrop Buurtkaart WordPress API (`/wp-json/gbk/v1/overview`) met de
   `X-GBK-Key` header; de key blijft server-side (secret `GBK_API_KEY`).
-- `health-sheets-ingest`, `payments-sheet-ingest` — ontvangen de Sheet-payloads en upserten
-  idempotent.
+- `health-ingest` — ontvangt steps/sleep/weight payloads (Tasker + Health Connect, of de legacy
+  Health-sheet Apps Script) en upsert idempotent naar `health_*`.
+- `payments-sheet-ingest` — ontvangt de Betalingen-Sheet-payload en upsert idempotent.
 - `wallet-ingest` (`supabase/functions/wallet-ingest/`) — betaal-notificaties (MacroDroid) →
   `finance_tx`, real-time. Werkt met Google Wallet (ruwe notificatie, zoals eerst) én met bank-apps
   (ruw óf al-uitgepakte velden zoals bedrag/rekeningtype). Vervangt de Betalingen-sheet-flow voor
@@ -41,8 +42,8 @@ maken niet uit. De verwachte tabs/kolommen + sheet-id properties staan boven in 
   dag-totalen af → `screentime`. Vervangt de oude Schermtijd-sheet + `screentime-sheet-ingest` +
   `app_sessions`-stopwatch. Setup: `macrodroid/app-timer.md`.
 - `weight-ingest` (`supabase/functions/weight-ingest/`) — weegschaal-app-notificatie (MacroDroid) →
-  `health_body_metrics`, real-time. Experimenteel (notificatietekst niet geverifieerd), aanvullend op
-  de Health-sheet-import. Setup: `macrodroid/weight-notifications.md`.
+  `health_body_metrics`, real-time. Experimenteel (notificatietekst niet geverifieerd), blijft de
+  primaire gewicht-bron naast `health-ingest`. Setup: `macrodroid/weight-notifications.md`.
 
 ## Finance dedup
 
