@@ -104,10 +104,11 @@ Migratie: `supabase/migrations/20260714150000_memory_retrieval.sql`.
   summaries. `geheim` komt er nooit in — het mag niet in cloud-AI-context belanden.
   pgvector (`vector` 0.8 staat klaar) kan later achter dezelfde RPC geschoven worden zodra
   een embedding-provider gekozen is (aparte, out-of-scope ingestie-keuze).
-- **Context-assemblage-recept** (`src/heyra/context.ts`, fase 4.6): `assembleContext()` bouwt
-  de bundel (facts + open loops + doelen + vandaag altijd, dan semantische recall via
-  search_memory), geheim per constructie uitgesloten; `renderContext()` maakt het prompt-blok.
-  Puur + unit-getest (`context.test.ts`). Beschikbaar voor de HEYRA-agents (adoptie incrementeel).
+- **Context-assemblage** (fase 4.6): het ooit voorgestelde losse `context.ts`-recept
+  (`assembleContext()`/`renderContext()`) is nooit door een agent geadopteerd en verwijderd —
+  `heyra/agents/memoryContext.ts`'s `buildMemorySnapshot()`/`buildRecallSection()` is de
+  daadwerkelijk gebruikte, rijkere opvolger (bevat ook braindumps/nudge/habits/profile_facts)
+  en wordt al door chatAgent/briefingAgent/searchAgent/assistantAgent aangeroepen.
 - Client: `fetchSummaries`/`searchMemory` (supabase.ts), `summaries`-store-slice, tab
   **Samenvattingen** in het Geheugen-scherm.
 

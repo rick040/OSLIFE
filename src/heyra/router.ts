@@ -167,6 +167,16 @@ export async function routeMessage(
   void ctx.store.capture(input, 'chat', { openThread }, detection.classification)
 
   const agentCtx = { store: ctx.store, memory: ctx.memory, item }
+
+  // Independent of which agent answers conversationally: a transaction/event
+  // classification may ALSO describe a concrete action HEYRA can propose
+  // (mark an invoice paid, close a task, ...). proposeAction() only reads the
+  // raw input + live store — never the agent's answer — so it's kicked off
+  // right alongside the agent call instead of awaited afterwards; that used
+  // to add a full extra sequential brain round-trip to every transaction/
+  // event message's visible latency for no reason.
+  const actionCardPromise = ACTION_TRIGGER_KINDS.includes(item.kind) ? proposeAction(input, ctx.store) : Promise.resolve(null)
+
   let result = await AGENTS[detection.agent](input, agentCtx)
 
   let agent = detection.agent
@@ -177,14 +187,8 @@ export async function routeMessage(
     trigger = null
   }
 
-  // Independent of which agent answered conversationally: a transaction/event
-  // classification may ALSO describe a concrete action HEYRA can propose
-  // (mark an invoice paid, close a task, ...) — attach it alongside whatever
-  // the agent already said rather than replacing it.
-  if (ACTION_TRIGGER_KINDS.includes(item.kind)) {
-    const card = await proposeAction(input, ctx.store)
-    if (card) result = { ...result, cards: [...(result.cards ?? []), card] }
-  }
+  const card = await actionCardPromise
+  if (card) result = { ...result, cards: [...(result.cards ?? []), card] }
 
   return { agent, trigger, result, item, openThread, fromBrain: detection.fromBrain }
 }
