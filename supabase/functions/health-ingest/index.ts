@@ -31,10 +31,13 @@ const json = jsonResponder()
 
 interface ActivityRow {
   date: string          // 'YYYY-MM-DD'
-  steps: number
-  distance_m: number
-  calories_kcal: number
-  duration_min: number
+  // Each field is independently optional/nullable — a caller that only knows
+  // steps (Tasker) must not blank out distance/duration/calories that another
+  // caller (the Health Sheet) already wrote for the same date, and vice versa.
+  steps?: number | null
+  distance_m?: number | null
+  calories_kcal?: number | null
+  duration_min?: number | null
 }
 
 interface BodyRow {
@@ -104,17 +107,21 @@ Deno.serve(async (req) => {
 
   // ── Activity → health_daily_stats ──────────────────────────────────────
   if (payload.activity?.length) {
-    const rows = dedupeBy(payload.activity.map((r) => ({
-      user_id:       USER_ID,
-      date:          r.date,
-      steps:         r.steps         ?? 0,
-      distance_m:    r.distance_m    ?? 0,
-      calories_kcal: r.calories_kcal ?? 0,
-      duration_min:  r.duration_min  ?? 0,
-      // active_min mirrors duration_min; sleep_min denormalised from health_sleep.
-      active_min:    r.duration_min  ?? 0,
-      sleep_min:     sleepMinByDate.get(r.date) ?? 0,
-    })), (r) => r.date)
+    const rows = dedupeBy(payload.activity.map((r) => {
+      // Only set columns this row actually supplies — omitted keys are left
+      // untouched by the upsert (existing value survives) instead of being
+      // zeroed out by a caller that only reports one metric.
+      const row: Record<string, unknown> = { user_id: USER_ID, date: r.date }
+      if (r.steps != null) row.steps = r.steps
+      if (r.distance_m != null) row.distance_m = r.distance_m
+      if (r.calories_kcal != null) row.calories_kcal = r.calories_kcal
+      if (r.duration_min != null) {
+        row.duration_min = r.duration_min
+        row.active_min = r.duration_min // active_min mirrors duration_min
+      }
+      if (sleepMinByDate.has(r.date)) row.sleep_min = sleepMinByDate.get(r.date)
+      return row
+    }), (r) => r.date as string)
 
     const { error } = await supabase
       .from('health_daily_stats')
