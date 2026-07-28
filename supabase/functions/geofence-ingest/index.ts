@@ -17,10 +17,15 @@
  *      doesn't split one real visit into several short, noisy sessions.
  *
  * MacroDroid setup — one macro pair per geofence GROUP (e.g. "Home" and
- * "Other places"), each POSTing on both its Entered and Exited triggers:
- *   Body: {"place_id": "<stable geofence id>", "place_name": "<label>",
- *          "place_type": "<optional>", "lat": [lat], "lon": [lon],
- *          "event": "enter" | "exit"}
+ * "Other places"), each hitting this URL (GET or POST, query params or JSON
+ * body, whichever the macro already uses) on both its Entered and Exited
+ * triggers:
+ *   place_id=<stable geofence id>  place_name=<label>  place_type=<optional>
+ *   event=enter|exit
+ *   MacroDroid's geofence trigger only exposes a single combined "lat, lon"
+ *   magic-text variable (no separate lat/lon tokens) — pass that whole
+ *   string as `latlon` (e.g. "51.987654, 5.612345") and this function splits
+ *   it; separate `lat`/`lon` fields still work too if a macro already has them.
  *   Headers: x-webhook-secret: <GEOFENCE_WEBHOOK_SECRET>
  *   (GET with the same fields as query params also works, for parity with
  *   the old MacroDroid macros.)
@@ -49,6 +54,7 @@ interface Body {
   place_type?: string
   lat?: number | string
   lon?: number | string
+  latlon?: string
   ts?: string
   event?: string
 }
@@ -57,6 +63,15 @@ function num(v: number | string | undefined): number | null {
   if (v == null || v === '') return null
   const n = Number(v)
   return Number.isFinite(n) ? n : null
+}
+
+/** MacroDroid's geofence trigger only exposes a combined "lat, lon" magic-text
+ *  token (no separate lat/lon variables) — split "51.987654, 5.612345". */
+function parseLatLon(s: string | undefined): { lat: number | null; lon: number | null } {
+  if (!s) return { lat: null, lon: null }
+  const parts = s.split(',').map((p) => Number(p.trim()))
+  if (parts.length !== 2 || parts.some((n) => !Number.isFinite(n))) return { lat: null, lon: null }
+  return { lat: parts[0], lon: parts[1] }
 }
 
 Deno.serve(async (req) => {
@@ -79,8 +94,10 @@ Deno.serve(async (req) => {
   const placeId = body.place_id ?? url.searchParams.get('place_id') ?? undefined
   const placeName = (body.place_name ?? url.searchParams.get('place_name') ?? '').toString().trim()
   const placeType = body.place_type ?? url.searchParams.get('place_type') ?? undefined
-  const lat = num(body.lat ?? url.searchParams.get('lat') ?? undefined)
-  const lon = num(body.lon ?? url.searchParams.get('lon') ?? undefined)
+  const latlonRaw = body.latlon ?? url.searchParams.get('latlon') ?? undefined
+  const latlonParsed = parseLatLon(latlonRaw)
+  const lat = num(body.lat ?? url.searchParams.get('lat') ?? undefined) ?? latlonParsed.lat
+  const lon = num(body.lon ?? url.searchParams.get('lon') ?? undefined) ?? latlonParsed.lon
   const tsRaw = body.ts ?? url.searchParams.get('ts') ?? undefined
   const event = (body.event ?? url.searchParams.get('event') ?? 'enter').toString().trim().toLowerCase()
 
