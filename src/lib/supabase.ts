@@ -1613,6 +1613,27 @@ export async function fetchLocationVisits(): Promise<LocationVisit[]> {
   )
 }
 
+// Importeert historische geofence-sessies (zie src/locations/csvImport.ts,
+// die de losse Inside/Outside-triggers uit een CSV al samenvoegt tot
+// doorlopende bezoeken). De aanroeper filtert al bekende (placeName,
+// enteredAt) combinaties eruit, dus dit is een simpele insert.
+export async function insertLocationVisits(
+  visits: { placeName: string; placeId: string | null; enteredAt: string; leftAt: string | null }[],
+): Promise<number> {
+  const user_id = await currentUserId()
+  if (!user_id || !visits.length) return 0
+  const rows = visits.map((v) => ({
+    user_id,
+    place_id: v.placeId,
+    place_name: v.placeName,
+    entered_at: v.enteredAt,
+    left_at: v.leftAt,
+  }))
+  const { error, count } = await supabase.from('location_visits').insert(rows, { count: 'exact' })
+  warnWrite('location_visits.import', error)
+  return error ? 0 : (count ?? rows.length)
+}
+
 // ── Brain state (threads + patterns) ─────────────────────────────────────────
 
 export async function fetchBrainState(): Promise<{ threads: Thread[]; patterns: Pattern[] }> {
