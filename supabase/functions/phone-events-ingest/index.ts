@@ -15,8 +15,8 @@
  *
  * Each event is logged to `phone_events`; after every write we recompute the
  * last few nights and upsert the resulting session into `health_sleep` as a
- * phone-derived estimate (source='phone'). Real Samsung-Health sessions
- * (source='health_app', from health-sheets-ingest) always take precedence and
+ * phone-derived estimate (source='phone'). Real Health Connect sessions
+ * (source='health_app', from health-ingest) always take precedence and
  * are never overwritten.
  *
  * Unlock events also feed `screentime_daily.pickups` (recomputed from the raw

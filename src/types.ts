@@ -1010,6 +1010,23 @@ export interface Walk {
   dogLogId: string | null
 }
 
+/**
+ * One dwell visit to a geofenced place (Home, Albert Heijn, ...), posted by
+ * MacroDroid via geofence-ingest. `leftAt` is null while the visit is still
+ * open — geofence-ingest already merges GPS-jitter flapping server-side, so
+ * every row here is a real, continuous visit.
+ */
+export interface LocationVisit {
+  id: string
+  placeId: string | null
+  placeName: string
+  placeType: string | null
+  lat: number | null
+  lon: number | null
+  enteredAt: string // ISO datetime
+  leftAt: string | null // null = still there
+}
+
 // ── Subscriptions (recurring spend) ──────────────────────────────────────────
 export type Cadence = 'weekly' | 'monthly' | 'quarterly' | 'yearly'
 

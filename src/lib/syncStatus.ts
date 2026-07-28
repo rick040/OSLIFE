@@ -48,8 +48,8 @@ export interface SyncSourceStatus extends SyncSource {
 // (weight, purchases) get generous ones so a quiet-but-alive feed isn't red.
 export const SYNC_SOURCES: SyncSource[] = [
   // ── Gezondheid ── (ingested_at = true server-side sync time)
-  { key: 'health', label: 'Gezondheid', pipeline: 'Health Sheet → health-sheets-ingest', table: 'health_daily_stats', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 36, downH: 96 },
-  { key: 'sleep', label: 'Slaap', pipeline: 'Health Sheet → health-sheets-ingest', table: 'health_sleep', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 36, downH: 96 },
+  { key: 'health', label: 'Gezondheid', pipeline: 'Health Connect (Tasker) → health-ingest', table: 'health_daily_stats', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 36, downH: 96 },
+  { key: 'sleep', label: 'Slaap', pipeline: 'Health Connect (Tasker) → health-ingest', table: 'health_sleep', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 36, downH: 96 },
   { key: 'weight', label: 'Gewicht', pipeline: 'Health Sheet · weegschaal-notificatie (MacroDroid)', table: 'health_body_metrics', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 24 * 14, downH: 24 * 45 },
   // ── Geld ──
   { key: 'finance', label: 'Transacties', pipeline: 'Bank-notificatie (MacroDroid) · Wallet · ABN CSV · Betalingen Sheet', table: 'finance_tx', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 96, downH: 24 * 10 },

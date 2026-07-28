@@ -7,7 +7,8 @@
  *
  * Add these files to this one project:
  *   Code.gs              (this file) — Gmail, Calendar, payments-calendar
- *   health-sheets.gs     — reads your Health sheet  (by id)  → health-sheets-ingest
+ *   health-sheets.gs     — reads your Health sheet (by id) → health-ingest (legacy fallback;
+*                          steps/sleep/weight now sync via Tasker + Health Connect instead)
  *   payments-sheet.gs    — reads your Betalingen sheet (by id) → payments-sheet-ingest
  *
  * Screen time no longer goes through a sheet: MacroDroid posts App
@@ -27,7 +28,7 @@
  *      OSLIFE_USER_ID        <auth.users uuid of your account>
  *      PAYMENTS_CAL_ID       <your payments Google Calendar id>
  *      INGEST_SECRET         <same secret as the edge-function secret>
- *      HEALTH_SYNC_URL       https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/health-sheets-ingest
+ *      HEALTH_SYNC_URL       https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/health-ingest
  *      HEALTH_SHEET_ID       <id from the Health sheet URL>
  *      PAYMENTS_SYNC_URL     https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/payments-sheet-ingest
  *      PAYMENTS_SHEET_ID     <id from the Betalingen sheet URL>
@@ -538,6 +539,6 @@ function syncPayments() {
   }
 }
 
-// Health data is ingested from the Health Google Sheet by health-sheets.gs
-// (its own Sheet-bound project → /functions/v1/health-sheets-ingest), so there
-// is no Google Fit sync here anymore.
+// Health data (steps/sleep/weight) now syncs via Tasker reading Health Connect
+// straight into /functions/v1/health-ingest. health-sheets.gs remains as a
+// legacy fallback (same endpoint) until that's confirmed reliable.

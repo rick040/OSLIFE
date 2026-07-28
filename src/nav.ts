@@ -15,6 +15,7 @@ import {
   Repeat,
   Compass,
   Map,
+  MapPin,
   Dog,
   Fingerprint,
   CheckSquare,
@@ -43,6 +44,7 @@ export type View =
   | 'strategiehq'
   | 'buurtkaart'
   | 'dog'
+  | 'locations'
   | 'relaties'
   | 'huisadmin'
   | 'profile'
@@ -80,6 +82,7 @@ export const SCREENS: Screen[] = [
   { id: 'cleaning', label: 'Schoonmaak', icon: SprayCan, layer: 'Leven · huishouden', group: 'Life', primary: true, accent: 'text-buurtkaart' },
   { id: 'money', label: 'Geld', icon: Wallet, layer: 'Leven · financiën', group: 'Life', primary: true, accent: 'text-buurtkaart' },
   { id: 'dog', label: 'Kyra', icon: Dog, layer: 'Leven · hond', group: 'Life', accent: 'text-personal' },
+  { id: 'locations', label: 'Locaties', icon: MapPin, layer: 'Leven · bezochte plekken', group: 'Life', accent: 'text-parkingyou' },
   { id: 'relaties', label: 'Relaties', icon: Contact, layer: 'Leven · mensen', group: 'Life', accent: 'text-prjct' },
   { id: 'huisadmin', label: 'Huis & Admin', icon: FileText, layer: 'Leven · admin', group: 'Life', accent: 'text-buurtkaart' },
   { id: 'inbox', label: 'Inbox', icon: Mail, layer: 'Leven · mail', group: 'Life', accent: 'text-parkingyou' },
