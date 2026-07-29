@@ -12,7 +12,7 @@ import type { Goal, GoalProposal, Domain, Pattern, Project, Thread, Transaction 
 import type { LearnedFact } from './learning'
 import { askBrain } from './brainClient'
 import { parseBrainJson } from './brainJson'
-import { renderLearnedFacts } from './learning'
+import { renderPersonalFacts, renderLearnings } from './learning'
 import { TODAY, fmtDate } from '../domains'
 
 const DOMAINS: Domain[] = ['parkingyou', 'prjct', 'buurtkaart', 'personal', 'cross']
@@ -71,8 +71,10 @@ function buildContext(ctx: GoalProposalContext): string {
   const strong = ctx.patterns.filter((p) => p.confidence >= 0.6).slice(0, 8)
   if (strong.length) parts.push(`Sterke patronen:\n${strong.map((p) => `- ${p.text} (${Math.round(p.confidence * 100)}%)`).join('\n')}`)
 
-  const learned = renderLearnedFacts(ctx.learnedFacts)
-  if (learned) parts.push(learned)
+  const personal = renderPersonalFacts(ctx.learnedFacts)
+  if (personal) parts.push(personal)
+  const learnings = renderLearnings(ctx.learnedFacts)
+  if (learnings) parts.push(learnings)
 
   return parts.join('\n\n')
 }

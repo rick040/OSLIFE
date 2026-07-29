@@ -7,7 +7,7 @@ import { BraindumpCard, BraindumpDetail } from '../components/BraindumpCard'
 import { searchMemory } from '../lib/supabase'
 import { cogneeSearch } from '../heyra/agents/cognee'
 import type { BraindumpEntry, MemoryHit, InferredItem, Thread } from '../types'
-import { CATEGORY_META, type FactCategory } from '../heyra/learning'
+import { CATEGORY_META, isPersonalCategory, type FactCategory, type LearnedFact } from '../heyra/learning'
 import {
   Lock,
   GitBranch,
@@ -26,12 +26,90 @@ import {
   Loader2,
   Trash2,
   Sparkles,
+  Lightbulb,
   Check,
   ChevronDown,
   RefreshCw,
 } from 'lucide-react'
 
-type Tab = 'essentials' | 'learned' | 'threads' | 'patterns' | 'summaries' | 'braindumps' | 'inferences'
+type Tab = 'essentials' | 'learned-personal' | 'learned-implement' | 'threads' | 'patterns' | 'summaries' | 'braindumps' | 'inferences'
+
+/**
+ * The Geleerd list, reused for both halves of the personal-facts/learnings
+ * split (Memory.tsx below) — same category-filter-chips + card-list shape,
+ * just fed a different, already-partitioned slice of learnedFacts.
+ */
+function LearnedFactsPanel({
+  facts,
+  filter,
+  onFilterChange,
+  onForget,
+  emptyMessage,
+}: {
+  facts: LearnedFact[]
+  filter: FactCategory | 'all'
+  onFilterChange: (f: FactCategory | 'all') => void
+  onForget: (id: string) => void
+  emptyMessage: string
+}) {
+  const categoriesPresent = useMemo(() => Array.from(new Set(facts.map((f) => f.category))), [facts])
+  const visible = useMemo(() => (filter === 'all' ? facts : facts.filter((f) => f.category === filter)), [facts, filter])
+
+  if (facts.length === 0) return <Empty>{emptyMessage}</Empty>
+
+  return (
+    <div className="space-y-3 animate-fade-up">
+      {categoriesPresent.length > 1 && (
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            onClick={() => onFilterChange('all')}
+            className={`chip text-[11px] ${filter === 'all' ? 'bg-forest/15 text-forest' : 'bg-line text-muted'}`}
+          >
+            Alle ({facts.length})
+          </button>
+          {categoriesPresent.map((cat) => {
+            const meta = CATEGORY_META[cat]
+            const count = facts.filter((f) => f.category === cat).length
+            return (
+              <button
+                key={cat}
+                onClick={() => onFilterChange(cat)}
+                className="chip text-[11px]"
+                style={filter === cat ? { background: `${meta.hex}22`, color: meta.hex } : undefined}
+              >
+                {meta.label} ({count})
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {visible.map((f) => {
+        const meta = CATEGORY_META[f.category]
+        return (
+          <div key={f.id} className="card p-3 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="chip text-[10px]" style={{ background: `${meta.hex}22`, color: meta.hex }}>
+                  {meta.label}
+                </span>
+                <span className="text-[11px] text-faint">{fmtDate(f.createdAt)}</span>
+              </div>
+              <p className="text-sm text-ink mt-1">{f.text}</p>
+            </div>
+            <button
+              onClick={() => onForget(f.id)}
+              className="text-faint hover:text-red-500 p-1 shrink-0"
+              aria-label="Vergeet dit feit"
+              title="Vergeet dit feit"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 // Human labels for the inference types the engine currently produces.
 const INFERENCE_TYPE_LABEL: Record<string, string> = {
@@ -214,14 +292,17 @@ export default function Memory() {
         .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)),
     [threads],
   )
-  const visibleLearnedFacts = useMemo(
-    () => (learnedFilter === 'all' ? learnedFacts : learnedFacts.filter((f) => f.category === learnedFilter)),
-    [learnedFacts, learnedFilter],
-  )
-  const learnedCategoriesPresent = useMemo(
-    () => Array.from(new Set(learnedFacts.map((f) => f.category))),
-    [learnedFacts],
-  )
+  // Geleerd is split into two unrelated kinds of knowledge that used to sit
+  // in one flat list: passive facts ABOUT Rick (extracted live from chat) vs.
+  // confirmed Kennisbank learnings he wants to APPLY to his life/business.
+  // Same underlying heyra_memory data — isPersonalCategory() is the same
+  // discriminator the prompt-injection side (learning.ts) now splits on too.
+  const personalFacts = useMemo(() => learnedFacts.filter((f) => isPersonalCategory(f.category)), [learnedFacts])
+  const implementFacts = useMemo(() => learnedFacts.filter((f) => !isPersonalCategory(f.category)), [learnedFacts])
+  // A category filter only makes sense within whichever of the two lists is
+  // currently open — reset it on every tab switch instead of carrying a
+  // filter value that may not exist in the other list.
+  useEffect(() => setLearnedFilter('all'), [tab])
 
   // Refresh the inference queue on entry so hourly-produced inferences show without a reload.
   useEffect(() => { void loadInferences() }, [loadInferences])
@@ -276,7 +357,8 @@ export default function Memory() {
 
   const tabs: { id: Tab; label: string; icon: typeof Lock; count: number; desc: string }[] = [
     { id: 'essentials', label: 'Basis', icon: Lock, count: essentials.length, desc: 'Permanente, structurele feiten. Ze veranderen niet en verlopen niet.' },
-    { id: 'learned', label: 'Geleerd', icon: Brain, count: learnedFacts.length, desc: 'Wat HEYRA in gesprekken over je heeft geleerd — groeit vanzelf hoe meer je praat. Klopt iets niet, wis het.' },
+    { id: 'learned-personal', label: 'Over mij', icon: Brain, count: personalFacts.length, desc: 'Wat HEYRA in gesprekken over je heeft geleerd — voorkeuren, mensen, werkwijze, doelen. Groeit vanzelf hoe meer je praat. Klopt iets niet, wis het.' },
+    { id: 'learned-implement', label: 'Te implementeren', icon: Lightbulb, count: implementFacts.length, desc: 'Lessen, systemen en ideeën die je in de Kennisbank hebt bevestigd om toe te passen op je leven of bedrijf.' },
     { id: 'threads', label: 'Threads', icon: GitBranch, count: threads.filter((t) => t.status === 'open').length, desc: 'Open loops & openstaande beloften. Deze vragen om afsluiting.' },
     { id: 'patterns', label: 'Patronen', icon: Repeat, count: patterns.length, desc: 'Terugkerende observaties, gewogen op betrouwbaarheid. Ze nemen af als ze niet worden versterkt.' },
     { id: 'summaries', label: 'Samenvattingen', icon: ScrollText, count: summaries.length, desc: 'Nachtelijke dag-digests: ruwe events ingedikt tot leesbare context (tier=normaal).' },
@@ -397,64 +479,25 @@ export default function Memory() {
             </div>
           ))}
 
-          {tab === 'learned' && (learnedFacts.length === 0 ? (
-            <Empty>Nog niks geleerd — hoe meer je met HEYRA praat en hoe meer je bevestigt in de Kennisbank, hoe persoonlijker dit wordt.</Empty>
-          ) : (
-            <div className="space-y-3 animate-fade-up">
-              {learnedCategoriesPresent.length > 1 && (
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    onClick={() => setLearnedFilter('all')}
-                    className={`chip text-[11px] ${learnedFilter === 'all' ? 'bg-forest/15 text-forest' : 'bg-line text-muted'}`}
-                  >
-                    Alle ({learnedFacts.length})
-                  </button>
-                  {learnedCategoriesPresent.map((cat) => {
-                    const meta = CATEGORY_META[cat]
-                    const count = learnedFacts.filter((f) => f.category === cat).length
-                    return (
-                      <button
-                        key={cat}
-                        onClick={() => setLearnedFilter(cat)}
-                        className="chip text-[11px]"
-                        style={
-                          learnedFilter === cat
-                            ? { background: `${meta.hex}22`, color: meta.hex }
-                            : undefined
-                        }
-                      >
-                        {meta.label} ({count})
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-              {visibleLearnedFacts.map((f) => {
-                const meta = CATEGORY_META[f.category]
-                return (
-                  <div key={f.id} className="card p-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="chip text-[10px]" style={{ background: `${meta.hex}22`, color: meta.hex }}>
-                          {meta.label}
-                        </span>
-                        <span className="text-[11px] text-faint">{fmtDate(f.createdAt)}</span>
-                      </div>
-                      <p className="text-sm text-ink mt-1">{f.text}</p>
-                    </div>
-                    <button
-                      onClick={() => forgetLearnedFact(f.id)}
-                      className="text-faint hover:text-red-500 p-1 shrink-0"
-                      aria-label="Vergeet dit feit"
-                      title="Vergeet dit feit"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          ))}
+          {tab === 'learned-personal' && (
+            <LearnedFactsPanel
+              facts={personalFacts}
+              filter={learnedFilter}
+              onFilterChange={setLearnedFilter}
+              onForget={forgetLearnedFact}
+              emptyMessage="Nog niks geleerd — hoe meer je met HEYRA praat, hoe persoonlijker dit wordt."
+            />
+          )}
+
+          {tab === 'learned-implement' && (
+            <LearnedFactsPanel
+              facts={implementFacts}
+              filter={learnedFilter}
+              onFilterChange={setLearnedFilter}
+              onForget={forgetLearnedFact}
+              emptyMessage="Nog geen lessen of systemen bevestigd — bevestig een suggestie in de Kennisbank om 'm hier te laten verschijnen."
+            />
+          )}
 
           {tab === 'threads' && (
             <div className="space-y-2 animate-fade-up">
