@@ -73,26 +73,61 @@ a refinement of the architecture above, not a different plan.
 
 ---
 
-## Product surface to preserve (screens & functions)
+## Product surface: kept in concept, pushed further in capability
 
 25 routed screens today, grouped into 5 areas (`src/nav.ts` is the current
-single source of truth). The rebuild keeps this product surface — the redesign
-is about *how it's built*, not *what it does*. Recommended consolidations are
-called out inline; final call on each is made during detailed screen-by-screen
-design, not here.
+single source of truth). The rebuild keeps this product surface — but
+"keeps" means keeps the *concept*, not the current ceiling. Per the owner's
+direction, each area below is rebuilt to actually do more, using the new
+brain/goal-linked infrastructure, not just cleaned-up plumbing behind
+today's version. These are proposals to react to, not locked decisions —
+final call per screen happens during detailed design.
 
-**Surface** (daily use): Dashboard (home/overview), Tasks, Day Planner
-**Life**: Health/Vitals, Workout, Habits, Cleaning, Money (finance), Dog
-(Kyra), Locations, Relationships, Home & Admin, Inbox (Gmail), North Star
-(goals), Profile
-**Business**: CRM, Projects, Strategy HQ (business ideas), Buurtkaart (a real
-side business), two smaller side-business admin screens (Eyes, Dakmeester —
-currently orphaned from navigation entirely; recommend folding into the
-existing shared `SideBusiness` template or retiring them)
-**Intake**: HEYRA (the AI chat assistant), Capture (universal "braindump"
-inbox)
-**Reflect**: Memory, Kennisbank (auto-suggested knowledge wiki), Reflect
-(cross-domain correlation engine), Mindmap
+### Surface (daily use)
+
+| Screen | Today | Rebuilt to |
+|---|---|---|
+| Dashboard | Static widgets + occasional rule-based sentences | Leads with an automatic, goal-aware briefing (see Interaction Model) that also calls out budget pace and spending-vs-goal, not just overdue items |
+| Tasks | Manual kanban you triage yourself | Assistant actively proposes re-prioritization/re-scheduling based on goals and capacity ("3 things due Friday, a light Tuesday — move one?"), always via the confirm mechanism, never silently |
+| Day Planner | AI fills calendar gaps around fixed events | Also accounts for actual physical state (sleep debt, recent energy dips already computed by Reflect) when proposing a day, not just gap-filling |
+
+### Life
+
+| Screen | Today | Rebuilt to |
+|---|---|---|
+| Health/Vitals | Displays steps/sleep/HR/energy as charts | The correlation engine (already built, currently passive charts you have to read) becomes proactive coaching: concrete cause→suggestion callouts ("3 low-energy days followed <6h sleep — want an earlier bedtime nudge tonight?") |
+| Workout | Manual CRUD + a rule-based random plan generator | Capture-driven plan evolution (Interaction Model) *plus* the plan adapts itself from real `workout_sets` history over time (progressive-overload suggestions), not only from captures |
+| Habits + Cleaning | Two independently-built gamification systems (separate points/streaks) | One shared streak/motivation layer; both surfaced through the assistant's coaching language instead of two separate score widgets |
+| Money | Transaction tracking + a subscriptions list | Real budgeting: spending-pace forecasting, category-norm deviation alerts, explicit ties to North Star savings goals ("this pace puts you €X over budget for [goal]") — the "budget things" the owner specifically asked an assistant to do |
+| Dog (Kyra) | Manual log + a passive AI-advice panel | The existing vet-visit inference rule (R1) and health-condition promotion (P1) get surfaced proactively in the coaching briefing, instead of sitting as history you have to check |
+| Locations | Standalone visited-places map, a dead end today | Feeds a lightweight signal into Reflect (time-away-from-home vs. mood/energy) instead of being read-only |
+| Relationships | Manual interaction log | Gets the same overdue-follow-up nudge pattern CRM already has for clients (R9-style), applied to personal relationships — today that pattern is CRM-only |
+| Home & Admin | Renewal reminder only (R4) | "Admin autopilot": near a cancellation/notice deadline, the assistant can draft the actual email for you to confirm and send, not just remind you it's coming |
+| Inbox | Already curated by default (see Interaction Model) — the template the other raw-list screens above generalize from | |
+| North Star (goals) | Static goal + milestone progress bars | Becomes the anchor every other domain's suggestions are checked against — nudges/briefings explicitly cite which goal they serve, or flag when something works against one |
+| Profile | AI-synthesized identity, display-only | Becomes an actual input: the assistant's coaching tone/style calibrates off it, instead of just showing it back to you |
+
+### Business
+
+| Screen | Today | Rebuilt to |
+|---|---|---|
+| CRM | Follow-up-health list buried below KPI tiles/charts | That prioritized "who needs follow-up" list becomes the actual home view (curate-by-default), with draft-reply proposals surfaced inline the same way Gmail already gets them |
+| Projects | Searchable/sortable grid you scan yourself | The existing stall-detection rule (R7) surfaces at-risk projects proactively in the briefing, instead of sitting as a tile you have to notice |
+| Strategy HQ | Idea capture + on-demand elaboration/MVP plan | Ideas link back to North Star goals; the existing theme-detection rule (R12, clusters repeated braindumped ideas) proactively resurfaces stalled ones ("you've mentioned X three times — revisit it?") instead of only reacting to a manual "elaborate" tap |
+| Buurtkaart / Eyes / Dakmeester | Side-business admin templates | Mostly consolidation (see below), not expansion — lower priority |
+
+### Intake
+
+| Screen | Today | Rebuilt to |
+|---|---|---|
+| HEYRA | Chat assistant, 12 agents | Becomes the umbrella surface for the unified propose→confirm→apply system (Interaction Model) — one place to both ask and act |
+| Capture | Text/link/image/video → note + optional wiki suggestion | Generalized so any capture can propose a structured change to any domain (Interaction Model), reachable from anywhere (share sheet, global voice), with the assistant proactively following up on captures left unprocessed |
+
+### Reflect
+
+| Screen | Today | Rebuilt to |
+|---|---|---|
+| Memory / Kennisbank / Reflect / Mindmap | Four separate screens over largely the same underlying correlation/knowledge data | Become the *drill-down* detail behind a direct "why did you suggest that" query in chat, rather than four places you have to separately check to piece a pattern together |
 
 Recommended structural consolidations to resolve during rebuild (not new
 functionality, just removing the "everything does its own thing" pattern):
@@ -361,9 +396,11 @@ be kept as-is.
    what "actually works" means here.
 3. **Phase 2 — Screens.** Rebuild screens domain by domain on the new
    backend, starting from `design-demo`'s tokens/components, porting logic
-   (not code) from the current app — including the recommended task-model
-   consolidation, the assistant-led Dashboard, and generalizing Inbox's
-   curated-by-default pattern to Money/Projects/CRM.
+   (not code) from the current app, and building each screen to the
+   expanded capability set in "Product surface" above — not just its
+   current functionality — including the task-model consolidation, the
+   assistant-led Dashboard, and generalizing Inbox's curated-by-default
+   pattern to Money/Projects/CRM.
 4. **Phase 3 — Kill the middlemen.** Build the Capacitor shell; move
    Gmail/Calendar to direct API calls; move health/activity/screen-time/
    notification capture into native app code, retiring Apps Script,
