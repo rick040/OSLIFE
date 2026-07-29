@@ -19,7 +19,7 @@
 
 import { askBrain } from '../brainClient'
 import { transcript } from '../memory'
-import { renderLearnedFacts } from '../learning'
+import { renderPersonalFacts, renderLearnings } from '../learning'
 import { buildMemorySnapshot, buildRecallSection } from './memoryContext'
 import type { Agent } from './types'
 
@@ -37,13 +37,15 @@ export const ASSISTANT_SYSTEM_PROMPT =
 export const runAssistantAgent: Agent = async (input, ctx) => {
   const { store, memory } = ctx
 
-  const learned = renderLearnedFacts(store.learnedFacts)
+  const personal = renderPersonalFacts(store.learnedFacts)
+  const learnings = renderLearnings(store.learnedFacts)
   const snapshot = buildMemorySnapshot(store)
   const recall = await buildRecallSection(input)
   const contextParts = [
     `Momentopname van OSLIFE (gebruik als relevant, negeer anders):\n${snapshot}`,
     recall || null,
-    learned || null,
+    personal || null,
+    learnings || null,
     memory.turns.length ? `Lopende gesprek:\n${transcript(memory)}` : null,
   ].filter(Boolean)
   const context = contextParts.length ? `${contextParts.join('\n\n')}\n\n` : ''

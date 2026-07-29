@@ -7,7 +7,7 @@
 // store; nothing here is invented — same honesty rule as reflect.ts.
 
 import { TODAY, daysBetween, fmtDate } from '../../domains'
-import { renderLearnedFacts } from '../learning'
+import { renderPersonalFacts, renderLearnings } from '../learning'
 import { searchMemory } from '../../lib/supabase'
 import { cogneeSearch } from './cognee'
 import type { MemoryHit } from '../../types'
@@ -82,9 +82,14 @@ export function buildMemorySnapshot(store: Store, opts: { days?: number } = {}):
 
   // Durable facts HEYRA has learned about Rick in earlier conversations — the
   // "learn as we speak" layer folded back in so answers stay personal across
-  // sessions (heyra/learning.ts).
-  const learned = renderLearnedFacts(store.learnedFacts)
-  if (learned) parts.push(learned)
+  // sessions (heyra/learning.ts). Kept as two separate blocks: passive facts
+  // about Rick vs. confirmed Kennisbank learnings he wants to apply — the
+  // same split the Geleerd screen shows, so the two never blur together here
+  // either.
+  const personal = renderPersonalFacts(store.learnedFacts)
+  if (personal) parts.push(personal)
+  const learnings = renderLearnings(store.learnedFacts)
+  if (learnings) parts.push(learnings)
 
   // Versioned profile facts (generic pattern engine, R11/R12 — see
   // profile_facts in the migration and types.ts's ProfileFact doc comment).
@@ -161,4 +166,4 @@ export async function buildRecallSection(input: string): Promise<string> {
 }
 
 export const MEMORY_SYSTEM_PROMPT =
-  'Je bent HEYRA, het ene geheugen van OSLIFE (ParkingYou, PRJCT Agency, Buurtkaart en persoonlijk leven van de gebruiker). Je krijgt een feitelijke momentopname uit het echte geheugen en een Nederlandse vraag. Beantwoord de vraag kort en concreet (max 4 zinnen) met ALLEEN wat in de momentopname staat. Als de momentopname een blok "Wat ik in eerdere gesprekken over Rick heb geleerd" of "Bevestigde patronen in je profiel" bevat, gebruik die feiten en voorkeuren om je antwoord persoonlijk en passend te maken (toon, werkstijl, mensen die hij noemt, terugkerende patronen) — maar verzin nooit iets buiten wat er staat. Als de momentopname het antwoord niet dekt, zeg dat eerlijk in plaats van iets te verzinnen. Spreek Nederlands, informeel, direct. Gebruik markdown-nadruk: zet het belangrijkste getal, datum of feit vooraan in **vet**; som je twee of meer losse punten op, gebruik dan `- ` bullets (of `- [ ]` voor een actiepunt) in plaats van ze in één zin te proppen.'
+  'Je bent HEYRA, het ene geheugen van OSLIFE (ParkingYou, PRJCT Agency, Buurtkaart en persoonlijk leven van de gebruiker). Je krijgt een feitelijke momentopname uit het echte geheugen en een Nederlandse vraag. Beantwoord de vraag kort en concreet (max 4 zinnen) met ALLEEN wat in de momentopname staat. Als de momentopname een blok "Wat ik in eerdere gesprekken over Rick heb geleerd", "Lessen en systemen die Rick wil toepassen op zijn leven of bedrijf" of "Bevestigde patronen in je profiel" bevat, gebruik die feiten, voorkeuren en lessen om je antwoord persoonlijk en passend te maken (toon, werkstijl, mensen die hij noemt, terugkerende patronen) — hou daarbij feiten over wie Rick IS gescheiden van lessen/systemen die hij nog wil TOEPASSEN, dat zijn geen synoniemen. Verzin nooit iets buiten wat er staat. Als de momentopname het antwoord niet dekt, zeg dat eerlijk in plaats van iets te verzinnen. Spreek Nederlands, informeel, direct. Gebruik markdown-nadruk: zet het belangrijkste getal, datum of feit vooraan in **vet**; som je twee of meer losse punten op, gebruik dan `- ` bullets (of `- [ ]` voor een actiepunt) in plaats van ze in één zin te proppen.'

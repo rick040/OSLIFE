@@ -44,7 +44,7 @@ export type LearningCategory =
 
 export type FactCategory = ChatFactCategory | LearningCategory
 
-const CHAT_FACT_CATEGORIES: ChatFactCategory[] = ['preference', 'person', 'context', 'workflow', 'goal']
+export const CHAT_FACT_CATEGORIES: ChatFactCategory[] = ['preference', 'person', 'context', 'workflow', 'goal']
 
 export const LEARNING_CATEGORIES: LearningCategory[] = [
   'life_lesson',
@@ -79,6 +79,19 @@ export interface LearnedFact {
 
 /** Hard cap so the injected block (and the jsonb row) never grows without bound. */
 export const MAX_FACTS = 60
+
+/**
+ * Two different kinds of knowledge share this one type + table because they're
+ * extracted/stored the same way, but they mean different things: a "personal"
+ * fact (the 5 ChatFactCategory values) is passively distilled from what Rick
+ * said — descriptive, no lifecycle, just true or wrong. A "learning" (the 6
+ * LearningCategory values) is a confirmed Kennisbank takeaway Rick wants to
+ * APPLY — aspirational, sourced from a braindump, not something he stated
+ * about himself. The Geleerd screen and prompt injection both split on this.
+ */
+export function isPersonalCategory(category: FactCategory): category is ChatFactCategory {
+  return (CHAT_FACT_CATEGORIES as string[]).includes(category)
+}
 
 const LEARN_SYSTEM = `Je bent het lange-termijn geheugen van HEYRA (OSLIFE). Je leest het laatste stukje gesprek tussen Rick en HEYRA en haalt er DUURZAME feiten uit die het waard zijn om blijvend te onthouden — dingen die volgende week ook nog waar zijn.
 
@@ -180,12 +193,24 @@ export async function extractFacts(
   return facts
 }
 
-/** Compact block for prompt injection; empty string when nothing has been learned yet. */
-export function renderLearnedFacts(facts: LearnedFact[]): string {
-  if (!facts.length) return ''
-  const lines = facts
+/** Compact block for prompt injection — personal facts only (preference/person/context/workflow/goal); empty string when there are none. */
+export function renderPersonalFacts(facts: LearnedFact[]): string {
+  const personal = facts.filter((f) => isPersonalCategory(f.category))
+  if (!personal.length) return ''
+  const lines = personal
     .slice(0, MAX_FACTS)
     .map((f) => `- [${CATEGORY_META[f.category].label}] ${f.text}`)
     .join('\n')
   return `Wat ik in eerdere gesprekken over Rick heb geleerd:\n${lines}`
+}
+
+/** Compact block for prompt injection — confirmed Kennisbank learnings Rick wants to apply; empty string when there are none. */
+export function renderLearnings(facts: LearnedFact[]): string {
+  const toApply = facts.filter((f) => !isPersonalCategory(f.category))
+  if (!toApply.length) return ''
+  const lines = toApply
+    .slice(0, MAX_FACTS)
+    .map((f) => `- [${CATEGORY_META[f.category].label}] ${f.text}`)
+    .join('\n')
+  return `Lessen en systemen die Rick wil toepassen op zijn leven of bedrijf:\n${lines}`
 }

@@ -3434,9 +3434,12 @@ export const useStore = create<State>()(
           // Rick confirming a Kennisbank suggestion IS him vouching for it, so
           // its takeaway graduates into permanent knowledge: a LearnedFact
           // under the same category, folded into every future HEYRA prompt
-          // via renderLearnedFacts (memoryContext.ts) — same "learn as we
-          // speak" store a chat-derived fact lands in. Only when Claude tagged
-          // a category at ingest time; skip rather than mis-file otherwise.
+          // via renderLearnings (memoryContext.ts) — same heyra_memory store a
+          // chat-derived fact lands in, but rendered in the separate "lessen/
+          // systemen" block since a Kennisbank category is always one of the
+          // 6 LearningCategory values, never a personal-fact one. Only when
+          // Claude tagged a category at ingest time; skip rather than mis-file
+          // otherwise.
           if (entry.category) {
             const fact: LearnedFact = {
               id: crypto.randomUUID(),
