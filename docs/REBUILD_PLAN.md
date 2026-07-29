@@ -57,6 +57,20 @@ fair game). Decisions below reflect the owner's explicit answers:
   directly into the app itself instead of chaining through third-party
   automation tools.
 
+**Product philosophy refinement.** The owner clarified what "premium" means
+beyond bug-free: the app should stop *feeling* like a data dashboard —
+widgets, rings, tiles, lists you have to read and act on yourself — and
+instead feel like a personal assistant / life coach / mentor that plans,
+suggests, budgets, and advises toward the owner's stated goals, is
+voice-driven, and — critically — treats a captured thought as something to
+*act on*, not just file away. The example given: sharing an Instagram video
+of a good workout routine via Capture shouldn't just get summarized as a
+note; it should actually propose an update to the real workout plan.
+Research into the current codebase found this is much closer at hand than
+it sounds — several of the needed building blocks already exist, just
+disconnected or under-surfaced (see "Interaction model" below) — so this is
+a refinement of the architecture above, not a different plan.
+
 ---
 
 ## Product surface to preserve (screens & functions)
@@ -94,6 +108,83 @@ functionality, just removing the "everything does its own thing" pattern):
   screens) becomes the literal starting point for the new UI's design system
   rather than something to reinvent from scratch — it's already aligned with
   this exact goal.
+
+---
+
+## Interaction model: assistant-first, not dashboard-first
+
+This is the connective tissue between the "Brain" and "Screens" stages
+below — the redesign isn't just a cleaner dashboard, it's a different
+primary interaction pattern. Research confirms real building blocks for
+this already exist in the current app, just fragmented or buried:
+
+- **A capture already can produce a structured suggestion — just the wrong
+  kind.** `braindump-ingest` already classifies captured content (including
+  Instagram links) with Claude and, when it spots something like "an
+  interesting approach/tool/strategy," inserts a `suggested` row into
+  `wiki_entries` for the owner to confirm — but confirming only ever
+  produces a `LearnedFact`, never a change to a real domain table like
+  `workout_plans`. Meanwhile the app already has a genuinely capable
+  confirm-gated "propose a write into a *different* domain table" mechanism
+  — `confirm_inference()` in the inference engine (e.g. a recurring
+  transaction pattern proposes, and on confirm creates, a real
+  `subscriptions` row). And the Workout screen's `GeneratePlanModal` already
+  has a generate → preview → reroll → commit UI whose data shape
+  (`GeneratedDay`/`GeneratedExercise`) is exactly what an AI-derived plan
+  draft needs. **The rebuild wires these together**: extend the
+  classification step so a capture that implies a concrete change to an
+  existing domain record (a workout plan, a goal, a budget cap) produces a
+  confirm-gated structured proposal via the same effect-per-type convention
+  `confirm_inference()` already uses, rendered through the existing
+  preview/commit UI for that domain (Workout's modal, or a generalized
+  version of it) rather than only ever becoming a note.
+- **Unify the three separate "propose → confirm → apply" mechanisms that
+  exist today** into one convention with one confirm surface: chat's
+  `heyra/actions` `ActionCard` system (client-side, single-turn), the SQL
+  inference engine's `confirm_inference()` (server-side, async/batched,
+  cross-domain, confidence-scored), and the braindump→`wiki_entries`
+  suggestion flow. They currently share no code. The rebuild keeps the
+  async/server-side inference-engine pattern as the canonical mechanism for
+  anything not happening inside a live chat turn (captures, background
+  inference, nudges-that-can-be-acted-on) — since it's already the most
+  mature and already crosses domains — and reuses one shared confirm/diff
+  UI component (in the spirit of today's `ActionCardView`) everywhere a
+  proposal needs a yes/no from the owner, whether it surfaced from chat, a
+  capture, or a background rule.
+- **Voice becomes first-class, not a feature buried in one screen.** Voice
+  input exists today only via the browser's native Speech API, only inside
+  the HEYRA chat screen — no global entry point, and there is no voice
+  *output* anywhere in the app (zero text-to-speech). The rebuild adds a
+  global voice entry point reachable from anywhere (not just one chat
+  screen) and adds TTS so the assistant can actually talk back, not just
+  render markdown bubbles — necessary for the app to feel spoken-to rather
+  than typed-at.
+- **The home screen leads with the assistant's voice, not a widget grid.**
+  Today's Dashboard already computes several rule-based, templated
+  sentences (a nudge, a "hero" vitals sentence, a weakest-life-domain
+  callout) *and* separately has a real LLM-authored proactive briefing
+  generator (`briefingAgent.ts` — gathers the day's real facts and writes a
+  short, prioritized, natural-language summary) — but that briefing agent
+  only runs when the owner explicitly asks for it in chat; it never
+  surfaces automatically, and it sits alongside ~10 other stacked
+  widget/chart/ring sections rather than leading them. The rebuild makes
+  that proactive, LLM-authored briefing (upgraded to genuinely
+  coach/mentor-toned language — tied explicitly to the owner's stated goals
+  from North Star, not just "what's overdue") the lead content of the home
+  screen, generated automatically, with the supporting data (rings, charts,
+  tiles) available on demand underneath rather than presented as ten equal
+  peer widgets.
+- **Curate by default; raw data is a drill-down, not the front door.**
+  Inbox already proves this pattern works: it doesn't show a raw inbox — it
+  classifies importance into three tiers, summarizes emails on demand, and
+  leads with a synthesized "Highlights" digest of takeaways/reminders.
+  Research found Money's transaction/bill/subscription tabs and Projects'
+  searchable grid are the most "browse-a-database" screens left, with CRM
+  in between. The rebuild generalizes Inbox's pattern to those screens: a
+  synthesized, prioritized "what needs your attention / what I'd suggest"
+  view is the default, with the full list/table one tap away for whenever
+  the owner actually wants to browse — not removed, just no longer the
+  default way of encountering the data.
 
 ---
 
@@ -197,6 +288,11 @@ external automations:
   rule-based fallback) is the best current design in the repo and is the
   template to extend to the other, currently-independent AI call sites
   rather than starting from zero.
+- **One propose → confirm → apply convention**, replacing today's three
+  disconnected versions of it (chat `ActionCard`s, `confirm_inference()`,
+  the wiki-suggestion flow) and extended so captures can propose structured
+  changes to *any* domain table, not just knowledge-base facts — see
+  "Interaction model" above for the concrete workout-plan example.
 
 ### Stage 4 — Client apps
 
@@ -214,6 +310,12 @@ external automations:
   exactly what's needed to retire MacroDroid/Tasker and the standalone
   walk-tracker app — while explicitly not requiring an offline-first
   architecture, matching the owner's stated needs.
+- **Voice + assistant-led home screen**: add TTS output and a global voice
+  entry point (today voice input only exists inside the HEYRA chat screen,
+  and there is no voice output at all); rebuild the Dashboard around an
+  automatically-generated, goal-aware briefing as the lead content rather
+  than a stack of widgets, with supporting data available on demand — see
+  "Interaction model" above.
 
 ---
 
@@ -249,13 +351,19 @@ be kept as-is.
    primary pattern (informed by, not copy-pasted from, the current 61
    migrations). No UI yet.
 2. **Phase 1 — Brain + data proof.** Build the one shared model-call
-   service, the one pgvector retrieval service, and the typed data-access
-   layer against 2-3 real domains end-to-end (e.g. finance + health) to
-   prove the architecture before scaling it to all 25 screens.
+   service, the one pgvector retrieval service, the typed data-access
+   layer, and the unified propose → confirm → apply mechanism, end-to-end
+   against a real cross-domain case before scaling to all 25 screens.
+   Concrete proof target: capture a workout-video-style note and have it
+   produce a real, confirm-gated proposed change to a workout plan —
+   because it exercises ingestion, brain, structured proposal, and UI
+   confirmation together, and is the owner's own headline scenario for
+   what "actually works" means here.
 3. **Phase 2 — Screens.** Rebuild screens domain by domain on the new
    backend, starting from `design-demo`'s tokens/components, porting logic
    (not code) from the current app — including the recommended task-model
-   consolidation.
+   consolidation, the assistant-led Dashboard, and generalizing Inbox's
+   curated-by-default pattern to Money/Projects/CRM.
 4. **Phase 3 — Kill the middlemen.** Build the Capacitor shell; move
    Gmail/Calendar to direct API calls; move health/activity/screen-time/
    notification capture into native app code, retiring Apps Script,
@@ -270,8 +378,11 @@ This is a planning document, not a code change — there's nothing to run yet.
 The plan is "verified" by the owner's review and sign-off here. Once
 implementation starts (separate work, not part of this plan), each phase
 above gets its own concrete verification: Phase 0 by successfully writing
-and reading an event through the new stack; Phase 1 by getting a correct,
-context-grounded AI answer end-to-end from real ingested data; Phase 2 by
-each rebuilt screen matching its current functionality against the old app
-side-by-side; Phase 3 by confirming native ingestion produces the same data
-MacroDroid/Apps Script used to, then decommissioning the old pipelines.
+and reading an event through the new stack; Phase 1 by capturing a real
+workout-video-style note and confirming it produces a correct, reviewable
+proposed change to a real workout plan end-to-end; Phase 2 by each rebuilt
+screen matching its current functionality against the old app side-by-side,
+plus the Dashboard/Inbox/Money/Projects/CRM curated-default views actually
+surfacing correct, non-hallucinated priorities; Phase 3 by confirming
+native ingestion produces the same data MacroDroid/Apps Script used to,
+then decommissioning the old pipelines.
