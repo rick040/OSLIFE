@@ -95,10 +95,10 @@ final call per screen happens during detailed design.
 
 | Screen | Today | Rebuilt to |
 |---|---|---|
-| Health/Vitals | Displays steps/sleep/HR/energy as charts | The correlation engine (already built, currently passive charts you have to read) becomes proactive coaching: concrete cause→suggestion callouts ("3 low-energy days followed <6h sleep — want an earlier bedtime nudge tonight?") |
+| Health/Vitals | Displays steps/sleep/HR/energy as charts | The correlation engine (already built, currently passive charts you have to read) becomes proactive coaching: concrete cause→suggestion callouts ("3 low-energy days followed <6h sleep — want an earlier bedtime nudge tonight?"); gains a nutrition dimension (new domain, see "Pushing further") logged via the same capture pipeline as workouts |
 | Workout | Manual CRUD + a rule-based random plan generator | Capture-driven plan evolution (Interaction Model) *plus* the plan adapts itself from real `workout_sets` history over time (progressive-overload suggestions), not only from captures |
 | Habits + Cleaning | Two independently-built gamification systems (separate points/streaks) | One shared streak/motivation layer; both surfaced through the assistant's coaching language instead of two separate score widgets |
-| Money | Transaction tracking + a subscriptions list | Real budgeting: spending-pace forecasting, category-norm deviation alerts, explicit ties to North Star savings goals ("this pace puts you €X over budget for [goal]") — the "budget things" the owner specifically asked an assistant to do |
+| Money | Transaction tracking + a subscriptions list | Real budgeting: spending-pace forecasting, category-norm deviation alerts, explicit ties to North Star savings goals ("this pace puts you €X over budget for [goal]") — the "budget things" the owner specifically asked an assistant to do — plus net worth over time and a runway/affordability model (new, see "Pushing further"), linked to Strategy HQ's business ideas |
 | Dog (Kyra) | Manual log + a passive AI-advice panel | The existing vet-visit inference rule (R1) and health-condition promotion (P1) get surfaced proactively in the coaching briefing, instead of sitting as history you have to check |
 | Locations | Standalone visited-places map, a dead end today | Feeds a lightweight signal into Reflect (time-away-from-home vs. mood/energy) instead of being read-only |
 | Relationships | Manual interaction log | Gets the same overdue-follow-up nudge pattern CRM already has for clients (R9-style), applied to personal relationships — today that pattern is CRM-only |
@@ -185,7 +185,8 @@ this already exist in the current app, just fragmented or buried:
   mature and already crosses domains — and reuses one shared confirm/diff
   UI component (in the spirit of today's `ActionCardView`) everywhere a
   proposal needs a yes/no from the owner, whether it surfaced from chat, a
-  capture, or a background rule.
+  capture, or a background rule. Not every proposal ends up needing that
+  yes/no, though — see the trust ladder below.
 - **Voice becomes first-class, not a feature buried in one screen.** Voice
   input exists today only via the browser's native Speech API, only inside
   the HEYRA chat screen — no global entry point, and there is no voice
@@ -220,6 +221,81 @@ this already exist in the current app, just fragmented or buried:
   view is the default, with the full list/table one tap away for whenever
   the owner actually wants to browse — not removed, just no longer the
   default way of encountering the data.
+
+---
+
+## Pushing further: from reactive tool to proactive coach
+
+Everything above still assumes the owner opens the app and the assistant
+reacts. Pushing further means the assistant also initiates, earns the right
+to act without asking every time, and reasons across domains as its default
+mode rather than as a special chart you go find.
+
+### Proactive cadence, not just reactive
+The assistant should run a real coaching rhythm, not just answer when
+asked: the automatic morning briefing (already planned) gets a matching
+quick evening check-in ("how did today go against what I proposed?"), a
+real weekly review (goal progress, budget pace, what got confirmed vs.
+rejected and why), and a monthly retro — mirroring the cadence
+`run_self_audit()` already runs on the backend, just turned into something
+the owner actually hears from. The existing Telegram digest is already the
+delivery channel for inference approvals — extend it into the assistant's
+regular voice for this rhythm, not just an approval queue. And it should be
+able to start a conversation, not only finish one it was handed — noticing
+a new pattern and opening with "I noticed X, want to talk about it?" rather
+than waiting to be asked.
+
+### A trust ladder, not one confirm-everything gate
+Treating every proposal identically (always tap to confirm) doesn't scale
+to "acts like an assistant." Extend the inference engine's existing
+≥0.85-confidence auto-commit idea into a general three-tier trust ladder,
+based on confidence *and* how reversible/consequential the action is:
+- **Auto-apply, silent** — low-stakes, fully reversible (log a detected
+  walk, tag a vendor, add an exercise to a draft plan).
+- **Auto-apply, visible undo window** — medium-stakes (create a task,
+  adjust a budget category, log a meal from a capture).
+- **Always confirm** — external or hard-to-reverse (send an email, create
+  an invoice, cancel a subscription, commit a workout-plan change).
+
+Confidence and stakes decide the tier together, not a single global rule,
+and any action type can be manually pinned to a stricter tier if it gets
+something wrong — the ladder should be able to demote itself per action
+type from real feedback (the existing rule-suppression/learning-loop
+mechanism already does exactly this for background inferences; extend the
+same idea to tier assignment).
+
+### Cross-domain synthesis as the default lens, not a chart you go find
+Reflect's correlation engine exists today as a screen you have to visit.
+Push further: make cross-domain synthesis the way the coaching briefing
+reasons by default — not "here's finance, here's health" as separate
+sections, but "your deadline stress this week lines up with two skipped
+workouts and higher spending — here's one thing that'd help all three."
+That's a real escalation from *showing* correlations to *reasoning across*
+them and proposing one intervention — the part a dashboard structurally
+can't do and a coach does by default.
+
+### One consistent assistant persona, not 12 prompts
+Today's 12+ HEYRA agents and 8+ independent edge functions each carry their
+own system prompt and tone. Stage 3's brain unification already collapses
+the plumbing — push further and collapse the *voice* too: one persona,
+calibrated from Profile, consistent whether it's the morning briefing, a
+chat reply, an email draft, or a Telegram digest, so it reads as one mentor
+across every surface instead of a different assistant per screen.
+
+### Two domains worth adding outright, because the pattern already fits
+Not scope creep — these reuse mechanisms already planned above, just not
+yet pointed at these targets:
+- **Nutrition.** Health coaching is incomplete without it. A photo of a
+  meal, captured the same way a workout video already is, gets classified
+  and logged as structured nutrition data through the same
+  capture→propose→confirm pipeline — no new mechanism, just a new domain
+  it writes into.
+- **Net worth / financial trajectory.** Money today only tracks
+  transactions and subscriptions. Add net-worth-over-time and a simple
+  runway/affordability model — directly useful for someone weighing when
+  they can afford to go full-time on a side business — feeding off the
+  same budget-forecasting work already planned for Money, and linking to
+  Strategy HQ's business ideas.
 
 ---
 
@@ -399,13 +475,19 @@ be kept as-is.
    (not code) from the current app, and building each screen to the
    expanded capability set in "Product surface" above — not just its
    current functionality — including the task-model consolidation, the
-   assistant-led Dashboard, and generalizing Inbox's curated-by-default
-   pattern to Money/Projects/CRM.
+   assistant-led Dashboard, generalizing Inbox's curated-by-default pattern
+   to Money/Projects/CRM, the trust-ladder tiering for auto-apply vs.
+   confirm, and the two new domains (Nutrition, Net worth).
 4. **Phase 3 — Kill the middlemen.** Build the Capacitor shell; move
    Gmail/Calendar to direct API calls; move health/activity/screen-time/
    notification capture into native app code, retiring Apps Script,
    MacroDroid/Tasker, and the standalone walk-tracker APK.
-5. **Phase 4 — Cutover.** Switch real daily use to the new app, migrate
+5. **Phase 4 — Proactive cadence + persona.** Layer in the assistant-
+   initiated rhythm (evening check-in, weekly review, monthly retro over
+   the existing Telegram digest channel) and the single consistent
+   persona across briefing/chat/email-drafts/digests, once the reactive
+   core (Phases 1-3) is solid enough to trust with initiative.
+6. **Phase 5 — Cutover.** Switch real daily use to the new app, migrate
    historical data from the old Supabase project, keep the old repo as
    reference until the new one has run cleanly for a while.
 
@@ -422,4 +504,9 @@ screen matching its current functionality against the old app side-by-side,
 plus the Dashboard/Inbox/Money/Projects/CRM curated-default views actually
 surfacing correct, non-hallucinated priorities; Phase 3 by confirming
 native ingestion produces the same data MacroDroid/Apps Script used to,
-then decommissioning the old pipelines.
+then decommissioning the old pipelines; Phase 4 by auto-apply tiers never
+firing on anything the owner would have rejected (checked against the same
+confirm/reject history the trust ladder itself is tuned from) and the
+weekly/monthly rhythm actually landing on schedule; Phase 5 by a real
+side-by-side period where the new app is trusted for daily use before the
+old one is retired.
