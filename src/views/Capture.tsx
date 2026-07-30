@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
-import { SectionTitle, Empty, DomainChip, Overlay } from '../components/ui'
+import { SectionTitle, Empty, DomainChip } from '../components/ui'
 import { BraindumpCard, BraindumpDetail, SOURCE_LABEL } from '../components/BraindumpCard'
 import { detectTextShare } from '../lib/braindump'
 import { uploadBraindumpFile } from '../lib/supabase'
-import { parseClaudeExport } from '../lib/claudeImport'
+import { isClaudeConversationEntry } from '../lib/claudeImport'
 import type { BraindumpEntry, BraindumpSourceKind, Domain } from '../types'
-import { Inbox, Search, Share2, Loader2, Upload, Sparkles, X, Mic, Square } from 'lucide-react'
+import { Inbox, Search, Share2, Loader2, Mic, Square } from 'lucide-react'
 
 // Recording longer than this auto-stops and submits — keeps a slip of the
 // finger from turning into an hour-long upload; matches the worker's own
@@ -17,47 +17,20 @@ const DOMAINS: Domain[] = ['parkingyou', 'prjct', 'buurtkaart', 'personal', 'cro
 
 export default function Capture() {
   const {
-    braindumpEntries, braindumpCapture, deleteBraindumpEntry, retryBraindumpEntry, updateBraindumpEntry,
+    braindumpEntries: allBraindumpEntries, braindumpCapture, deleteBraindumpEntry, retryBraindumpEntry, updateBraindumpEntry,
     braindumpLinks, linkBraindumpEntry, unlinkBraindumpEntry, threads, wikiEntries,
-    importClaudeConversations,
   } = useStore()
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
   const [open, setOpen] = useState<BraindumpEntry | null>(null)
 
-  // Claude-chat import (option 2): read a claude.ai data-export JSON client-side,
-  // parse it, and store each conversation as searchable knowledge.
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [importing, setImporting] = useState(false)
-  const [importMsg, setImportMsg] = useState<string | null>(null)
-
-  async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = '' // allow re-picking the same file later
-    if (!file) return
-    setImporting(true)
-    setImportMsg(null)
-    try {
-      const raw = JSON.parse(await file.text())
-      const records = parseClaudeExport(raw)
-      if (!records.length) {
-        setImportMsg('Geen gesprekken gevonden — kies je conversations.json uit de Claude-export.')
-        return
-      }
-      const { imported, skipped } = await importClaudeConversations(records)
-      setImportMsg(
-        imported
-          ? `${imported} Claude-gesprek(ken) geïmporteerd${skipped ? `, ${skipped} al aanwezig overgeslagen` : ''}.`
-          : `Niks nieuws — die ${skipped} gesprek(ken) waren al geïmporteerd.`,
-      )
-    } catch {
-      setImportMsg('Kon dit bestand niet lezen. Verwacht: conversations.json uit je Claude-export.')
-    } finally {
-      setImporting(false)
-    }
-  }
-
-  const [showClaudeImport, setShowClaudeImport] = useState(false)
+  // Claude conversations (live-logged or imported) get their own screen — see
+  // views/ClaudeLog.tsx — so this grid excludes them rather than mixing two
+  // very differently-shaped kinds of "capture" into one feed.
+  const braindumpEntries = useMemo(
+    () => allBraindumpEntries.filter((e) => !isClaudeConversationEntry(e)),
+    [allBraindumpEntries],
+  )
 
   // filters
   const [q, setQ] = useState('')
@@ -194,16 +167,11 @@ export default function Capture() {
 
   return (
     <div className="max-w-5xl mx-auto flex flex-col gap-7">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-center gap-3">
-          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
-            <Inbox className="h-5 w-5 text-ink-soft" />
-          </span>
-          <h1 className="text-xl font-medium text-ink">Braindump</h1>
-        </div>
-        <button className="btn-ghost" onClick={() => setShowClaudeImport(true)}>
-          <Sparkles className="h-4 w-4" /> Importeer Claude-chats
-        </button>
+      <div className="flex items-center gap-3">
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
+          <Inbox className="h-5 w-5 text-ink-soft" />
+        </span>
+        <h1 className="text-xl font-medium text-ink">Braindump</h1>
       </div>
 
       {/* quick capture */}
@@ -257,28 +225,6 @@ export default function Capture() {
           </div>
         </div>
       </div>
-
-      {showClaudeImport && (
-        <Overlay tone="black" onClose={() => setShowClaudeImport(false)} panelClassName="card w-full max-w-md p-5 space-y-3">
-          <div className="flex items-start justify-between gap-3">
-            <p className="text-sm font-medium flex items-center gap-1.5">
-              <Sparkles className="h-4 w-4 text-prjct" /> Importeer je Claude-chats
-            </p>
-            <button onClick={() => setShowClaudeImport(false)} className="text-faint hover:text-ink p-1 shrink-0" aria-label="Sluiten">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <p className="text-xs text-faint">
-            Exporteer je data op claude.ai (Instellingen → Privacy) en kies hier <code>conversations.json</code>.
-            HEYRA kan ze daarna doorzoeken en eruit antwoorden.
-          </p>
-          {importMsg && <p className="text-xs text-muted">{importMsg}</p>}
-          <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onImportFile} />
-          <button className="btn-ghost w-full" onClick={() => fileRef.current?.click()} disabled={importing}>
-            {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />} Bestand kiezen
-          </button>
-        </Overlay>
-      )}
 
       {/* filters */}
       <div className="space-y-3">

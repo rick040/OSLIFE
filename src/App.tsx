@@ -6,6 +6,7 @@ import Dashboard from './views/Dashboard'
 import Tasks from './views/Tasks'
 import Heyra from './views/Heyra'
 import Capture from './views/Capture'
+import ClaudeLog from './views/ClaudeLog'
 import ShareIntake from './views/ShareIntake'
 import Memory from './views/Memory'
 import Kennisbank from './views/Kennisbank'
@@ -68,6 +69,7 @@ export default function App() {
     profile: <ProfileScreen />,
     heyra: <Heyra onNav={(v) => setView(v as View)} />,
     capture: <Capture />,
+    claudelog: <ClaudeLog />,
     memory: <Memory />,
     kennisbank: <Kennisbank />,
     reflect: <Reflect />,

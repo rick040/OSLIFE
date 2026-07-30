@@ -24,6 +24,7 @@ import {
   SprayCan,
   BookOpen,
   Dumbbell,
+  Bot,
 } from 'lucide-react'
 
 // ── Central screen registry ──────────────────────────────────────────────────
@@ -50,6 +51,7 @@ export type View =
   | 'profile'
   | 'heyra'
   | 'capture'
+  | 'claudelog'
   | 'memory'
   | 'kennisbank'
   | 'reflect'
@@ -100,6 +102,7 @@ export const SCREENS: Screen[] = [
   { id: 'capture', label: 'Vastleggen', icon: Inbox, layer: 'Intake', group: 'Intake', primary: true, accent: 'text-forest' },
 
   // Reflect
+  { id: 'claudelog', label: 'Claude', icon: Bot, layer: 'Herinnering · Claude-gesprekken', group: 'Reflect', accent: 'text-muted' },
   { id: 'memory', label: 'Geheugen', icon: Database, layer: 'Herinnering · incl. inferenties', group: 'Reflect', accent: 'text-muted' },
   { id: 'kennisbank', label: 'Kennisbank', icon: BookOpen, layer: 'Herinnering · uitgelichte inzichten', group: 'Reflect', accent: 'text-buurtkaart' },
   { id: 'reflect', label: 'Reflectie', icon: Brain, layer: 'Reflectie · incl. databronnen', group: 'Reflect', accent: 'text-cross' },
