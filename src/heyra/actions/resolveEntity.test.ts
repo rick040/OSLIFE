@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { resolveProject, resolveClient, resolveTask, resolveInvoiceForProject } from './resolveEntity'
+import { resolveProject, resolveClient, resolveTask, resolveInvoiceForProject, resolveProjectTask, resolveProjectMilestone } from './resolveEntity'
 import type { useStore } from '../../store'
-import type { Project, Client, Thread, Invoice } from '../../types'
+import type { Project, Client, Thread, Invoice, ProjectTask, ProjectMilestone } from '../../types'
 
 type Store = ReturnType<typeof useStore.getState>
 
@@ -10,9 +10,12 @@ function store(partial: {
   clients?: Client[]
   threads?: Thread[]
   projectInvoices?: Invoice[]
+  projectTasks?: ProjectTask[]
+  projectMilestones?: ProjectMilestone[]
 }): Store {
   return {
-    projects: [], threads: [], clients: [], payments: [], items: [], braindumpEntries: [], projectInvoices: [],
+    projects: [], threads: [], clients: [], payments: [], items: [], braindumpEntries: [],
+    projectInvoices: [], projectTasks: [], projectMilestones: [],
     ...partial,
   } as unknown as Store
 }
@@ -187,5 +190,54 @@ describe('resolveInvoiceForProject', () => {
       }),
     )
     expect(result.entity?.id).toBe('inv-2')
+  })
+})
+
+describe('resolveProjectTask', () => {
+  it('resolves a clear single match by task name — the exact table behind the reported chat-completion bug', () => {
+    const result = resolveProjectTask(
+      'de preview naar Kim is klaar',
+      store({
+        projectTasks: [
+          { id: 't1', projectId: 'p1', name: 'Stuur nieuwe preview naar Kim', done: false },
+          { id: 't2', projectId: 'p1', name: 'Factuur versturen', done: false },
+        ],
+      }),
+    )
+    expect(result.entity?.id).toBe('t1')
+    expect(result.entity?.table).toBe('project_tasks')
+  })
+
+  it('excludes already-done tasks from matching', () => {
+    const result = resolveProjectTask(
+      'stuur nieuwe preview naar kim',
+      store({ projectTasks: [{ id: 't1', projectId: 'p1', name: 'Stuur nieuwe preview naar Kim', done: true }] }),
+    )
+    expect(result.entity).toBeNull()
+    expect(result.candidates).toHaveLength(0)
+  })
+})
+
+describe('resolveProjectMilestone', () => {
+  it('resolves a clear single match by milestone title', () => {
+    const result = resolveProjectMilestone(
+      'de launch mijlpaal is klaar',
+      store({
+        projectMilestones: [
+          { id: 'm1', projectId: 'p1', title: 'Launch', dueDate: null, progress: 0, done: false },
+          { id: 'm2', projectId: 'p1', title: 'Design review', dueDate: null, progress: 0, done: false },
+        ],
+      }),
+    )
+    expect(result.entity?.id).toBe('m1')
+    expect(result.entity?.table).toBe('project_milestones')
+  })
+
+  it('excludes already-done milestones from matching', () => {
+    const result = resolveProjectMilestone(
+      'launch',
+      store({ projectMilestones: [{ id: 'm1', projectId: 'p1', title: 'Launch', dueDate: null, progress: 1, done: true }] }),
+    )
+    expect(result.entity).toBeNull()
   })
 })

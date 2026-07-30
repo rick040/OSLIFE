@@ -17,7 +17,7 @@
 
 import type { useStore } from '../../store'
 import { today } from '../../domains'
-import type { Thread, Client } from '../../types'
+import type { Thread, Client, ProjectTask, ProjectMilestone } from '../../types'
 import type { ActionCard, ActionKind } from './types'
 
 type Store = ReturnType<typeof useStore.getState>
@@ -40,7 +40,7 @@ function fieldValue<T = unknown>(card: ActionCard, key: string): T | undefined {
 }
 
 function requireEntity(card: ActionCard): { ok: true; id: string } | { ok: false; error: string } {
-  if (!card.entity) return { ok: false, error: 'Geen project/klant/taak gekoppeld aan deze actie.' }
+  if (!card.entity) return { ok: false, error: 'Geen project/klant/taak/mijlpaal gekoppeld aan deze actie.' }
   return { ok: true, id: card.entity.id }
 }
 
@@ -93,6 +93,40 @@ const logProjectActivity: ActionHandler = async (store, card) => {
   const body = fieldValue<string>(card, 'body')
   if (!body) return { ok: false, error: 'Geen activiteit-tekst opgegeven.' }
   store.logActivity(entity.id, body) // itself resolves task/milestone matches — see store.ts
+  return { ok: true }
+}
+
+const completeProjectTask: ActionHandler = async (store, card) => {
+  const entity = requireEntity(card)
+  if (!entity.ok) return entity
+  // toggleProjectTask (not a raw patch) so a recurring task rolls its due
+  // date forward instead of just flipping done — same mechanism the
+  // checkbox in ProjectDetail.tsx uses.
+  store.toggleProjectTask(entity.id, true)
+  return { ok: true }
+}
+
+const updateProjectTask: ActionHandler = async (store, card) => {
+  const entity = requireEntity(card)
+  if (!entity.ok) return entity
+  const patch: Partial<ProjectTask> = {
+    name: fieldValue<string>(card, 'name'),
+    dueDate: fieldValue<string>(card, 'dueDate'),
+    priority: fieldValue<ProjectTask['priority']>(card, 'priority'),
+  }
+  store.updateProjectTask(entity.id, patch)
+  return { ok: true }
+}
+
+const updateProjectMilestone: ActionHandler = async (store, card) => {
+  const entity = requireEntity(card)
+  if (!entity.ok) return entity
+  const patch: Partial<ProjectMilestone> = {
+    done: fieldValue<boolean>(card, 'done'),
+    progress: fieldValue<number>(card, 'progress'),
+    dueDate: fieldValue<string>(card, 'dueDate'),
+  }
+  store.updateMilestone(entity.id, patch) // itself keeps done/progress coherent — see store.ts
   return { ok: true }
 }
 
@@ -161,6 +195,9 @@ export const ACTION_HANDLERS: Record<ActionKind, ActionHandler> = {
   complete_task: completeTask,
   update_project_status: updateProjectStatus,
   log_project_activity: logProjectActivity,
+  complete_project_task: completeProjectTask,
+  update_project_task: updateProjectTask,
+  update_project_milestone: updateProjectMilestone,
   mark_invoice_paid: markInvoicePaid,
   update_invoice_status: updateInvoiceStatus,
   create_invoice: createInvoice,

@@ -34,7 +34,7 @@ export interface ActionField {
 
 /** A resolved target row — the thing an action reads or writes. */
 export interface EntityRef {
-  table: 'projects' | 'project_invoices' | 'clients' | 'tasks' | 'project_tasks' | 'project_activity'
+  table: 'projects' | 'project_invoices' | 'clients' | 'tasks' | 'project_tasks' | 'project_milestones' | 'project_activity'
   id: string
   /** Display name shown in the card header/chip, e.g. the project or client name. */
   label: string
@@ -46,6 +46,9 @@ export type ActionKind =
   | 'complete_task'
   | 'update_project_status'
   | 'log_project_activity'
+  | 'complete_project_task'
+  | 'update_project_task'
+  | 'update_project_milestone'
   | 'mark_invoice_paid'
   | 'update_invoice_status'
   | 'create_invoice'
