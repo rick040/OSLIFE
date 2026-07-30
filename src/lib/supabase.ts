@@ -11,6 +11,7 @@ import type {
   Habit,
   Subscription,
   Goal,
+  Milestone,
   DogEntry,
   DogProfile,
   Walk,
@@ -1548,6 +1549,47 @@ export async function updateGoalRow(
 
 export async function deleteGoalRow(id: string): Promise<void> {
   return deleteRow('goals', id)
+}
+
+// ── North Star (Noordster) milestones ─────────────────────────────────────────
+// Mirrors the project_milestones functions below almost exactly — same shape,
+// different parent table (goal_milestones, see the 2026-07-30 migration).
+// Unlike project milestones this previously had NO persistence at all: see
+// that migration's header comment for why this exists.
+
+export async function fetchGoalMilestones(): Promise<Milestone[]> {
+  return fetchRows('goal_milestones', 'id,goal_id,title,due_date,done,order_idx', { column: 'order_idx', ascending: true }, (r) => ({
+    id: r.id as string,
+    goalId: r.goal_id as string,
+    title: r.title as string,
+    done: (r.done as boolean) ?? false,
+    due: (r.due_date as string) ?? null,
+  }))
+}
+
+export async function createGoalMilestoneRow(
+  goalId: string,
+  m: Omit<Milestone, 'id' | 'goalId'>,
+): Promise<string | null> {
+  if (!isDbId(goalId)) return null
+  return insertRow('goal_milestones', {
+    goal_id: goalId,
+    title: m.title, due_date: m.due ?? null, done: m.done ?? false,
+  })
+}
+
+const GOAL_MILESTONE_COLS: Record<string, string> = {
+  title: 'title',
+  due: 'due_date',
+  done: 'done',
+}
+
+export async function updateGoalMilestoneRow(id: string, patch: Partial<Milestone>): Promise<void> {
+  await updateRow('goal_milestones', id, patch, GOAL_MILESTONE_COLS)
+}
+
+export async function deleteGoalMilestoneRow(id: string): Promise<void> {
+  return deleteRow('goal_milestones', id)
 }
 
 // ── Dog tracker ───────────────────────────────────────────────────────────────
