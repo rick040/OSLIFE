@@ -119,6 +119,10 @@ import {
   createGoalRow,
   updateGoalRow,
   deleteGoalRow,
+  fetchGoalMilestones,
+  createGoalMilestoneRow,
+  updateGoalMilestoneRow,
+  deleteGoalMilestoneRow,
   fetchBlocksRange,
   insertDayBlock,
   moveDayBlock,
@@ -1839,6 +1843,7 @@ export const useStore = create<State>()(
         set((s) => {
           const m = s.milestones.find((x) => x.id === id)
           if (!m) return {}
+          void updateGoalMilestoneRow(id, { done: !m.done })
           return {
             milestones: s.milestones.map((x) => (x.id === id ? { ...x, done: !x.done } : x)),
             activity: pushSignal(s.activity, {
@@ -1852,13 +1857,18 @@ export const useStore = create<State>()(
       addGoalMilestone: (goalId, title, due) => {
         const t = title.trim()
         if (!t) return
+        const tempId = uid('nsms')
         set((s) => ({
-          milestones: [...s.milestones, { id: uid('nsms'), goalId, title: t, done: false, due: due ?? null }],
+          milestones: [...s.milestones, { id: tempId, goalId, title: t, done: false, due: due ?? null }],
           activity: pushSignal(s.activity, { text: `Mijlpaal toegevoegd: ${t}`, domain: 'cross', loop: 'fast' }),
         }))
+        void createGoalMilestoneRow(goalId, { title: t, done: false, due: due ?? null }).then(swapTempId(set, 'milestones', tempId))
       },
 
-      deleteGoalMilestone: (id) => removeFromSlice(set, 'milestones', id),
+      deleteGoalMilestone: (id) => {
+        removeFromSlice(set, 'milestones', id)
+        void deleteGoalMilestoneRow(id)
+      },
 
       addGoal: (goal) => {
         const tempId = uid('goal')
@@ -3102,6 +3112,7 @@ export const useStore = create<State>()(
             habits,
             subscriptions,
             goals,
+            goalMilestones,
             dogEntries,
             brainState,
             screenDays,
@@ -3118,6 +3129,7 @@ export const useStore = create<State>()(
             fetchHabits(),
             fetchSubscriptions(),
             fetchGoals(),
+            fetchGoalMilestones(),
             fetchDogEntries(),
             fetchBrainState(),
             fetchScreenDays(),
@@ -3176,6 +3188,7 @@ export const useStore = create<State>()(
             ...(habits.length > 0 && { habits }),
             ...(subscriptions.length > 0 && { subscriptions }),
             ...(goals.length > 0 && { goals }),
+            ...(goalMilestones.length > 0 && { milestones: goalMilestones }),
             ...(dogEntries.length > 0 && { dogEntries }),
             // Transition read: real task rows (tasks table) + whatever's still only
             // in brain_state.threads (derived-loop status overrides, and any
@@ -3303,6 +3316,7 @@ export const useStore = create<State>()(
           { table: 'habit_log', onChange: () => fetchHabits().then((d) => d.length > 0 && set({ habits: d })) },
           { table: 'cleaning_log', onChange: () => fetchCleaningLog().then((d) => set({ cleaningLog: d })) },
           { table: 'goals', onChange: () => fetchGoals().then((d) => d.length > 0 && set({ goals: d })) },
+          { table: 'goal_milestones', onChange: () => fetchGoalMilestones().then((d) => d.length > 0 && set({ milestones: d })) },
           { table: 'daily_checkin', onChange: () => fetchCheckins().then((d) => { set({ checkins: d }); get().recomputeBrain() }) },
           { table: 'notification_prefs', onChange: () => fetchNotificationPrefs().then((p) => set({ notificationPrefs: p })) },
           { table: 'brain_state', onChange: () => fetchBrainState().then((b) => set((s) => ({
