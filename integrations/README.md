@@ -44,6 +44,18 @@ maken niet uit. De verwachte tabs/kolommen + sheet-id properties staan boven in 
 - `weight-ingest` (`supabase/functions/weight-ingest/`) — weegschaal-app-notificatie (MacroDroid) →
   `health_body_metrics`, real-time. Experimenteel (notificatietekst niet geverifieerd), blijft de
   primaire gewicht-bron naast `health-ingest`. Setup: `macrodroid/weight-notifications.md`.
+- `claude-chat-ingest` (`supabase/functions/claude-chat-ingest/`) — ontvangt een samenvatting +
+  kernpunten van een Claude-gesprek van de `oslife-memory` MCP-server en logt die direct als een
+  `braindump_entries`-rij (embed + vault + cognee, zelfde best-effort verrijking als een Braindump-
+  capture). Setup: `claude-mcp/README.md`.
+
+## Claude MCP (`claude-mcp/`)
+
+Een losstaande MCP-server (`integrations/claude-mcp/`) die je rechtstreeks aan Claude Desktop /
+Claude Code koppelt (stdio), met één tool: `log_to_oslife_memory`. Claude roept 'm zelf aan
+tijdens een gesprek om een samenvatting + kernpunten naar `claude-chat-ingest` te sturen — geen
+Supabase-credentials in de MCP-server zelf, alleen de gedeelde `CLAUDE_INGEST_SECRET`. Zie
+`claude-mcp/README.md` voor de volledige setup.
 
 ## Finance dedup
 

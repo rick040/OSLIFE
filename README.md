@@ -74,6 +74,7 @@ ABN AMRO CSV (manual, in-app)    ─▶ finance_tx (deduped against the Betaling
 | Gewoonten · Doelen · Kyra · Abonnementen | in-app (handmatig) | app write-back | `habits`, `goals`, `dog_log`, `subscriptions` |
 | Kyra · wandelroutes | **standalone Android app** (`/android`) — auto-detects real walks (home-geofence / car-ride triggers) | `walk-ingest` | `walks`, `dog_log` |
 | Geheugen / Reflectie | afgeleid in-app | reflect engine | `brain_state` |
+| Claude-gesprekken → geheugen | **`oslife-memory` MCP-server** (`integrations/claude-mcp/`), rechtstreeks aan Claude Desktop/Code gekoppeld | `claude-chat-ingest` | `braindump_entries` |
 
 ### Native CRM (Projecten / Klanten)
 The CRM is a full project-manager built on Supabase — no external sync of any kind.
@@ -168,6 +169,17 @@ separate `vault-inbox` bucket that a synced Obsidian "inbox" folder feeds — `v
 (pg_cron, same shared-secret shape as `notify-tick`) turns each new note into a
 `braindump_entries` row and fires `braindump-ingest` on it, exactly like pasting the note
 into HEYRA chat, then moves the file under `processed/` so it's never re-ingested.
+
+### Claude MCP: log any Claude chat into OSLIFE's memory
+A small custom [MCP](https://modelcontextprotocol.io) server (`integrations/claude-mcp/`) connects
+directly to Claude Desktop/Claude Code over stdio and exposes one tool, `log_to_oslife_memory`.
+Ask Claude (in any conversation, not just this repo) to remember something, and it calls the tool
+with a summary + key points it writes itself; that hits the `claude-chat-ingest` edge function
+(shared-secret auth, service-role, no user session needed) and lands as a `braindump_entries` row —
+same destination as an in-app Braindump capture, so it shows up in the Capture grid, feeds
+`search_memory()`'s recall, mirrors into the Obsidian vault, and reaches cognee. It can optionally
+flag a reusable insight for the Kennisbank (`wiki_entries`, `status='suggested'`), same shape as
+braindump-ingest's own wiki suggestion. See `integrations/claude-mcp/README.md` for setup.
 
 ### Finance dedup
 The Betalingen sheet and the in-app ABN AMRO CSV import both write `finance_tx` with the same
