@@ -179,7 +179,10 @@ no user session needed). It lands as a `braindump_entries` row — same destinat
 Braindump capture, so it shows up in the Capture grid, feeds `search_memory()`'s recall, mirrors
 into the Obsidian vault, and reaches cognee. It can optionally flag a reusable insight for the
 Kennisbank (`wiki_entries`, `status='suggested'`), same shape as braindump-ingest's own wiki
-suggestion. See `.claude/skills/oslife-remember/SKILL.md` for setup.
+suggestion. See `.claude/skills/oslife-remember/SKILL.md` for setup. Plain claude.ai chat has no
+Bash tool, so that surface instead uses a **Zapier Skill** ("log to oslife memory", set up via the
+Zapier connector) that does the identical POST through a `Webhooks by Zapier: Custom Request`
+action — no separate setup beyond the one already-connected Zapier account.
 
 ### Finance dedup
 The Betalingen sheet and the in-app ABN AMRO CSV import both write `finance_tx` with the same

@@ -1,7 +1,7 @@
 ---
 name: oslife-remember
 description: Logs a summary and key points of the current (or a recently discussed) conversation into OSLIFE — Rick's personal life-management system backed by Supabase — so it becomes part of his long-term memory and shows up in search, the Obsidian vault, and the knowledge graph. Use this whenever Rick asks Claude to "remember this", "log this to OSLIFE", "save this to my memory", "add this to my life OS", "put this in OSLIFE", or otherwise clearly wants a decision/plan/fact/insight from the conversation persisted beyond this chat — not for routine or throwaway exchanges. Works in any conversation, not just chats about the OSLIFE codebase itself.
-compatibility: Requires a Bash/terminal tool (curl) and the OSLIFE_CLAUDE_INGEST_SECRET environment variable. Not usable in a pure chat surface with no code execution.
+compatibility: Requires a Bash/terminal tool (curl) and the OSLIFE_CLAUDE_INGEST_SECRET environment variable. On a Claude surface with no code execution (plain claude.ai chat), use the "log to oslife memory" Zapier Skill instead — see the "No Bash available" section below.
 ---
 
 # OSLIFE remember
@@ -11,6 +11,16 @@ OSLIFE is Rick's personal life-management app: one accumulating memory over a Su
 graph). This skill gives Claude a way to write into that memory directly from any conversation —
 no MCP server, no client config — by composing the note itself and posting it to a small ingest
 endpoint with a bundled script.
+
+## No Bash available? Use the Zapier skill instead
+
+Plain claude.ai chat (web/mobile/desktop with no code execution) can't run the bash script below.
+For that case, a Zapier Skill named **"log to oslife memory"** does the same job via Zapier's
+connector (already set up on Rick's account — Zapier is connected, and the skill has the
+`claude-chat-ingest` URL and the shared secret locked in as fixed values). If Bash isn't available,
+call `get_zapier_skill("log to oslife memory")` and follow its instructions instead of the steps
+below — same fields, same endpoint, just executed through a `Webhooks by Zapier: Custom Request`
+action instead of `curl`. Everything in "What to write" above still applies either way.
 
 ## When to use this
 
