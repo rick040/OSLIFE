@@ -8,6 +8,7 @@
 
 import { TODAY, daysBetween, fmtDate } from '../../domains'
 import { renderPersonalFacts, renderLearnings } from '../learning'
+import { renderRegistrySnapshot } from '../contextRegistry'
 import { searchMemory } from '../../lib/supabase'
 import { cogneeSearch } from './cognee'
 import type { MemoryHit } from '../../types'
@@ -23,62 +24,19 @@ export function buildMemorySnapshot(store: Store, opts: { days?: number } = {}):
   const horizon = opts.days ?? 7
   const parts: string[] = [`Vandaag: ${fmtDate(TODAY)}.`]
 
-  const openThreads = store.threads.filter((t) => t.status === 'open')
-  const soonThreads = openThreads.filter((t) => withinDays(t.due, horizon))
-  parts.push(
-    `Open loops (${openThreads.length} totaal): ${
-      openThreads.slice(0, 10).map((t) => `${t.title}${t.due ? ` (due ${fmtDate(t.due)})` : ''}`).join('; ') || 'geen'
-    }`,
-  )
-  if (soonThreads.length) {
-    parts.push(`Loops met deadline binnen ${horizon} dagen: ${soonThreads.map((t) => `${t.title} — ${fmtDate(t.due!)}`).join('; ')}`)
-  }
-
-  const liveProjects = store.projects.filter((p) => p.status !== 'done')
-  parts.push(
-    `Lopende projecten (${liveProjects.length}): ${
-      liveProjects.slice(0, 10).map((p) => `${p.name} (${p.status}${p.deadline ? `, deadline ${fmtDate(p.deadline)}` : ''})`).join('; ') || 'geen'
-    }`,
-  )
-
-  const dueMilestones = store.milestones.filter((m) => !m.done && withinDays(m.due, horizon))
-  if (dueMilestones.length) {
-    parts.push(`Mijlpalen binnen ${horizon} dagen: ${dueMilestones.map((m) => `${m.title} — ${fmtDate(m.due!)}`).join('; ')}`)
-  }
-
-  const duePayments = store.payments.filter((p) => p.status === 'open' && withinDays(p.due, horizon))
-  if (duePayments.length) {
-    parts.push(
-      `Betalingen binnen ${horizon} dagen: ${duePayments
-        .map((p) => `${p.payee} €${p.amount} (${p.direction === 'incoming' ? 'te ontvangen' : 'te betalen'}, ${fmtDate(p.due!)})`)
-        .join('; ')}`,
-    )
-  }
+  // Per-table lines (open loops, projects, clients, project tasks/milestones/
+  // invoices, goals, personal contacts, payments, habits, North Star
+  // milestones, braindumps) now come from one place — contextRegistry.ts —
+  // instead of each being its own hand-written block here. Adding a new
+  // table to this snapshot is a registry entry, not an edit to this function.
+  parts.push(...renderRegistrySnapshot(store, horizon))
 
   const upcomingMeetings = store.meetingDays.filter((m) => withinDays(m.date, horizon))
   if (upcomingMeetings.length) {
     parts.push(`Agenda binnen ${horizon} dagen: ${upcomingMeetings.map((m) => `${fmtDate(m.date)}: ${m.count} meeting(s)`).join('; ')}`)
   }
 
-  // Recent braindumps — things Rick shared/captured (links, posts, PDFs, video
-  // transcripts) distilled to lightweight notes. Lets HEYRA answer "wat had ik
-  // ook alweer opgeslagen over X". Only ready entries; capped for token budget.
-  const braindumps = (store.braindumpEntries ?? []).filter((e) => e.status === 'ready' && (e.summary || e.title))
-  if (braindumps.length) {
-    parts.push(
-      `Recente braindumps (${braindumps.length}): ${braindumps
-        .slice(0, 12)
-        .map((e) => `${e.title || e.summary}${e.tags.length ? ` [${e.tags.slice(0, 3).join(', ')}]` : ''}`)
-        .join('; ')}`,
-    )
-  }
-
   if (store.nudge?.text) parts.push(`Huidige nudge: ${store.nudge.text}`)
-
-  if (store.habits.length) {
-    const doneToday = store.habits.filter((h) => h.doneToday).length
-    parts.push(`Gewoontes: ${doneToday}/${store.habits.length} vandaag afgerond.`)
-  }
 
   // Durable facts HEYRA has learned about Rick in earlier conversations — the
   // "learn as we speak" layer folded back in so answers stay personal across
