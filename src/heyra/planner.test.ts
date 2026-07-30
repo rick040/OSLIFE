@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ruleBasedDayPlan, weekDates, dayBounds, PEAK_START, PEAK_END, type PlannerContext } from './planner'
+import { ruleBasedDayPlan, weekDates, dayBounds, inferHabitTiming, PEAK_START, PEAK_END, type PlannerContext } from './planner'
 import type { PlanBlock, Habit, Thread, DogReminder, Payment } from '../types'
 
 const toMin = (t: string) => {
@@ -110,6 +110,23 @@ describe('ruleBasedDayPlan', () => {
     expect(titles).toEqual(expect.arrayContaining(['✅ Mediteren', '✅ Lezen']))
   })
 
+  // Regression: a habit named for a bedtime routine used to get the exact
+  // same treatment as a morning one — scheduled right after wake-up, e.g.
+  // 06:30, regardless of what it actually was.
+  it('schedules an evening/bedtime-named habit late in the day, not right after waking', () => {
+    const plan = ruleBasedDayPlan(WEEKDAY, ctx([], [habit('Voor middernacht naar bed')]))
+    const block = plan.find((b) => b.title === '✅ Voor middernacht naar bed')
+    expect(block).toBeTruthy()
+    expect(toMin(block!.start)).toBeGreaterThanOrEqual(toMin('18:00'))
+  })
+
+  it('leaves a habit with no timing signal in its name on the original morning default', () => {
+    const plan = ruleBasedDayPlan(WEEKDAY, ctx([], [habit('Mediteren')]))
+    const block = plan.find((b) => b.title === '✅ Mediteren')
+    expect(block).toBeTruthy()
+    expect(toMin(block!.start)).toBeLessThan(toMin('09:00'))
+  })
+
   it('rotates the focus target across days instead of repeating the same one', () => {
     const threads = [thread('t1', 'Factuur Acme', '2026-07-06'), thread('t2', 'Offerte Bolt', '2026-07-10')]
     const day0 = ruleBasedDayPlan(WEEKDAY, ctx([], [], { threads }), 0)
@@ -138,6 +155,26 @@ describe('ruleBasedDayPlan', () => {
   it('always proposes a daily walk even with no dog reminders', () => {
     const plan = ruleBasedDayPlan(WEEKDAY, ctx())
     expect(plan.some((b) => b.title.toLowerCase().includes('wandeling'))).toBe(true)
+  })
+})
+
+describe('inferHabitTiming', () => {
+  it('reads evening/bedtime signal from the habit name', () => {
+    expect(inferHabitTiming('Voor middernacht naar bed')).toBe('evening')
+    expect(inferHabitTiming('Avondwandeling')).toBe('evening')
+  })
+
+  it('reads midday signal from the habit name', () => {
+    expect(inferHabitTiming('Lunchwandeling')).toBe('midday')
+  })
+
+  it('reads morning signal from the habit name', () => {
+    expect(inferHabitTiming('Ochtendmeditatie')).toBe('morning')
+  })
+
+  it('returns null when the name carries no timing signal', () => {
+    expect(inferHabitTiming('Mediteren')).toBeNull()
+    expect(inferHabitTiming('Lezen')).toBeNull()
   })
 })
 

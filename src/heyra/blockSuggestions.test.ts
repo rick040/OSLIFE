@@ -56,6 +56,21 @@ describe('suggestTodayBlocks', () => {
     expect(out.map((s) => s.title)).toEqual(expect.arrayContaining(['🧘 Mediteren', '📖 Lezen']))
   })
 
+  // Regression: a habit used to always be proposed at "right now" — so
+  // checking at 08:00 in the morning, a bedtime-named habit ("voor
+  // middernacht naar bed") got suggested at 08:00 too, the same as any other
+  // open habit, instead of near the end of the day.
+  it('proposes an evening/bedtime-named habit late in the day even when checked in the morning', () => {
+    const out = suggestTodayBlocks(
+      baseCtx({
+        nowMinutes: toMin('08:00'),
+        habitsOpen: [{ id: 'h1', name: 'Voor middernacht naar bed', emoji: '🛏️', streak: 2 }],
+      }),
+    )
+    expect(out).toHaveLength(1)
+    expect(toMin(out[0].start)).toBeGreaterThanOrEqual(toMin('18:00'))
+  })
+
   it('skips a dog reminder already covered by an existing walk block', () => {
     const out = suggestTodayBlocks(
       baseCtx({

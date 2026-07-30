@@ -94,6 +94,27 @@ function isWeekend(date: string): boolean {
   return day === 0 || day === 6
 }
 
+// A habit used to always land right after wake-up regardless of what it
+// actually was — the exact bug reported: a habit named for a bedtime routine
+// ("voor middernacht naar bed") got scheduled at 11:00 or just after midday,
+// identical treatment to "ochtendmeditatie", because nothing ever read the
+// habit's own name for when it belongs. Same hand-curated NL+EN keyword-list
+// approach as activityAnalyzer.ts/understand.ts elsewhere in this app —
+// transparent and instant, no brain call needed for the rule-based fallback.
+const EVENING_HABIT_WORDS = [
+  'avond', 'nacht', 'bed', 'slapen', 'slaap', 'bedtime', 'evening', 'night', 'sleep', 'wind-down', 'winddown',
+]
+const MIDDAY_HABIT_WORDS = ['middag', 'lunch', 'afternoon', 'noon']
+const MORNING_HABIT_WORDS = ['ochtend', 'ontbijt', 'wakker', 'morning', 'breakfast', 'wake']
+
+export function inferHabitTiming(name: string): 'morning' | 'midday' | 'evening' | null {
+  const t = name.toLowerCase()
+  if (EVENING_HABIT_WORDS.some((w) => t.includes(w))) return 'evening'
+  if (MIDDAY_HABIT_WORDS.some((w) => t.includes(w))) return 'midday'
+  if (MORNING_HABIT_WORDS.some((w) => t.includes(w))) return 'morning'
+  return null
+}
+
 /** Every real candidate for the peak focus block, most urgent first — the planner rotates through these across the week instead of repeating one target every day. */
 function focusTargets(ctx: PlannerContext): { title: string; domain: Domain }[] {
   const open = ctx.threads.filter((t) => t.status === 'open').sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'))
@@ -149,17 +170,29 @@ export function ruleBasedDayPlan(date: string, ctx: PlannerContext, dateIndex = 
 
   const candidates: Candidate[] = []
 
-  // Every open habit gets its own short block, staggered right after waking
-  // — not one generic "Ochtendroutine" line bundling the first three names.
+  // Every open habit gets its own short block, placed by what it actually is
+  // — not staggered right after waking regardless of content. A habit whose
+  // own name reads as evening/bedtime (inferHabitTiming) lands late in the
+  // day instead of getting the same morning slot as "ochtendmeditatie".
   ctx.habits.slice(0, 5).forEach((h, i) => {
+    const timing = inferHabitTiming(h.name)
+    const pref =
+      timing === 'evening' ? dayEndMin - 90 + i * 15 :
+      timing === 'midday' ? Math.round((peakEndMin + dayEndMin) / 2) + i * 15 :
+      dayStartMin + 30 + i * 15 // morning, or no timing signal in the name — original default
+    const streakNote = h.streak > 0 ? `houd de reeks van ${h.streak} dag(en) erin` : 'elke dag op zijn plek'
     candidates.push({
       key: `habit-${h.id}`,
       title: `${h.emoji} ${h.name}`,
       domain: 'personal',
       kind: 'routine',
-      rationale: h.streak > 0 ? `Vaste gewoonte — houd de reeks van ${h.streak} dag(en) erin.` : 'Vaste gewoonte, elke dag op zijn plek.',
+      rationale: timing === 'evening'
+        ? `Vaste avondgewoonte, laat in de dag — ${streakNote}.`
+        : timing === 'midday'
+          ? `Vaste gewoonte rond het middaguur — ${streakNote}.`
+          : `Vaste gewoonte — ${streakNote}.`,
       durationMin: 15,
-      pref: dayStartMin + 30 + i * 15,
+      pref,
       score: 90 - i,
     })
   })
@@ -342,6 +375,7 @@ Regels:
 - Overlap NOOIT met de bestaande afspraken die je per dag krijgt.
 - Bouw een menselijk ritme: ochtendroutine, focus, pauzes, lunch, shallow werk (mail/klanten) in het middagdal, beweging, en een wind-down richting bedtijd.
 - Verwerk ELKE gewoonte als een EIGEN kort blok (kind "routine") — bundel ze niet tot één generieke regel.
+- Lees wat een gewoonte-naam zelf zegt over WANNEER hij hoort, en plan 'm daar, niet automatisch in de ochtendroutine: een naam als "voor middernacht naar bed" of "avondwandeling" hoort laat op de dag, richting de wind-down — niet om 11:00 of net na de middag. Alleen als de naam geen tijdsindicatie geeft, mag hij in de ochtendroutine.
 - Verschillende dagen mogen verschillende openstaande taken/doelen als focus nemen — herhaal niet elke dag exact hetzelfde diepe-werk-blok.
 - De "nu openstaand" signalen (betalingen/mail/klant/Kyra) horen alleen bij de eerstkomende dag — verzin ze niet voor latere dagen.
 - Weekenddagen lichter dan werkdagen: geen focusblokken, wel ruimte voor herstel.
