@@ -88,6 +88,36 @@ export function resolveTask(text: string, store: Store): ResolveResult {
   return pickWinner(ranked)
 }
 
+/** Resolves an open project-task mention in free text — the direct-targeting counterpart to log_project_activity's fuzzy analyzeActivity() match, for when Rick names a task explicitly enough that a confident direct resolution beats the safer fuzzy fallback. */
+export function resolveProjectTask(text: string, store: Store): ResolveResult {
+  const keywords = extractKeywords(text)
+  if (!keywords.length) return { entity: null, candidates: [] }
+  const ranked = store.projectTasks
+    .filter((t) => !t.done)
+    .map((t) => ({
+      ref: { table: 'project_tasks' as const, id: t.id, label: t.name },
+      score: matchScore(keywords, t.name),
+    }))
+    .filter((r) => r.score >= MIN_SCORE)
+    .sort((a, b) => b.score - a.score)
+  return pickWinner(ranked)
+}
+
+/** Resolves an open project-milestone mention in free text. */
+export function resolveProjectMilestone(text: string, store: Store): ResolveResult {
+  const keywords = extractKeywords(text)
+  if (!keywords.length) return { entity: null, candidates: [] }
+  const ranked = store.projectMilestones
+    .filter((m) => !m.done)
+    .map((m) => ({
+      ref: { table: 'project_milestones' as const, id: m.id, label: m.title },
+      score: matchScore(keywords, m.title),
+    }))
+    .filter((r) => r.score >= MIN_SCORE)
+    .sort((a, b) => b.score - a.score)
+  return pickWinner(ranked)
+}
+
 /**
  * Resolves an invoice scoped to an ALREADY-RESOLVED project — never scores
  * across every invoice in the app, so it can't compound with project

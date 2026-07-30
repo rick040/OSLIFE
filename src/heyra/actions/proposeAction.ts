@@ -18,6 +18,7 @@
 
 import { askBrainTool, type BrainTool } from '../brainClient'
 import { resolveProject, resolveClient, resolveTask, resolveInvoiceForProject } from './resolveEntity'
+import { resolveByRegistryKey } from '../contextRegistry'
 import type { useStore } from '../../store'
 import type { ActionCard, ActionField, ActionKind, CardTemplate, EntityRef } from './types'
 
@@ -27,12 +28,13 @@ type Store = ReturnType<typeof useStore.getState>
 const PROPOSABLE_KINDS = [
   'create_task', 'update_task', 'complete_task',
   'update_project_status', 'log_project_activity',
+  'complete_project_task', 'update_project_task', 'update_project_milestone',
   'mark_invoice_paid', 'update_invoice_status', 'create_invoice',
   'create_client', 'update_client',
 ] as const satisfies readonly ActionKind[]
 type ProposableKind = (typeof PROPOSABLE_KINDS)[number]
 
-type EntityTable = 'project' | 'client' | 'task' | 'invoice' | 'none'
+type EntityTable = 'project' | 'client' | 'task' | 'invoice' | 'project_task' | 'project_milestone' | 'none'
 
 /**
  * Which table each kind's entity lives in is intrinsic to the action itself
@@ -47,6 +49,9 @@ const KIND_ENTITY_TABLE: Partial<Record<ProposableKind, EntityTable>> = {
   complete_task: 'task',
   update_project_status: 'project',
   log_project_activity: 'project',
+  complete_project_task: 'project_task',
+  update_project_task: 'project_task',
+  update_project_milestone: 'project_milestone',
   mark_invoice_paid: 'invoice',
   update_invoice_status: 'invoice',
   create_invoice: 'project', // the project the new invoice belongs to
@@ -65,7 +70,7 @@ const PROPOSE_ACTION_TOOL: BrainTool = {
       description: { type: 'string', description: 'One short Dutch sentence describing what will happen' },
       entityMention: {
         type: 'string',
-        description: 'The exact free-text name Rick used for the project/client/task/invoice this action targets — verbatim from his message, never an id. Empty string for create_task/create_client, which have no target.',
+        description: 'The exact free-text name Rick used for the project/client/task/invoice/project-task/project-milestone this action targets — verbatim from his message, never an id. Empty string for create_task/create_client, which have no target.',
       },
       values: {
         type: 'object',
@@ -79,7 +84,9 @@ const PROPOSE_ACTION_TOOL: BrainTool = {
 
 const SYSTEM = `Je bent de actie-detectielaag van HEYRA (OSLIFE). Rick praat tegen je; als hij iets meldt dat een wijziging in zijn eigen data betekent — een factuur is betaald, een taak is klaar, een project is verplaatst naar een andere status, een nieuwe klant of taak moet worden aangemaakt, OF een voortgangsupdate op een lopend project (bv. "ik heb de preview naar de klant gestuurd", "het logo is af", "het telefoontje met Kim is geweest") — roep dan propose_action aan met de juiste kind.
 
-Voor een voortgangsupdate die niet expliciet een factuur/klant/taakveld noemt: gebruik kind "log_project_activity". entityMention is dan de naam van het PROJECT (niet de taak of het losse woord uit de update), values.body is Ricks update in zijn eigen woorden (bijna letterlijk overgenomen) — het systeem herkent daarna zelf of dit een bestaande taak of mijlpaal van dat project afrondt, jij hoeft dat niet zelf te bepalen.
+Als Rick EXPLICIET één specifieke projecttaak of -mijlpaal noemt (een naam die duidelijk overeenkomt met een bestaande taak/mijlpaal van dat project, niet zomaar een algemene opmerking) en zegt dat die klaar is of aangepast moet worden: gebruik "complete_project_task" (taak is klaar), "update_project_task" (titel/datum/prioriteit van een taak aanpassen), of "update_project_milestone" (voortgang % of afronden van een mijlpaal). entityMention is dan de naam van de TAAK/MIJLPAAL zelf, niet het project. Bij twijfel welke taak/mijlpaal precies bedoeld wordt, of als het gewoon een algemene update is die niet overduidelijk één bestaande taak afvinkt: gebruik in plaats daarvan "log_project_activity" — dat is de veiligere route, want die zoekt zelf (en alleen bij een duidelijke match) naar de juiste taak/mijlpaal in plaats van er zelf een te moeten raden.
+
+Voor een voortgangsupdate die niet expliciet een factuur/klant/taakveld noemt EN niet duidelijk één specifieke taak/mijlpaal is: gebruik kind "log_project_activity". entityMention is dan de naam van het PROJECT (niet de taak of het losse woord uit de update), values.body is Ricks update in zijn eigen woorden (bijna letterlijk overgenomen) — het systeem herkent daarna zelf of dit een bestaande taak of mijlpaal van dat project afrondt, jij hoeft dat niet zelf te bepalen.
 
 Voor de overige kinds: entityMention is letterlijk de naam die Rick noemt voor het project/klant/taak/factuur, en values bevat alleen de nieuwe waarden. Verzin nooit een bedrag, datum of status die niet expliciet genoemd is. Als het bericht geen concrete actie beschrijft, roep de tool niet aan.`
 
@@ -183,6 +190,39 @@ function buildFields(
       if (typeof body !== 'string' || !body.trim()) return null
       return [field('body', 'Activiteit', 'longtext', body)]
     }
+    case 'complete_project_task': {
+      if (!entity) return null
+      const t = store.projectTasks.find((x) => x.id === entity.id)
+      if (!t) return null
+      // previousValue/editable mirror complete_task's pattern exactly — the
+      // dispatch handler (registry.ts) calls store.toggleProjectTask(id, true),
+      // which itself handles recurrence (a recurring task rolls its due date
+      // forward instead of just flipping done), so this card only confirms
+      // the intent, never the mechanics.
+      return [field('done', 'Status', 'boolean', true, { previousValue: t.done, editable: false })]
+    }
+    case 'update_project_task': {
+      if (!entity) return null
+      const t = store.projectTasks.find((x) => x.id === entity.id)
+      if (!t) return null
+      const fields: ActionField[] = []
+      if ('name' in values) fields.push(field('name', 'Titel', 'text', values.name, { previousValue: t.name }))
+      if ('dueDate' in values) fields.push(field('dueDate', 'Datum', 'date', values.dueDate, { previousValue: t.dueDate }))
+      if ('priority' in values) {
+        fields.push(field('priority', 'Prioriteit', 'select', values.priority, { previousValue: t.priority, options: ['High', 'Medium', 'Low'] }))
+      }
+      return fields.length ? fields : null
+    }
+    case 'update_project_milestone': {
+      if (!entity) return null
+      const m = store.projectMilestones.find((x) => x.id === entity.id)
+      if (!m) return null
+      const fields: ActionField[] = []
+      if ('done' in values) fields.push(field('done', 'Status', 'boolean', values.done, { previousValue: m.done }))
+      if ('progress' in values) fields.push(field('progress', 'Voortgang', 'number', values.progress, { previousValue: m.progress }))
+      if ('dueDate' in values) fields.push(field('dueDate', 'Datum', 'date', values.dueDate, { previousValue: m.dueDate }))
+      return fields.length ? fields : null
+    }
     case 'mark_invoice_paid': {
       if (!entity) return null
       const inv = store.projectInvoices.find((x) => x.id === entity.id)
@@ -237,12 +277,21 @@ function buildFields(
   }
 }
 
-/** Resolves the entity a proposal refers to, hierarchically for invoices (project first, then invoices scoped to it — see resolveEntity.ts). */
+/**
+ * Resolves the entity a proposal refers to, hierarchically for invoices
+ * (project first, then invoices scoped to it — see resolveEntity.ts).
+ * project_task/project_milestone go through the context registry
+ * (contextRegistry.ts) instead of another hand-written branch here — see
+ * that file's header comment for why project/client/task/invoice stay
+ * hand-wired while these two don't.
+ */
 function resolveMentionedEntity(table: EntityTable, mention: string, store: Store): { entity: EntityRef | null; candidates: EntityRef[] } {
   if (table === 'none' || !mention.trim()) return { entity: null, candidates: [] }
   if (table === 'project') return resolveProject(mention, store)
   if (table === 'client') return resolveClient(mention, store)
   if (table === 'task') return resolveTask(mention, store)
+  if (table === 'project_task') return resolveByRegistryKey('project_tasks', mention, store) ?? { entity: null, candidates: [] }
+  if (table === 'project_milestone') return resolveByRegistryKey('project_milestones', mention, store) ?? { entity: null, candidates: [] }
   // invoice: resolve the project first so invoice ambiguity never compounds with project ambiguity.
   const project = resolveProject(mention, store)
   if (project.entity) return resolveInvoiceForProject(mention, project.entity.id, store)

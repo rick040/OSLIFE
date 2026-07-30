@@ -8,6 +8,7 @@ type Store = ReturnType<typeof useStore.getState>
 const ALL_KINDS: ActionKind[] = [
   'create_task', 'update_task', 'complete_task',
   'update_project_status', 'log_project_activity',
+  'complete_project_task', 'update_project_task', 'update_project_milestone',
   'mark_invoice_paid', 'update_invoice_status', 'create_invoice',
   'create_client', 'update_client', 'client_intake', 'capture_idea',
   'search_result', 'chart', 'project_summary',
@@ -80,5 +81,38 @@ describe('dispatchAction', () => {
     const result = await dispatchAction(store, card('client_intake'))
     expect(result.ok).toBe(false)
     expect(result.error).toContain('client_intake')
+  })
+
+  it('completes a project task via toggleProjectTask, not a raw done patch — preserves recurrence handling', async () => {
+    const toggleProjectTask = vi.fn()
+    const store = { toggleProjectTask } as unknown as Store
+    const c = card('complete_project_task', { entity: { table: 'project_tasks', id: 't1', label: 'Stuur preview' } })
+    const result = await dispatchAction(store, c)
+    expect(result.ok).toBe(true)
+    expect(toggleProjectTask).toHaveBeenCalledWith('t1', true)
+  })
+
+  it('updates a project task via the new store.updateProjectTask mutator', async () => {
+    const updateProjectTask = vi.fn()
+    const store = { updateProjectTask } as unknown as Store
+    const c = card('update_project_task', {
+      entity: { table: 'project_tasks', id: 't1', label: 'Stuur preview' },
+      fields: [field('dueDate', '2026-08-01')],
+    })
+    const result = await dispatchAction(store, c)
+    expect(result.ok).toBe(true)
+    expect(updateProjectTask).toHaveBeenCalledWith('t1', expect.objectContaining({ dueDate: '2026-08-01' }))
+  })
+
+  it('updates a project milestone via the existing store.updateMilestone mutator', async () => {
+    const updateMilestone = vi.fn()
+    const store = { updateMilestone } as unknown as Store
+    const c = card('update_project_milestone', {
+      entity: { table: 'project_milestones', id: 'm1', label: 'Launch' },
+      fields: [field('progress', 0.8)],
+    })
+    const result = await dispatchAction(store, c)
+    expect(result.ok).toBe(true)
+    expect(updateMilestone).toHaveBeenCalledWith('m1', expect.objectContaining({ progress: 0.8 }))
   })
 })

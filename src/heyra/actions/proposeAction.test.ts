@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { proposeAction } from './proposeAction'
 import { askBrainTool } from '../brainClient'
 import type { useStore } from '../../store'
-import type { Project, Invoice } from '../../types'
+import type { Project, Invoice, ProjectTask, ProjectMilestone } from '../../types'
 import type { CardTemplate } from './types'
 
 vi.mock('../brainClient', () => ({ askBrainTool: vi.fn() }))
@@ -13,11 +13,14 @@ const mockAskBrainTool = vi.mocked(askBrainTool)
 function store(partial: {
   projects?: Project[]
   projectInvoices?: Invoice[]
+  projectTasks?: ProjectTask[]
+  projectMilestones?: ProjectMilestone[]
   cardTemplates?: CardTemplate[]
   recordCardTemplateUsage?: Store['recordCardTemplateUsage']
 } = {}): Store {
   return {
     projects: [], projectInvoices: [], clients: [], threads: [],
+    projectTasks: [], projectMilestones: [],
     cardTemplates: [], recordCardTemplateUsage: vi.fn(),
     ...partial,
   } as unknown as Store
@@ -143,5 +146,72 @@ describe('proposeAction', () => {
     const record = vi.fn()
     await proposeAction('bel de klant terug', store({ recordCardTemplateUsage: record }))
     expect(record).not.toHaveBeenCalled()
+  })
+
+  it('resolves and completes a project task directly — the entity-resolution surface the context registry now provides', async () => {
+    mockAskBrainTool.mockResolvedValue({
+      name: 'propose_action',
+      input: {
+        kind: 'complete_project_task', title: 'Taak afronden',
+        entityMention: 'Stuur nieuwe preview naar Kim', values: {},
+      },
+    })
+    const s = store({
+      projects: [project({ id: 'p1', name: 'Synck Rebranding' })],
+      projectTasks: [{ id: 't1', projectId: 'p1', name: 'Stuur nieuwe preview naar Kim', done: false } as ProjectTask],
+    })
+    const card = await proposeAction('de preview naar kim is klaar', s)
+    expect(card).not.toBeNull()
+    expect(card?.entity).toEqual({ table: 'project_tasks', id: 't1', label: 'Stuur nieuwe preview naar Kim' })
+    const done = card?.fields.find((f) => f.key === 'done')
+    expect(done?.value).toBe(true)
+    expect(done?.previousValue).toBe(false)
+    expect(card?.mutating).toBe(true)
+  })
+
+  it('builds an update_project_task diff against the live row, never a model-guessed current value', async () => {
+    mockAskBrainTool.mockResolvedValue({
+      name: 'propose_action',
+      input: {
+        kind: 'update_project_task', title: 'Taak bijwerken',
+        entityMention: 'preview naar Kim', values: { dueDate: '2026-08-01' },
+      },
+    })
+    const s = store({
+      projects: [project({ id: 'p1' })],
+      projectTasks: [{ id: 't1', projectId: 'p1', name: 'Stuur preview naar Kim', done: false, dueDate: '2026-07-25' } as ProjectTask],
+    })
+    const card = await proposeAction('zet de preview taak naar kim door naar 1 augustus', s)
+    const dueDate = card?.fields.find((f) => f.key === 'dueDate')
+    expect(dueDate?.value).toBe('2026-08-01')
+    expect(dueDate?.previousValue).toBe('2026-07-25')
+  })
+
+  it('builds an update_project_milestone card against the live row', async () => {
+    mockAskBrainTool.mockResolvedValue({
+      name: 'propose_action',
+      input: {
+        kind: 'update_project_milestone', title: 'Mijlpaal bijwerken',
+        entityMention: 'Launch', values: { progress: 0.8 },
+      },
+    })
+    const s = store({
+      projects: [project({ id: 'p1' })],
+      projectMilestones: [{ id: 'm1', projectId: 'p1', title: 'Launch', dueDate: null, progress: 0.5, done: false } as ProjectMilestone],
+    })
+    const card = await proposeAction('launch mijlpaal staat op 80%', s)
+    expect(card?.entity).toEqual({ table: 'project_milestones', id: 'm1', label: 'Launch' })
+    const progress = card?.fields.find((f) => f.key === 'progress')
+    expect(progress?.value).toBe(0.8)
+    expect(progress?.previousValue).toBe(0.5)
+  })
+
+  it('returns null for complete_project_task when no matching project task exists', async () => {
+    mockAskBrainTool.mockResolvedValue({
+      name: 'propose_action',
+      input: { kind: 'complete_project_task', title: 'Taak afronden', entityMention: 'onbekende taak', values: {} },
+    })
+    const result = await proposeAction('onbekende taak is klaar', store())
+    expect(result).toBeNull()
   })
 })

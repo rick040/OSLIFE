@@ -14,12 +14,17 @@
 // mechanism; it's the one place that says what SHOULD be read, so that
 // decision lives in one auditable list instead of nowhere in particular.
 //
-// Scope of this first wave: the snapshot (buildMemorySnapshot) and search
-// (buildSearchCard) surfaces only. proposeAction()'s entity resolution
-// (resolveEntity.ts) is NOT migrated here yet — project_tasks/project_
-// milestones still can't be targeted by a chat-driven action beyond what
-// log_project_activity's analyzeActivity() already resolves internally.
-// That's a deliberate, separate follow-up, not an oversight.
+// Scope: the snapshot (buildMemorySnapshot), search (buildSearchCard) and,
+// as of the entity-resolution surface below, proposeAction()'s targeting
+// (resolveEntity.ts) — but only for project_tasks/project_milestones so
+// far. The four resolvers that already worked (project/client/task/invoice,
+// still hand-wired in proposeAction.ts) are deliberately NOT migrated in
+// this pass — invoice resolution in particular is genuinely hierarchical
+// (scoped to an already-resolved project) and doesn't fit this registry's
+// flat (mention, store) => ResolveResult shape, and the other three already
+// work and carry real test coverage, so re-routing them here would be risk
+// without benefit. project_tasks/project_milestones had no resolver at all
+// before this, so there's nothing working to regress.
 //
 // tier is REQUIRED on every entry (no default) so a new source can't quietly
 // skip the privacy gate the way most non-braindump/interaction/summaries
@@ -29,10 +34,11 @@
 import type { useStore } from '../store'
 import type { Domain } from '../types'
 import { TODAY, daysBetween, fmtDate } from '../domains'
+import { resolveProjectTask, resolveProjectMilestone, type ResolveResult } from './actions/resolveEntity'
 
 type Store = ReturnType<typeof useStore.getState>
 
-export type ContextSurface = 'snapshot' | 'search'
+export type ContextSurface = 'snapshot' | 'search' | 'entity-resolution'
 
 /** One row this entry contributes to buildSearchCard()'s keyword match. cards.ts owns the actual scoring (matchScore) — this only declares WHAT to search, not HOW, so there's one scoring algorithm, not one per entry. */
 export interface SearchableRow {
@@ -58,6 +64,8 @@ export interface ContextEntry {
   snapshot?: (store: Store, days: number) => string[]
   /** Rows to feed into buildSearchCard()'s keyword match. */
   search?: (store: Store) => SearchableRow[]
+  /** Resolves a free-text mention against this entry's rows for proposeAction() — see actions/resolveEntity.ts. Only entries a chat action can actually target declare this. */
+  resolve?: (mention: string, store: Store) => ResolveResult
 }
 
 function withinDays(date: string | null | undefined, days: number): boolean {
@@ -151,7 +159,11 @@ export const CONTEXT_REGISTRY: ContextEntry[] = [
     tier: 'normaal',
     // NEW — the exact gap behind the "Ik heb de nieuwe preview gestuurd naar
     // Kim" bug: chat grounding had no idea this table existed at all.
-    surfaces: ['snapshot', 'search'],
+    // entity-resolution: lets a chat action directly target one task
+    // (complete_project_task/update_project_task) instead of relying only
+    // on log_project_activity's fuzzy analyzeActivity() match.
+    surfaces: ['snapshot', 'search', 'entity-resolution'],
+    resolve: resolveProjectTask,
     snapshot: (store) => {
       const open = store.projectTasks.filter((t) => !t.done)
       if (!open.length) return []
@@ -181,8 +193,10 @@ export const CONTEXT_REGISTRY: ContextEntry[] = [
   {
     key: 'project_milestones',
     tier: 'normaal',
-    // NEW — same gap as project_tasks, one level up.
-    surfaces: ['snapshot', 'search'],
+    // NEW — same gap as project_tasks, one level up. Same entity-resolution
+    // reasoning: lets update_project_milestone target one milestone directly.
+    surfaces: ['snapshot', 'search', 'entity-resolution'],
+    resolve: resolveProjectMilestone,
     snapshot: (store, days) => {
       const due = store.projectMilestones.filter((m) => !m.done && withinDays(m.dueDate, days))
       if (!due.length) return []
@@ -376,4 +390,18 @@ export function collectRegistrySearchRows(store: Store): SearchableRow[] {
     rows.push(...entry.search(store))
   }
   return rows
+}
+
+/**
+ * Looks up a registry entry's resolver by key — proposeAction.ts's entity-
+ * resolution surface for any table wired here (currently project_tasks/
+ * project_milestones; see the header comment for why project/client/task/
+ * invoice stay hand-wired instead). Returns null when the key doesn't exist,
+ * declares no resolver, or is tier=geheim — never throws, same null-safe
+ * convention as the rest of this app.
+ */
+export function resolveByRegistryKey(key: string, mention: string, store: Store): ResolveResult | null {
+  const entry = CONTEXT_REGISTRY.find((e) => e.key === key)
+  if (!entry?.resolve || entry.tier === 'geheim') return null
+  return entry.resolve(mention, store)
 }

@@ -608,6 +608,7 @@ interface State {
   deleteMilestone: (id: string) => void
   addProjectTask: (projectId: string, task: Omit<ProjectTask, 'id' | 'projectId'>) => void
   toggleProjectTask: (taskId: string, done: boolean) => void
+  updateProjectTask: (id: string, patch: Partial<ProjectTask>) => void
   deleteProjectTask: (id: string) => void
   addHours: (projectId: string, h: Omit<HourEntry, 'id' | 'projectId'>) => void
   deleteHours: (id: string) => void
@@ -2538,6 +2539,14 @@ export const useStore = create<State>()(
         const tempId = uid('ptask')
         set((s) => ({ projectTasks: [...s.projectTasks, { ...task, id: tempId, projectId }] }))
         void createProjectTaskRow(projectId, task).then(swapTempId(set, 'projectTasks', tempId))
+      },
+
+      // Non-completion edits (title/date/priority) — completing a task goes
+      // through toggleProjectTask() instead, which handles recurrence; this
+      // never patches `done` so it can't bypass that.
+      updateProjectTask: (id, patch) => {
+        patchSlice(set, 'projectTasks', id, patch)
+        void updateProjectTaskRow(id, patch)
       },
 
       toggleProjectTask: (taskId, done) => {
