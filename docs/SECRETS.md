@@ -46,6 +46,7 @@ Publiek/veilig (RLS beschermt de data).
 | `TELEGRAM_BOT_TOKEN` | notify-tick, telegram-webhook | @BotFather → `/newbot` → token |
 | `TELEGRAM_WEBHOOK_SECRET` | telegram-webhook | **zelf verzinnen** (random) — meegegeven aan `setWebhook` als `secret_token`; Telegram stuurt 'm terug als header `X-Telegram-Bot-Api-Secret-Token` |
 | `CRON_SECRET` | notify-tick | **zelf verzinnen** (random) — ook letterlijk gebruikt in de eenmalige `cron.schedule()`-SQL (niet elders opgeslagen, nooit ingevuld committen) |
+| `CLAUDE_INGEST_SECRET` | claude-chat-ingest | **zelf verzinnen** (random) — gedeeld met de `oslife-remember` Claude Skill (`.claude/skills/oslife-remember/`, als env var op de machine waar Claude draait), niet met de telefoon/MacroDroid-secrets. Zonder deze secret weigert claude-chat-ingest elk verzoek (fail closed). |
 
 > Legacy: `RICK_USER_ID` wordt nog als fallback gelezen, maar gebruik `OSLIFE_USER_ID`.
 
@@ -245,7 +246,7 @@ zelf, in deze volgorde:
 
 ## Zelf verzinnen vs. opzoeken
 
-- **Verzinnen** (`openssl rand -base64 32`): `INGEST_SECRET`, `WALLET_WEBHOOK_SECRET`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, `WORKER_SECRET`, `COGNEE_WORKER_SECRET`, `GEOFENCE_WEBHOOK_SECRET`.
+- **Verzinnen** (`openssl rand -base64 32`): `INGEST_SECRET`, `WALLET_WEBHOOK_SECRET`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, `WORKER_SECRET`, `COGNEE_WORKER_SECRET`, `GEOFENCE_WEBHOOK_SECRET`, `CLAUDE_INGEST_SECRET`.
 - **Opzoeken**: `VITE_SUPABASE_ANON_KEY`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `OSLIFE_USER_ID`, `GBK_API_KEY`, `TELEGRAM_BOT_TOKEN`, `VOYAGE_API_KEY`, `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` (§8).
 
 ## Per databron: welke secrets heb je nodig
@@ -267,6 +268,7 @@ zelf, in deze volgorde:
 | Vector memory (search_memory hybrid recall) | `VOYAGE_API_KEY` (optioneel — zonder deze key blijft alles full-text zoals nu), `CRON_SECRET`, `OSLIFE_USER_ID` (voor de backfill) |
 | Vault-notes (Markdown-spiegel van braindump/interaction/summary/message) | geen eigen secret — materialize-note schrijft alleen naar Storage |
 | Obsidian vault-inbox (vault-inbox-sync) | `CRON_SECRET` (hergebruikt), `OSLIFE_USER_ID` — plus een S3 access key aan de Obsidian-kant (geen Supabase-secret, zie §7) |
+| Claude-gesprekken → geheugen (claude-chat-ingest + `oslife-remember` Skill) | `CLAUDE_INGEST_SECRET`, `OSLIFE_USER_ID` — zie `.claude/skills/oslife-remember/SKILL.md` |
 | Braindump · YouTube-transcript (inline, geen worker) | `YOUTUBE_COOKIE_HEADER` (optioneel, maar in de praktijk nodig — zie §3, anders vrijwel altijd `LOGIN_REQUIRED`) |
 | Braindump · Instagram-post (inline og-scrape, geen worker) | `INSTAGRAM_COOKIE_HEADER` (optioneel, maar in de praktijk steeds vaker nodig — zonder cookies vaak Instagram's inlogmuur i.p.v. de echte post) |
 | Braindump media-worker (video/audio transcriptie, caption-loze YouTube, Instagram/Pinterest-posts) | `BRAINDUMP_WORKER_URL`, `WORKER_SECRET` (beide optioneel — zonder valt media terug op metadata-only); `YT_COOKIES_PATH`/`IG_COOKIES_PATH`/`PINTEREST_COOKIES_PATH` (alle optioneel, Netscape `cookies.txt` als Secret File op de worker-host zelf — zie `integrations/braindump-worker/README.md`). Pinterest-pins gaan bovendien via een echte headless Chromium (Playwright, in het Docker-image) i.p.v. een plain fetch — Pinterest's bot-detectie blokkeert onbevestigde scripted requests hard (403), zelfs richting zijn eigen `oembed.json`, dus cookies alleen zijn hier (anders dan bij Instagram) niet genoeg. |

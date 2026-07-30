@@ -44,6 +44,19 @@ maken niet uit. De verwachte tabs/kolommen + sheet-id properties staan boven in 
 - `weight-ingest` (`supabase/functions/weight-ingest/`) — weegschaal-app-notificatie (MacroDroid) →
   `health_body_metrics`, real-time. Experimenteel (notificatietekst niet geverifieerd), blijft de
   primaire gewicht-bron naast `health-ingest`. Setup: `macrodroid/weight-notifications.md`.
+- `claude-chat-ingest` (`supabase/functions/claude-chat-ingest/`) — ontvangt een samenvatting +
+  kernpunten van een Claude-gesprek van de `oslife-remember` Claude Skill en logt die direct als een
+  `braindump_entries`-rij (embed + vault + cognee, zelfde best-effort verrijking als een Braindump-
+  capture). Setup: `../.claude/skills/oslife-remember/SKILL.md`.
+
+## Claude Skill (`../.claude/skills/oslife-remember/`)
+
+Geen aparte server: een Claude Skill die je in je eigen Claude-profiel installeert (werkt dus in
+élke chat, niet alleen dit repo). Op verzoek ("remember this in oslife") schrijft Claude zelf een
+samenvatting + kernpunten en stuurt die via een bijgeleverd script (`curl`) naar
+`claude-chat-ingest` — geen Supabase-credentials in de skill zelf, alleen de gedeelde
+`CLAUDE_INGEST_SECRET` als env var. Zie `../.claude/skills/oslife-remember/SKILL.md` voor de
+volledige setup.
 
 ## Finance dedup
 
