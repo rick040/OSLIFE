@@ -7,6 +7,7 @@ import type { useStore } from '../store'
 import type { Domain, Channel, IdeaSource } from '../types'
 import { DOMAIN_META, today } from '../domains'
 import { isTransfer } from '../finance/categories'
+import { collectRegistrySearchRows } from './contextRegistry'
 
 type Store = ReturnType<typeof useStore.getState>
 
@@ -98,50 +99,29 @@ export function matchScore(keywords: string[], ...fields: (string | null | undef
   return keywords.reduce((n, k) => n + (hay.includes(k) ? 1 : 0), 0)
 }
 
-/** Free-text search across threads, captured items, projects, clients and payments. */
+/**
+ * Free-text search across every registry-listed table (threads, projects,
+ * clients, payments, project tasks/milestones/invoices, goals, personal
+ * contacts, braindumps — see contextRegistry.ts) plus captured items, which
+ * aren't a per-table registry source (they're the raw capture log, not a
+ * data domain). Adding a new searchable table is a contextRegistry.ts entry,
+ * not another loop in this function — this is also what closes the "Zoeken"
+ * gaps the data audit flagged (project tasks/milestones/invoices, goals and
+ * personal contacts were never searchable at all before this).
+ */
 export function buildSearchCard(text: string, store: Store): SearchCardData {
   const keywords = extractKeywords(text)
   const query = keywords.join(' ') || text.trim()
   const scored: { item: SearchResultItem; score: number }[] = []
 
   if (keywords.length) {
-    for (const t of store.threads) {
-      const score = matchScore(keywords, t.title)
-      if (score > 0) scored.push({ score, item: { id: t.id, title: t.title, domain: t.domain, kind: t.status === 'open' ? 'open taak' : 'afgeronde taak', detail: t.due ? `deadline ${t.due.slice(5)}` : null } })
-    }
-    for (const p of store.projects) {
-      const score = matchScore(keywords, p.name, p.client)
-      if (score > 0) scored.push({ score, item: { id: p.id, title: p.name, domain: p.domain, kind: 'project', detail: p.client } })
-    }
-    for (const c of store.clients) {
-      const score = matchScore(keywords, c.name)
-      if (score > 0) scored.push({ score, item: { id: c.id, title: c.name, domain: c.domain, kind: 'klant', detail: c.clientStatus ?? undefined } })
-    }
-    for (const p of store.payments) {
-      const score = matchScore(keywords, p.payee)
-      if (score > 0) scored.push({ score, item: { id: p.id, title: p.payee, domain: p.domain, kind: p.direction === 'incoming' ? 'te ontvangen' : 'te betalen', detail: `€${p.amount}` } })
+    for (const row of collectRegistrySearchRows(store)) {
+      const score = matchScore(keywords, ...row.matchFields)
+      if (score > 0) scored.push({ score, item: { id: row.id, title: row.title, domain: row.domain, kind: row.kind, detail: row.detail } })
     }
     for (const it of store.items) {
       const score = matchScore(keywords, it.text, it.summary)
       if (score > 0) scored.push({ score, item: { id: it.id, title: it.summary, domain: it.domain, kind: it.kind } })
-    }
-    // Braindumps + imported Claude chats: the durable knowledge log. Searching
-    // the markdown means a past Claude conversation surfaces here too.
-    for (const b of store.braindumpEntries ?? []) {
-      if (b.status !== 'ready') continue
-      const score = matchScore(keywords, b.title, b.summary, b.markdown, b.tags.join(' '))
-      if (score > 0) {
-        scored.push({
-          score,
-          item: {
-            id: b.id,
-            title: b.title || b.summary || 'Notitie',
-            domain: b.domain ?? 'cross',
-            kind: b.meta?.source === 'claude-export' ? 'claude-chat' : 'notitie',
-            detail: b.meta?.source === 'claude-export' ? null : b.summary,
-          },
-        })
-      }
     }
   }
 

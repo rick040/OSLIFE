@@ -1,13 +1,18 @@
 import { describe, it, expect } from 'vitest'
-import { buildChartCard } from './cards'
+import { buildChartCard, buildSearchCard } from './cards'
 import type { useStore } from '../store'
-import type { Transaction, DayLog, HealthDay } from '../types'
+import type { Transaction, DayLog, HealthDay, Project, ProjectTask, Goal } from '../types'
 
 type Store = ReturnType<typeof useStore.getState>
 
-// Minimal store double — buildChartCard only reads these fields.
+// Minimal store double — buildChartCard/buildSearchCard only read these fields.
 function store(partial: Partial<Store>): Store {
-  return { transactions: [], dayLogs: [], healthDays: [], habits: [], threads: [], ...partial } as unknown as Store
+  return {
+    transactions: [], dayLogs: [], healthDays: [], habits: [], threads: [],
+    projects: [], clients: [], payments: [], items: [], braindumpEntries: [],
+    projectTasks: [], projectMilestones: [], projectInvoices: [], goals: [], people: [],
+    ...partial,
+  } as unknown as Store
 }
 
 const tx = (date: string, amount: number): Transaction => ({ id: date + amount, date, amount, merchant: 'x', category: 'Other', domain: 'personal' })
@@ -50,5 +55,31 @@ describe('buildChartCard — comparison ("vergelijk")', () => {
   it('ignores a comparison request for the habit-streak metric (not week-shaped)', () => {
     const chart = buildChartCard('vergelijk mijn gewoontes', store({ habits: [{ id: 'h1', name: 'Lezen', streak: 5, doneToday: true, emoji: '📚' }] }))
     expect(chart.compareLabel).toBeUndefined()
+  })
+})
+
+describe('buildSearchCard — registry-driven coverage', () => {
+  const project: Project = {
+    id: 'p1', name: 'Synck Rebranding', client: 'Synck', domain: 'prjct',
+    status: 'active', deadline: null, progress: 0, value: 0,
+  }
+
+  it('finds a project task by keyword — previously invisible to Zoeken entirely', () => {
+    const result = buildSearchCard(
+      'preview kim',
+      store({
+        projects: [project],
+        projectTasks: [{ id: 't1', projectId: 'p1', name: 'Stuur nieuwe preview naar Kim', done: false } as ProjectTask],
+      }),
+    )
+    expect(result.results.some((r) => r.id === 't1')).toBe(true)
+  })
+
+  it('finds a North Star goal by keyword — also previously invisible to Zoeken', () => {
+    const result = buildSearchCard(
+      'open loops',
+      store({ goals: [{ id: 'g1', title: 'Sub-100 open loops', metric: 'loops', target: 5, current: 12, deadline: '2026-12-31', domain: 'cross' } as Goal] }),
+    )
+    expect(result.results.some((r) => r.id === 'g1')).toBe(true)
   })
 })
