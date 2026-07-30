@@ -52,7 +52,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   // Which reset-demo confirm to show: the sidebar's full text or the top bar's short one.
   const [confirmReset, setConfirmReset] = useState<'full' | 'short' | null>(null)
-  const { resetDemo, runNightlyReflect, reflectCount, dataSource, isLoading, healthDays, nudge } = useStore()
+  const { resetDemo, runNightlyReflect, reflectCount, dataSource, isLoading, nudge } = useStore()
   const { session, authChecked } = useLiveSession()
 
   const Current: Record<View, JSX.Element> = {
@@ -113,7 +113,18 @@ export default function App() {
         dataSource={dataSource}
         nudge={nudge}
       >
-        {isLoading && healthDays.length === 0 ? (
+        {isLoading ? (
+          // Gated on isLoading alone, not "healthDays is empty" — a rehydrated
+          // localStorage snapshot (or the demo-seed fallback in
+          // applyPersistDefaults) is basically never actually empty, so that
+          // extra condition meant this spinner almost never showed and the
+          // screen would instead paint stale/cached numbers first, then jump
+          // to the real ones once loadLiveData() resolved a moment later —
+          // "the data shifts while I'm looking at it". isLoading reliably
+          // starts true (seed()) and flips false exactly once, after the
+          // first loadLiveData() completes (success or failure, see
+          // store.ts) — later background refreshes (focus/5-min poll) don't
+          // reset it, so this only gates the first paint, not every refetch.
           <div className="flex flex-col items-center justify-center h-64 gap-3 text-faint">
             <div className="h-6 w-6 rounded-full border-2 border-forest border-t-transparent animate-spin" />
             <p className="text-sm">Connecting to your data…</p>

@@ -13,6 +13,7 @@
 // block today (dedup by keyword) is never proposed twice.
 
 import type { Domain } from '../types'
+import { inferHabitTiming } from './planner'
 
 export interface BlockSuggestion {
   id: string
@@ -167,6 +168,17 @@ export function suggestTodayBlocks(ctx: BlockSuggestionContext, max = 4): BlockS
   ctx.habitsOpen.slice(0, 2).forEach((h, i) => {
     const kw = h.name.toLowerCase()
     if (covered(titles, [kw])) return
+    // Same bug fixed in planner.ts: a habit used to always get slotted at
+    // "right now", so an evening/bedtime-named habit ("voor middernacht naar
+    // bed") could land at 11:00 or just after midday purely because that
+    // happened to be when the suggestion was generated. inferHabitTiming()
+    // reads the name itself; only a habit with no timing signal still
+    // defaults to "as soon as possible today".
+    const timing = inferHabitTiming(h.name)
+    const pref =
+      timing === 'evening' ? Math.max(ctx.nowMinutes, DAY_END - 90) :
+      timing === 'midday' ? Math.max(ctx.nowMinutes, PEAK_END) :
+      ctx.nowMinutes
     candidates.push({
       key: `habit-${h.id}`,
       title: `${h.emoji} ${h.name}`,
@@ -174,7 +186,7 @@ export function suggestTodayBlocks(ctx: BlockSuggestionContext, max = 4): BlockS
       emoji: h.emoji,
       rationale: h.streak > 0 ? `Nog niet afgevinkt vandaag — houd je reeks van ${h.streak} dag(en) erin.` : 'Nog niet afgevinkt vandaag.',
       durationMin: 15,
-      pref: ctx.nowMinutes,
+      pref,
       score: 66 + Math.min(10, h.streak) - i,
       dedupeKeywords: [kw],
     })
