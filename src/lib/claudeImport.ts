@@ -10,6 +10,13 @@
 // shapes seen in the wild — the old `chat_messages[].text` string and the newer
 // `chat_messages[].content[]` block array — and skips anything it can't read
 // rather than throwing, so one malformed conversation never sinks the import.
+//
+// A second, live source feeds the same shape of row: the oslife-remember
+// Claude Skill / "log to oslife memory" Zapier Skill, via the claude-chat-ingest
+// edge function — tagged `claude-chat` instead of this file's `claude`+`import`.
+// isClaudeConversationEntry() below is the single predicate that recognizes
+// EITHER origin, so the Claude-log screen (and the exclusion from the general
+// Braindump screen) never has to know about both tag shapes separately.
 
 /** One conversation, normalized into an importable knowledge record. */
 export interface ClaudeImportRecord {
@@ -134,4 +141,13 @@ export function parseClaudeExport(raw: unknown): ClaudeImportRecord[] {
   }
   // Newest first, matching how the braindump grid is ordered.
   return records.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+}
+
+/** True for a braindump entry that's a Claude conversation — bulk-imported
+ *  (tags `claude`+`import`, from parseClaudeExport above) or live-logged
+ *  (tag `claude-chat`, from claude-chat-ingest). Both origins keep
+ *  `source_kind: 'text'`, so tags are the only reliable way to tell these
+ *  apart from an ordinary typed/pasted braindump. */
+export function isClaudeConversationEntry(entry: { tags: string[] }): boolean {
+  return entry.tags.includes('claude-chat') || entry.tags.includes('claude')
 }
