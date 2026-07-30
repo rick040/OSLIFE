@@ -10,6 +10,7 @@ import { classifyImportance } from '../lib/crm/emailClassify'
 import { SetupHint, Sparkline, Ring } from '../components/ui'
 import { GreetingHeader, HeroStat, MetricTile, GoalRow, AgendaCard, SuggestedBlockCard, type Tone } from '../components/v3'
 import { suggestTodayBlocks, toMin } from '../heyra/blockSuggestions'
+import { financeInferenceNudges, findUnactionedWorkoutBraindump, workoutBraindumpNudge } from '../heyra/proactiveNudges'
 import { usePersistedState } from '../lib/usePersistedState'
 import { useWeather, weatherMeta } from '../hooks/useWeather'
 import { PriorityList, storeNudgeToDash, type DashNudge, type NudgeTone } from '../components/NudgeCard'
@@ -135,6 +136,9 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     subscriptions,
     dogReminders,
     clients,
+    inferences,
+    braindumpEntries,
+    braindumpLinks,
     completeBlock,
     skipBlock,
     addSuggestedBlock,
@@ -417,6 +421,13 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         tone: 'attention',
         cta: { label: 'Naar CRM', view: 'crm' },
       })
+    for (const n of financeInferenceNudges(inferences))
+      list.push({ text: n.text, domain: 'cross', reason: n.reason, tone: 'attention', cta: n.cta })
+    const workoutHit = findUnactionedWorkoutBraindump(braindumpEntries, braindumpLinks)
+    if (workoutHit) {
+      const n = workoutBraindumpNudge(workoutHit)
+      list.push({ text: n.text, domain: 'personal', reason: n.reason, tone: 'calm', cta: n.cta })
+    }
     if (!list.length && habits.length)
       list.push({
         text: '**Alles staat** — mooie dag, kies één ding dat je vooruit helpt',
