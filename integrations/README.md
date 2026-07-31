@@ -14,7 +14,7 @@ de sheets vullen dus niet aan. Voeg alle bestanden toe aan dit ene project en ru
 | Bestand | Doet | Schrijft naar |
 |---------|------|---------------|
 | `Code.gs` | hub + gedeelde helpers + `installAllTriggers()` | Gmail→`gmail_messages`, Calendar→`day_blocks`, betalingen-agenda→`payments` (direct via PostgREST) |
-| `health-sheets.gs` | leest Health-sheet (id) — legacy fallback, wordt uitgefaseerd t.g.v. Tasker/Health Connect | `health-ingest` → `health_*` |
+| `health-sheets.gs` | leest Health-sheet (id) — gewicht/slaap/activiteit, legacy fallback t.g.v. Tasker/Health Connect; leest géén stappen meer (zie `steps-ingest`) | `health-ingest` → `health_*` |
 | `payments-sheet.gs` | leest Betalingen-sheet (id) | `payments-sheet-ingest` → `finance_tx` |
 | `setup-health-sheet.gs` | eenmalig hulpscript (los te draaien) | maakt de Health-sheet tabs aan |
 | `appsscript.json` | manifest (Gmail/Calendar/Sheets scopes) | — |
@@ -27,8 +27,12 @@ maken niet uit. De verwachte tabs/kolommen + sheet-id properties staan boven in 
 
 - `gbk-overview` — proxyt de Geldrop Buurtkaart WordPress API (`/wp-json/gbk/v1/overview`) met de
   `X-GBK-Key` header; de key blijft server-side (secret `GBK_API_KEY`).
-- `health-ingest` — ontvangt steps/sleep/weight payloads (Tasker + Health Connect, of de legacy
-  Health-sheet Apps Script) en upsert idempotent naar `health_*`.
+- `health-ingest` — ontvangt sleep/weight/activity payloads (Tasker + Health Connect, of de legacy
+  Health-sheet Apps Script) en upsert idempotent naar `health_*`. Stuurt een caller geen `steps` mee
+  (zoals de Health-sheet sinds `steps-ingest` bestaat), dan blijft de `steps`-kolom onaangeroerd.
+- `steps-ingest` (`supabase/functions/steps-ingest/`) — stappenteller-app-notificatie (MacroDroid,
+  bv. "4.391 stappen") → `health_daily_stats.steps`, real-time. Vervangt de oude Health-sheet
+  "Stappen"-tab als primaire stappen-bron. Setup: `macrodroid/steps-notifications.md`.
 - `payments-sheet-ingest` — ontvangt de Betalingen-Sheet-payload en upsert idempotent.
 - `wallet-ingest` (`supabase/functions/wallet-ingest/`) — betaal-notificaties (MacroDroid) →
   `finance_tx`, real-time. Werkt met Google Wallet (ruwe notificatie, zoals eerst) én met bank-apps

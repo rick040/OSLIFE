@@ -4,7 +4,9 @@
  * Generic health data intake — accepts the same {activity, body, sleep}
  * payload from any caller (Tasker reading Health Connect, or the legacy
  * health-sheets.gs Apps Script) and upserts into three Supabase tables:
- *   health_daily_stats  — steps, distance, calories, active duration
+ *   health_daily_stats  — distance, calories, active duration (+ steps, only
+ *                          when the caller actually has a reading — see
+ *                          steps-ingest for the primary, real-time steps path)
  *   health_body_metrics — weight, body fat
  *   health_sleep        — sleep sessions with stage breakdown
  *
@@ -31,7 +33,7 @@ const json = jsonResponder()
 
 interface ActivityRow {
   date: string          // 'YYYY-MM-DD'
-  steps: number
+  steps?: number        // omitted by health-sheets.gs since steps-ingest now owns this column
   distance_m: number
   calories_kcal: number
   duration_min: number
@@ -104,17 +106,25 @@ Deno.serve(async (req) => {
 
   // ── Activity → health_daily_stats ──────────────────────────────────────
   if (payload.activity?.length) {
-    const rows = dedupeBy(payload.activity.map((r) => ({
-      user_id:       USER_ID,
-      date:          r.date,
-      steps:         r.steps         ?? 0,
-      distance_m:    r.distance_m    ?? 0,
-      calories_kcal: r.calories_kcal ?? 0,
-      duration_min:  r.duration_min  ?? 0,
-      // active_min mirrors duration_min; sleep_min denormalised from health_sleep.
-      active_min:    r.duration_min  ?? 0,
-      sleep_min:     sleepMinByDate.get(r.date) ?? 0,
-    })), (r) => r.date)
+    const rows = dedupeBy(payload.activity.map((r) => {
+      // `steps` is only included when the caller actually has a reading (Tasker/
+      // Health Connect). Omitting the key — rather than defaulting to 0 — means
+      // the upsert's ON CONFLICT DO UPDATE never touches the steps column, so a
+      // distance/duration-only row (e.g. from the Health-sheet Apps Script,
+      // which no longer reads steps) can't clobber what steps-ingest wrote.
+      const row: Record<string, unknown> = {
+        user_id:       USER_ID,
+        date:          r.date,
+        distance_m:    r.distance_m    ?? 0,
+        calories_kcal: r.calories_kcal ?? 0,
+        duration_min:  r.duration_min  ?? 0,
+        // active_min mirrors duration_min; sleep_min denormalised from health_sleep.
+        active_min:    r.duration_min  ?? 0,
+        sleep_min:     sleepMinByDate.get(r.date) ?? 0,
+      }
+      if (r.steps != null) row.steps = r.steps
+      return row
+    }), (r) => r.date as string)
 
     const { error } = await supabase
       .from('health_daily_stats')

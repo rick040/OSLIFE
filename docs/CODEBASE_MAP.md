@@ -442,12 +442,13 @@ For the design rationale behind Slices 0-4 (event-sourcing principles, the R1-R9
 | Function | Trigger | Purpose |
 |---|---|---|
 | `gbk-overview` | client-invoked (`[verify_jwt]`) | Proxies the Geldrop Buurtkaart WordPress API with server-side `GBK_API_KEY`, consumed by Buurtkaart. |
-| `health-ingest` | webhook (Tasker / Health Connect, legacy Apps Script) | Upserts steps/sleep/weight payloads into `health_*` tables. |
+| `health-ingest` | webhook (Tasker / Health Connect, legacy Apps Script) | Upserts sleep/weight/activity payloads into `health_*` tables (omits `steps` unless the caller actually sends it, so it never clobbers `steps-ingest`'s value). |
 | `payments-sheet-ingest` | webhook (Apps Script) | Upserts payments-sheet rows into `payments`/`finance_tx`. |
 | `wallet-ingest` | webhook (MacroDroid) | Bank/wallet payment notifications → `finance_tx`, realtime. |
 | `phone-events-ingest` | webhook (MacroDroid) | Unlock/screen-off events → `phone_events`; derives `health_sleep` (source='phone') and `screentime_daily`. |
 | `screentime-app-ingest` | webhook (MacroDroid) | App Opened/Closed events → `screentime_events`; derives per-app daily totals into `screentime`. Direct replacement for the old Schermtijd sheet. |
 | `weight-ingest` | webhook (MacroDroid, experimental) | Smart-scale notification parsing → `health_body_metrics`. |
+| `steps-ingest` | webhook (MacroDroid) | Step-count notification parsing (e.g. "4.391 stappen") → `health_daily_stats.steps`, realtime. Primary steps path, replaces the legacy Health-sheet "Stappen" tab. |
 | `heyra-brain` | client-invoked (`[verify_jwt]`) | Thin proxy to the Anthropic Messages API for all HEYRA agents — see `src/heyra/brainClient.ts`. |
 | `categorize-vendor` | client-invoked (`[verify_jwt]`) | Claude Haiku + web search → tags a merchant into `vendor_tags` — called by `src/heyra/agents/vendorAgent.ts`. |
 | `braindump-ingest` | client-invoked (`[verify_jwt]`) | Braindump v2 pipeline (text/link/image/pdf/social → Markdown via Claude); delegates video/audio to the external worker — called by `src/lib/braindump.ts`. |

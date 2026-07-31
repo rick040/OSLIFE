@@ -5,11 +5,16 @@
  * that health-sheets.gs expects, with the correct column headers and a
  * sample row so you can see the expected format before your first export.
  *
+ * Note: there is no "Steps" tab — steps are ingested in real time by
+ * steps-ingest (MacroDroid reading the Samsung Health/Google Fit step-count
+ * notification directly), not via this Sheet. See
+ * integrations/macrodroid/steps-notifications.md.
+ *
  * How to use:
  *  1. Create a new Google Sheet (or open an existing empty one).
  *  2. Extensions → Apps Script → paste this file → save.
  *  3. Run setupHealthSheet() → authorize → done.
- *  4. Your sheet now has 4 tabs ready for Samsung Health / Health Sync data.
+ *  4. Your sheet now has 3 tabs ready for Samsung Health / Health Sync data.
  *  5. Then follow the health-sheets.gs setup instructions to add the ingest
  *     trigger to this same sheet.
  */
@@ -18,7 +23,6 @@ function setupHealthSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
   // These tabs/columns/units MUST match what health-sheets.gs actually reads:
-  //  - Steps      : Date + a steps column (summed per day).
   //  - Weight     : Date + weight (kg) AND body-fat (%) — body fat is read from
   //                 THIS tab, not a separate one.
   //  - Sleep      : one row per stage segment; duration is in SECONDS (the reader
@@ -28,11 +32,6 @@ function setupHealthSheet() {
   // (There is no separate Distance/Calories/Body Fat tab: the reader never reads
   // a Calories column, and folds distance/body-fat into the tabs above.)
   const tabs = [
-    {
-      name: "Steps",
-      headers: ["Date", "Total Steps"],
-      sample: ["2026-06-28", 8432],
-    },
     {
       name: "Weight",
       headers: ["Date", "Weight (kg)", "Body Fat (%)"],
@@ -52,10 +51,10 @@ function setupHealthSheet() {
     },
   ];
 
-  // Rename the first (default) sheet to "Steps" — keeps it tidy.
+  // Rename the first (default) sheet to "Weight" — keeps it tidy.
   const existing = ss.getSheets();
   if (existing.length === 1 && existing[0].getName() === "Sheet1") {
-    existing[0].setName("Steps");
+    existing[0].setName("Weight");
   }
 
   for (const tab of tabs) {
@@ -83,7 +82,9 @@ function setupHealthSheet() {
   Logger.log("Done! " + tabs.length + " tabs ready. Now follow the health-sheets.gs setup instructions.");
   SpreadsheetApp.getUi().alert(
     "Health Sheet setup complete!\n\n" +
-    "4 tabs created: Steps, Weight (incl. body fat), Sleep, Exercise (incl. distance).\n\n" +
+    "3 tabs created: Weight (incl. body fat), Sleep, Exercise (incl. distance).\n\n" +
+    "Steps are not tracked here — set up steps-ingest instead, see " +
+    "integrations/macrodroid/steps-notifications.md.\n\n" +
     "Next step: open Extensions → Apps Script and paste health-sheets.gs to add the ingest trigger."
   );
 }

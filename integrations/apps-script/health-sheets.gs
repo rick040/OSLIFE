@@ -3,10 +3,10 @@
  * ---------------------------------------------------------------------------
  * Opens your Health Google Sheet BY ID (HEALTH_SHEET_ID) and POSTs to
  * health-ingest. Legacy fallback — Tasker now reads Health Connect directly
- * for steps/sleep and posts to the same endpoint. Tailored to the
- * Samsung-Health/Health-Sync export:
+ * for sleep, and steps-ingest (MacroDroid, notification-based) is now the
+ * primary real-time steps path — this sheet no longer reads a "Stappen" tab
+ * at all. Tailored to the Samsung-Health/Health-Sync export:
  *
- *   Tab "Stappen"      : Datum | Tijd | Stappen                 (per-interval → summed per day)
  *   Tab "Activiteiten" : … | Datum | … | Actieve tijd | Afstand (km)
  *   Tab "Gewicht"      : Datum | Tijd | Gewicht | Lichaamsvet percentage | …
  *   Tab "Slaap"        : Datum | Tijd | Duur in seconden | Slaap stadium
@@ -44,20 +44,13 @@ function healthTab_(ss, names) {
   return null;
 }
 
-// health_daily_stats: steps (Stappen) + distance/duration (Activiteiten), merged per day.
+// health_daily_stats: distance/duration (Activiteiten), merged per day.
+// Steps are NOT read here — steps-ingest (MacroDroid, notification-based) owns
+// that column now; sending steps from this batch sync would just get ignored
+// by health-ingest anyway (the row omits the key), so there's no point reading it.
 function healthActivity_(ss) {
   var byDate = {};
-  function ensure(d) { if (!byDate[d]) byDate[d] = { steps: 0, distance_m: 0, calories_kcal: 0, duration_min: 0 }; return byDate[d]; }
-
-  var stappen = healthTab_(ss, ['stappen', 'steps']);
-  if (stappen) {
-    var d = stappen.getDataRange().getValues();
-    var dateC = colIdx_(d[0], ['datum', 'date']);
-    var stepC = colIdx_(d[0], ['stappen', 'steps', 'aantal']);
-    if (dateC !== -1 && stepC !== -1) {
-      for (var i = 1; i < d.length; i++) { var dt = sheetDate_(d[i][dateC]); if (!dt) continue; ensure(dt).steps += sheetNum_(d[i][stepC]); }
-    }
-  }
+  function ensure(d) { if (!byDate[d]) byDate[d] = { distance_m: 0, calories_kcal: 0, duration_min: 0 }; return byDate[d]; }
 
   var act = healthTab_(ss, ['activiteit', 'activities', 'exercise', 'workout']);
   if (act) {
@@ -78,8 +71,8 @@ function healthActivity_(ss) {
   var rows = [];
   for (var date in byDate) {
     var v = byDate[date];
-    if (!v.steps && !v.distance_m && !v.calories_kcal && !v.duration_min) continue;
-    rows.push({ date: date, steps: v.steps, distance_m: v.distance_m, calories_kcal: v.calories_kcal, duration_min: v.duration_min });
+    if (!v.distance_m && !v.calories_kcal && !v.duration_min) continue;
+    rows.push({ date: date, distance_m: v.distance_m, calories_kcal: v.calories_kcal, duration_min: v.duration_min });
   }
   return rows;
 }
