@@ -544,47 +544,61 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   // Hero: every candidate card this slot could show today, not just the
   // auto-picked one — the carousel opens on whichever is most pressing
   // (overdue money first, the calm-day recovery score otherwise) but a
-  // swipe reveals the rest instead of hiding them entirely.
-  const heroSlides: React.ReactNode[] = []
-  if (overdueOutgoing.length > 0) {
-    heroSlides.push(
-      <HeroStat key="geld" label="Te betalen (verlopen)" value={eur(overdueOutgoingTotal)}>
+  // swipe reveals the rest instead of hiding them entirely. The money card
+  // is always present (an urgent red state when something's overdue, a
+  // calm balance summary otherwise) so there's always something to swipe
+  // to, not just on the rare day something's actually overdue.
+  const geldSlide = (
+    <HeroStat
+      key="geld"
+      label={overdueOutgoing.length > 0 ? 'Te betalen (verlopen)' : 'Geld'}
+      value={overdueOutgoing.length > 0 ? eur(overdueOutgoingTotal) : (transactions.length ? eur(balance) : '–')}
+    >
+      {overdueOutgoing.length > 0 ? (
         <button onClick={() => onNav('money')} className="flex items-start gap-1.5 text-left text-sm font-medium text-cross-deep">
           <span>{overdueOutgoing.length} betaling{overdueOutgoing.length > 1 ? 'en' : ''} over de vervaldatum — bekijk in Geld</span>
           <ArrowRight className="h-3.5 w-3.5 shrink-0 mt-0.5" />
         </button>
-      </HeroStat>,
-    )
-  }
-  if (today && healthScore !== null) {
-    heroSlides.push(
-      <div key="vandaag" className="card-hero p-5">
-        <div className="mb-4 flex items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">
-            Vandaag
-            <span
-              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-forest/15 text-forest-hi"
-              title="Automatisch gekozen — dit vak toont altijd wat vandaag het meest telt"
-            >
-              <Sparkles className="h-3 w-3" />
-            </span>
+      ) : upcomingPayments.length > 0 ? (
+        <button onClick={() => onNav('money')} className="flex items-start gap-1.5 text-left text-sm font-medium text-ink-soft">
+          <span>{upcomingPayments.length} betaling{upcomingPayments.length > 1 ? 'en' : ''} nog te gaan — bekijk in Geld</span>
+          <ArrowRight className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+        </button>
+      ) : (
+        <p className="text-sm text-ink-soft">Niets openstaand — saldo op orde.</p>
+      )}
+    </HeroStat>
+  )
+  const vandaagSlide = today && healthScore !== null ? (
+    <div key="vandaag" className="card-hero p-5">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">
+          Vandaag
+          <span
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-forest/15 text-forest-hi"
+            title="Automatisch gekozen — dit vak toont altijd wat vandaag het meest telt"
+          >
+            <Sparkles className="h-3 w-3" />
           </span>
-          {healthSync && (
-            <span className={`chip ${SYNC_BADGE_CLS[healthSync.health]}`}>
-              {healthSync.health === 'up' ? `gesynct · ${humanizeAge(healthSync.lastAt)}` : `nog niet gesynct · ${humanizeAge(healthSync.lastAt)}`}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-5">
-          <Ring value={healthScore / 100} size={92} stroke={9} color="stroke-lime" label={healthScore} sub="herstel" />
-          <p className="min-w-0 flex-1 text-sm leading-relaxed text-ink-soft">{heroVitalsSentence}</p>
-        </div>
-      </div>,
-    )
-  }
+        </span>
+        {healthSync && (
+          <span className={`chip ${SYNC_BADGE_CLS[healthSync.health]}`}>
+            {healthSync.health === 'up' ? `gesynct · ${humanizeAge(healthSync.lastAt)}` : `nog niet gesynct · ${humanizeAge(healthSync.lastAt)}`}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-5">
+        <Ring value={healthScore / 100} size={92} stroke={9} color="stroke-lime" label={healthScore} sub="herstel" />
+        <p className="min-w-0 flex-1 text-sm leading-relaxed text-ink-soft">{heroVitalsSentence}</p>
+      </div>
+    </div>
+  ) : null
+  const heroSlides: React.ReactNode[] = overdueOutgoing.length > 0
+    ? [geldSlide, vandaagSlide].filter(Boolean)
+    : [vandaagSlide, geldSlide].filter(Boolean)
   const heroFooter = heroSlides.length > 1
     ? 'Begint bij wat vandaag het meest telt — swipe voor de rest.'
-    : 'Dit vak wisselt vanzelf — bijvoorbeeld naar "geld" zodra een rekening écht te laat dreigt te raken.'
+    : 'Dit vak toont wat vandaag het meest telt.'
 
   return (
     <div className="flex flex-col gap-5">
