@@ -271,6 +271,7 @@ import {
   deleteBusinessIdeaRow,
   invokeIdeaElaborate,
   invokeIdeaMvpPlan,
+  invokeIdeaCustomerAnalysis,
   fetchCardTemplates,
   upsertCardTemplate,
   fetchIdentityProfile,
@@ -440,6 +441,7 @@ interface State {
   toggleIdeaMilestone: (id: string, index: number) => void
   generateMvpPlan: (id: string) => void
   toggleMvpRoadmapTask: (id: string, phaseIndex: number, taskIndex: number) => void
+  generateCustomerAnalysis: (id: string) => void
 
   // HEYRA Taakmaker — commit a parsed task draft as an open loop (thread)
   addTask: (draft: TaskDraft) => string
@@ -1274,6 +1276,9 @@ export const useStore = create<State>()(
           mvpPlanStatus: null,
           mvpPlanError: null,
           mvpPlan: null,
+          customerAnalysisStatus: null,
+          customerAnalysisError: null,
+          customerAnalysis: null,
         }
         set((s) => ({
           businessIdeas: [optimistic, ...s.businessIdeas],
@@ -1372,6 +1377,18 @@ export const useStore = create<State>()(
           businessIdeas: s.businessIdeas.map((x) => (x.id === id ? { ...x, mvpPlan } : x)),
         }))
         void updateBusinessIdeaRow(id, { mvpPlan })
+      },
+
+      generateCustomerAnalysis: (id) => {
+        // No real row, nothing an edge function could work with — same guard
+        // as generateMvpPlan.
+        if (!isDbId(id)) return
+        set((s) => ({
+          businessIdeas: s.businessIdeas.map((x) =>
+            x.id === id ? { ...x, customerAnalysisStatus: 'pending', customerAnalysisError: null } : x,
+          ),
+        }))
+        void invokeIdeaCustomerAnalysis(id)
       },
 
       learnFromExchange: async (userText, heyraText) => {

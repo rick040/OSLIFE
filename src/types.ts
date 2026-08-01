@@ -1212,15 +1212,52 @@ export interface MvpPlan {
   emailCaveat: string
 }
 
+export type CustomerAnalysisStatus = 'pending' | 'processing' | 'ready' | 'failed'
+
+export interface Persona {
+  name: string
+  role: string
+  ageRange: string | null
+  situation: string
+  goals: string[]
+  painPoints: string[]
+  triggers: string[] // concrete moments that push someone to actively look for a solution
+  objections: string[] // honest reasons this persona would NOT buy
+  whereToFind: string[]
+  quote: string // first-person line capturing how this persona talks about the problem
+}
+
+export interface Competitor {
+  name: string // a real competitor, or the existing alternative ("doet het nu zelf")
+  description: string
+  strength: string
+  weakness: string
+}
+
+/**
+ * Klantanalyse & Persona's: the third, opt-in pipeline (idea-customer-analysis
+ * edge function) — who exactly the idea is for, concretely. Same "Rick
+ * triggers this explicitly" contract as MvpPlan.
+ */
+export interface CustomerAnalysis {
+  targetMarket: string
+  marketInsight: string
+  personas: Persona[]
+  competitors: Competitor[]
+  positioning: string
+  pricingSuggestion: string
+}
+
 /**
  * One business idea on Strategie HQ. Captured as a voice note or typed text
  * (`rawInput`), then elaborated by the idea-elaborate edge function into a
  * full strategic write-up — `markdown` is the complete document; every other
  * analysis field is the same content pulled out into structured data for the
  * UI's visualizations. `elaborationStatus` tracks that pipeline; `status` is
- * the separate, user-managed lifecycle stage. `mvpPlan*` is a second, opt-in
- * pipeline (idea-mvp-plan edge function) Rick triggers explicitly per idea —
- * unlike elaboration it never runs automatically and most ideas have none.
+ * the separate, user-managed lifecycle stage. `mvpPlan*` and
+ * `customerAnalysis*` are second/third, opt-in pipelines (idea-mvp-plan and
+ * idea-customer-analysis edge functions) Rick triggers explicitly per idea —
+ * unlike elaboration they never run automatically and most ideas have none.
  */
 export interface BusinessIdea {
   id: string
@@ -1248,4 +1285,7 @@ export interface BusinessIdea {
   mvpPlanStatus: MvpPlanStatus | null
   mvpPlanError: string | null
   mvpPlan: MvpPlan | null
+  customerAnalysisStatus: CustomerAnalysisStatus | null
+  customerAnalysisError: string | null
+  customerAnalysis: CustomerAnalysis | null
 }

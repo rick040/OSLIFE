@@ -5,9 +5,10 @@ import {
 import {
   Plus, Mic, MicOff, Loader2, AlertTriangle, RotateCcw, Trash2, X, Pencil, Check,
   Sparkles, TrendingUp, Target, ShieldAlert, Lightbulb, Grid2x2, Rocket, Mail, Radar,
+  Users2, Building2, Compass, Euro, Quote, MapPinned, Search,
 } from 'lucide-react'
 import type { View } from '../nav'
-import type { BusinessIdea, IdeaLifecycleStatus, ImpactLevel, Domain } from '../types'
+import type { BusinessIdea, IdeaLifecycleStatus, ImpactLevel, Domain, Persona } from '../types'
 import { useStore } from '../store'
 import { DOMAIN_META, DOMAIN_HEX, fmtDate } from '../domains'
 import { eur0 as eur } from '../lib/format'
@@ -48,8 +49,11 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
   const toggleIdeaMilestone = useStore((s) => s.toggleIdeaMilestone)
   const generateMvpPlan = useStore((s) => s.generateMvpPlan)
   const toggleMvpRoadmapTask = useStore((s) => s.toggleMvpRoadmapTask)
+  const generateCustomerAnalysis = useStore((s) => s.generateCustomerAnalysis)
 
   const [statusFilter, setStatusFilter] = useState<IdeaLifecycleStatus | 'all'>('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [sortBy, setSortBy] = useState<'newest' | 'feasibility'>('newest')
   const [newOpen, setNewOpen] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
 
@@ -59,10 +63,21 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
     return c
   }, [businessIdeas])
 
-  const filtered = useMemo(
-    () => (statusFilter === 'all' ? businessIdeas : businessIdeas.filter((i) => i.status === statusFilter)),
-    [businessIdeas, statusFilter],
-  )
+  const filtered = useMemo(() => {
+    let list = statusFilter === 'all' ? businessIdeas : businessIdeas.filter((i) => i.status === statusFilter)
+    const q = searchQuery.trim().toLowerCase()
+    if (q) {
+      list = list.filter(
+        (i) =>
+          i.title.toLowerCase().includes(q) ||
+          (i.overview ?? '').toLowerCase().includes(q) ||
+          i.tags.some((t) => t.toLowerCase().includes(q)),
+      )
+    }
+    return sortBy === 'feasibility'
+      ? [...list].sort((a, b) => (b.feasibilityScore ?? -1) - (a.feasibilityScore ?? -1))
+      : [...list].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  }, [businessIdeas, statusFilter, searchQuery, sortBy])
 
   const detail = detailId ? businessIdeas.find((i) => i.id === detailId) ?? null : null
 
@@ -79,6 +94,30 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
           <Plus className="h-4 w-4" /> Nieuw idee
         </button>
       </div>
+
+      {/* zoeken + sorteren */}
+      {businessIdeas.length > 0 && (
+        <div className="flex gap-2 flex-wrap">
+          <div className="relative flex-1 min-w-[160px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-faint pointer-events-none" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Zoek op titel, omschrijving of tag…"
+              className="w-full rounded-xl bg-sunken border border-line pl-9 pr-3 py-2 text-sm outline-none focus:border-buurtkaart/50"
+            />
+          </div>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as 'newest' | 'feasibility')}
+            className="rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none shrink-0"
+            aria-label="Sorteren"
+          >
+            <option value="newest">Nieuwste eerst</option>
+            <option value="feasibility">Hoogste haalbaarheid</option>
+          </select>
+        </div>
+      )}
 
       {/* status filter */}
       <div className="flex flex-wrap gap-1.5">
@@ -102,7 +141,7 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
             met haalbaarheid, financiën, risico's en SWOT.
           </SetupHint>
         ) : (
-          <Empty>Geen ideeën in deze status.</Empty>
+          <Empty>{searchQuery.trim() ? 'Geen ideeën gevonden voor deze zoekopdracht.' : 'Geen ideeën in deze status.'}</Empty>
         )
       ) : (
         <div className="space-y-3">
@@ -133,6 +172,7 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
           onToggleMilestone={(idx) => toggleIdeaMilestone(detail.id, idx)}
           onGenerateMvpPlan={() => generateMvpPlan(detail.id)}
           onToggleMvpTask={(phaseIdx, taskIdx) => toggleMvpRoadmapTask(detail.id, phaseIdx, taskIdx)}
+          onGenerateCustomerAnalysis={() => generateCustomerAnalysis(detail.id)}
         />
       )}
     </div>
@@ -167,9 +207,9 @@ function IdeaCard({ idea, onOpen }: { idea: BusinessIdea; onOpen: () => void }) 
         <p className="text-xs text-muted line-clamp-1 mt-0.5">
           {idea.overview ?? idea.rawInput ?? (busy ? 'HEYRA werkt dit idee uit…' : idea.error ?? '')}
         </p>
-        <div className="flex items-center gap-1.5 mt-1.5">
+        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
           <DomainChip domain={idea.domain} small />
-          <span className="chip text-[10px] px-2 py-0" style={{ color: STATUS_HEX[idea.status], background: `${STATUS_HEX[idea.status]}1f` }}>
+          <span className="chip text-[10px] px-2 py-0 shrink-0" style={{ color: STATUS_HEX[idea.status], background: `${STATUS_HEX[idea.status]}1f` }}>
             {STATUS_LABEL[idea.status]}
           </span>
           <span className="text-[11px] text-faint ml-auto shrink-0">{fmtDate(idea.createdAt)}</span>
@@ -309,6 +349,7 @@ function IdeaDetailModal({
   onToggleMilestone,
   onGenerateMvpPlan,
   onToggleMvpTask,
+  onGenerateCustomerAnalysis,
 }: {
   idea: BusinessIdea
   onClose: () => void
@@ -318,6 +359,7 @@ function IdeaDetailModal({
   onToggleMilestone: (index: number) => void
   onGenerateMvpPlan: () => void
   onToggleMvpTask: (phaseIndex: number, taskIndex: number) => void
+  onGenerateCustomerAnalysis: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [showFullDoc, setShowFullDoc] = useState(false)
@@ -440,11 +482,11 @@ function IdeaDetailModal({
             <h2 className="text-xl font-bold tracking-tight leading-snug">{idea.title}</h2>
 
             {idea.elaborationStatus === 'failed' && (
-              <div className="rounded-xl bg-personal/10 p-3 text-sm text-personal-deep flex items-start gap-2">
+              <div className="rounded-xl bg-personal/10 p-3 text-sm text-personal-deep flex items-start gap-2 flex-wrap">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <p className="font-medium">Uitwerken mislukt</p>
-                  {idea.error && <p className="text-xs mt-0.5 opacity-80">{idea.error}</p>}
+                  {idea.error && <p className="text-xs mt-0.5 opacity-80 break-words">{idea.error}</p>}
                 </div>
                 <button onClick={onRetry} className="btn-ghost !py-1 text-xs shrink-0">
                   <RotateCcw className="h-3.5 w-3.5" /> Opnieuw
@@ -489,7 +531,7 @@ function IdeaDetailModal({
                       {idea.milestones.map((m, i) => (
                         <label key={i} className="flex items-center gap-2.5 card p-2.5 cursor-pointer">
                           <input type="checkbox" checked={m.done} onChange={() => onToggleMilestone(i)} className="h-4 w-4 rounded accent-forest shrink-0" />
-                          <span className={`text-sm flex-1 ${m.done ? 'line-through text-faint' : 'text-ink-soft'}`}>{m.title}</span>
+                          <span className={`text-sm flex-1 min-w-0 break-words ${m.done ? 'line-through text-faint' : 'text-ink-soft'}`}>{m.title}</span>
                           {m.due && <span className="text-[11px] text-faint shrink-0">{m.due}</span>}
                         </label>
                       ))}
@@ -534,11 +576,11 @@ function IdeaDetailModal({
                     <div className="space-y-1.5">
                       {idea.risks.map((r, i) => (
                         <div key={i} className="card p-3 text-sm">
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="text-ink-soft flex-1">{r.risk}</span>
+                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                            <span className="text-ink-soft flex-1 min-w-0 break-words">{r.risk}</span>
                             <span className="chip text-[10px] px-2 py-0 shrink-0" style={{ color: RISK_HEX[r.impact], background: `${RISK_HEX[r.impact]}1f` }}>{IMPACT_LABEL[r.impact]}</span>
                           </div>
-                          {r.mitigation && <p className="text-xs text-faint mt-1">Mitigatie: {r.mitigation}</p>}
+                          {r.mitigation && <p className="text-xs text-faint mt-1 break-words">Mitigatie: {r.mitigation}</p>}
                         </div>
                       ))}
                     </div>
@@ -550,8 +592,8 @@ function IdeaDetailModal({
                     <SectionLabel icon={Lightbulb}>Kansen</SectionLabel>
                     <div className="space-y-1.5">
                       {idea.opportunities.map((o, i) => (
-                        <div key={i} className="card p-3 text-sm flex items-start justify-between gap-2">
-                          <span className="text-ink-soft flex-1">{o.opportunity}</span>
+                        <div key={i} className="card p-3 text-sm flex items-start justify-between gap-2 flex-wrap">
+                          <span className="text-ink-soft flex-1 min-w-0 break-words">{o.opportunity}</span>
                           <span className="chip text-[10px] px-2 py-0 shrink-0" style={{ color: POTENTIAL_HEX[o.potential], background: `${POTENTIAL_HEX[o.potential]}1f` }}>{IMPACT_LABEL[o.potential]}</span>
                         </div>
                       ))}
@@ -570,6 +612,8 @@ function IdeaDetailModal({
                     </div>
                   </div>
                 )}
+
+                <CustomerAnalysisSection idea={idea} onGenerate={onGenerateCustomerAnalysis} />
 
                 <MvpPlanSection idea={idea} onGenerate={onGenerateMvpPlan} onToggleTask={onToggleMvpTask} />
 
@@ -654,11 +698,11 @@ function MvpPlanSection({
       )}
 
       {status === 'failed' && (
-        <div className="rounded-xl bg-personal/10 p-3 text-sm text-personal-deep flex items-start gap-2">
+        <div className="rounded-xl bg-personal/10 p-3 text-sm text-personal-deep flex items-start gap-2 flex-wrap">
           <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <p className="font-medium">Opstellen mislukt</p>
-            {idea.mvpPlanError && <p className="text-xs mt-0.5 opacity-80">{idea.mvpPlanError}</p>}
+            {idea.mvpPlanError && <p className="text-xs mt-0.5 opacity-80 break-words">{idea.mvpPlanError}</p>}
           </div>
           <button onClick={onGenerate} className="btn-ghost !py-1 text-xs shrink-0">
             <RotateCcw className="h-3.5 w-3.5" /> Opnieuw
@@ -699,13 +743,13 @@ function MvpPlanSection({
               <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">Kanalen</div>
               {idea.mvpPlan.channels.map((c, i) => (
                 <div key={i} className="card p-3 text-sm">
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="font-medium text-ink-soft flex-1">{c.name}</span>
-                    <span className="chip text-[10px] px-2 py-0 shrink-0" style={{ color: EFFORT_HEX[c.effort as ImpactLevel] ?? EFFORT_HEX.medium, background: `${EFFORT_HEX[c.effort as ImpactLevel] ?? EFFORT_HEX.medium}1f` }}>
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <span className="font-medium text-ink-soft flex-1 min-w-0 break-words">{c.name}</span>
+                    <span className="chip text-[10px] px-2 py-0 shrink-0 max-w-full whitespace-normal break-words" style={{ color: EFFORT_HEX[c.effort as ImpactLevel] ?? EFFORT_HEX.medium, background: `${EFFORT_HEX[c.effort as ImpactLevel] ?? EFFORT_HEX.medium}1f` }}>
                       {IMPACT_LABEL[c.effort as ImpactLevel] ?? c.effort} · {c.cost}
                     </span>
                   </div>
-                  {c.why && <p className="text-xs text-faint mt-1">{c.why}</p>}
+                  {c.why && <p className="text-xs text-faint mt-1 break-words">{c.why}</p>}
                 </div>
               ))}
             </div>
@@ -716,19 +760,19 @@ function MvpPlanSection({
               <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">Experimenten</div>
               {idea.mvpPlan.experiments.map((e, i) => (
                 <div key={i} className="card p-3 text-sm space-y-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="font-medium text-ink-soft flex-1">{e.title}</span>
-                    <span className="chip text-[10px] px-2 py-0 shrink-0" style={{ color: EFFORT_HEX[e.effort as ImpactLevel] ?? EFFORT_HEX.medium, background: `${EFFORT_HEX[e.effort as ImpactLevel] ?? EFFORT_HEX.medium}1f` }}>
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <span className="font-medium text-ink-soft flex-1 min-w-0 break-words">{e.title}</span>
+                    <span className="chip text-[10px] px-2 py-0 shrink-0 max-w-full whitespace-normal break-words" style={{ color: EFFORT_HEX[e.effort as ImpactLevel] ?? EFFORT_HEX.medium, background: `${EFFORT_HEX[e.effort as ImpactLevel] ?? EFFORT_HEX.medium}1f` }}>
                       {IMPACT_LABEL[e.effort as ImpactLevel] ?? e.effort} · {e.cost}
                     </span>
                   </div>
-                  {e.description && <p className="text-xs text-faint">{e.description}</p>}
+                  {e.description && <p className="text-xs text-faint break-words">{e.description}</p>}
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-faint">
-                    {e.channel && <span>Kanaal: {e.channel}</span>}
-                    {e.timeframe && <span>Duur: {e.timeframe}</span>}
+                    {e.channel && <span className="break-words">Kanaal: {e.channel}</span>}
+                    {e.timeframe && <span className="break-words">Duur: {e.timeframe}</span>}
                   </div>
                   {e.successSignal && (
-                    <p className="text-xs text-ink-soft"><span className="font-medium">Signaal:</span> {e.successSignal}</p>
+                    <p className="text-xs text-ink-soft break-words"><span className="font-medium">Signaal:</span> {e.successSignal}</p>
                   )}
                 </div>
               ))}
@@ -741,8 +785,8 @@ function MvpPlanSection({
               {idea.mvpPlan.roadmap.map((phase, pi) => (
                 <div key={pi} className="card p-3 space-y-1.5">
                   <div>
-                    <div className="text-sm font-semibold text-ink-soft">{phase.phase}</div>
-                    {phase.goal && <p className="text-xs text-faint mt-0.5">{phase.goal}</p>}
+                    <div className="text-sm font-semibold text-ink-soft break-words">{phase.phase}</div>
+                    {phase.goal && <p className="text-xs text-faint mt-0.5 break-words">{phase.goal}</p>}
                   </div>
                   <div className="space-y-1">
                     {phase.tasks.map((t, ti) => (
@@ -753,7 +797,7 @@ function MvpPlanSection({
                           onChange={() => onToggleTask(pi, ti)}
                           className="h-4 w-4 rounded accent-forest shrink-0"
                         />
-                        <span className={`text-xs flex-1 ${t.done ? 'line-through text-faint' : 'text-ink-soft'}`}>{t.title}</span>
+                        <span className={`text-xs flex-1 min-w-0 break-words ${t.done ? 'line-through text-faint' : 'text-ink-soft'}`}>{t.title}</span>
                       </label>
                     ))}
                   </div>
@@ -769,7 +813,7 @@ function MvpPlanSection({
               </div>
               <ul className="space-y-0.5">
                 {idea.mvpPlan.signalsToWatch.map((s, i) => (
-                  <li key={i} className="text-xs text-ink-soft leading-snug">· {s}</li>
+                  <li key={i} className="text-xs text-ink-soft leading-snug break-words">· {s}</li>
                 ))}
               </ul>
             </div>
@@ -780,6 +824,179 @@ function MvpPlanSection({
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Klantanalyse & Persona's: wíe precies is de klant ─────────────────────────
+// Third, opt-in pipeline (idea-customer-analysis) alongside elaboration and
+// the MVP plan — concrete buyer persona's, a competitor scan, positioning
+// and a pricing suggestion. Same on-demand contract as MvpPlanSection.
+
+function CustomerAnalysisSection({
+  idea,
+  onGenerate,
+}: {
+  idea: BusinessIdea
+  onGenerate: () => void
+}) {
+  const status = idea.customerAnalysisStatus
+  const busy = status === 'pending' || status === 'processing'
+
+  return (
+    <div>
+      <SectionLabel icon={Users2}>Klantanalyse &amp; Persona&apos;s</SectionLabel>
+
+      {!status && (
+        <div className="card p-3.5 space-y-2.5">
+          <p className="text-xs text-muted leading-relaxed">
+            Laat HEYRA uitzoeken wíe precies de klant is — concrete persona&apos;s met hun situatie, doelen en
+            twijfels, plus een korte concurrentiescan en een prijsadvies.
+          </p>
+          <button onClick={onGenerate} className="btn-primary !py-2 text-sm w-full justify-center">
+            <Users2 className="h-4 w-4" /> Genereer klantanalyse
+          </button>
+        </div>
+      )}
+
+      {busy && (
+        <div className="flex items-center gap-2 text-sm text-muted card p-3.5">
+          <Loader2 className="h-4 w-4 animate-spin text-buurtkaart" /> HEYRA analyseert de doelgroep…
+        </div>
+      )}
+
+      {status === 'failed' && (
+        <div className="rounded-xl bg-personal/10 p-3 text-sm text-personal-deep flex items-start gap-2 flex-wrap">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="font-medium">Opstellen mislukt</p>
+            {idea.customerAnalysisError && <p className="text-xs mt-0.5 opacity-80 break-words">{idea.customerAnalysisError}</p>}
+          </div>
+          <button onClick={onGenerate} className="btn-ghost !py-1 text-xs shrink-0">
+            <RotateCcw className="h-3.5 w-3.5" /> Opnieuw
+          </button>
+        </div>
+      )}
+
+      {status === 'ready' && idea.customerAnalysis && (
+        <div className="space-y-3">
+          <div className="card p-3.5 space-y-2">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">Doelgroep</div>
+              <p className="text-sm text-ink-soft leading-relaxed break-words">{idea.customerAnalysis.targetMarket}</p>
+            </div>
+            {idea.customerAnalysis.marketInsight && (
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">Markttiming</div>
+                <p className="text-sm text-ink-soft leading-relaxed break-words">{idea.customerAnalysis.marketInsight}</p>
+              </div>
+            )}
+          </div>
+
+          {idea.customerAnalysis.personas.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-faint">Persona&apos;s</div>
+              {idea.customerAnalysis.personas.map((p, i) => (
+                <PersonaCard key={i} persona={p} />
+              ))}
+            </div>
+          )}
+
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-faint mb-1.5 flex items-center gap-1.5">
+              <Building2 className="h-3 w-3" /> Concurrentie &amp; alternatieven
+            </div>
+            {idea.customerAnalysis.competitors.length > 0 ? (
+              <div className="space-y-1.5">
+                {idea.customerAnalysis.competitors.map((c, i) => (
+                  <div key={i} className="card p-3 text-sm space-y-1">
+                    <span className="font-medium text-ink-soft break-words">{c.name}</span>
+                    {c.description && <p className="text-xs text-faint break-words">{c.description}</p>}
+                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px]">
+                      {c.strength && <span className="text-buurtkaart-deep break-words">Sterk: {c.strength}</span>}
+                      {c.weakness && <span className="text-personal-deep break-words">Kans: {c.weakness}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <Empty>Geen directe concurrenten gevonden.</Empty>
+            )}
+          </div>
+
+          {idea.customerAnalysis.positioning && (
+            <div className="card p-3.5 space-y-1">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-faint flex items-center gap-1.5">
+                <Compass className="h-3 w-3" /> Positionering
+              </div>
+              <p className="text-sm text-ink-soft leading-relaxed break-words">{idea.customerAnalysis.positioning}</p>
+            </div>
+          )}
+
+          {idea.customerAnalysis.pricingSuggestion && (
+            <div className="card p-3.5 space-y-1">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-faint flex items-center gap-1.5">
+                <Euro className="h-3 w-3" /> Prijsadvies
+              </div>
+              <p className="text-sm text-ink-soft leading-relaxed break-words">{idea.customerAnalysis.pricingSuggestion}</p>
+            </div>
+          )}
+
+          <button onClick={onGenerate} className="btn-ghost !py-1.5 text-xs w-full justify-center">
+            <RotateCcw className="h-3.5 w-3.5" /> Opnieuw genereren
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PersonaCard({ persona }: { persona: Persona }) {
+  return (
+    <div className="card p-3.5 space-y-2">
+      <div>
+        <div className="font-semibold text-ink-soft break-words">{persona.name}</div>
+        <div className="text-xs text-faint break-words">
+          {persona.role}{persona.ageRange ? ` · ${persona.ageRange}` : ''}
+        </div>
+      </div>
+
+      {persona.quote && (
+        <div className="flex items-start gap-1.5 rounded-xl bg-sunken p-2.5">
+          <Quote className="h-3.5 w-3.5 text-faint shrink-0 mt-0.5" />
+          <p className="text-xs italic text-ink-soft leading-relaxed break-words">{persona.quote}</p>
+        </div>
+      )}
+
+      <p className="text-xs text-muted leading-relaxed break-words">{persona.situation}</p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        {persona.goals.length > 0 && <PersonaList label="Doelen" items={persona.goals} />}
+        {persona.painPoints.length > 0 && <PersonaList label="Frustraties" items={persona.painPoints} />}
+        {persona.triggers.length > 0 && <PersonaList label="Triggers" items={persona.triggers} />}
+        {persona.objections.length > 0 && <PersonaList label="Bezwaren" items={persona.objections} />}
+      </div>
+
+      {persona.whereToFind.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 pt-0.5">
+          {persona.whereToFind.map((w, i) => (
+            <span key={i} className="chip bg-line text-muted text-[11px] gap-1 max-w-full whitespace-normal">
+              <MapPinned className="h-3 w-3 shrink-0" /> <span className="break-words">{w}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PersonaList({ label, items }: { label: string; items: string[] }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-faint mb-0.5">{label}</div>
+      <ul className="space-y-0.5">
+        {items.map((it, i) => <li key={i} className="text-xs text-ink-soft leading-snug break-words">· {it}</li>)}
+      </ul>
     </div>
   )
 }
@@ -798,7 +1015,7 @@ function SwotQuadrant({ title, items, hex }: { title: string; items: string[]; h
       <div className="text-[11px] font-semibold" style={{ color: hex }}>{title}</div>
       {items.length > 0 ? (
         <ul className="space-y-0.5">
-          {items.map((it, i) => <li key={i} className="text-xs text-ink-soft leading-snug">· {it}</li>)}
+          {items.map((it, i) => <li key={i} className="text-xs text-ink-soft leading-snug break-words">· {it}</li>)}
         </ul>
       ) : (
         <div className="text-xs text-faint italic">geen</div>

@@ -2813,7 +2813,7 @@ export async function searchMemory(query: string, limit = 8): Promise<MemoryHit[
 // returns array/object shapes so the UI never has to null-check.
 
 const BUSINESS_IDEA_COLS =
-  'id,created_at,updated_at,source,raw_input,elaboration_status,error,status,title,overview,domain,tags,feasibility_score,feasibility_reasoning,timeline,milestones,financials,risks,opportunities,swot,markdown,tier,mvp_plan_status,mvp_plan_error,mvp_plan'
+  'id,created_at,updated_at,source,raw_input,elaboration_status,error,status,title,overview,domain,tags,feasibility_score,feasibility_reasoning,timeline,milestones,financials,risks,opportunities,swot,markdown,tier,mvp_plan_status,mvp_plan_error,mvp_plan,customer_analysis_status,customer_analysis_error,customer_analysis'
 
 function mapBusinessIdeaRow(r: Record<string, unknown>): BusinessIdea {
   const financials = (r.financials as Record<string, unknown>) ?? {}
@@ -2855,6 +2855,9 @@ function mapBusinessIdeaRow(r: Record<string, unknown>): BusinessIdea {
     mvpPlanStatus: (r.mvp_plan_status as BusinessIdea['mvpPlanStatus']) ?? null,
     mvpPlanError: (r.mvp_plan_error as string) ?? null,
     mvpPlan: (r.mvp_plan as BusinessIdea['mvpPlan']) ?? null,
+    customerAnalysisStatus: (r.customer_analysis_status as BusinessIdea['customerAnalysisStatus']) ?? null,
+    customerAnalysisError: (r.customer_analysis_error as string) ?? null,
+    customerAnalysis: (r.customer_analysis as BusinessIdea['customerAnalysis']) ?? null,
   }
 }
 
@@ -2903,6 +2906,7 @@ const BUSINESS_IDEA_COL_MAP: Record<string, string> = {
   markdown: 'markdown',
   tier: 'tier',
   mvpPlan: 'mvp_plan',
+  customerAnalysis: 'customer_analysis',
 }
 
 /** Manual edit from the detail/edit form — only the fields users can actually change. */
@@ -2927,6 +2931,7 @@ export async function updateBusinessIdeaRow(
       | 'markdown'
       | 'tier'
       | 'mvpPlan'
+      | 'customerAnalysis'
     >
   >,
 ): Promise<void> {
@@ -2963,6 +2968,19 @@ export async function invokeIdeaMvpPlan(ideaId: string): Promise<void> {
     await supabase.functions.invoke('idea-mvp-plan', { body: { entryId: ideaId } })
   } catch (err) {
     console.warn('[OSLIFE] idea-mvp-plan invoke failed', err)
+  }
+}
+
+/**
+ * Fire the idea-customer-analysis pipeline for an entry — always
+ * user-triggered, never automatic. Same best-effort contract: on failure the
+ * row flips to customer_analysis_status='failed' and the UI offers a retry.
+ */
+export async function invokeIdeaCustomerAnalysis(ideaId: string): Promise<void> {
+  try {
+    await supabase.functions.invoke('idea-customer-analysis', { body: { entryId: ideaId } })
+  } catch (err) {
+    console.warn('[OSLIFE] idea-customer-analysis invoke failed', err)
   }
 }
 
