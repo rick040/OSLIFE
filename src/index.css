@@ -128,6 +128,16 @@
   background: hsl(var(--faint) / 0.6);
 }
 
+/* Swipeable carousels (e.g. the dashboard hero slot) page via dots, not a
+   visible scrollbar. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 @layer components {
   /* Flat, borderless, no shadow — depth comes from the surface/canvas fill
      difference, not a stroke or a drop shadow (docs/design.md §5). */
