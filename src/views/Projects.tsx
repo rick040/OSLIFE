@@ -38,7 +38,7 @@ function sortProjects(list: Project[], key: SortKey): Project[] {
 }
 
 export default function Projects() {
-  const { projects, clients } = useStore()
+  const { projects, clients, projectInvoices } = useStore()
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('Alle')
   const [clientFilter, setClientFilter] = useState('')
@@ -50,9 +50,16 @@ export default function Projects() {
   } = useProjectBrowserModals(clients)
 
   const activeProjects = projects.filter((p) => p.status === 'active' || p.status === 'review')
+  // "nog te factureren" — a project's value minus whatever's already been paid on it,
+  // so fully-paid invoices (even on a project that isn't marked "done") drop out of the pipeline.
   const pipeline = projects
     .filter((p) => p.status !== 'done')
-    .reduce((a, p) => a + (p.value ?? 0), 0)
+    .reduce((a, p) => {
+      const paid = projectInvoices
+        .filter((i) => i.projectId === p.id && i.status === 'paid')
+        .reduce((sum, i) => sum + i.amount, 0)
+      return a + Math.max((p.value ?? 0) - paid, 0)
+    }, 0)
   const delivered = projects.filter((p) => p.status === 'done').reduce((a, p) => a + (p.value ?? 0), 0)
   const overdue = projects.filter((p) => p.status !== 'done' && p.deadline && daysBetween(TODAY, p.deadline) < 0)
 
