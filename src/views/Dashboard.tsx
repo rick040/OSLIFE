@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { TODAY, fmtDate, daysBetween } from '../domains'
 import { computeBalance, balanceOnDates } from '../finance/balance'
@@ -115,6 +115,46 @@ function effectiveBlockStatus(
   nowMin: number,
 ): 'planned' | 'done' | 'skipped' | 'missed' {
   return status === 'planned' && toMin(end) <= nowMin ? 'missed' : status
+}
+
+/**
+ * The hero slot's swipeable form — one candidate card fills the screen at a
+ * time (still a single focal point per docs/design.md §8), but a horizontal
+ * swipe pages to the others instead of the runner-up disappearing entirely.
+ * Dots only render once there's something to page between.
+ */
+function HeroCarousel({ slides }: { slides: React.ReactNode[] }) {
+  const [active, setActive] = useState(0)
+  const trackRef = useRef<HTMLDivElement>(null)
+
+  if (slides.length === 1) return <>{slides[0]}</>
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div
+        ref={trackRef}
+        onScroll={(e) => {
+          const el = e.currentTarget
+          setActive(Math.round(el.scrollLeft / Math.max(el.clientWidth, 1)))
+        }}
+        className="no-scrollbar flex snap-x snap-mandatory gap-3 overflow-x-auto"
+      >
+        {slides.map((slide, i) => (
+          <div key={i} className="w-full shrink-0 snap-center">
+            {slide}
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-center gap-1.5">
+        {slides.map((_, i) => (
+          <span
+            key={i}
+            className={`h-1.5 rounded-full transition-all ${i === active ? 'w-4 bg-ink-soft' : 'w-1.5 bg-line-strong'}`}
+          />
+        ))}
+      </div>
+    </div>
+  )
 }
 
 export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
@@ -501,6 +541,51 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     return 'Slaap, energie en beweging staan er gezond bij — een goede basis voor vandaag.'
   })()
 
+  // Hero: every candidate card this slot could show today, not just the
+  // auto-picked one — the carousel opens on whichever is most pressing
+  // (overdue money first, the calm-day recovery score otherwise) but a
+  // swipe reveals the rest instead of hiding them entirely.
+  const heroSlides: React.ReactNode[] = []
+  if (overdueOutgoing.length > 0) {
+    heroSlides.push(
+      <HeroStat key="geld" label="Te betalen (verlopen)" value={eur(overdueOutgoingTotal)}>
+        <button onClick={() => onNav('money')} className="flex items-start gap-1.5 text-left text-sm font-medium text-cross-deep">
+          <span>{overdueOutgoing.length} betaling{overdueOutgoing.length > 1 ? 'en' : ''} over de vervaldatum — bekijk in Geld</span>
+          <ArrowRight className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+        </button>
+      </HeroStat>,
+    )
+  }
+  if (today && healthScore !== null) {
+    heroSlides.push(
+      <div key="vandaag" className="card-hero p-5">
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">
+            Vandaag
+            <span
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-forest/15 text-forest-hi"
+              title="Automatisch gekozen — dit vak toont altijd wat vandaag het meest telt"
+            >
+              <Sparkles className="h-3 w-3" />
+            </span>
+          </span>
+          {healthSync && (
+            <span className={`chip ${SYNC_BADGE_CLS[healthSync.health]}`}>
+              {healthSync.health === 'up' ? `gesynct · ${humanizeAge(healthSync.lastAt)}` : `nog niet gesynct · ${humanizeAge(healthSync.lastAt)}`}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-5">
+          <Ring value={healthScore / 100} size={92} stroke={9} color="stroke-lime" label={healthScore} sub="herstel" />
+          <p className="min-w-0 flex-1 text-sm leading-relaxed text-ink-soft">{heroVitalsSentence}</p>
+        </div>
+      </div>,
+    )
+  }
+  const heroFooter = heroSlides.length > 1
+    ? 'Begint bij wat vandaag het meest telt — swipe voor de rest.'
+    : 'Dit vak wisselt vanzelf — bijvoorbeeld naar "geld" zodra een rekening écht te laat dreigt te raken.'
+
   return (
     <div className="flex flex-col gap-5">
       {/* ── utility bar — weather, day, notifications ────────────────────────── */}
@@ -623,46 +708,16 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
 
       {/* ── hero: whatever's actually most pressing today earns the one giant-
           number slot — overdue money first, a calm-day recovery score
-          otherwise. Either way, the vitals detail (steps/sleep/energy) always
-          lives in "Lichaam & gewoontes" below, so "am I okay" never
-          disappears just because something else is on fire. ─────────────── */}
-      {overdueOutgoing.length > 0 ? (
-        <HeroStat label="Te betalen (verlopen)" value={eur(overdueOutgoingTotal)}>
-          <button onClick={() => onNav('money')} className="flex items-start gap-1.5 text-left text-sm font-medium text-cross-deep">
-            <span>{overdueOutgoing.length} betaling{overdueOutgoing.length > 1 ? 'en' : ''} over de vervaldatum — bekijk in Geld</span>
-            <ArrowRight className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-          </button>
-          <p className="mt-3 text-[11px] leading-relaxed text-faint">
-            Dit vak wisselt vanzelf terug naar "vandaag" zodra er niets dringends meer openstaat.
-          </p>
-        </HeroStat>
-      ) : today && healthScore !== null ? (
-        <div className="card-hero p-5">
-          <div className="mb-4 flex items-center justify-between gap-2">
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wider text-muted">
-              Vandaag
-              <span
-                className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-forest/15 text-forest-hi"
-                title="Automatisch gekozen — dit vak toont altijd wat vandaag het meest telt"
-              >
-                <Sparkles className="h-3 w-3" />
-              </span>
-            </span>
-            {healthSync && (
-              <span className={`chip ${SYNC_BADGE_CLS[healthSync.health]}`}>
-                {healthSync.health === 'up' ? `gesynct · ${humanizeAge(healthSync.lastAt)}` : `nog niet gesynct · ${humanizeAge(healthSync.lastAt)}`}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-5">
-            <Ring value={healthScore / 100} size={92} stroke={9} color="stroke-lime" label={healthScore} sub="herstel" />
-            <p className="min-w-0 flex-1 text-sm leading-relaxed text-ink-soft">{heroVitalsSentence}</p>
-          </div>
-          <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-faint">
-            Dit vak wisselt vanzelf — bijvoorbeeld naar "geld" zodra een rekening écht te laat dreigt te raken.
-          </p>
+          otherwise. Both candidates stay swipeable rather than the loser
+          disappearing entirely, so "am I okay" is always a swipe away even
+          when money is on fire. Vitals detail (steps/sleep/energy) always
+          lives in "Lichaam & gewoontes" below either way. ────────────────── */}
+      {heroSlides.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <HeroCarousel slides={heroSlides} />
+          <p className="px-1 text-[11px] leading-relaxed text-faint">{heroFooter}</p>
         </div>
-      ) : null}
+      )}
 
       {/* ── vandaag: every scheduled block today, stacked, soonest-open first —
           a block whose end time has passed auto-flips to "gemist" and sinks
