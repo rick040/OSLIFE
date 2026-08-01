@@ -41,6 +41,12 @@ Geef ALLEEN een fenced \`\`\`json blok terug met exact dit schema:
   "tags": ["3-6 korte trefwoorden, lowercase"],
   "feasibilityScore": 0-100,
   "feasibilityReasoning": "1-3 zinnen: waarom deze score, wat weegt mee",
+  "scoreBreakdown": {
+    "market": 0-100 (hoe kansrijk is de markt/timing/vraag),
+    "execution": 0-100 (hoe realistisch is dit uit te voeren met de beschikbare tijd/kennis),
+    "financial": 0-100 (hoe gezond zijn de financiën: lage investering, snel break-even = hoog),
+    "risk": 0-100 (hoe VEILIG is dit — hoger = MINDER risicovol, dus het omgekeerde van "hoeveel risico")
+  },
   "timeline": "narratieve tijdlijn in 2-5 zinnen: realistische fasering in de tijd",
   "milestones": [{"title": "...", "due": "relatieve periode zoals 'Maand 1' of 'Week 2-4'", "done": false}],
   "financials": {
@@ -58,6 +64,7 @@ Geef ALLEEN een fenced \`\`\`json blok terug met exact dit schema:
 
 Regels:
 - 4-8 milestones, 2-6 revenueProjection-punten, 2-6 costs, 2-5 risks, 2-5 opportunities, 2-5 items per SWOT-kwadrant.
+- scoreBreakdown moet in lijn zijn met feasibilityScore, feasibilityReasoning, risks en opportunities — geen losse getallen die de tekst tegenspreken.
 - Bedragen zijn realistische schattingen in euro's — rond ze af, verzin geen valse precisie.
 - Verzin geen concrete deadlines of bedragen die je niet kunt onderbouwen vanuit de input — als iets echt onbekend is, wees daar eerlijk over in de tekst (bv. "afhankelijk van...") in plaats van een willekeurig getal te noemen.
 - Schrijf in het Nederlands, informeel en direct, zoals de rest van OSLIFE.
@@ -76,6 +83,7 @@ interface Financials {
 interface Risk { risk: string; impact: string; mitigation: string | null }
 interface Opportunity { opportunity: string; potential: string }
 interface Swot { strengths: string[]; weaknesses: string[]; opportunities: string[]; threats: string[] }
+interface ScoreBreakdown { market: number; execution: number; financial: number; risk: number }
 
 interface Elaboration {
   title: string;
@@ -84,6 +92,7 @@ interface Elaboration {
   tags: string[];
   feasibilityScore: number | null;
   feasibilityReasoning: string | null;
+  scoreBreakdown: ScoreBreakdown | null;
   timeline: string | null;
   milestones: Milestone[];
   financials: Financials;
@@ -190,6 +199,23 @@ function sanitizeSwot(v: unknown): Swot {
   };
 }
 
+function clamp0to100(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.min(100, Math.round(n))) : null;
+}
+
+/** Null (not a partial object) unless all four dimensions are present — a half-filled breakdown is worse than none. */
+function sanitizeScoreBreakdown(v: unknown): ScoreBreakdown | null {
+  if (!v || typeof v !== "object") return null;
+  const s = v as Record<string, unknown>;
+  const market = clamp0to100(s.market);
+  const execution = clamp0to100(s.execution);
+  const financial = clamp0to100(s.financial);
+  const risk = clamp0to100(s.risk);
+  if (market === null || execution === null || financial === null || risk === null) return null;
+  return { market, execution, financial, risk };
+}
+
 // A slow memory/graph lookup must never hold up the elaboration by more than
 // this — grounding degrades to "none" rather than delaying (or failing) the
 // one thing Rick is actually waiting on.
@@ -289,6 +315,7 @@ async function elaborate(apiKey: string, title: string, rawInput: string, source
       return n === null ? null : Math.max(0, Math.min(100, Math.round(n)));
     })(),
     feasibilityReasoning: str(parsed.feasibilityReasoning, 500),
+    scoreBreakdown: sanitizeScoreBreakdown(parsed.scoreBreakdown),
     timeline: str(parsed.timeline, 1000),
     milestones: sanitizeMilestones(parsed.milestones),
     financials: sanitizeFinancials(parsed.financials),
@@ -358,6 +385,7 @@ Deno.serve(async (req) => {
       tags: result.tags,
       feasibility_score: result.feasibilityScore,
       feasibility_reasoning: result.feasibilityReasoning,
+      score_breakdown: result.scoreBreakdown,
       timeline: result.timeline,
       milestones: result.milestones,
       financials: result.financials,

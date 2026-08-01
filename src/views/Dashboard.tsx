@@ -7,7 +7,8 @@ import { dueLabel } from '../lib/dates'
 import { OPENING_BALANCE } from '../mockData'
 import { clientHealth } from '../lib/crm/followUp'
 import { classifyImportance } from '../lib/crm/emailClassify'
-import { SetupHint, Sparkline, Ring } from '../components/ui'
+import { SetupHint, Sparkline, Ring, DomainChip } from '../components/ui'
+import { ideaStaleness } from '../lib/ideaStaleness'
 import { GreetingHeader, HeroStat, MetricTile, GoalRow, AgendaCard, SuggestedBlockCard, type Tone } from '../components/v3'
 import { suggestTodayBlocks, toMin } from '../heyra/blockSuggestions'
 import { financeInferenceNudges, findUnactionedWorkoutBraindump, workoutBraindumpNudge } from '../heyra/proactiveNudges'
@@ -45,6 +46,8 @@ import {
   Zap,
   Moon,
   Users,
+  Lightbulb,
+  AlertOctagon,
 } from 'lucide-react'
 
 // Ranks a source's health for "pick the worse of two" comparisons — down is
@@ -136,6 +139,7 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
     subscriptions,
     dogReminders,
     clients,
+    businessIdeas,
     inferences,
     braindumpEntries,
     braindumpLinks,
@@ -310,6 +314,15 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   // permanence problem as an unpaid invoice, just for a relationship instead
   // of money.
   const clientsNeedingFollowUp = clients.filter((c) => clientHealth(c, TODAY) === 'red')
+
+  // Strategie HQ: the most haalbare open ideeën (elaborated, not archived/
+  // done-building), plus a count of ideas quietly stalling — same
+  // object-permanence problem as the follow-up/habit signals above.
+  const topIdeas = [...businessIdeas]
+    .filter((i) => i.elaborationStatus === 'ready' && (i.status === 'idea' || i.status === 'active'))
+    .sort((a, b) => (b.feasibilityScore ?? -1) - (a.feasibilityScore ?? -1))
+    .slice(0, 3)
+  const stalledIdeaCount = businessIdeas.filter((i) => ideaStaleness(i, TODAY) !== 'none').length
 
   // Voorgesteld voor vandaag: real suggested blocks for whatever's left of the
   // day — habits still open, tasks due, overdue money/mail, Kyra reminders,
@@ -941,6 +954,55 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           />
           <MetricTile icon={Users} value={clientsNeedingFollowUp.length || '0'} label="opvolgen" onClick={() => onNav('crm')} />
         </div>
+      </div>
+
+      {/* ── Strategie HQ: haalbaarste open ideeën + een signaal voor ideeën die
+          stilliggen, zodat die niet alleen zichtbaar zijn na een bezoek aan
+          Strategie HQ zelf ──────────────────────────────────────────────── */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between px-1">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted">Strategie HQ</p>
+          <button className="text-xs text-muted hover:text-ink flex items-center gap-1" onClick={() => onNav('strategiehq')}>
+            alles <ArrowRight className="h-3 w-3" />
+          </button>
+        </div>
+        {topIdeas.length > 0 ? (
+          <>
+            <div className="space-y-1.5">
+              {topIdeas.map((idea) => (
+                <button
+                  key={idea.id}
+                  onClick={() => onNav('strategiehq')}
+                  className="card p-3 w-full text-left flex items-center gap-3 hover:border-buurtkaart/40 transition-colors"
+                >
+                  <Ring value={(idea.feasibilityScore ?? 0) / 100} size={32} stroke={3.5} label="" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-ink truncate">{idea.title}</div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <DomainChip domain={idea.domain} small />
+                    </div>
+                  </div>
+                  <span className="text-sm font-semibold tabular-nums shrink-0">{idea.feasibilityScore ?? '–'}</span>
+                </button>
+              ))}
+            </div>
+            {stalledIdeaCount > 0 && (
+              <button
+                onClick={() => onNav('strategiehq')}
+                className="flex items-center gap-2 rounded-full bg-personal/10 px-4 py-2.5 text-left hover:bg-personal/15 transition-colors"
+              >
+                <AlertOctagon className="h-4 w-4 text-personal-deep shrink-0" />
+                <span className="text-xs text-personal-deep flex-1">
+                  {stalledIdeaCount} {stalledIdeaCount === 1 ? 'idee loopt' : 'ideeën lopen'} vast
+                </span>
+              </button>
+            )}
+          </>
+        ) : (
+          <SetupHint icon={Lightbulb} title="Nog geen business-idee vastgelegd" cta="Naar Strategie HQ" onCta={() => onNav('strategiehq')}>
+            Spreek een idee in — HEYRA werkt het uit tot haalbaarheid, financiën en een SWOT-analyse.
+          </SetupHint>
+        )}
       </div>
 
       {today && (

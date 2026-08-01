@@ -5,14 +5,17 @@ import {
 import {
   Plus, Mic, MicOff, Loader2, AlertTriangle, RotateCcw, Trash2, X, Pencil, Check,
   Sparkles, TrendingUp, Target, ShieldAlert, Lightbulb, Grid2x2, Rocket, Mail, Radar,
-  Users2, Building2, Compass, Euro, Quote, MapPinned, Search,
+  Users2, Building2, Compass, Euro, Quote, MapPinned, Search, FolderKanban,
+  Download, Printer, GitCompare, Settings2, Scale,
 } from 'lucide-react'
 import type { View } from '../nav'
-import type { BusinessIdea, IdeaLifecycleStatus, ImpactLevel, Domain, Persona } from '../types'
+import type { BusinessIdea, IdeaLifecycleStatus, ImpactLevel, Domain, Persona, ScoreBreakdown } from '../types'
 import { useStore } from '../store'
-import { DOMAIN_META, DOMAIN_HEX, fmtDate } from '../domains'
+import { DOMAIN_META, DOMAIN_HEX, fmtDate, TODAY } from '../domains'
 import { eur0 as eur } from '../lib/format'
-import { DomainChip, Ring, Overlay, ConfirmDialog, Empty, SetupHint } from '../components/ui'
+import { ideaStaleness, STALENESS_META } from '../lib/ideaStaleness'
+import { downloadIdeaMarkdown, printIdeaAsPdf } from '../lib/ideaExport'
+import { DomainChip, Ring, Overlay, ConfirmDialog, Empty, SetupHint, SectionTitle } from '../components/ui'
 import { CHART_TIP, AXIS_TICK_10 } from '../components/chart'
 import { Markdown } from '../components/Markdown'
 
@@ -40,7 +43,7 @@ function feasibilityStroke(score: number | null): string {
 
 type SpeechRec = { start: () => void; stop: () => void; onresult: ((e: any) => void) | null; onend: (() => void) | null; lang: string; interimResults: boolean; continuous: boolean }
 
-export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) {
+export default function StrategieHQ({ onNav }: { onNav?: (v: View) => void } = {}) {
   const businessIdeas = useStore((s) => s.businessIdeas)
   const captureBusinessIdea = useStore((s) => s.captureBusinessIdea)
   const updateBusinessIdea = useStore((s) => s.updateBusinessIdea)
@@ -50,12 +53,25 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
   const generateMvpPlan = useStore((s) => s.generateMvpPlan)
   const toggleMvpRoadmapTask = useStore((s) => s.toggleMvpRoadmapTask)
   const generateCustomerAnalysis = useStore((s) => s.generateCustomerAnalysis)
+  const convertIdeaToProject = useStore((s) => s.convertIdeaToProject)
+  const setFocusProjectId = useStore((s) => s.setFocusProjectId)
 
   const [statusFilter, setStatusFilter] = useState<IdeaLifecycleStatus | 'all'>('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<'newest' | 'feasibility'>('newest')
   const [newOpen, setNewOpen] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [compareMode, setCompareMode] = useState(false)
+  const [compareIds, setCompareIds] = useState<string[]>([])
+  const [showCompare, setShowCompare] = useState(false)
+
+  function toggleCompare(id: string) {
+    setCompareIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : ids.length < 4 ? [...ids, id] : ids))
+  }
+  function exitCompareMode() {
+    setCompareMode(false)
+    setCompareIds([])
+  }
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: businessIdeas.length }
@@ -81,6 +97,17 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
 
   const detail = detailId ? businessIdeas.find((i) => i.id === detailId) ?? null : null
 
+  // Object-permanence: ideas sitting in 'idea'/'parked' status untouched for a
+  // while quietly fall out of mind — surface them, red (loopt vast) before
+  // yellow (loopt stil), same pattern as CRM's "Opvolgen".
+  const staleIdeas = useMemo(() => {
+    const rank: Record<string, number> = { red: 0, yellow: 1 }
+    return businessIdeas
+      .map((i) => ({ idea: i, staleness: ideaStaleness(i, TODAY) }))
+      .filter((x) => x.staleness !== 'none')
+      .sort((a, b) => rank[a.staleness] - rank[b.staleness])
+  }, [businessIdeas])
+
   return (
     <div className="flex flex-col gap-7 max-w-3xl mx-auto">
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -90,10 +117,55 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
           </span>
           <h1 className="text-xl font-medium text-ink">Strategie HQ</h1>
         </div>
-        <button onClick={() => setNewOpen(true)} className="btn-primary !py-2 text-sm shrink-0">
-          <Plus className="h-4 w-4" /> Nieuw idee
-        </button>
+        <div className="flex gap-2 shrink-0">
+          {businessIdeas.length > 1 && (
+            <button
+              onClick={() => (compareMode ? exitCompareMode() : setCompareMode(true))}
+              className={`btn-ghost !py-2 text-sm ${compareMode ? 'bg-line' : ''}`}
+            >
+              <GitCompare className="h-4 w-4" /> {compareMode ? 'Annuleer' : 'Vergelijken'}
+            </button>
+          )}
+          <button onClick={() => setNewOpen(true)} className="btn-primary !py-2 text-sm">
+            <Plus className="h-4 w-4" /> Nieuw idee
+          </button>
+        </div>
       </div>
+
+      {/* Vergelijk-balk */}
+      {compareMode && (
+        <div className="card p-3 flex items-center justify-between gap-3 flex-wrap sticky top-0 z-10">
+          <span className="text-sm text-muted">
+            {compareIds.length === 0 ? 'Kies 2-4 ideeën om te vergelijken' : `${compareIds.length} geselecteerd`}
+          </span>
+          <button
+            onClick={() => setShowCompare(true)}
+            disabled={compareIds.length < 2}
+            className="btn-primary !py-1.5 text-xs"
+          >
+            <GitCompare className="h-3.5 w-3.5" /> Vergelijk
+          </button>
+        </div>
+      )}
+
+      {/* Loopt vast — ideeën die een tijd stilliggen */}
+      {staleIdeas.length > 0 && (
+        <div className="card p-4">
+          <SectionTitle hint="Ideeën in 'idee' of 'geparkeerd' die al een tijd niet zijn bijgewerkt.">Loopt vast</SectionTitle>
+          <div className="space-y-1.5">
+            {staleIdeas.map(({ idea, staleness }) => {
+              const m = STALENESS_META[staleness as Exclude<typeof staleness, 'none'>]
+              return (
+                <button key={idea.id} onClick={() => setDetailId(idea.id)} className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-sunken hover:bg-surface transition-colors text-left">
+                  <span className="h-2 w-2 rounded-full shrink-0" style={{ background: m.hex }} />
+                  <span className="text-sm font-medium truncate flex-1">{idea.title}</span>
+                  <span className="text-[11px] font-medium shrink-0" style={{ color: m.hex }}>{m.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* zoeken + sorteren */}
       {businessIdeas.length > 0 && (
@@ -146,7 +218,14 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
       ) : (
         <div className="space-y-3">
           {filtered.map((idea) => (
-            <IdeaCard key={idea.id} idea={idea} onOpen={() => setDetailId(idea.id)} />
+            <IdeaCard
+              key={idea.id}
+              idea={idea}
+              onOpen={() => setDetailId(idea.id)}
+              compareMode={compareMode}
+              selected={compareIds.includes(idea.id)}
+              onToggleCompare={() => toggleCompare(idea.id)}
+            />
           ))}
         </div>
       )}
@@ -173,6 +252,18 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
           onGenerateMvpPlan={() => generateMvpPlan(detail.id)}
           onToggleMvpTask={(phaseIdx, taskIdx) => toggleMvpRoadmapTask(detail.id, phaseIdx, taskIdx)}
           onGenerateCustomerAnalysis={() => generateCustomerAnalysis(detail.id)}
+          onConvertToProject={async () => { await convertIdeaToProject(detail.id) }}
+          onViewProject={() => {
+            if (detail.linkedProjectId) setFocusProjectId(detail.linkedProjectId)
+            onNav?.('crm')
+          }}
+        />
+      )}
+
+      {showCompare && (
+        <CompareModal
+          ideas={businessIdeas.filter((i) => compareIds.includes(i.id))}
+          onClose={() => setShowCompare(false)}
         />
       )}
     </div>
@@ -181,10 +272,30 @@ export default function StrategieHQ(_props: { onNav?: (v: View) => void } = {}) 
 
 // ── list card ────────────────────────────────────────────────────────────────
 
-function IdeaCard({ idea, onOpen }: { idea: BusinessIdea; onOpen: () => void }) {
+function IdeaCard({
+  idea,
+  onOpen,
+  compareMode,
+  selected,
+  onToggleCompare,
+}: {
+  idea: BusinessIdea
+  onOpen: () => void
+  compareMode?: boolean
+  selected?: boolean
+  onToggleCompare?: () => void
+}) {
   const busy = idea.elaborationStatus === 'pending' || idea.elaborationStatus === 'processing'
   return (
-    <button onClick={onOpen} className="card p-4 w-full text-left flex items-center gap-3.5 hover:border-buurtkaart/40 transition-colors">
+    <button
+      onClick={compareMode ? onToggleCompare : onOpen}
+      className={`card p-4 w-full text-left flex items-center gap-3.5 transition-colors ${selected ? 'border-buurtkaart bg-buurtkaart/5' : 'hover:border-buurtkaart/40'}`}
+    >
+      {compareMode && (
+        <span className={`h-5 w-5 rounded-md flex items-center justify-center shrink-0 ${selected ? 'bg-buurtkaart text-white' : 'border-[1.5px] border-line text-transparent'}`}>
+          <Check className="h-3 w-3" />
+        </span>
+      )}
       {idea.elaborationStatus === 'ready' ? (
         <Ring
           value={(idea.feasibilityScore ?? 0) / 100}
@@ -216,6 +327,99 @@ function IdeaCard({ idea, onOpen }: { idea: BusinessIdea; onOpen: () => void }) 
         </div>
       </div>
     </button>
+  )
+}
+
+// ── compare modal: 2-4 ideas side by side ─────────────────────────────────────
+
+function CompareModal({ ideas, onClose }: { ideas: BusinessIdea[]; onClose: () => void }) {
+  return (
+    <Overlay
+      tone="black"
+      onClose={onClose}
+      className="flex items-end md:items-center justify-center p-0 md:p-4"
+      panelClassName="bg-canvas w-full md:max-w-5xl md:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-y-auto shadow-xl"
+    >
+      <div className="sticky top-0 bg-canvas/90 backdrop-blur border-b border-line px-4 py-3 flex items-center gap-2">
+        <GitCompare className="h-4 w-4 text-buurtkaart shrink-0" />
+        <span className="text-sm font-semibold">Ideeën vergelijken</span>
+        <button onClick={onClose} className="ml-auto text-faint hover:text-ink p-1 rounded-lg hover:bg-sunken">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="p-4 overflow-x-auto">
+        <div className="flex gap-3 min-w-min">
+          {ideas.map((idea) => (
+            <CompareColumn key={idea.id} idea={idea} />
+          ))}
+        </div>
+      </div>
+    </Overlay>
+  )
+}
+
+function topRisk(idea: BusinessIdea) {
+  return idea.risks.find((r) => r.impact === 'high') ?? idea.risks[0] ?? null
+}
+function topOpportunity(idea: BusinessIdea) {
+  return idea.opportunities.find((o) => o.potential === 'high') ?? idea.opportunities[0] ?? null
+}
+
+function CompareColumn({ idea }: { idea: BusinessIdea }) {
+  const risk = topRisk(idea)
+  const opportunity = topOpportunity(idea)
+  return (
+    <div className="w-64 shrink-0 space-y-3">
+      <div className="card p-3.5 space-y-2.5">
+        <div>
+          <div className="font-semibold text-ink break-words">{idea.title}</div>
+          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+            <DomainChip domain={idea.domain} small />
+            <span className="chip text-[10px] px-2 py-0 shrink-0" style={{ color: STATUS_HEX[idea.status], background: `${STATUS_HEX[idea.status]}1f` }}>
+              {STATUS_LABEL[idea.status]}
+            </span>
+          </div>
+        </div>
+
+        {idea.elaborationStatus === 'ready' ? (
+          <>
+            <div className="flex items-center gap-2.5">
+              <Ring value={(idea.feasibilityScore ?? 0) / 100} size={40} stroke={4} color={feasibilityStroke(idea.feasibilityScore)} label={idea.feasibilityScore ?? '–'} />
+              <div className="text-[11px] text-faint">Haalbaarheid</div>
+            </div>
+
+            <CompareRow label="Tijdlijn" value={idea.timeline} />
+            <CompareRow label="Investering" value={idea.financials.investmentNeeded !== null ? eur(idea.financials.investmentNeeded) : null} />
+            <CompareRow label="Break-even" value={idea.financials.breakEven} />
+            <CompareRow label="Grootste risico" value={risk?.risk ?? null} sub={risk ? IMPACT_LABEL[risk.impact] : undefined} />
+            <CompareRow label="Grootste kans" value={opportunity?.opportunity ?? null} sub={opportunity ? IMPACT_LABEL[opportunity.potential] : undefined} />
+            <CompareRow
+              label="Klantanalyse"
+              value={idea.customerAnalysisStatus === 'ready' ? `${idea.customerAnalysis?.personas.length ?? 0} persona's` : idea.customerAnalysisStatus ? 'Bezig/mislukt' : 'Nog niet gegenereerd'}
+            />
+            <CompareRow
+              label="MVP-plan"
+              value={idea.mvpPlanStatus === 'ready' ? `${idea.mvpPlan?.experiments.length ?? 0} experimenten` : idea.mvpPlanStatus ? 'Bezig/mislukt' : 'Nog niet gegenereerd'}
+            />
+          </>
+        ) : (
+          <p className="text-xs text-faint italic">Nog niet uitgewerkt door HEYRA.</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CompareRow({ label, value, sub }: { label: string; value: string | null; sub?: string }) {
+  return (
+    <div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-faint">{label}</div>
+      <p className="text-xs text-ink-soft leading-snug break-words">
+        {value ?? <span className="text-faint italic">—</span>}
+        {sub && <span className="text-faint"> · {sub}</span>}
+      </p>
+    </div>
   )
 }
 
@@ -350,6 +554,8 @@ function IdeaDetailModal({
   onGenerateMvpPlan,
   onToggleMvpTask,
   onGenerateCustomerAnalysis,
+  onConvertToProject,
+  onViewProject,
 }: {
   idea: BusinessIdea
   onClose: () => void
@@ -360,10 +566,19 @@ function IdeaDetailModal({
   onGenerateMvpPlan: () => void
   onToggleMvpTask: (phaseIndex: number, taskIndex: number) => void
   onGenerateCustomerAnalysis: () => void
+  onConvertToProject: () => Promise<void>
+  onViewProject: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const [showFullDoc, setShowFullDoc] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [converting, setConverting] = useState(false)
+
+  async function handleConvert() {
+    setConverting(true)
+    await onConvertToProject()
+    setConverting(false)
+  }
   const [form, setForm] = useState<EditableIdea>(() => ({
     title: idea.title, overview: idea.overview, domain: idea.domain, tags: idea.tags,
     status: idea.status, feasibilityScore: idea.feasibilityScore, timeline: idea.timeline, markdown: idea.markdown,
@@ -481,6 +696,19 @@ function IdeaDetailModal({
           <>
             <h2 className="text-xl font-bold tracking-tight leading-snug">{idea.title}</h2>
 
+            {idea.elaborationStatus === 'ready' && (
+              idea.linkedProjectId ? (
+                <button onClick={onViewProject} className="btn-ghost !py-1.5 text-xs self-start">
+                  <FolderKanban className="h-3.5 w-3.5" /> Bekijk project in CRM
+                </button>
+              ) : (
+                <button onClick={handleConvert} disabled={converting} className="btn-ghost !py-1.5 text-xs self-start">
+                  {converting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderKanban className="h-3.5 w-3.5" />}
+                  Zet om naar project
+                </button>
+              )
+            )}
+
             {idea.elaborationStatus === 'failed' && (
               <div className="rounded-xl bg-personal/10 p-3 text-sm text-personal-deep flex items-start gap-2 flex-wrap">
                 <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
@@ -523,6 +751,8 @@ function IdeaDetailModal({
                     {idea.timeline && <p className="text-[11px] text-faint mt-1.5">Tijdlijn: {idea.timeline}</p>}
                   </div>
                 </div>
+
+                {idea.scoreBreakdown && <WeightedScoreCard breakdown={idea.scoreBreakdown} />}
 
                 {idea.milestones.length > 0 && (
                   <div>
@@ -638,7 +868,17 @@ function IdeaDetailModal({
       </div>
 
       {!editing && (
-        <div className="sticky bottom-0 bg-canvas/90 backdrop-blur border-t border-line px-4 py-3 flex justify-end">
+        <div className="sticky bottom-0 bg-canvas/90 backdrop-blur border-t border-line px-4 py-3 flex items-center justify-between gap-2 flex-wrap">
+          {idea.elaborationStatus === 'ready' ? (
+            <div className="flex gap-1">
+              <button onClick={() => downloadIdeaMarkdown(idea)} className="btn-ghost !py-1.5 text-xs" title="Downloaden als Markdown">
+                <Download className="h-3.5 w-3.5" /> .md
+              </button>
+              <button onClick={() => printIdeaAsPdf(idea)} className="btn-ghost !py-1.5 text-xs" title="Exporteren als PDF (via printdialoog)">
+                <Printer className="h-3.5 w-3.5" /> PDF
+              </button>
+            </div>
+          ) : <span />}
           <button onClick={() => setConfirmDelete(true)} className="btn-ghost !py-1.5 text-xs text-cross-deep">
             <Trash2 className="h-3.5 w-3.5" /> Verwijderen
           </button>
@@ -1019,6 +1259,77 @@ function SwotQuadrant({ title, items, hex }: { title: string; items: string[]; h
         </ul>
       ) : (
         <div className="text-xs text-faint italic">geen</div>
+      )}
+    </div>
+  )
+}
+
+// ── Aanpasbare wegingsfactoren: een persoonlijke, gewogen score naast de
+// AI-score — feasibilityWeights is een globale voorkeur (store), niet per
+// idee, dus verandert de weging hier voor alle ideeën met een scoreBreakdown.
+const SCORE_DIMENSIONS: { key: keyof ScoreBreakdown; label: string }[] = [
+  { key: 'market', label: 'Markt' },
+  { key: 'execution', label: 'Uitvoerbaarheid' },
+  { key: 'financial', label: 'Financieel' },
+  { key: 'risk', label: 'Risico-veiligheid' },
+]
+
+function WeightedScoreCard({ breakdown }: { breakdown: ScoreBreakdown }) {
+  const weights = useStore((s) => s.feasibilityWeights)
+  const setWeights = useStore((s) => s.setFeasibilityWeights)
+  const [expanded, setExpanded] = useState(false)
+
+  const totalWeight = weights.market + weights.execution + weights.financial + weights.risk
+  const weighted =
+    totalWeight > 0
+      ? Math.round(
+          (breakdown.market * weights.market +
+            breakdown.execution * weights.execution +
+            breakdown.financial * weights.financial +
+            breakdown.risk * weights.risk) /
+            totalWeight,
+        )
+      : null
+
+  return (
+    <div className="card p-3.5 space-y-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <Scale className="h-3.5 w-3.5 text-faint shrink-0" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-faint">Gewogen score</span>
+        </div>
+        <button onClick={() => setExpanded((v) => !v)} className="text-faint hover:text-ink p-1 rounded-lg hover:bg-sunken" title="Wegingsfactoren aanpassen">
+          <Settings2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <span className="text-2xl font-bold tabular-nums shrink-0">{weighted ?? '–'}</span>
+        <div className="flex-1 min-w-0 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-faint">
+          {SCORE_DIMENSIONS.map((d) => (
+            <span key={d.key} className="break-words">{d.label}: {breakdown[d.key]}</span>
+          ))}
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="space-y-2 pt-2 border-t border-line">
+          <p className="text-[11px] text-faint">Persoonlijke weging — telt mee voor alle ideeën in Strategie HQ.</p>
+          {SCORE_DIMENSIONS.map((d) => (
+            <div key={d.key} className="flex items-center gap-2">
+              <span className="text-xs text-muted w-28 shrink-0">{d.label}</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={weights[d.key]}
+                onChange={(e) => setWeights({ [d.key]: Number(e.target.value) })}
+                className="flex-1 accent-buurtkaart"
+              />
+              <span className="text-xs text-faint w-7 text-right tabular-nums shrink-0">{weights[d.key]}</span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )

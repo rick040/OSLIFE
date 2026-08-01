@@ -2813,7 +2813,7 @@ export async function searchMemory(query: string, limit = 8): Promise<MemoryHit[
 // returns array/object shapes so the UI never has to null-check.
 
 const BUSINESS_IDEA_COLS =
-  'id,created_at,updated_at,source,raw_input,elaboration_status,error,status,title,overview,domain,tags,feasibility_score,feasibility_reasoning,timeline,milestones,financials,risks,opportunities,swot,markdown,tier,mvp_plan_status,mvp_plan_error,mvp_plan,customer_analysis_status,customer_analysis_error,customer_analysis'
+  'id,created_at,updated_at,source,raw_input,elaboration_status,error,status,title,overview,domain,tags,feasibility_score,feasibility_reasoning,score_breakdown,timeline,milestones,financials,risks,opportunities,swot,markdown,tier,mvp_plan_status,mvp_plan_error,mvp_plan,customer_analysis_status,customer_analysis_error,customer_analysis,linked_project_id'
 
 function mapBusinessIdeaRow(r: Record<string, unknown>): BusinessIdea {
   const financials = (r.financials as Record<string, unknown>) ?? {}
@@ -2833,6 +2833,7 @@ function mapBusinessIdeaRow(r: Record<string, unknown>): BusinessIdea {
     tags: (r.tags as string[]) ?? [],
     feasibilityScore: (r.feasibility_score as number) ?? null,
     feasibilityReasoning: (r.feasibility_reasoning as string) ?? null,
+    scoreBreakdown: (r.score_breakdown as BusinessIdea['scoreBreakdown']) ?? null,
     timeline: (r.timeline as string) ?? null,
     milestones: (r.milestones as BusinessIdea['milestones']) ?? [],
     financials: {
@@ -2858,6 +2859,7 @@ function mapBusinessIdeaRow(r: Record<string, unknown>): BusinessIdea {
     customerAnalysisStatus: (r.customer_analysis_status as BusinessIdea['customerAnalysisStatus']) ?? null,
     customerAnalysisError: (r.customer_analysis_error as string) ?? null,
     customerAnalysis: (r.customer_analysis as BusinessIdea['customerAnalysis']) ?? null,
+    linkedProjectId: (r.linked_project_id as string) ?? null,
   }
 }
 
@@ -2907,6 +2909,7 @@ const BUSINESS_IDEA_COL_MAP: Record<string, string> = {
   tier: 'tier',
   mvpPlan: 'mvp_plan',
   customerAnalysis: 'customer_analysis',
+  linkedProjectId: 'linked_project_id',
 }
 
 /** Manual edit from the detail/edit form — only the fields users can actually change. */
@@ -2932,6 +2935,7 @@ export async function updateBusinessIdeaRow(
       | 'tier'
       | 'mvpPlan'
       | 'customerAnalysis'
+      | 'linkedProjectId'
     >
   >,
 ): Promise<void> {

@@ -1164,6 +1164,17 @@ export interface IdeaSwot {
   threats: string[]
 }
 
+/** Per-dimension read on feasibility, all 0-100 where higher = better/safer. Powers the adjustable weighted score. */
+export interface ScoreBreakdown {
+  market: number
+  execution: number
+  financial: number
+  risk: number // higher = SAFER (inverse of "how risky")
+}
+
+/** How much each ScoreBreakdown dimension counts toward the personal weighted score — a global preference, not per-idea. */
+export type FeasibilityWeights = ScoreBreakdown
+
 export type MvpPlanStatus = 'pending' | 'processing' | 'ready' | 'failed'
 
 export interface MvpChannel {
@@ -1274,6 +1285,7 @@ export interface BusinessIdea {
   tags: string[]
   feasibilityScore: number | null
   feasibilityReasoning: string | null
+  scoreBreakdown: ScoreBreakdown | null
   timeline: string | null
   milestones: IdeaMilestone[]
   financials: IdeaFinancials
@@ -1288,4 +1300,5 @@ export interface BusinessIdea {
   customerAnalysisStatus: CustomerAnalysisStatus | null
   customerAnalysisError: string | null
   customerAnalysis: CustomerAnalysis | null
+  linkedProjectId: string | null // FK → projects.id, set once the idea is converted to a real project
 }
