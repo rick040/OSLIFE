@@ -61,6 +61,7 @@ import type {
   ProfileFact,
   MemorySummary,
   BusinessIdea,
+  FeasibilityWeights,
   IdeaSource,
   Holding,
   HoldingQuote,
@@ -271,6 +272,7 @@ import {
   deleteBusinessIdeaRow,
   invokeIdeaElaborate,
   invokeIdeaMvpPlan,
+  invokeIdeaCustomerAnalysis,
   fetchCardTemplates,
   upsertCardTemplate,
   fetchIdentityProfile,
@@ -440,6 +442,12 @@ interface State {
   toggleIdeaMilestone: (id: string, index: number) => void
   generateMvpPlan: (id: string) => void
   toggleMvpRoadmapTask: (id: string, phaseIndex: number, taskIndex: number) => void
+  generateCustomerAnalysis: (id: string) => void
+  convertIdeaToProject: (id: string) => Promise<string | null>
+  focusProjectId: string | null
+  setFocusProjectId: (id: string | null) => void
+  feasibilityWeights: FeasibilityWeights
+  setFeasibilityWeights: (patch: Partial<FeasibilityWeights>) => void
 
   // HEYRA Taakmaker — commit a parsed task draft as an open loop (thread)
   addTask: (draft: TaskDraft) => string
@@ -791,6 +799,14 @@ const seed = () => ({
   generatingLandscape: false,
   lastLandscapeError: null as string | null,
   businessIdeas: [] as BusinessIdea[],
+  // Set right before navigating to CRM from elsewhere (e.g. Strategie HQ's
+  // "Bekijk project" button) so CRM can auto-open that project's detail modal
+  // on mount, then clear it — a lightweight deep-link with no routing.
+  focusProjectId: null as string | null,
+  // Personal preference (not per-idea, applies across all of Strategie HQ):
+  // how much each scoreBreakdown dimension counts toward the adjustable
+  // weighted score shown next to the AI's own feasibilityScore.
+  feasibilityWeights: { market: 25, execution: 25, financial: 25, risk: 25 } as FeasibilityWeights,
   cardTemplates: [] as CardTemplate[],
   settings: { hourlyRate: 0 } as AppSettings,
   dataSource: 'mock' as const,
@@ -1263,6 +1279,7 @@ export const useStore = create<State>()(
           tags: [],
           feasibilityScore: null,
           feasibilityReasoning: null,
+          scoreBreakdown: null,
           timeline: null,
           milestones: [],
           financials: { investmentNeeded: null, revenueProjection: [], costs: [], breakEven: null, notes: null },
@@ -1274,6 +1291,10 @@ export const useStore = create<State>()(
           mvpPlanStatus: null,
           mvpPlanError: null,
           mvpPlan: null,
+          customerAnalysisStatus: null,
+          customerAnalysisError: null,
+          customerAnalysis: null,
+          linkedProjectId: null,
         }
         set((s) => ({
           businessIdeas: [optimistic, ...s.businessIdeas],
@@ -1373,6 +1394,48 @@ export const useStore = create<State>()(
         }))
         void updateBusinessIdeaRow(id, { mvpPlan })
       },
+
+      generateCustomerAnalysis: (id) => {
+        // No real row, nothing an edge function could work with — same guard
+        // as generateMvpPlan.
+        if (!isDbId(id)) return
+        set((s) => ({
+          businessIdeas: s.businessIdeas.map((x) =>
+            x.id === id ? { ...x, customerAnalysisStatus: 'pending', customerAnalysisError: null } : x,
+          ),
+        }))
+        void invokeIdeaCustomerAnalysis(id)
+      },
+
+      convertIdeaToProject: async (id) => {
+        const idea = get().businessIdeas.find((x) => x.id === id)
+        if (!idea || !isDbId(id) || idea.linkedProjectId) return idea?.linkedProjectId ?? null
+        const projectId = await get().createProjectWithTemplate(
+          {
+            name: idea.title,
+            client: '',
+            domain: idea.domain,
+            status: 'lead',
+            deadline: null,
+            progress: 0,
+            value: idea.financials.investmentNeeded ?? 0,
+            clientId: null,
+            scope: idea.overview ?? undefined,
+            notes: `Omgezet vanuit Strategie HQ-idee "${idea.title}".`,
+          },
+          idea.milestones.map((m) => m.title),
+        )
+        if (!projectId) return null
+        set((s) => ({
+          businessIdeas: s.businessIdeas.map((x) => (x.id === id ? { ...x, linkedProjectId: projectId } : x)),
+        }))
+        void updateBusinessIdeaRow(id, { linkedProjectId: projectId })
+        return projectId
+      },
+
+      setFocusProjectId: (id) => set({ focusProjectId: id }),
+
+      setFeasibilityWeights: (patch) => set((s) => ({ feasibilityWeights: { ...s.feasibilityWeights, ...patch } })),
 
       learnFromExchange: async (userText, heyraText) => {
         const existing = get().learnedFacts

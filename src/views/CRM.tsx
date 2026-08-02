@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useStore } from '../store'
 import { SectionTitle } from '../components/ui'
 import Messages from './Messages'
@@ -29,7 +29,7 @@ import OnboardingWizard from '../components/OnboardingWizard'
 const STATUS_ORDER = ['In uitvoering', 'Gepland', 'Gepauzeerd', 'Opgeleverd'] as const
 
 export default function CRM() {
-  const { projects, clients, messages, markConversationRead } = useStore()
+  const { projects, clients, messages, markConversationRead, focusProjectId, setFocusProjectId } = useStore()
   const [filter, setFilter] = useState('In uitvoering')
   const [view, setView] = useState<ProjectViewMode>('grid')
   const [showMessages, setShowMessages] = useState(false)
@@ -38,6 +38,15 @@ export default function CRM() {
     setOpenProject, setOpenClient, setCreatingProject, setCreatingClient,
     openClientById, modals,
   } = useProjectBrowserModals(clients)
+
+  // Deep-link from Strategie HQ's "Bekijk project" — open it once, then clear
+  // the flag so it doesn't reopen on every subsequent visit to CRM.
+  useEffect(() => {
+    if (!focusProjectId) return
+    const p = projects.find((x) => x.id === focusProjectId)
+    if (p) setOpenProject(p)
+    setFocusProjectId(null)
+  }, [focusProjectId, projects, setOpenProject, setFocusProjectId])
 
   function handleOnboardingDone(result: { clientId: string | null; projectId: string | null }) {
     setShowOnboarding(false)
