@@ -1,6 +1,6 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import type { Domain, Sentiment } from '../types'
-import { DOMAIN_META, SENTIMENT_META } from '../domains'
+import { domainMeta, SENTIMENT_META } from '../domains'
 import { ArrowRight } from 'lucide-react'
 import { cn } from '../lib/utils'
 import {
@@ -15,7 +15,7 @@ import {
 } from './ui/alert-dialog'
 
 export function DomainChip({ domain, small }: { domain: Domain; small?: boolean }) {
-  const m = DOMAIN_META[domain]
+  const m = domainMeta(domain)
   return (
     <span className={`chip ${m.soft} ${small ? 'text-[10px] px-2 py-0' : ''}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${m.dot}`} />

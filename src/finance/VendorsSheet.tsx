@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Overlay, SectionTitle, Empty } from '../components/ui'
-import { DOMAIN_META } from '../domains'
+import { DOMAIN_META, domainMeta } from '../domains'
 import { TX_CATEGORIES, domainForCategory } from './categories'
 import type { Domain, VendorTag } from '../types'
 import { X, Sparkles, Tag, Trash2, Pencil, Globe, CheckCircle2 } from 'lucide-react'
@@ -86,13 +86,13 @@ export function VendorsSheet({
               />
             ) : (
               <div key={v.vendorKey} className="flex items-center gap-3 p-3">
-                <span className={`h-9 w-9 rounded-2xl flex items-center justify-center shrink-0 ${DOMAIN_META[v.domain].soft}`}>
+                <span className={`h-9 w-9 rounded-2xl flex items-center justify-center shrink-0 ${domainMeta(v.domain).soft}`}>
                   {v.source === 'ai' ? <Globe className="h-4 w-4" /> : <Tag className="h-4 w-4" />}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-ink truncate">{v.vendorName}</div>
                   <div className="text-xs text-faint truncate">
-                    {v.category} · {DOMAIN_META[v.domain].label}
+                    {v.category} · {domainMeta(v.domain).label}
                     {v.source === 'ai' ? ` · AI ${Math.round(v.confidence * 100)}%` : ' · handmatig'}
                   </div>
                 </div>

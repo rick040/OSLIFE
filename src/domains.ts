@@ -52,6 +52,19 @@ export const DOMAIN_META: Record<
   },
 }
 
+/**
+ * Safe DOMAIN_META lookup — `Domain` is a compile-time guarantee only; a
+ * stale/legacy row (or a domain value from before the current 5-domain
+ * model) can still hand a string at runtime that isn't a real key, and
+ * `DOMAIN_META[bad]` is `undefined`. Every direct-index call site crashed
+ * the whole app on that (`Cannot read properties of undefined`), including
+ * a handful of real `payments` rows with domain `'business'`. Falls back to
+ * `cross` so a mislabeled row renders as a chip instead of a blank screen.
+ */
+export function domainMeta(domain: Domain | string | null | undefined): (typeof DOMAIN_META)[Domain] {
+  return DOMAIN_META[domain as Domain] ?? DOMAIN_META.cross
+}
+
 /** Raw hex per domain (mid tone), for recharts fills/strokes. */
 export const DOMAIN_HEX: Record<Domain, string> = {
   parkingyou: '#60A5FA',
