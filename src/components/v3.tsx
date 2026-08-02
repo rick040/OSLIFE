@@ -1,6 +1,6 @@
 import { Check, Video, Sparkles, X, Plus } from 'lucide-react'
 import type { Domain } from '../types'
-import { DOMAIN_META } from '../domains'
+import { domainMeta } from '../domains'
 import { DomainChip } from './ui'
 import { MarkdownInline } from './Markdown'
 
@@ -217,7 +217,7 @@ export function DetailCard({
 }
 
 function DomainTag({ domain }: { domain: Domain }) {
-  const m = DOMAIN_META[domain]
+  const m = domainMeta(domain)
   return (
     <span className={`chip ${m.soft}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${m.dot}`} />

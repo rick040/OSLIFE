@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useStore } from '../store'
-import { DOMAIN_META, today } from '../domains'
+import { domainMeta, today } from '../domains'
 import { Empty } from '../components/ui'
 import { weekDates, PEAK_START, PEAK_END } from '../heyra/planner'
 import { googleCalendarUrlForBlock } from '../lib/gcal'
-import type { PlanBlock, PlanBlockKind, Domain } from '../types'
+import type { PlanBlock, PlanBlockKind } from '../types'
 import {
   CalendarRange,
   CalendarClock,
@@ -88,7 +88,7 @@ function WeekStrip({
             <span className={`text-base font-semibold leading-none ${!isSelected && isToday ? 'text-forest' : ''}`}>{dayNum}</span>
             <span className="flex h-1.5 items-center gap-0.5">
               {domains.length ? (
-                domains.map((d) => <span key={d} className={`h-1.5 w-1.5 rounded-full ${DOMAIN_META[d as Domain].dot}`} />)
+                domains.map((d) => <span key={d} className={`h-1.5 w-1.5 rounded-full ${domainMeta(d).dot}`} />)
               ) : (
                 <span className="h-1.5 w-1.5 rounded-full bg-transparent" />
               )}
@@ -134,7 +134,7 @@ function IconAction({
 /** One row of the connected timeline — a colored marker on the spine, the block's info, and compact actions. */
 function TimelineRow({ b, isLast, peakStart, peakEnd }: { b: PlanBlock; isLast: boolean; peakStart: string; peakEnd: string }) {
   const { lockPlanBlock, dismissPlanBlock, movePlanBlock } = useStore()
-  const meta = DOMAIN_META[b.domain]
+  const meta = domainMeta(b.domain)
   const kind = KIND_META[b.kind]
   const Icon = kind.icon
   const inPeak = b.start >= peakStart && b.start < peakEnd

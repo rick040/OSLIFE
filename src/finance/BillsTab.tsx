@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { DomainChip, SectionTitle, Empty, ConfirmDialog } from '../components/ui'
-import { DOMAIN_META, TODAY, fmtDate, daysBetween } from '../domains'
+import { DOMAIN_META, domainMeta, TODAY, fmtDate, daysBetween } from '../domains'
 import { dueLabel } from '../lib/dates'
 import { eur } from '../lib/format'
 import { MiniCalendar } from './MiniCalendar'
@@ -367,7 +367,7 @@ function Subscriptions({
             if (s.notes) parts.push(s.notes)
             return (
               <div key={s.id} className={`flex items-center gap-3 p-3 ${s.active ? '' : 'opacity-50'}`}>
-                <span className={`h-9 w-9 rounded-2xl flex items-center justify-center shrink-0 ${s.active ? `${DOMAIN_META[s.domain].soft}` : 'bg-sunken text-faint'}`}>
+                <span className={`h-9 w-9 rounded-2xl flex items-center justify-center shrink-0 ${s.active ? `${domainMeta(s.domain).soft}` : 'bg-sunken text-faint'}`}>
                   <Repeat className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
