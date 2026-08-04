@@ -87,10 +87,14 @@ const CATEGORY_MAP: Record<string, string> = {
 }
 
 // Counterparties known to be the user's own accounts — money moving between
-// wallets, not real income/spend. MUST match isTransferCounterparty() in
+// wallets, not real income/spend. Deliberately NOT a bare "van mierlo" match:
+// Rick's KNAB business account sends real client income under his full name
+// ("Rick van Mierlo"), which must not be swept into Internal transfer just for
+// sharing his surname — only the initial-form "R VAN MIERLO" that ABN's own
+// transfer confirmations use. MUST match isTransferCounterparty() in
 // src/finance/categories.ts.
 const TRANSFER_COUNTERPARTIES = [
-  /van\s*mierlo/i,
+  /\br\.?\s*van\s*mierlo\b/i,
   /prjct agency/i,
   /eigen\s*rekening/i,
   /naar\s*(mijzelf|uzelf|jezelf)/i,
@@ -111,8 +115,21 @@ function isBankApp(app: string): boolean {
   return BANK_APPS.test(app)
 }
 
-function inferCategory(merchant: string): string {
-  if (TRANSFER_COUNTERPARTIES.some((re) => re.test(merchant))) return 'Internal transfer'
+// Rick's own ABN AMRO accounts (checking + savings) — a transfer to/from
+// either is money moving between his own pockets, not income or spend.
+// Deliberately does NOT include his KNAB business account: KNAB -> checking
+// is real client income, not a transfer. MUST match TRANSFER_IBANS in
+// src/finance/categories.ts.
+const TRANSFER_IBANS = new Set(['NL36ABNA0574856153', 'NL62ABNA0468064117'])
+const IBAN_PATTERN = /\bNL\d{2}\s?[A-Z]{4}\s?\d{4}\s?\d{4}\s?\d{2}\b/gi
+
+function isTransferIban(text: string): boolean {
+  const ibans = (text.match(IBAN_PATTERN) ?? []).map((s) => s.replace(/\s+/g, '').toUpperCase())
+  return ibans.some((iban) => TRANSFER_IBANS.has(iban))
+}
+
+function inferCategory(merchant: string, context = ''): string {
+  if (TRANSFER_COUNTERPARTIES.some((re) => re.test(merchant)) || isTransferIban(`${merchant} ${context}`)) return 'Internal transfer'
   const m = merchant.toLowerCase()
   for (const [key, cat] of Object.entries(CATEGORY_MAP)) {
     if (m.includes(key)) return cat
@@ -223,7 +240,7 @@ Deno.serve(async (req) => {
   const dedupKey = `${occurredOn}|${storedAmount.toFixed(2)}`
 
   const domain = mapAccountType(body.domain ?? body.account_type ?? '') || inferDomain(merchant)
-  const category = body.category?.trim() || inferCategory(merchant)
+  const category = body.category?.trim() || inferCategory(merchant, `${title} ${text}`)
   const source = normalizeSource(body.app ?? '')
   const description = `${title} | ${text}`.slice(0, 200)
 

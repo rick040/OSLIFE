@@ -5,13 +5,18 @@
 // Valt terug op een vergevingsgezinde generieke parse per regel.
 import type { Transaction } from '../types'
 import { TODAY } from '../domains'
-import { domainForCategory, isTransferCounterparty } from './categories'
+import { domainForCategory, isTransferCounterparty, isTransferIban } from './categories'
 
 export function guessCategory(desc: string, amount: number): string {
   const d = desc.toLowerCase()
   // Money moving between the user's own accounts (checked before the
   // amount>0 → 'Client income' fallback, since transfers go both ways).
-  if (isTransferCounterparty(desc)) return 'Internal transfer'
+  // isTransferIban catches the ABN<->ABN checking/savings transfers even when
+  // the description doesn't spell out a recognisable name (e.g. a generic
+  // "Overboeking eigen rekening" with no "Van Mierlo" text) — the KNAB
+  // business account is deliberately NOT in that list, so KNAB->checking
+  // still falls through to the amount>0 'Client income' case below.
+  if (isTransferCounterparty(desc) || isTransferIban(desc)) return 'Internal transfer'
   if (amount > 0) return 'Client income'
   // Word boundaries throughout: unbounded substrings caused false positives like
   // "shell" matching "Michelle", "bp" matching "ABP", "plus" matching "OnePlus".
