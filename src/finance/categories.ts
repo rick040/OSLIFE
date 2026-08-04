@@ -62,9 +62,20 @@ export function isTransfer(category: string | null | undefined): boolean {
 }
 
 /** Counterparties known to be the user's own accounts, matched regardless of
- *  case/spacing ("R VAN MIERLO", "R van Mierlo", "PRJCT Agency", ...). Used to
- *  auto-tag new transactions as 'Internal transfer' at ingest/import time. */
-const TRANSFER_COUNTERPARTIES = [/r\.?\s*van\s*mierlo/i, /prjct agency/i]
+ *  case/spacing/initials ("R VAN MIERLO", "R.J. van Mierlo", "Van Mierlo R",
+ *  "PRJCT Agency", ...) plus the generic Dutch bank wording for a same-owner
+ *  transfer between your own accounts ("eigen rekening", "naar uzelf") — ABN
+ *  and other NL banks use that phrasing even when the counterparty name is
+ *  omitted or formatted differently than expected. Used to auto-tag new
+ *  transactions as 'Internal transfer' at ingest/import time.
+ *  MUST match TRANSFER_COUNTERPARTIES in supabase/functions/wallet-ingest/index.ts. */
+const TRANSFER_COUNTERPARTIES = [
+  /van\s*mierlo/i,
+  /prjct agency/i,
+  /eigen\s*rekening/i,
+  /naar\s*(mijzelf|uzelf|jezelf)/i,
+  /tussen\s*(mijn\s*)?(eigen\s*)?rekening/i,
+]
 
 export function isTransferCounterparty(name: string | null | undefined): boolean {
   const s = (name ?? '').trim()

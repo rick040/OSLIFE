@@ -21,6 +21,11 @@
  *      current time (PM-072 Fase 2) — no native Android app exists to use
  *      AlarmManager, so medication reminders reuse this same Telegram channel,
  *      claimed per medication+time+day just like the fixed daily slots.
+ *   5. On the morning-briefing slot, on Sundays only: nudges for a bank-CSV
+ *      import if the last one (finance_tx.source='abn_csv') is 7+ days old or
+ *      missing — real-time wallet-ingest notifications alone drift out of
+ *      sync (unenriched placeholders, dropped wallet-only entries, mistagged
+ *      transfers), the CSV is what corrects them. Claimed per ISO week.
  *
 
  * The morning briefing is a server-side port of src/derive.ts buildNudge():
@@ -349,6 +354,44 @@ async function dueMedicationReminders(sb: any, nowMinutes: number): Promise<DueM
   return due;
 }
 
+// ── Weekly CSV-import reminder ───────────────────────────────────────────────
+// Real-time MacroDroid notifications (wallet-ingest) only capture what fires
+// on the phone: a bank notification with no merchant sits as a placeholder
+// until enriched, a Google Wallet notification with no matching bank
+// notification gets dropped outright, and an internal transfer whose wording
+// slips past the auto-detector lands miscategorised. The monthly bank CSV is
+// the closest thing to ground truth (see insertFinanceTx), so nudge once a
+// week if it's gone stale — reuses the morning-briefing slot/toggle rather
+// than adding a new notification_prefs column for one weekly check.
+
+function isSunday(today: string): boolean {
+  return new Date(today + "T12:00:00").getDay() === 0;
+}
+
+function isoWeekKey(today: string): string {
+  const d = new Date(today + "T12:00:00");
+  d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+  const yearStart = new Date(d.getFullYear(), 0, 1);
+  const week = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+// deno-lint-ignore no-explicit-any
+async function csvImportStale(sb: any, today: string): Promise<boolean> {
+  const { data } = await sb
+    .from("finance_tx")
+    .select("ingested_at")
+    .eq("user_id", USER_ID)
+    .eq("source", "abn_csv")
+    .order("ingested_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (!data?.ingested_at) return true;
+  const last = new Date((data.ingested_at as string).slice(0, 10) + "T00:00:00");
+  const days = Math.round((new Date(today + "T00:00:00").getTime() - last.getTime()) / 86400000);
+  return days >= 7;
+}
+
 // ── Urgent alerts ─────────────────────────────────────────────────────────
 
 interface UrgentAlert {
@@ -489,6 +532,17 @@ Deno.serve(async (req) => {
       const payload: AutomationPayload = { blocks: await todaysDayBlocks(sb, today) };
       await sendClaimed(sb, "morning", today, BOT_TOKEN, chatId, await buildMorningBriefing(sb, today), undefined, payload);
       sent.push("morning");
+    }
+
+    if (
+      prefs.morning_briefing && isSunday(today) && withinWindow(prefs.morning_time, nowMinutes)
+    ) {
+      const weekKey = isoWeekKey(today);
+      if ((await csvImportStale(sb, today)) && (await claim(sb, "csv_import_reminder", weekKey))) {
+        const text = "🧾 Tijd voor je wekelijkse bank-CSV. Real-time meldingen missen soms een winkelnaam of een interne overboeking — een verse import zet dat recht. Exporteer 'm uit je bank-app en upload 'm in OSLIFE → Geld.";
+        await sendClaimed(sb, "csv_import_reminder", weekKey, BOT_TOKEN, chatId, text, undefined, { week: weekKey });
+        sent.push("csv_import_reminder");
+      }
     }
 
     if (prefs.evening_checkin && withinWindow(prefs.evening_time, nowMinutes) && (await claim(sb, "evening_checkin", today))) {

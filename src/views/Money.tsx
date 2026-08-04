@@ -12,8 +12,16 @@ import { BalanceAdjustModal } from '../finance/BalanceAdjustModal'
 import { computeBalance } from '../finance/balance'
 import { OPENING_BALANCE } from '../mockData'
 import { parseCsv } from '../finance/csvImport'
+import { TODAY, daysBetween } from '../domains'
 import type { Domain, Transaction } from '../types'
-import { Wallet, Upload, Sparkles, Settings2 } from 'lucide-react'
+import { Wallet, Upload, Sparkles, Settings2, AlertCircle } from 'lucide-react'
+
+/** Real-time MacroDroid notifications only tell part of the story — pending
+ *  bank-notification placeholders (no merchant yet), Google Wallet-only false
+ *  positives that never got matched, and transfers whose wording slips past
+ *  the auto-detector all get corrected the moment the actual bank CSV lands.
+ *  Nudge for a fresh one once a week so the data doesn't quietly drift stale. */
+const CSV_STALE_DAYS = 7
 
 type Tab = 'overzicht' | 'beleggingen' | 'budget' | 'tebetalen'
 
@@ -61,6 +69,9 @@ export default function Money() {
     deleteGoal,
     budgetCaps,
     updateBudgetCap,
+    addBudgetCap,
+    deleteBudgetCap,
+    lastCsvImportAt,
   } = useStore()
 
   const fileRef = useRef<HTMLInputElement>(null)
@@ -81,6 +92,11 @@ export default function Money() {
     () => computeBalance(transactions, balanceCheckpoints, OPENING_BALANCE),
     [transactions, balanceCheckpoints],
   )
+
+  const [csvNudgeDismissed, setCsvNudgeDismissed] = useState(false)
+  const csvStaleDays = lastCsvImportAt ? daysBetween(lastCsvImportAt, TODAY) : null
+  const showCsvNudge =
+    !csvNudgeDismissed && transactions.length > 0 && (csvStaleDays === null || csvStaleDays >= CSV_STALE_DAYS)
 
   const runAutoTag = async () => {
     setTagging(true)
@@ -132,6 +148,23 @@ export default function Money() {
         </div>
       </div>
 
+      {showCsvNudge && (
+        <div className="card p-3 flex items-center justify-between gap-3 border-buurtkaart/40 flex-wrap">
+          <span className="text-sm text-muted flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-buurtkaart shrink-0" />
+            {csvStaleDays === null
+              ? 'Nog geen bank-CSV geïmporteerd — real-time meldingen alleen zijn niet altijd volledig of juist getagd.'
+              : `Laatste CSV-import was ${csvStaleDays} dagen geleden. Wekelijks importeren houdt saldo en categorieën kloppend.`}
+          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button className="btn-primary !py-1.5" onClick={() => fileRef.current?.click()}>
+              <Upload className="h-4 w-4" /> Importeer nu
+            </button>
+            <button className="btn-ghost !py-1.5" onClick={() => setCsvNudgeDismissed(true)}>Niet nu</button>
+          </div>
+        </div>
+      )}
+
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
         <TabsList>
           {TABS.map((t) => (
@@ -178,6 +211,9 @@ export default function Money() {
             onRefreshCoach={refreshFinanceCoach}
             budgetCaps={budgetCaps}
             onUpdateBudgetCap={updateBudgetCap}
+            onAddBudgetCap={addBudgetCap}
+            onDeleteBudgetCap={deleteBudgetCap}
+            transactions={transactions}
           />
         </TabsContent>
 

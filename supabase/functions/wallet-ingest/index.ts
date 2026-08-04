@@ -89,7 +89,27 @@ const CATEGORY_MAP: Record<string, string> = {
 // Counterparties known to be the user's own accounts — money moving between
 // wallets, not real income/spend. MUST match isTransferCounterparty() in
 // src/finance/categories.ts.
-const TRANSFER_COUNTERPARTIES = [/r\.?\s*van\s*mierlo/i, /prjct agency/i]
+const TRANSFER_COUNTERPARTIES = [
+  /van\s*mierlo/i,
+  /prjct agency/i,
+  /eigen\s*rekening/i,
+  /naar\s*(mijzelf|uzelf|jezelf)/i,
+  /tussen\s*(mijn\s*)?(eigen\s*)?rekening/i,
+]
+
+// Apps that ARE the bank itself — their notifications are the authoritative
+// record of a real debit/credit, so they're always logged even without a
+// merchant name (see PENDING_MERCHANT above). Anything else (Google Wallet,
+// Apple Pay, Samsung Wallet, ...) is a *wallet* notification: useful for its
+// vendor name, but not proof on its own that money moved — phones surface
+// wallet notifications for loyalty scans, card-added confirmations, balance
+// peeks etc. that never touch the bank. See "Dedup" section of
+// integrations/macrodroid/bank-notifications.md for the full rationale.
+const BANK_APPS = /abn\s*amro|\bing\b|rabobank|\bsns\b|knab|bunq|triodos|\basn\b|revolut/i
+
+function isBankApp(app: string): boolean {
+  return BANK_APPS.test(app)
+}
 
 function inferCategory(merchant: string): string {
   if (TRANSFER_COUNTERPARTIES.some((re) => re.test(merchant))) return 'Internal transfer'
@@ -203,8 +223,49 @@ Deno.serve(async (req) => {
   const dedupKey = `${occurredOn}|${storedAmount.toFixed(2)}`
 
   const domain = mapAccountType(body.domain ?? body.account_type ?? '') || inferDomain(merchant)
+  const category = body.category?.trim() || inferCategory(merchant)
+  const source = normalizeSource(body.app ?? '')
+  const description = `${title} | ${text}`.slice(0, 200)
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
+  // A wallet notification (Google Wallet, Apple Pay, ...) only carries the
+  // vendor name — it's not proof money actually moved (loyalty scans, "card
+  // added" confirmations and balance peeks all fire the same notification
+  // shape). So it's only ever logged as an ENRICHMENT of a bank notification
+  // that already landed for the exact same date+amount, never as a new row
+  // on its own. If no matching bank row exists yet, drop it silently instead
+  // of risking a phantom transaction.
+  if (!isBankApp(body.app ?? '')) {
+    const { data: existing, error: lookupError } = await supabase
+      .from('finance_tx')
+      .select('id')
+      .eq('user_id', USER_ID)
+      .eq('dedup_key', dedupKey)
+      .maybeSingle()
+
+    if (lookupError) {
+      console.error('Lookup error:', lookupError)
+      return json({ ok: false, error: lookupError.message }, 500)
+    }
+
+    if (!existing) {
+      return json({ ok: true, skipped: true, reason: 'no_matching_bank_notification' })
+    }
+
+    const { error } = await supabase
+      .from('finance_tx')
+      .update({ counterparty: merchant, category, domain, description, payment_method: body.payment_method?.trim() || 'contactless' })
+      .eq('id', existing.id)
+
+    if (error) {
+      console.error('Enrich error:', error)
+      return json({ ok: false, error: error.message }, 500)
+    }
+
+    return json({ ok: true, merchant, amount, enriched: true })
+  }
+
   const { error } = await supabase.from('finance_tx').upsert(
     {
       user_id: USER_ID,
@@ -213,10 +274,10 @@ Deno.serve(async (req) => {
       paid_at: now,
       amount: storedAmount,
       counterparty: merchant,              // schema: counterparty (not 'merchant')
-      description: `${title} | ${text}`.slice(0, 200),
-      category: body.category?.trim() || inferCategory(merchant),
+      description,
+      category,
       domain,
-      source: normalizeSource(body.app ?? ''),
+      source,
       payment_method: body.payment_method?.trim() || 'contactless',
     },
     { onConflict: 'user_id,dedup_key' },
