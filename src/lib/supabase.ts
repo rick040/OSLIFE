@@ -1799,7 +1799,7 @@ function classifyApp(name: string): 'work' | 'social' | 'media' | 'comms' | 'oth
   if (/whatsapp|instagram|snapchat|tinder|reddit|facebook|tiktok|discord|messenger|twitter|\bx\b|threads|bereal|linkedin/.test(n)) return 'social'
   if (/youtube|spotify|soundcloud|netflix|videoland|twitch|disney|prime video|podcast|muziek|music|film/.test(n)) return 'media'
   if (/gmail|\bmail\b|telefoon|phone|berichten|messages|\bsms\b|teams|outlook|signal|telegram/.test(n)) return 'comms'
-  if (/docs|sheets|slides|word|excel|powerpoint|notion|figma|canva|code|github|gitlab|slack|drive|calendar|agenda|jira|linear|vscode|xcode|terminal/.test(n)) return 'work'
+  if (/docs|sheets|slides|word|excel|powerpoint|notion|figma|canva|code|github|gitlab|slack|drive|calendar|agenda|jira|linear|vscode|xcode|terminal|claude|fiverr/.test(n)) return 'work'
   return 'other'
 }
 

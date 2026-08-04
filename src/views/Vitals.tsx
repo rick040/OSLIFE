@@ -39,6 +39,7 @@ export default function Vitals() {
   const screenToday = screenDays.find((s) => s.date === TODAY) ?? screenDays[screenDays.length - 1] ?? null
   const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)
   const screenData = screenDays.map((s) => ({ date: d(s.date), focus: s.focusMinutes, distract: s.distractMinutes, pickups: s.pickups }))
+  const last7Screen = screenDays.slice(-7)
   const meetingData = meetingDays.map((m) => ({ date: d(m.date), iso: m.date, count: m.count, minutes: m.minutes }))
 
   if (!today) {
@@ -215,8 +216,8 @@ export default function Vitals() {
         {screenToday ? (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-              <Kpi icon={Smartphone} value={fmtMin(Math.round(avg(screenDays.map((s) => s.totalMinutes))))} label="Ø schermtijd · 14d" />
-              <Kpi icon={Hand} value={Math.round(avg(screenDays.map((s) => s.pickups))).toString()} label="Ø pickups · 14d" />
+              <Kpi icon={Smartphone} value={fmtMin(Math.round(avg(last7Screen.map((s) => s.totalMinutes))))} label="Ø schermtijd · 7d" />
+              <Kpi icon={Hand} value={Math.round(avg(last7Screen.map((s) => s.pickups))).toString()} label="Ø pickups · 7d" />
               <Kpi icon={Brain} value={fmtMin(screenToday.focusMinutes)} label="focus vandaag" />
               <Kpi icon={Smartphone} value={fmtMin(screenToday.distractMinutes)} label="afleiding vandaag" />
             </div>
