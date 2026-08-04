@@ -19,13 +19,19 @@ import { deriveDeadlines } from '../derive'
 import { Ring, SectionTitle, Sparkline } from '../components/ui'
 import CheckinCard from '../components/CheckinCard'
 import HealthConditions from '../components/HealthConditions'
-import { Activity, Footprints, Moon, Heart, Zap, Smile, Smartphone, Hand, Brain, CalendarClock } from 'lucide-react'
+import type { ActivitySession } from '../types'
+import { Activity, Footprints, Moon, Heart, Zap, Smile, Smartphone, Hand, Brain, CalendarClock, Bike, Car } from 'lucide-react'
 
 const d = (iso: string) => iso.slice(8)
 const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}u ${m % 60}m` : `${m}m`)
 
+const ACTIVITY_META: Record<string, { icon: typeof Bike; label: string }> = {
+  cycling: { icon: Bike, label: 'Fietsen' },
+  in_vehicle: { icon: Car, label: 'Onderweg (auto)' },
+}
+
 export default function Vitals() {
-  const { healthDays, screenDays, meetingDays, projects } = useStore()
+  const { healthDays, screenDays, meetingDays, projects, activitySessions } = useStore()
   const today = healthDays.find((h) => h.date === TODAY) ?? healthDays[healthDays.length - 1]
 
   const deadlines = useMemo(() => deriveDeadlines(projects), [projects])
@@ -190,6 +196,9 @@ export default function Vitals() {
         </div>
       </div>
 
+      {/* ── activiteiten: fietsen / auto (MacroDroid Activity Recognition → activity-ingest) ── */}
+      <ActivitySessionsCard sessions={activitySessions} />
+
       {/* ── gedrag: schermtijd & agenda-druk (voorheen Signalen) ────────────── */}
       <div>
         <SectionTitle hint="Passieve gedrags-streams die de Reflect-engine voeden zodat de AI je dag beter begrijpt.">
@@ -271,6 +280,73 @@ function Kpi({ icon: Icon, value, label }: { icon: typeof Smartphone; value: str
       <Icon className="h-4 w-4 text-ink-soft" />
       <div className="text-lg font-semibold mt-1">{value}</div>
       <div className="text-xs text-faint">{label}</div>
+    </div>
+  )
+}
+
+const fmtTime = (iso: string) =>
+  new Intl.DateTimeFormat('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' }).format(new Date(iso))
+const fmtDay = (iso: string) =>
+  new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'short', timeZone: 'Europe/Amsterdam' }).format(new Date(iso))
+
+/**
+ * Cycling / in-vehicle sessions from MacroDroid's Activity Recognition, via
+ * activity-ingest. A "false stop" (confidence briefly dips below the
+ * threshold and recovers seconds later) is already merged server-side into
+ * one continuous session — see activity-ingest — so every row here reads as
+ * one real ride, unlike the old Google Sheet which paired rows by position
+ * and fragmented on a false stop.
+ */
+function ActivitySessionsCard({ sessions }: { sessions: ActivitySession[] }) {
+  const now = Date.now()
+  const durationMin = (s: ActivitySession) =>
+    Math.max(0, Math.round(((s.endedAt ? new Date(s.endedAt).getTime() : now) - new Date(s.startedAt).getTime()) / 60_000))
+
+  const weekAgo = now - 7 * 24 * 60 * 60 * 1000
+  const totalsByType = new Map<string, number>()
+  for (const s of sessions) {
+    if (new Date(s.startedAt).getTime() < weekAgo) continue
+    totalsByType.set(s.activityType, (totalsByType.get(s.activityType) ?? 0) + durationMin(s))
+  }
+
+  return (
+    <div className="card p-4">
+      <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
+        <Bike className="h-4 w-4 text-ink-soft" /> Activiteiten · fietsen & onderweg
+      </h3>
+      <p className="text-xs text-faint mb-3">MacroDroid Activity Recognition → activity-ingest, direct naar Supabase (geen Sheet meer).</p>
+
+      {sessions.length === 0 ? (
+        <p className="text-sm text-faint">Nog geen activiteit-sessies binnengekomen.</p>
+      ) : (
+        <>
+          {totalsByType.size > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              {[...totalsByType.entries()].map(([type, min]) => {
+                const meta = ACTIVITY_META[type] ?? { icon: Activity, label: type }
+                return <Kpi key={type} icon={meta.icon} value={fmtMin(min)} label={`${meta.label} · 7d`} />
+              })}
+            </div>
+          )}
+          <div className="space-y-1.5">
+            {sessions.slice(0, 8).map((s) => {
+              const meta = ACTIVITY_META[s.activityType] ?? { icon: Activity, label: s.activityType }
+              const Icon = meta.icon
+              return (
+                <div key={s.id} className="flex items-center gap-2 text-sm">
+                  <Icon className="h-4 w-4 text-ink-soft shrink-0" />
+                  <span className="w-32 shrink-0 text-ink-soft">{meta.label}</span>
+                  <span className="text-xs text-faint tabular-nums flex-1">
+                    {fmtDay(s.startedAt)} · {fmtTime(s.startedAt)}–{s.endedAt ? fmtTime(s.endedAt) : 'bezig'}
+                  </span>
+                  <span className="text-xs font-medium tabular-nums w-14 text-right">{fmtMin(durationMin(s))}</span>
+                  {!s.endedAt && <span className="chip bg-forest/15 text-forest-hi text-xs px-2 py-0">bezig</span>}
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
     </div>
   )
 }

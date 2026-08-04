@@ -51,6 +51,7 @@ export const SYNC_SOURCES: SyncSource[] = [
   { key: 'health', label: 'Gezondheid', pipeline: 'Health Connect (Tasker) → health-ingest', table: 'health_daily_stats', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 36, downH: 96 },
   { key: 'sleep', label: 'Slaap', pipeline: 'Health Connect (Tasker) → health-ingest', table: 'health_sleep', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 36, downH: 96 },
   { key: 'weight', label: 'Gewicht', pipeline: 'Health Sheet · weegschaal-notificatie (MacroDroid)', table: 'health_body_metrics', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 24 * 14, downH: 24 * 45 },
+  { key: 'activity_sessions', label: 'Activiteiten (fietsen/auto)', pipeline: 'Activity Recognition (MacroDroid) → activity-ingest', table: 'activity_sessions', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 24 * 7, downH: 24 * 21 },
   // ── Geld ──
   { key: 'finance', label: 'Transacties', pipeline: 'Bank-notificatie (MacroDroid) · Wallet · ABN CSV · Betalingen Sheet', table: 'finance_tx', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 96, downH: 24 * 10 },
   { key: 'payments', label: 'Te betalen', pipeline: 'Payments Calendar → syncPayments', table: 'payments', tsColumn: 'ingested_at', tsKind: 'ts', warnH: 24 * 21, downH: 24 * 60 },

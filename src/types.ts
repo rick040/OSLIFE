@@ -1027,6 +1027,20 @@ export interface LocationVisit {
   leftAt: string | null // null = still there
 }
 
+/**
+ * A continuous cycling/in-vehicle session detected by MacroDroid's Activity
+ * Recognition and posted directly to activity-ingest. `endedAt` is null while
+ * still ongoing — activity-ingest already merges a false stop (a confidence
+ * blip that briefly drops and recovers) server-side, so every row here is a
+ * real, continuous session.
+ */
+export interface ActivitySession {
+  id: string
+  activityType: string // 'cycling' | 'in_vehicle' | ...
+  startedAt: string // ISO datetime
+  endedAt: string | null // null = still ongoing
+}
+
 // ── Subscriptions (recurring spend) ──────────────────────────────────────────
 export type Cadence = 'weekly' | 'monthly' | 'quarterly' | 'yearly'
 
