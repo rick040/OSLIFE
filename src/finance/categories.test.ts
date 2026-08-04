@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { vendorKey, isTransferCounterparty } from './categories'
+import { vendorKey, isTransferCounterparty, isTransferIban } from './categories'
 
 describe('vendorKey', () => {
   it('collapses store/terminal numbers wherever they sit', () => {
@@ -15,15 +15,21 @@ describe('vendorKey', () => {
 })
 
 describe('isTransferCounterparty', () => {
-  it('matches "van Mierlo" regardless of initials/casing/spacing', () => {
-    // Regression: money moved between Rick's own accounts kept landing as
-    // "Client income" because the old regex required an "R." prefix — any
-    // formatting variant without it (or a different initial, e.g. a joint
-    // account) slipped through and inflated income totals.
+  it('matches the initial-form "R van Mierlo" ABN uses for its own transfers', () => {
     expect(isTransferCounterparty('R van Mierlo')).toBe(true)
-    expect(isTransferCounterparty('R.J. VAN MIERLO')).toBe(true)
-    expect(isTransferCounterparty('Van Mierlo R')).toBe(true)
-    expect(isTransferCounterparty('/NAME/Van Mierlo/REMI/eigen rekening')).toBe(true)
+    expect(isTransferCounterparty('R VAN MIERLO')).toBe(true)
+    expect(isTransferCounterparty('R. van Mierlo')).toBe(true)
+    expect(isTransferCounterparty('/NAME/R van Mierlo/REMI/eigen rekening')).toBe(true)
+  })
+
+  it('does NOT match Rick\'s full name — that\'s real KNAB business income, not a transfer', () => {
+    // Regression: Rick's KNAB business account pays him under his full name
+    // ("Rick van Mierlo"), which shares a surname with his own-account
+    // transfers ("R VAN MIERLO") but must stay categorised as Client income.
+    // A broader "van mierlo" match (an earlier version of this regex) swept
+    // real income into Internal transfer just because of the shared surname.
+    expect(isTransferCounterparty('Rick van Mierlo')).toBe(false)
+    expect(isTransferCounterparty('Rick van Mierlo B.V.')).toBe(false)
   })
 
   it('matches generic own-account transfer wording even without a name', () => {
@@ -35,5 +41,24 @@ describe('isTransferCounterparty', () => {
     expect(isTransferCounterparty('Albert Heijn')).toBe(false)
     expect(isTransferCounterparty('')).toBe(false)
     expect(isTransferCounterparty(null)).toBe(false)
+  })
+})
+
+describe('isTransferIban', () => {
+  it('matches Rick\'s own ABN checking/savings IBANs, spaced or unspaced', () => {
+    expect(isTransferIban('NL36 ABNA 0574 8561 53')).toBe(true)
+    expect(isTransferIban('NL62ABNA0468064117')).toBe(true)
+    expect(isTransferIban('/TRTP/SEPA OVERBOEKING/IBAN/NL62ABNA0468064117/NAME/R van Mierlo/')).toBe(true)
+  })
+
+  it('does NOT match the KNAB business account — that income is real, not a transfer', () => {
+    expect(isTransferIban('NL62 KNAB 0606 8007 19')).toBe(false)
+    expect(isTransferIban('/TRTP/SEPA OVERBOEKING/IBAN/NL62KNAB0606800719/NAME/Rick van Mierlo/')).toBe(false)
+  })
+
+  it('does not match unrelated or absent IBANs', () => {
+    expect(isTransferIban('Albert Heijn 1234 Eindhoven')).toBe(false)
+    expect(isTransferIban('')).toBe(false)
+    expect(isTransferIban(null)).toBe(false)
   })
 })

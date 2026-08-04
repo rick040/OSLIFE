@@ -61,16 +61,22 @@ export function isTransfer(category: string | null | undefined): boolean {
   return TRANSFER.has((category ?? '').trim().toLowerCase())
 }
 
-/** Counterparties known to be the user's own accounts, matched regardless of
- *  case/spacing/initials ("R VAN MIERLO", "R.J. van Mierlo", "Van Mierlo R",
- *  "PRJCT Agency", ...) plus the generic Dutch bank wording for a same-owner
- *  transfer between your own accounts ("eigen rekening", "naar uzelf") — ABN
- *  and other NL banks use that phrasing even when the counterparty name is
- *  omitted or formatted differently than expected. Used to auto-tag new
+/** Counterparties known to be the user's own accounts, matched by the
+ *  initial-form name ABN's own transfer confirmations use ("R VAN MIERLO",
+ *  "R.J. van Mierlo") plus the generic Dutch bank wording for a same-owner
+ *  transfer ("eigen rekening", "naar uzelf"). Deliberately NOT a bare
+ *  "van mierlo" match — Rick's KNAB business account sends real client
+ *  income under his full name ("Rick van Mierlo"), which must NOT be
+ *  swept into Internal transfer just because it shares his surname. The
+ *  "R " initial prefix is what's actually different between the two in
+ *  practice (confirmed against real transaction data): ABN-to-ABN transfers
+ *  render as "R VAN MIERLO", KNAB income as "Rick van Mierlo". IBAN-based
+ *  isTransferIban() below is the precise, name-independent signal — prefer
+ *  extending that over loosening this regex. Used to auto-tag new
  *  transactions as 'Internal transfer' at ingest/import time.
  *  MUST match TRANSFER_COUNTERPARTIES in supabase/functions/wallet-ingest/index.ts. */
 const TRANSFER_COUNTERPARTIES = [
-  /van\s*mierlo/i,
+  /\br\.?\s*van\s*mierlo\b/i,
   /prjct agency/i,
   /eigen\s*rekening/i,
   /naar\s*(mijzelf|uzelf|jezelf)/i,
@@ -80,6 +86,34 @@ const TRANSFER_COUNTERPARTIES = [
 export function isTransferCounterparty(name: string | null | undefined): boolean {
   const s = (name ?? '').trim()
   return s !== '' && TRANSFER_COUNTERPARTIES.some((re) => re.test(s))
+}
+
+/**
+ * Rick's own ABN AMRO accounts — a transfer to/from either one is money moving
+ * between his own pockets, not income or spend. Confirmed by Rick directly:
+ *   NL36 ABNA 0574 8561 53  = lopende rekening (checking)
+ *   NL62 ABNA 0468 0641 17  = spaarrekening (savings)
+ * Deliberately does NOT include his KNAB business account (NL62 KNAB 0606 8007
+ * 19) — money from that account to the checking account is real client income,
+ * not a transfer, per Rick.
+ * MUST match TRANSFER_IBANS in supabase/functions/wallet-ingest/index.ts.
+ */
+const TRANSFER_IBANS = new Set(['NL36ABNA0574856153', 'NL62ABNA0468064117'])
+
+// Dutch IBAN, tolerant of the space-grouped display form ("NL36 ABNA 0574
+// 8561 53") as well as the unspaced form embedded in SEPA description tags
+// ("/IBAN/NL36ABNA0574856153/").
+const IBAN_PATTERN = /\bNL\d{2}\s?[A-Z]{4}\s?\d{4}\s?\d{4}\s?\d{2}\b/gi
+
+function extractIbans(text: string): string[] {
+  return (text.match(IBAN_PATTERN) ?? []).map((s) => s.replace(/\s+/g, '').toUpperCase())
+}
+
+/** True if any IBAN embedded in the given text (description, "Naam
+ *  tegenpartij" column, notification body, ...) is one of Rick's own
+ *  transfer accounts — see TRANSFER_IBANS above. */
+export function isTransferIban(text: string | null | undefined): boolean {
+  return extractIbans(text ?? '').some((iban) => TRANSFER_IBANS.has(iban))
 }
 
 /**
