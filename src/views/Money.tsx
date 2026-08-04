@@ -46,6 +46,7 @@ export default function Money() {
     loadingQuotes,
     financeCoach,
     financeCoachLoading,
+    financeCoachError,
     importTransactions,
     markPaymentPaid,
     addPayment,
@@ -208,6 +209,7 @@ export default function Money() {
             onDeleteGoal={deleteGoal}
             coach={financeCoach}
             coachLoading={financeCoachLoading}
+            coachError={financeCoachError}
             onRefreshCoach={refreshFinanceCoach}
             budgetCaps={budgetCaps}
             onUpdateBudgetCap={updateBudgetCap}

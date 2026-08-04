@@ -6,7 +6,7 @@ import { fmtDate, TODAY } from '../domains'
 import { TX_CATEGORIES } from './categories'
 import { realTransactions } from './balance'
 import type { Goal, BudgetCap, Transaction } from '../types'
-import { Plus, Target, Trash2, Sparkles, RefreshCw, PiggyBank } from 'lucide-react'
+import { Plus, Target, Trash2, Sparkles, RefreshCw, PiggyBank, AlertCircle } from 'lucide-react'
 
 export function BudgetTab({
   goals,
@@ -15,6 +15,7 @@ export function BudgetTab({
   onDeleteGoal,
   coach,
   coachLoading,
+  coachError,
   onRefreshCoach,
   budgetCaps,
   onUpdateBudgetCap,
@@ -28,6 +29,7 @@ export function BudgetTab({
   onDeleteGoal: (id: string) => void
   coach: { text: string; generatedAt: string } | null
   coachLoading: boolean
+  coachError: string | null
   onRefreshCoach: () => void
   budgetCaps: BudgetCap[]
   onUpdateBudgetCap: (id: string, patch: Partial<BudgetCap>) => void
@@ -64,6 +66,11 @@ export function BudgetTab({
           </>
         ) : (
           <p className="text-sm text-faint">Nog geen advies — druk op "Ververs advies" voor een korte, concrete kijk op je uitgaven, abonnementen en openstaande betalingen.</p>
+        )}
+        {coachError && (
+          <p className="text-xs text-cross mt-2 flex items-center gap-1.5">
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {coachError}
+          </p>
         )}
       </div>
 

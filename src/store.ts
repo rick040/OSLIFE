@@ -356,6 +356,7 @@ interface State {
   loadingQuotes: boolean
   financeCoach: { text: string; generatedAt: string } | null
   financeCoachLoading: boolean
+  financeCoachError: string | null
   dogProfile: DogProfile
   dogEntries: DogEntry[]
   dogMedical: DogMedical[]
@@ -773,6 +774,7 @@ const seed = () => ({
   loadingQuotes: false,
   financeCoach: null as { text: string; generatedAt: string } | null,
   financeCoachLoading: false,
+  financeCoachError: null as string | null,
   dogProfile: mock.dogProfile,
   dogEntries: mock.dogEntries,
   dogMedical: mock.dogMedical,
@@ -904,6 +906,7 @@ export function applyPersistDefaults(
   if (state.lastLandscapeError === undefined) state.lastLandscapeError = null
   if (!state.stockQuotes) state.stockQuotes = {}
   if (state.financeCoach === undefined) state.financeCoach = null
+  if (state.financeCoachError === undefined) state.financeCoachError = null
   if (state.dogCoach === undefined) state.dogCoach = null
   if (state.weekPlanAt === undefined) state.weekPlanAt = null
   if (state.weekPlanBounds === undefined) state.weekPlanBounds = null
@@ -3119,7 +3122,7 @@ export const useStore = create<State>()(
       },
 
       refreshFinanceCoach: async () => {
-        set({ financeCoachLoading: true })
+        set({ financeCoachLoading: true, financeCoachError: null })
         const s = get()
         try {
           const { system, prompt } = buildFinanceCoachPrompt(s)
@@ -3127,9 +3130,13 @@ export const useStore = create<State>()(
           set({
             financeCoach: text ? { text, generatedAt: new Date().toISOString() } : get().financeCoach,
             financeCoachLoading: false,
+            // askBrain resolves null on any failure (missing secret, offline,
+            // timeout, empty reply) without saying which — surface a generic
+            // retry prompt instead of silently reverting to "nothing happened".
+            financeCoachError: text ? null : 'Kon geen advies ophalen — controleer je verbinding en probeer opnieuw.',
           })
         } catch {
-          set({ financeCoachLoading: false })
+          set({ financeCoachLoading: false, financeCoachError: 'Kon geen advies ophalen — probeer opnieuw.' })
         }
       },
 
