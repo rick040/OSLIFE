@@ -10,7 +10,16 @@
 
 import { supabase } from '../lib/supabase'
 
-const TIMEOUT_MS = 6000
+// Default timeout for any askBrain()/askBrainTool() call that doesn't pass its
+// own timeoutMs (many agents deliberately tune a shorter or longer one — see
+// their call sites). This default was 6000ms, but real heyra-brain latency
+// (Supabase edge-function logs, checked directly) is routinely 6.3–7.0s even
+// for a modest 500-token reply — so every caller relying on the default was
+// timing out client-side and silently falling back to null on almost every
+// call, even though the server call itself succeeded (200) a moment later.
+// The finance/dog coach "Ververs advies" buttons and the main HEYRA chat both
+// hit this. 15s leaves real margin above the observed latency.
+const TIMEOUT_MS = 15000
 
 export interface AskBrainOptions {
   maxTokens?: number
