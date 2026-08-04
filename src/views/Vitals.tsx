@@ -10,6 +10,7 @@ import {
   CartesianGrid,
   ReferenceLine,
   Cell,
+  type TooltipProps,
 } from 'recharts'
 import { useMemo } from 'react'
 import { CHART_TIP, AXIS_TICK_10 } from '../components/chart'
@@ -20,7 +21,7 @@ import { Ring, SectionTitle, Sparkline } from '../components/ui'
 import CheckinCard from '../components/CheckinCard'
 import HealthConditions from '../components/HealthConditions'
 import type { ActivitySession } from '../types'
-import { Activity, Footprints, Moon, Heart, Zap, Smile, Smartphone, Hand, Brain, CalendarClock, Bike, Car } from 'lucide-react'
+import { Activity, Footprints, Moon, Zap, Smile, Smartphone, Hand, Brain, CalendarClock, Bike, Car } from 'lucide-react'
 
 const d = (iso: string) => iso.slice(8)
 const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}u ${m % 60}m` : `${m}m`)
@@ -63,19 +64,22 @@ export default function Vitals() {
     date: d(h.date),
     steps: h.steps,
     sleep: h.sleepHours,
-    hr: h.restingHR,
     active: h.activeMinutes,
     energy: h.energy,
     mood: h.mood,
   }))
 
-  const avgH = (k: 'steps' | 'sleep' | 'hr' | 'active') =>
-    data.length ? data.reduce((a, x) => a + x[k], 0) / data.length : 0
+  const last7 = data.slice(-7)
+  const avgH = (k: 'steps' | 'sleep' | 'active') =>
+    last7.length ? last7.reduce((a, x) => a + x[k], 0) / last7.length : 0
+
+  // 0/missing sleep is "not logged", not "zero hours" — null it out so the
+  // chart bridges the gap with a dashed segment instead of a false dip.
+  const sleepData = data.map((x) => ({ date: x.date, sleep: x.sleep > 0 ? x.sleep : null }))
 
   const stat = [
     { icon: Footprints, label: 'Ø stappen', value: Math.round(avgH('steps')).toLocaleString('nl-NL'), trend: data.map((x) => x.steps) },
     { icon: Moon, label: 'Ø slaap', value: avgH('sleep').toFixed(1) + 'u', trend: data.map((x) => x.sleep) },
-    { icon: Heart, label: 'Ø rust-HR', value: Math.round(avgH('hr')) + ' bpm', trend: data.map((x) => x.hr) },
     { icon: Activity, label: 'Ø actief', value: Math.round(avgH('active')) + ' min', trend: data.map((x) => x.active) },
   ]
 
@@ -112,16 +116,11 @@ export default function Vitals() {
             <Ring value={today.mood / 5} size={72} color="stroke-forest-hi" label={today.mood + '/5'} />
             <span className="text-xs font-medium flex items-center gap-1"><Smile className="h-3.5 w-3.5" /> stemming</span>
           </div>
-          <div className="flex flex-col items-center justify-center">
-            <Heart className="h-5 w-5 mb-1" />
-            <span className="text-lg font-bold tabular-nums">{today.restingHR}</span>
-            <span className="text-xs font-medium">bpm rust</span>
-          </div>
         </div>
       </div>
 
-      {/* 14-day averages, each with a mini trend so "Ø" isn't just a static number */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* 7-day averages, each with a mini trend so "Ø" isn't just a static number */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         {stat.map((s) => {
           const Icon = s.icon
           return (
@@ -133,7 +132,7 @@ export default function Vitals() {
                 <Icon className="h-4 w-4 text-ink-soft" />
               </span>
               <div className="text-xl font-bold tabular-nums mt-2">{s.value}</div>
-              <div className="text-xs text-faint">{s.label} · 14d</div>
+              <div className="text-xs text-faint">{s.label} · 7d</div>
             </div>
           )
         })}
@@ -161,41 +160,23 @@ export default function Vitals() {
         </ResponsiveContainer>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* sleep */}
-        <div className="card p-4">
-          <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
-            <Moon className="h-4 w-4 text-ink-soft" /> Slaap
-          </h3>
-          <p className="text-xs text-faint mb-2">Roze lijn = 6u drempel, daaronder keldert je energie.</p>
-          <ResponsiveContainer width="100%" height={170}>
-            <LineChart data={data} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
-              <XAxis dataKey="date" tick={AXIS_TICK_10} />
-              <YAxis domain={[0, 9]} tick={AXIS_TICK_10} />
-              <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v}u`, 'slaap']} />
-              <ReferenceLine y={6} stroke="#F87171" strokeDasharray="4 4" />
-              <Line type="monotone" dataKey="sleep" stroke="#60A5FA" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* resting HR */}
-        <div className="card p-4">
-          <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
-            <Heart className="h-4 w-4 text-ink-soft" /> Rust-hartslag
-          </h3>
-          <p className="text-xs text-faint mb-2">Hoger op slechte nachten, lager bij herstel.</p>
-          <ResponsiveContainer width="100%" height={170}>
-            <LineChart data={data} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
-              <XAxis dataKey="date" tick={AXIS_TICK_10} />
-              <YAxis domain={[50, 70]} tick={AXIS_TICK_10} />
-              <Tooltip contentStyle={CHART_TIP} formatter={(v: number) => [`${v} bpm`, 'rust-HR']} />
-              <Line type="monotone" dataKey="hr" stroke="#F87171" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+      {/* sleep — 0/missing nights render as a dashed gap instead of a false dip to zero */}
+      <div className="card p-4">
+        <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
+          <Moon className="h-4 w-4 text-ink-soft" /> Slaap
+        </h3>
+        <p className="text-xs text-faint mb-2">Roze lijn = 6u drempel, daaronder keldert je energie. Gestippeld = niet gelogd.</p>
+        <ResponsiveContainer width="100%" height={170}>
+          <LineChart data={sleepData} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
+            <XAxis dataKey="date" tick={AXIS_TICK_10} />
+            <YAxis domain={[0, 9]} tick={AXIS_TICK_10} />
+            <Tooltip content={<SleepTooltip />} />
+            <ReferenceLine y={6} stroke="#F87171" strokeDasharray="4 4" />
+            <Line type="monotone" dataKey="sleep" stroke="#60A5FA" strokeWidth={2} strokeDasharray="4 4" dot={false} activeDot={false} connectNulls legendType="none" />
+            <Line type="monotone" dataKey="sleep" stroke="#60A5FA" strokeWidth={2} dot={false} connectNulls={false} />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
 
       {/* ── activiteiten: fietsen / auto (MacroDroid Activity Recognition → activity-ingest) ── */}
@@ -272,6 +253,20 @@ export default function Vitals() {
           </BarChart>
         </ResponsiveContainer>
       </div>
+    </div>
+  )
+}
+
+/** Both sleep Line layers share one dataKey, so a plain formatter would double
+ *  the row — pick the single real (non-null) entry, or say so if the night
+ *  wasn't logged at all. */
+function SleepTooltip({ active, payload, label }: TooltipProps<number, string>) {
+  if (!active) return null
+  const entry = payload?.find((p) => typeof p.value === 'number')
+  return (
+    <div style={CHART_TIP} className="px-3 py-2 rounded-xl">
+      <div className="text-xs text-faint mb-0.5">{label}</div>
+      <div className="text-sm">{entry ? `${entry.value}u slaap` : 'geen data'}</div>
     </div>
   )
 }
