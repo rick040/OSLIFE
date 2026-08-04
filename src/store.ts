@@ -265,6 +265,9 @@ import {
   createMedicationRow,
   fetchBudgetCaps,
   updateBudgetCapRow,
+  createBudgetCapRow,
+  deleteBudgetCapRow,
+  fetchLastCsvImportDate,
   fetchProfileFacts,
   fetchSummaries,
   forgetRecord as forgetRecordApi,
@@ -381,6 +384,8 @@ interface State {
   healthConditions: HealthCondition[]
   medications: Medication[]
   budgetCaps: BudgetCap[]
+  /** ISO timestamp of the most recent bank-CSV import (finance_tx.source='abn_csv'), or null if none yet. */
+  lastCsvImportAt: string | null
   profileFacts: ProfileFact[]
   summaries: MemorySummary[]
   // Profile screen: huidig profiel (data-driven, confirmed) / interview-hypotheses + droomprofiel (interview-driven) / landschap (AI-synthesized).
@@ -510,6 +515,8 @@ interface State {
   updateHealthCondition: (id: string, patch: Partial<HealthCondition>) => Promise<void>
   createMedication: (m: Omit<Medication, 'id'>) => Promise<void>
   updateBudgetCap: (id: string, patch: Partial<BudgetCap>) => Promise<void>
+  addBudgetCap: (category: string, monthlyMax: number) => void
+  deleteBudgetCap: (id: string) => void
 
   // Kennisbank: load the wiki suggest-queue and resolve one. On confirm, the
   // entry also gets materialised as a real .md file in the vault.
@@ -788,6 +795,7 @@ const seed = () => ({
   healthConditions: [] as HealthCondition[],
   medications: [] as Medication[],
   budgetCaps: [] as BudgetCap[],
+  lastCsvImportAt: null as string | null,
   profileFacts: [] as ProfileFact[],
   summaries: [] as MemorySummary[],
   identityProfile: {
@@ -2812,6 +2820,7 @@ export const useStore = create<State>()(
         const inserted = await insertFinanceTx(txns)
         const fresh = await fetchTransactions()
         if (fresh.length) set({ transactions: fresh })
+        if (inserted > 0) set({ lastCsvImportAt: new Date().toISOString() })
         // Categorise anything the rule-based guesser left as Uncategorized.
         void get().autoTagTransactions()
         return { inserted, duplicates: txns.length - inserted }
@@ -3206,7 +3215,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, braindumpLinks, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, identityProfile, walks, locationVisits, activitySessions] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, braindumpLinks, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, identityProfile, walks, locationVisits, activitySessions, lastCsvImportAt] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -3245,6 +3254,7 @@ export const useStore = create<State>()(
             fetchWalks(),
             fetchLocationVisits(),
             fetchActivitySessions(),
+            fetchLastCsvImportDate(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -3301,6 +3311,7 @@ export const useStore = create<State>()(
             healthConditions,
             medications,
             budgetCaps,
+            lastCsvImportAt,
             profileFacts,
             summaries,
             cleaningLog,
@@ -3500,6 +3511,19 @@ export const useStore = create<State>()(
       updateBudgetCap: async (id, patch) => {
         set({ budgetCaps: get().budgetCaps.map((b) => (b.id === id ? { ...b, ...patch } : b)) })
         await updateBudgetCapRow(id, patch)
+      },
+
+      addBudgetCap: (category, monthlyMax) => {
+        const tempId = uid('budgetcap')
+        set((s) => ({
+          budgetCaps: [...s.budgetCaps, { id: tempId, category, monthlyMax, active: true, sourceRuleId: null, tier: 'normaal' }],
+        }))
+        void createBudgetCapRow(category, monthlyMax).then(swapTempId(set, 'budgetCaps', tempId))
+      },
+
+      deleteBudgetCap: (id) => {
+        removeFromSlice(set, 'budgetCaps', id)
+        void deleteBudgetCapRow(id)
       },
 
       loadWikiEntries: async () => {

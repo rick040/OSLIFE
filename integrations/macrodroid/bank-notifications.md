@@ -100,6 +100,44 @@ zie hierboven) wordt door de eerstvolgende CSV-import **overschreven** met de
 echte winkelnaam/categorie, in plaats van dedup-geblokkeerd — zie
 `insertFinanceTx` in `src/lib/supabase.ts`.
 
+### Telefoon-betaling: zowel ABN- als Wallet-melding
+
+Bij een contactloze betaling met je telefoon vuurt vaak zowel de ABN-app
+(bedrag afgeschreven) als Google Wallet (bedrag + winkelnaam) een melding —
+zoals in de "Payment Notification Logger"-macro die alles van beide apps
+doorstuurt. `wallet-ingest` behandelt die twee bronnen nu asymmetrisch:
+
+- Een melding van een **bank-app** (ABN AMRO, ING, Rabobank, ...) is altijd
+  het echte bewijs dat er geld is bewogen — die wordt altijd weggeschreven,
+  ook als er geen winkelnaam bij zit (dan als `PENDING_MERCHANT`, zie boven).
+- Een melding van een **wallet-app** (Google Wallet, Apple Pay, ...) bevat
+  wél een winkelnaam maar is géén bewijs dat er geld is bewogen — telefoons
+  vuren dezelfde melding-vorm ook af bij een loyaliteitskaart-scan, "kaart
+  toegevoegd"-bevestiging of saldo-check. Zo'n melding wordt daarom **nooit**
+  als eigen rij gelogd; hij wordt alleen gebruikt om een bestaande rij met
+  hetzelfde bedrag+datum van de bank-melding te **verrijken** met de
+  winkelnaam. Is er (nog) geen bank-rij met dat bedrag+datum, dan wordt de
+  wallet-melding stilletjes genegeerd — beter een tijdelijk anonieme
+  bank-rij dan een verzonnen transactie.
+
+Gevolg: zet in MacroDroid altijd de bank-trigger ("Iedere inhoud" op ABN
+AMRO) EN de Wallet-trigger aan naar hetzelfde endpoint — de bank-melding is
+wat telt, Wallet is puur de naam erbij.
+
+### Interne overboekingen (tussen je eigen rekeningen)
+
+Een overboeking tussen je eigen rekeningen (bv. spaar- naar hoofdrekening)
+mag nooit als inkomen meetellen. `inferCategory`/`isTransferCounterparty`
+herkennen dit aan de tegenpartij-naam ("Van Mierlo" in willekeurige
+schrijfwijze, "PRJCT Agency") of aan generieke NL-bank-bewoording ("eigen
+rekening", "naar uzelf"). Komt een overboeking er toch doorheen als
+"Client income" of een andere categorie — bv. omdat de bank-tekst een
+afwijkende naam/formattering gebruikt — pas dan de regex in
+`isTransferCounterparty()` (`src/finance/categories.ts`, gespiegeld in
+`TRANSFER_COUNTERPARTIES` hier in `wallet-ingest`) aan met het exacte
+tekstfragment uit de melding/CSV, en herclassificeer de bestaande rij(en)
+handmatig naar `Internal transfer` in de Geld-tab.
+
 ## Testen
 
 - MacroDroid → macro → ⋮ → **Test acties**, of plak de URL-body handmatig via

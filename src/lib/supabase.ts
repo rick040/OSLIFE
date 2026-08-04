@@ -823,6 +823,22 @@ export async function deleteFinanceTxRow(id: string): Promise<void> {
   return deleteRow('finance_tx', id)
 }
 
+/** Most recent bank-CSV import timestamp, or null if none yet — drives the
+ *  "upload je CSV" nudge (in-app banner + weekly Telegram reminder). */
+export async function fetchLastCsvImportDate(): Promise<string | null> {
+  const user_id = await currentUserId()
+  if (!user_id) return null
+  const { data } = await supabase
+    .from('finance_tx')
+    .select('ingested_at')
+    .eq('user_id', user_id)
+    .eq('source', 'abn_csv')
+    .order('ingested_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return (data?.ingested_at as string) ?? null
+}
+
 /** Bulk-apply a category/domain to every transaction from one vendor (auto-tag / re-tag). */
 export async function applyCategoryToTxIds(
   ids: string[],
@@ -2651,6 +2667,16 @@ const BUDGET_CAP_COLS: Record<string, string> = { monthlyMax: 'monthly_max', act
 
 export async function updateBudgetCapRow(id: string, patch: Partial<BudgetCap>): Promise<void> {
   await updateRow('budget_caps', id, patch, BUDGET_CAP_COLS)
+}
+
+/** Manually add a budget cap from the Budget tab — mirrors what confirm_inference()
+ *  does for an R11 suggestion, minus the source_rule_id (null = handmatig). */
+export async function createBudgetCapRow(category: string, monthlyMax: number): Promise<string | null> {
+  return insertRow('budget_caps', { category, monthly_max: monthlyMax, active: true, source_rule_id: null })
+}
+
+export async function deleteBudgetCapRow(id: string): Promise<void> {
+  return deleteRow('budget_caps', id)
 }
 
 /**

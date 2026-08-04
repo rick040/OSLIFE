@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Empty, SectionTitle } from '../components/ui'
 import { Markdown } from '../components/Markdown'
 import { eur0, eur } from '../lib/format'
-import { fmtDate } from '../domains'
-import type { Goal, BudgetCap } from '../types'
+import { fmtDate, TODAY } from '../domains'
+import { TX_CATEGORIES } from './categories'
+import { realTransactions } from './balance'
+import type { Goal, BudgetCap, Transaction } from '../types'
 import { Plus, Target, Trash2, Sparkles, RefreshCw, PiggyBank } from 'lucide-react'
 
 export function BudgetTab({
@@ -16,6 +18,9 @@ export function BudgetTab({
   onRefreshCoach,
   budgetCaps,
   onUpdateBudgetCap,
+  onAddBudgetCap,
+  onDeleteBudgetCap,
+  transactions,
 }: {
   goals: Goal[]
   onAddGoal: (g: Omit<Goal, 'id'>) => void
@@ -26,9 +31,22 @@ export function BudgetTab({
   onRefreshCoach: () => void
   budgetCaps: BudgetCap[]
   onUpdateBudgetCap: (id: string, patch: Partial<BudgetCap>) => void
+  onAddBudgetCap: (category: string, monthlyMax: number) => void
+  onDeleteBudgetCap: (id: string) => void
+  transactions: Transaction[]
 }) {
   const financialGoals = goals.filter((g) => g.metric === 'EUR')
   const [form, setForm] = useState(false)
+  const [budgetForm, setBudgetForm] = useState(false)
+
+  const thisMonth = TODAY.slice(0, 7)
+  const spentByCategory = useMemo(() => {
+    const map = new Map<string, number>()
+    realTransactions(transactions)
+      .filter((t) => t.date.slice(0, 7) === thisMonth && t.amount < 0)
+      .forEach((t) => map.set(t.category, (map.get(t.category) ?? 0) + Math.abs(t.amount)))
+    return map
+  }, [transactions, thisMonth])
 
   return (
     <div className="space-y-6">
@@ -73,13 +91,33 @@ export function BudgetTab({
         </div>
       )}
 
-      <SectionTitle><span className="flex items-center gap-2"><PiggyBank className="h-4 w-4 text-prjct" /> Budgetten</span></SectionTitle>
+      <div className="flex items-center justify-between gap-3">
+        <SectionTitle><span className="flex items-center gap-2"><PiggyBank className="h-4 w-4 text-prjct" /> Budgetten</span></SectionTitle>
+        <button className="btn-primary !py-1.5 shrink-0" onClick={() => setBudgetForm((f) => !f)}>
+          <Plus className="h-4 w-4" /> Nieuw
+        </button>
+      </div>
+
+      {budgetForm && (
+        <NewBudgetCapForm
+          existing={budgetCaps.map((b) => b.category)}
+          onSubmit={(category, max) => { onAddBudgetCap(category, max); setBudgetForm(false) }}
+          onCancel={() => setBudgetForm(false)}
+        />
+      )}
+
       {budgetCaps.length === 0 ? (
-        <Empty>Nog geen budgetplafond. Verschijnt hier automatisch zodra je een budgetadvies (Geheugen → Inferenties) bevestigt — of stel er zelf een in via de Supabase SQL-editor (`budget_rules`).</Empty>
+        <Empty>Nog geen budgetplafond. Stel er hier zelf een in, of hij verschijnt automatisch zodra je een budgetadvies (Geheugen → Inferenties) bevestigt.</Empty>
       ) : (
         <div className="space-y-3">
           {budgetCaps.map((b) => (
-            <BudgetCapRow key={b.id} cap={b} onUpdate={(patch) => onUpdateBudgetCap(b.id, patch)} />
+            <BudgetCapRow
+              key={b.id}
+              cap={b}
+              spent={spentByCategory.get(b.category) ?? 0}
+              onUpdate={(patch) => onUpdateBudgetCap(b.id, patch)}
+              onDelete={() => onDeleteBudgetCap(b.id)}
+            />
           ))}
         </div>
       )}
@@ -87,7 +125,17 @@ export function BudgetTab({
   )
 }
 
-function BudgetCapRow({ cap, onUpdate }: { cap: BudgetCap; onUpdate: (patch: Partial<BudgetCap>) => void }) {
+function BudgetCapRow({
+  cap,
+  spent,
+  onUpdate,
+  onDelete,
+}: {
+  cap: BudgetCap
+  spent: number
+  onUpdate: (patch: Partial<BudgetCap>) => void
+  onDelete: () => void
+}) {
   const [editing, setEditing] = useState(false)
   const [max, setMax] = useState(String(cap.monthlyMax))
 
@@ -97,36 +145,96 @@ function BudgetCapRow({ cap, onUpdate }: { cap: BudgetCap; onUpdate: (patch: Par
     setEditing(false)
   }
 
+  const pct = cap.monthlyMax > 0 ? Math.min(1, spent / cap.monthlyMax) : 0
+  const over = cap.monthlyMax > 0 && spent > cap.monthlyMax
+
   return (
-    <div className="card p-4 flex items-center justify-between gap-3">
-      <div className="min-w-0">
-        <div className="text-sm font-medium text-ink truncate">{cap.category}</div>
-        <div className="text-xs text-faint">{cap.active ? 'actief' : 'gepauzeerd'}{cap.sourceRuleId ? ' — automatisch voorgesteld' : ''}</div>
-      </div>
-      <div className="flex items-center gap-3 shrink-0">
-        {editing ? (
-          <input
-            value={max}
-            onChange={(e) => setMax(e.target.value)}
-            onBlur={save}
-            onKeyDown={(e) => e.key === 'Enter' && save()}
-            autoFocus
-            inputMode="decimal"
-            className="w-24 rounded-lg bg-sunken border border-line px-2 py-1 text-sm outline-none"
-          />
-        ) : (
-          <button onClick={() => setEditing(true)} className="text-sm font-semibold tabular-nums hover:underline">
-            {eur0(cap.monthlyMax)}<span className="text-xs text-faint font-normal"> /mnd</span>
+    <div className="card p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-ink truncate">{cap.category}</div>
+          <div className="text-xs text-faint">{cap.active ? 'actief' : 'gepauzeerd'}{cap.sourceRuleId ? ' — automatisch voorgesteld' : ''}</div>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          {editing ? (
+            <input
+              value={max}
+              onChange={(e) => setMax(e.target.value)}
+              onBlur={save}
+              onKeyDown={(e) => e.key === 'Enter' && save()}
+              autoFocus
+              inputMode="decimal"
+              className="w-24 rounded-lg bg-sunken border border-line px-2 py-1 text-sm outline-none"
+            />
+          ) : (
+            <button onClick={() => setEditing(true)} className="text-sm font-semibold tabular-nums hover:underline">
+              {eur0(cap.monthlyMax)}<span className="text-xs text-faint font-normal"> /mnd</span>
+            </button>
+          )}
+          <button
+            onClick={() => onUpdate({ active: !cap.active })}
+            className={`text-xs px-2 py-1 rounded-full ${cap.active ? 'bg-prjct/15 text-prjct' : 'bg-line text-muted'}`}
+          >
+            {cap.active ? 'aan' : 'uit'}
           </button>
-        )}
-        <button
-          onClick={() => onUpdate({ active: !cap.active })}
-          className={`text-xs px-2 py-1 rounded-full ${cap.active ? 'bg-prjct/15 text-prjct' : 'bg-line text-muted'}`}
-        >
-          {cap.active ? 'aan' : 'uit'}
-        </button>
+          <button onClick={onDelete} className="text-faint hover:text-cross shrink-0 p-1" aria-label="Verwijder budgetplafond">
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
+      {cap.active && (
+        <>
+          <div className="h-1.5 w-full rounded-full bg-line overflow-hidden mt-3">
+            <div className={`h-full rounded-full ${over ? 'bg-cross' : 'bg-prjct'}`} style={{ width: `${pct * 100}%` }} />
+          </div>
+          <div className="flex items-center justify-between gap-3 mt-1.5">
+            <span className={`text-xs ${over ? 'text-cross font-medium' : 'text-faint'}`}>
+              {eur0(spent)} uitgegeven deze maand{over ? ` — ${eur0(spent - cap.monthlyMax)} over budget` : ''}
+            </span>
+            {!over && <span className="text-xs text-faint">nog {eur0(cap.monthlyMax - spent)}</span>}
+          </div>
+        </>
+      )}
     </div>
+  )
+}
+
+function NewBudgetCapForm({
+  existing,
+  onSubmit,
+  onCancel,
+}: {
+  existing: string[]
+  onSubmit: (category: string, monthlyMax: number) => void
+  onCancel: () => void
+}) {
+  const available = TX_CATEGORIES.filter((c) => c !== 'Internal transfer' && c !== 'Client income' && !existing.includes(c))
+  const [category, setCategory] = useState<string>(available[0] ?? '')
+  const [max, setMax] = useState('')
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const val = parseFloat(max.replace(',', '.'))
+    if (!category || isNaN(val) || val <= 0) return
+    onSubmit(category, val)
+  }
+
+  return (
+    <form onSubmit={submit} className="card p-4 space-y-3">
+      <SectionTitle>Nieuw budgetplafond</SectionTitle>
+      <div className="flex flex-wrap gap-2">
+        <select value={category} onChange={(e) => setCategory(e.target.value)} className="flex-[2_1_160px] rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none">
+          {available.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+        <input value={max} onChange={(e) => setMax(e.target.value)} placeholder="Maximum per maand" required inputMode="decimal" className="flex-[1_1_140px] rounded-xl bg-sunken border border-line px-3 py-2 text-sm outline-none focus:border-prjct/60" />
+      </div>
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={onCancel} className="btn-ghost !py-1.5">Annuleer</button>
+        <button type="submit" className="btn-primary !py-1.5"><Plus className="h-4 w-4" /> Toevoegen</button>
+      </div>
+    </form>
   )
 }
 
