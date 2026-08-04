@@ -17,6 +17,7 @@ import type {
   Walk,
   WalkPoint,
   LocationVisit,
+  ActivitySession,
   Block,
   Thread,
   Priority,
@@ -1631,6 +1632,22 @@ export async function fetchWalks(): Promise<Walk[]> {
       points: (r.points as WalkPoint[]) ?? [],
       triggerSource: (r.trigger_source as string) ?? null,
       dogLogId: (r.dog_log_id as string) ?? null,
+    }),
+  )
+}
+
+// ── Activity sessions (cycling / in-vehicle, MacroDroid → activity-ingest) ──
+
+export async function fetchActivitySessions(): Promise<ActivitySession[]> {
+  return fetchRows(
+    'activity_sessions',
+    'id,activity_type,started_at,ended_at',
+    { column: 'started_at', ascending: false, limit: 200 },
+    (r) => ({
+      id: r.id as string,
+      activityType: r.activity_type as string,
+      startedAt: r.started_at as string,
+      endedAt: (r.ended_at as string) ?? null,
     }),
   )
 }

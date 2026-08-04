@@ -30,6 +30,7 @@ import type {
   DogEntry,
   Walk,
   LocationVisit,
+  ActivitySession,
   DogMedical,
   DogReminder,
   DogProfile,
@@ -133,6 +134,7 @@ import {
   fetchWalks,
   fetchLocationVisits,
   insertLocationVisits,
+  fetchActivitySessions,
   fetchBrainState,
   fetchTasks,
   insertTaskRow,
@@ -361,6 +363,8 @@ interface State {
   walks: Walk[]
   /** Geofence dwell sessions (Home, Albert Heijn, ...) from MacroDroid via geofence-ingest. */
   locationVisits: LocationVisit[]
+  /** Cycling / in-vehicle sessions (Activity Recognition) from MacroDroid via activity-ingest. */
+  activitySessions: ActivitySession[]
   importLocationVisits: (
     visits: { placeName: string; enteredAt: string; leftAt: string | null }[],
   ) => Promise<{ inserted: number; duplicates: number }>
@@ -770,6 +774,7 @@ const seed = () => ({
   dogCoachLoading: false,
   walks: [] as Walk[],
   locationVisits: [] as LocationVisit[],
+  activitySessions: [] as ActivitySession[],
   learnedFacts: [] as LearnedFact[],
   vendorTags: [] as VendorTag[],
   braindumpEntries: [] as BraindumpEntry[],
@@ -833,7 +838,7 @@ const EMPTY_WHEN_FALSY = [
   'projectActivity', 'checkins', 'learnedFacts', 'vendorTags', 'braindumpEntries',
   'goalProposals', 'weekPlan', 'businessIdeas', 'wikiEntries',
   'holdings', 'balanceCheckpoints', 'workoutPlans', 'workoutExercises', 'workoutSessions',
-  'walks', 'locationVisits',
+  'walks', 'locationVisits', 'activitySessions',
 ] as const
 
 /**
@@ -3201,7 +3206,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, braindumpLinks, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, identityProfile, walks, locationVisits] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, braindumpLinks, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, identityProfile, walks, locationVisits, activitySessions] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -3239,6 +3244,7 @@ export const useStore = create<State>()(
             fetchIdentityProfile(),
             fetchWalks(),
             fetchLocationVisits(),
+            fetchActivitySessions(),
           ])
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -3309,6 +3315,7 @@ export const useStore = create<State>()(
             identityProfile,
             walks,
             locationVisits,
+            activitySessions,
             dataSource: 'live',
             isLoading: false,
             lastSyncedAt: new Date().toISOString(),
@@ -3418,6 +3425,7 @@ export const useStore = create<State>()(
           { table: 'health_body_metrics', onChange: () => fetchLatestBodyWeight().then((d) => set({ bodyWeight: d })) },
           { table: 'walks', onChange: () => fetchWalks().then((d) => set({ walks: d })) },
           { table: 'location_visits', onChange: () => fetchLocationVisits().then((d) => set({ locationVisits: d })) },
+          { table: 'activity_sessions', onChange: () => fetchActivitySessions().then((d) => set({ activitySessions: d })) },
           // dog_log itself has no realtime sync elsewhere (entries were always
           // client-written before); walk-ingest is the first external writer, so
           // a phone-posted walk needs this to show up in the Kyra timeline live.
