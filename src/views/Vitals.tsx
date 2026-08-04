@@ -28,6 +28,7 @@ const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}u ${m % 60}m` : `
 const ACTIVITY_META: Record<string, { icon: typeof Bike; label: string }> = {
   cycling: { icon: Bike, label: 'Fietsen' },
   in_vehicle: { icon: Car, label: 'Onderweg (auto)' },
+  walking: { icon: Footprints, label: 'Lopen' },
 }
 
 export default function Vitals() {
@@ -290,12 +291,12 @@ const fmtDay = (iso: string) =>
   new Intl.DateTimeFormat('nl-NL', { day: 'numeric', month: 'short', timeZone: 'Europe/Amsterdam' }).format(new Date(iso))
 
 /**
- * Cycling / in-vehicle sessions from MacroDroid's Activity Recognition, via
- * activity-ingest. A "false stop" (confidence briefly dips below the
- * threshold and recovers seconds later) is already merged server-side into
- * one continuous session — see activity-ingest — so every row here reads as
- * one real ride, unlike the old Google Sheet which paired rows by position
- * and fragmented on a false stop.
+ * Cycling / in-vehicle / walking sessions from MacroDroid's Activity
+ * Recognition, via activity-ingest. A "false stop" (confidence briefly dips
+ * below the threshold and recovers seconds later) is already merged
+ * server-side into one continuous session — see activity-ingest — so every
+ * row here reads as one real ride, unlike the old Google Sheet which paired
+ * rows by position and fragmented on a false stop.
  */
 function ActivitySessionsCard({ sessions }: { sessions: ActivitySession[] }) {
   const now = Date.now()
@@ -312,7 +313,7 @@ function ActivitySessionsCard({ sessions }: { sessions: ActivitySession[] }) {
   return (
     <div className="card p-4">
       <h3 className="text-sm font-medium mb-1 flex items-center gap-2">
-        <Bike className="h-4 w-4 text-ink-soft" /> Activiteiten · fietsen & onderweg
+        <Bike className="h-4 w-4 text-ink-soft" /> Activiteiten · fietsen, onderweg & lopen
       </h3>
       <p className="text-xs text-faint mb-3">MacroDroid Activity Recognition → activity-ingest, direct naar Supabase (geen Sheet meer).</p>
 
