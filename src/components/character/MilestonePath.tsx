@@ -39,10 +39,14 @@ export function MilestonePath({ steps }: { steps: MilestoneStep[] }) {
                 >
                   <Icon className="h-3.5 w-3.5" style={step.status !== 'upcoming' ? { color: hex } : undefined} aria-hidden="true" />
                 </div>
-                <p className="text-[11px] text-ink-soft text-center mt-1.5 leading-snug line-clamp-2 px-1" title={step.title}>
+                <p
+                  className="text-[11px] text-ink-soft text-center mt-1.5 leading-snug line-clamp-2 px-1"
+                  title={step.requiresTitle ? `${step.title} — vereist: ${step.requiresTitle}` : step.title}
+                >
                   {step.title}
                 </p>
                 <span className={`text-[10px] mt-0.5 ${meta.color}`}>{meta.label}</span>
+                <span className="text-[9px] text-faint uppercase tracking-wide">{step.difficulty}</span>
                 {step.dueDate && <span className="text-[10px] text-faint">{fmtDate(step.dueDate)}</span>}
               </div>
               {i < steps.length - 1 && <div className="h-0.5 w-6 mt-3.5 shrink-0 bg-line" aria-hidden="true" />}

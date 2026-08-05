@@ -4,6 +4,7 @@ import { today } from '../../domains'
 import { SectionTitle } from '../ui'
 import {
   computeDomainAttributes,
+  computeDomainLevels,
   computeGapDeltas,
   overallProgress,
   computeSkillTree,
@@ -18,6 +19,7 @@ import { SkillTree } from './SkillTree'
 import { QuestLog } from './QuestLog'
 import { MilestonePath } from './MilestonePath'
 import { ProposedQuests } from './ProposedQuests'
+import { LevelUpToasts } from './LevelUpToasts'
 
 /**
  * The gamified character view: every number on this tab is read straight off
@@ -38,6 +40,7 @@ export default function CharacterTab() {
   const dismissGoalProposal = useStore((s) => s.dismissGoalProposal)
 
   const attributes = computeDomainAttributes(goals)
+  const levels = computeDomainLevels(goals, milestones)
   const overallProgressPct = overallProgress(attributes)
   const deltas = computeGapDeltas(goals)
   const branches = computeSkillTree(goals, milestones)
@@ -59,6 +62,7 @@ export default function CharacterTab() {
 
   return (
     <div className="space-y-5">
+      <LevelUpToasts totalLevel={stats.totalLevel} levels={levels} />
       <CharacterHeader stats={stats} overallProgressPct={overallProgressPct} />
       <GapVisualization overallProgressPct={overallProgressPct} deltas={deltas} />
 
@@ -66,7 +70,7 @@ export default function CharacterTab() {
         <SectionTitle hint="Elke balk is een echt doel uit North Star — vulling is waar je staat, het streepje is het target.">
           Attributen
         </SectionTitle>
-        <AttributeBars attributes={attributes} />
+        <AttributeBars attributes={attributes} levels={levels} />
       </div>
 
       <div>

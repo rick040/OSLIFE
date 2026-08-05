@@ -1,6 +1,6 @@
 // ── Character profile: pure projections over goals/milestones/habits ────────
 // The gamified profile screen (src/views/Profile.tsx, "Personage" tab) needs
-// RPG framing — attributes, a skill tree, quests, a milestone path, level/XP —
+// RPG framing — attributes, a skill tree, quests, a milestone path, levels/XP —
 // but none of that is new data. It's a *read* over data Rick already tracks:
 // `goals` (current/target/metric/domain — already exactly a stat-bar-with-
 // target-marker), `milestones` (already the long-term path), and `habits`
@@ -86,6 +86,144 @@ export function overallProgress(attributes: DomainAttribute[]): number {
   return withGoals.reduce((sum, a) => sum + a.avgProgress, 0) / withGoals.length
 }
 
+// ── RuneScape-style level curve ──────────────────────────────────────────────
+// Same growth SHAPE as RuneScape's skill levels — each level needs
+// proportionally more XP than the last, via the same well-known formula RS
+// itself uses (points += floor(level + 300·2^(level/7)), xp = floor(points/4))
+// — rescaled to fit how much "XP" a real life domain can realistically earn
+// from goals/milestones. The authentic table tops out past 13 million XP for
+// level 99, which nothing here would ever approach; RS_SCALE compresses that
+// down so leveling still *feels* like RuneScape (fast early levels, a long
+// grind toward the 90s) at a scale a handful of goals and milestones can
+// actually move.
+
+export const MAX_LEVEL = 99
+const RS_SCALE = 40
+
+/** table[level] = cumulative RuneScape-xp (unscaled) required to REACH `level`. */
+function buildRsXpTable(): number[] {
+  const table: number[] = [0, 0] // index 0 unused; level 1 needs 0 xp
+  let points = 0
+  for (let level = 1; level < MAX_LEVEL; level++) {
+    points += Math.floor(level + 300 * 2 ** (level / 7))
+    table[level + 1] = Math.floor(points / 4)
+  }
+  return table
+}
+
+const RS_XP_TABLE = buildRsXpTable()
+
+/** Cumulative OSLIFE-xp required to reach `level` (clamped to 1..MAX_LEVEL). */
+export function xpForLevel(level: number): number {
+  const clamped = Math.max(1, Math.min(MAX_LEVEL, Math.round(level)))
+  return Math.round(RS_XP_TABLE[clamped] / RS_SCALE)
+}
+
+/** Level (1..MAX_LEVEL) reached by a given amount of OSLIFE-xp. */
+export function levelForXp(xp: number): number {
+  let level = 1
+  for (let l = MAX_LEVEL; l >= 1; l--) {
+    if (xp >= xpForLevel(l)) {
+      level = l
+      break
+    }
+  }
+  return level
+}
+
+// ── Domain levels — the actual RPG "skill levels", one per life domain ──────
+// Same per-item weights computeCharacterStats already used for the old flat
+// XP total (100 per goal fully progressed, 20 per completed milestone) — goal
+// progress gives PARTIAL credit (floor(progress*100)) so a domain isn't stuck
+// at 0 while a goal is 80% there, the same way training a RuneScape skill
+// gives xp continuously rather than only on "completion".
+
+const XP_PER_GOAL_PROGRESS = 100
+const XP_PER_MILESTONE = 20
+
+export function computeDomainXp(domain: Domain, goals: Goal[], milestones: Milestone[]): number {
+  const domainGoals = goals.filter((g) => g.domain === domain)
+  const goalXp = domainGoals.reduce((sum, g) => sum + Math.floor(goalProgress(g) * XP_PER_GOAL_PROGRESS), 0)
+  const goalIds = new Set(domainGoals.map((g) => g.id))
+  const milestoneXp = milestones.filter((m) => m.done && m.goalId && goalIds.has(m.goalId)).length * XP_PER_MILESTONE
+  return goalXp + milestoneXp
+}
+
+export interface DomainLevel {
+  domain: Domain
+  xp: number
+  level: number
+  /** xp earned past the current level's own threshold. */
+  xpIntoLevel: number
+  /** xp needed to go from this level to the next; 0 once at MAX_LEVEL. */
+  xpForNextLevel: number
+  atMaxLevel: boolean
+}
+
+export function computeDomainLevel(domain: Domain, goals: Goal[], milestones: Milestone[]): DomainLevel {
+  const xp = computeDomainXp(domain, goals, milestones)
+  const level = levelForXp(xp)
+  const atMaxLevel = level >= MAX_LEVEL
+  const xpIntoLevel = xp - xpForLevel(level)
+  const xpForNextLevel = atMaxLevel ? 0 : xpForLevel(level + 1) - xpForLevel(level)
+  return { domain, xp, level, xpIntoLevel, xpForNextLevel, atMaxLevel }
+}
+
+export function computeDomainLevels(goals: Goal[], milestones: Milestone[]): DomainLevel[] {
+  return ALL_DOMAINS.map((domain) => computeDomainLevel(domain, goals, milestones))
+}
+
+/** Sum of every domain's level — RuneScape's "Total level" stat. */
+export function computeTotalLevel(domainLevels: DomainLevel[]): number {
+  return domainLevels.reduce((sum, d) => sum + d.level, 0)
+}
+
+// ── Quest chains — shared per-goal milestone ordering + difficulty ──────────
+// One chain per goal: milestones sorted by due date. Position in the chain
+// drives both "which one is next" (skill tree / milestone path / quest log
+// all agree on the same node) and a RuneScape-quest-style difficulty label —
+// later steps in a chain read as harder, mirroring how RuneScape quest series
+// escalate and gate later entries behind earlier ones.
+
+export type QuestDifficulty = 'Beginner' | 'Gemiddeld' | 'Ervaren' | 'Meester'
+
+const DIFFICULTY_BY_INDEX: QuestDifficulty[] = ['Beginner', 'Gemiddeld', 'Ervaren', 'Meester']
+
+function difficultyForIndex(index: number): QuestDifficulty {
+  return DIFFICULTY_BY_INDEX[Math.min(index, DIFFICULTY_BY_INDEX.length - 1)]
+}
+
+interface ChainedMilestone extends Milestone {
+  indexInGoal: number
+  /** Title of the previous step in this goal's chain — the "requires" line. */
+  requiresTitle: string | null
+  difficulty: QuestDifficulty
+}
+
+function chainMilestonesByGoal(milestones: Milestone[]): Map<string, ChainedMilestone[]> {
+  const byGoal = new Map<string, Milestone[]>()
+  for (const m of milestones) {
+    const key = m.goalId ?? '__no_goal__'
+    const list = byGoal.get(key)
+    if (list) list.push(m)
+    else byGoal.set(key, [m])
+  }
+  const out = new Map<string, ChainedMilestone[]>()
+  for (const [key, list] of byGoal) {
+    const sorted = [...list].sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'))
+    out.set(
+      key,
+      sorted.map((m, i) => ({
+        ...m,
+        indexInGoal: i,
+        requiresTitle: i > 0 ? sorted[i - 1].title : null,
+        difficulty: difficultyForIndex(i),
+      })),
+    )
+  }
+  return out
+}
+
 // ── Skill tree — branch per domain, node per goal, sub-node per milestone ───
 
 export type NodeStatus = 'mastered' | 'in_progress' | 'locked'
@@ -105,27 +243,31 @@ export interface SkillBranch {
   nodes: SkillNode[]
   /** 0..1 branch-level aggregate (average of its goal nodes' progress). */
   progress: number
+  level: DomainLevel
 }
 
-function milestoneNodes(milestones: Milestone[]): SkillNode[] {
-  let seenCurrent = false
-  return milestones.map((m) => {
+function milestoneTreeNodes(chain: ChainedMilestone[]): SkillNode[] {
+  let seenUndone = false
+  return chain.map((m) => {
     let status: NodeStatus
     if (m.done) status = 'mastered'
-    else if (!seenCurrent) {
+    else if (!seenUndone) {
       status = 'in_progress'
-      seenCurrent = true
+      seenUndone = true
     } else status = 'locked'
     return { id: m.id, label: m.title, status, progress: m.done ? 1 : 0, dueDate: m.due, children: [] }
   })
 }
 
 export function computeSkillTree(goals: Goal[], milestones: Milestone[]): SkillBranch[] {
+  const chains = chainMilestonesByGoal(milestones)
   return ALL_DOMAINS.map((domain) => {
     const domainGoals = goals.filter((g) => g.domain === domain)
+    const level = computeDomainLevel(domain, goals, milestones)
     if (!domainGoals.length) {
       return {
         domain,
+        level,
         progress: 0,
         nodes: [{ id: `${domain}-empty`, label: 'Nog geen doel', status: 'locked', progress: 0, dueDate: null, children: [] }],
       }
@@ -133,13 +275,11 @@ export function computeSkillTree(goals: Goal[], milestones: Milestone[]): SkillB
     const nodes: SkillNode[] = domainGoals.map((g) => {
       const progress = goalProgress(g)
       const status: NodeStatus = progress >= 1 ? 'mastered' : progress > 0 ? 'in_progress' : 'locked'
-      const ownMilestones = milestones
-        .filter((m) => m.goalId === g.id)
-        .sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'))
-      return { id: g.id, label: g.title, status, progress, dueDate: null, children: milestoneNodes(ownMilestones) }
+      const chain = chains.get(g.id) ?? []
+      return { id: g.id, label: g.title, status, progress, dueDate: null, children: milestoneTreeNodes(chain) }
     })
     const progress = nodes.reduce((sum, n) => sum + n.progress, 0) / nodes.length
-    return { domain, nodes, progress }
+    return { domain, nodes, progress, level }
   })
 }
 
@@ -154,32 +294,39 @@ export interface MilestoneStep {
   goalTitle: string | null
   status: MilestoneStatus
   dueDate: string | null
+  indexInGoal: number
+  requiresTitle: string | null
+  difficulty: QuestDifficulty
 }
 
 export function computeMilestonePath(goals: Goal[], milestones: Milestone[]): MilestoneStep[] {
   const goalById = new Map(goals.map((g) => [g.id, g]))
-  const sorted = [...milestones].sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999'))
-  const currentSeenForGoal = new Set<string>()
-  return sorted.map((m) => {
-    const goal = m.goalId ? goalById.get(m.goalId) : undefined
-    let status: MilestoneStatus
-    if (m.done) status = 'done'
-    else {
-      const key = m.goalId ?? '__no_goal__'
-      if (!currentSeenForGoal.has(key)) {
+  const chains = chainMilestonesByGoal(milestones)
+  const steps: MilestoneStep[] = []
+  for (const chain of chains.values()) {
+    let seenCurrent = false
+    for (const m of chain) {
+      const goal = m.goalId ? goalById.get(m.goalId) : undefined
+      let status: MilestoneStatus
+      if (m.done) status = 'done'
+      else if (!seenCurrent) {
         status = 'current'
-        currentSeenForGoal.add(key)
+        seenCurrent = true
       } else status = 'upcoming'
+      steps.push({
+        id: m.id,
+        title: m.title,
+        domain: goal?.domain ?? 'cross',
+        goalTitle: goal?.title ?? null,
+        status,
+        dueDate: m.due,
+        indexInGoal: m.indexInGoal,
+        requiresTitle: m.requiresTitle,
+        difficulty: m.difficulty,
+      })
     }
-    return {
-      id: m.id,
-      title: m.title,
-      domain: goal?.domain ?? 'cross',
-      goalTitle: goal?.title ?? null,
-      status,
-      dueDate: m.due,
-    }
-  })
+  }
+  return steps.sort((a, b) => (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999'))
 }
 
 // ── Quest log — the next actionable milestone per goal, short-term framing ──
@@ -193,6 +340,8 @@ export interface QuestItem {
   daysUntilDue: number | null
   overdue: boolean
   xpReward: number
+  difficulty: QuestDifficulty
+  requiresTitle: string | null
 }
 
 function xpForDueDate(daysUntilDue: number | null): number {
@@ -217,6 +366,8 @@ export function computeQuestLog(goals: Goal[], milestones: Milestone[], todayIso
       daysUntilDue,
       overdue: daysUntilDue !== null && daysUntilDue < 0,
       xpReward: xpForDueDate(daysUntilDue),
+      difficulty: s.difficulty,
+      requiresTitle: s.requiresTitle,
     }
   })
   return withDays
@@ -234,19 +385,31 @@ function daysBetweenIso(a: string, b: string): number {
   return Math.round((db - da) / 86400000)
 }
 
-// ── Character stats — level/XP/title/streak, all derived, no stored counter ─
+// ── Character stats — Total Level/title/streak, all derived, no stored counter ─
 
-/** Dutch tier names, lowest → highest. Level 1 = titles[0], capped at the last. */
+/** Dutch tier names, lowest → highest. Indexed by how many thresholds are cleared. */
 const TITLES = ['Beginner', 'Leerling', 'Beoefenaar', 'Gevorderde', 'Vakman', 'Meester', 'Grootmeester', 'Legende']
 
-/** XP needed per level — flat, documented here rather than tuned per-domain. */
-const XP_PER_LEVEL = 250
+/**
+ * Total-level thresholds for each title tier — max total level is
+ * ALL_DOMAINS.length * MAX_LEVEL (5 * 99 = 495); these are spread so the
+ * first few tiers pass quickly (matching a handful of real goals) and the
+ * top tiers stay a genuine long-term reach, same shape as the per-domain
+ * curve above.
+ */
+const TITLE_THRESHOLDS = [0, 15, 35, 65, 105, 155, 220, 300]
+
+function titleForTotalLevel(totalLevel: number): { title: string; nextTitle: string | null } {
+  let idx = 0
+  for (let i = 0; i < TITLE_THRESHOLDS.length; i++) {
+    if (totalLevel >= TITLE_THRESHOLDS[i]) idx = i
+  }
+  return { title: TITLES[idx], nextTitle: idx + 1 < TITLES.length ? TITLES[idx + 1] : null }
+}
 
 export interface CharacterStats {
-  level: number
-  xp: number
-  xpIntoLevel: number
-  xpPerLevel: number
+  totalLevel: number
+  maxTotalLevel: number
   title: string
   nextTitle: string | null
   goalsAchieved: number
@@ -254,31 +417,37 @@ export interface CharacterStats {
   /** Longest-running habit streak, if any habit exists. */
   streakCount: number
   streakLabel: string | null
+  /** The domain closest to its next level-up (only domains with ≥1 goal), or null with nothing active. */
+  nearestLevelUp: { domain: Domain; xpNeeded: number } | null
 }
 
 export function computeCharacterStats(goals: Goal[], milestones: Milestone[], habits: Habit[]): CharacterStats {
   const goalsAchieved = goals.filter((g) => g.target > 0 && goalProgress(g) >= 1).length
   const milestonesDone = milestones.filter((m) => m.done).length
-  const habitXp = habits.reduce((sum, h) => sum + Math.min(h.streak, 60), 0)
-  const xp = goalsAchieved * 100 + milestonesDone * 20 + habitXp * 2
 
-  const level = 1 + Math.floor(xp / XP_PER_LEVEL)
-  const xpIntoLevel = xp % XP_PER_LEVEL
-  const title = TITLES[Math.min(level - 1, TITLES.length - 1)]
-  const nextTitle = level - 1 < TITLES.length - 1 ? TITLES[level] : null
+  const domainLevels = computeDomainLevels(goals, milestones)
+  const totalLevel = computeTotalLevel(domainLevels)
+  const { title, nextTitle } = titleForTotalLevel(totalLevel)
 
   const topHabit = habits.reduce<Habit | null>((best, h) => (!best || h.streak > best.streak ? h : best), null)
 
+  const domainsWithGoals = new Set(goals.map((g) => g.domain))
+  let nearestLevelUp: CharacterStats['nearestLevelUp'] = null
+  for (const dl of domainLevels) {
+    if (dl.atMaxLevel || !domainsWithGoals.has(dl.domain)) continue
+    const xpNeeded = dl.xpForNextLevel - dl.xpIntoLevel
+    if (!nearestLevelUp || xpNeeded < nearestLevelUp.xpNeeded) nearestLevelUp = { domain: dl.domain, xpNeeded }
+  }
+
   return {
-    level,
-    xp,
-    xpIntoLevel,
-    xpPerLevel: XP_PER_LEVEL,
+    totalLevel,
+    maxTotalLevel: ALL_DOMAINS.length * MAX_LEVEL,
     title,
     nextTitle,
     goalsAchieved,
     milestonesDone,
     streakCount: topHabit?.streak ?? 0,
     streakLabel: topHabit && topHabit.streak > 0 ? topHabit.name : null,
+    nearestLevelUp,
   }
 }
