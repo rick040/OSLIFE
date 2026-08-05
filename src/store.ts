@@ -92,7 +92,7 @@ import { buildDogCoachPrompt } from './dog/dogCoach'
 import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
 import type { CardTemplate, ActionKind, ActionFieldType } from './heyra/actions/types'
 import { proposeGoals as proposeGoalsAI } from './heyra/goals'
-import { synthesizeCurrentFromData, synthesizeCurrentHypotheses, synthesizeDesiredProfile, synthesizeTensionsAndLandscape } from './heyra/identity'
+import { synthesizeCurrentFromData, synthesizeCurrentHypotheses, synthesizeDesiredProfile, synthesizeTensionsAndLandscape, synthesizeDesiredFromSignal } from './heyra/identity'
 import { emptySnapshot, emptyDesired, emptyLandscape } from './profile'
 import { buildWeekPlan, weekDates, dayBounds, type DayBounds } from './heyra/planner'
 import {
@@ -399,6 +399,9 @@ interface State {
   lastDistillError: string | null
   generatingLandscape: boolean
   lastLandscapeError: string | null
+  /** expandDesiredFromSignal() — passive counterpart to distillFromInterview: scans braindumps instead of interview answers. */
+  expandingDesired: boolean
+  lastExpandDesiredError: string | null
   businessIdeas: BusinessIdea[]
   /** Cached extra fields per HEYRA action kind (proposeAction.ts) — see recordCardTemplateUsage. */
   cardTemplates: CardTemplate[]
@@ -567,6 +570,8 @@ interface State {
   updateInterviewAnswer: (questionId: string, text: string) => void
   distillFromInterview: () => Promise<void>
   generateLandscape: () => Promise<void>
+  /** Scans braindumps written since the desired profile was last touched for explicit aspirational statements and folds new ones in. No-ops (sets an explanatory error, no brain call) when there's nothing new to scan. */
+  expandDesiredFromSignal: () => Promise<void>
   // Dagplanner — generate/lock/dismiss the weekly day plan.
   generateWeekPlan: () => Promise<void>
   lockPlanBlock: (id: string) => void
@@ -816,6 +821,8 @@ const seed = () => ({
   lastDistillError: null as string | null,
   generatingLandscape: false,
   lastLandscapeError: null as string | null,
+  expandingDesired: false,
+  lastExpandDesiredError: null as string | null,
   businessIdeas: [] as BusinessIdea[],
   // Set right before navigating to CRM from elsewhere (e.g. Strategie HQ's
   // "Bekijk project" button) so CRM can auto-open that project's detail modal
@@ -2187,6 +2194,50 @@ export const useStore = create<State>()(
         } catch (err) {
           console.warn('[OSLIFE] landscape synthesis failed', err)
           set({ generatingLandscape: false, lastLandscapeError: 'HEYRA kon het landschap nu niet genereren — probeer het zo nog eens.' })
+        }
+      },
+
+      expandDesiredFromSignal: async () => {
+        const s = get()
+        const since = s.identityProfile.desired.generatedAt
+        const fresh = since ? s.braindumpEntries.filter((b) => b.createdAt > since) : s.braindumpEntries
+        if (!fresh.length) {
+          set({ lastExpandDesiredError: 'Geen nieuwe braindumps sinds de laatste update — schrijf er eerst een paar.' })
+          return
+        }
+        set({ expandingDesired: true, lastExpandDesiredError: null })
+        try {
+          const incoming = await synthesizeDesiredFromSignal({
+            braindumpEntries: fresh,
+            existingDesired: s.identityProfile.desired,
+          })
+          if (!incoming) {
+            set({
+              expandingDesired: false,
+              lastExpandDesiredError: 'Geen expliciete "ik wil worden/bereiken"-uitspraken gevonden in die braindumps.',
+            })
+            return
+          }
+          const addedCount = Object.values(incoming).reduce((sum, items) => sum + items.length, 0)
+          set((st) => ({
+            identityProfile: {
+              ...st.identityProfile,
+              desired: {
+                categories: mergeStringCategories(st.identityProfile.desired.categories, incoming),
+                generatedAt: new Date().toISOString(),
+              },
+            },
+            expandingDesired: false,
+            activity: pushSignal(st.activity, {
+              text: `Droomprofiel uitgebreid met ${addedCount} punt(en) uit braindumps`,
+              domain: 'cross',
+              loop: 'slow',
+            }),
+          }))
+          void upsertIdentityProfile({ desired: get().identityProfile.desired })
+        } catch (err) {
+          console.warn('[OSLIFE] desired-from-signal synthesis failed', err)
+          set({ expandingDesired: false, lastExpandDesiredError: 'HEYRA kon de braindumps nu niet doorzoeken — probeer het zo nog eens.' })
         }
       },
 
