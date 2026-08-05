@@ -1,0 +1,68 @@
+import { DomainChip } from '../ui'
+import { domainMeta, DOMAIN_HEX } from '../../domains'
+import { fmtGoalValue } from '../../lib/format'
+import { goalProgress, type DomainAttribute } from '../../character'
+import type { Goal } from '../../types'
+
+/**
+ * One stat bar per goal: track scaled to 15% past whichever is bigger
+ * (target or an overshoot current), fill to current, a marker tick at the
+ * target so an overachieved goal still shows where the bar was aiming.
+ */
+function GoalBar({ goal }: { goal: Goal }) {
+  const hex = DOMAIN_HEX[goal.domain]
+  const scale = Math.max(goal.target, goal.current, 1) * 1.15
+  const fillPct = Math.max(0, Math.min(100, (goal.current / scale) * 100))
+  const targetPct = Math.max(0, Math.min(100, (goal.target / scale) * 100))
+  const progress = goalProgress(goal)
+  const overshoot = goal.current > goal.target && goal.target > 0
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="text-ink-soft truncate">{goal.title}</span>
+        <span className="font-mono tabular-nums text-faint shrink-0">
+          {fmtGoalValue(goal.current, goal.metric)} / {fmtGoalValue(goal.target, goal.metric)}
+          {overshoot && <span className="text-forest-hi ml-1">+</span>}
+        </span>
+      </div>
+      <div className="relative h-2.5 rounded-full bg-sunken overflow-hidden" role="progressbar" aria-valuenow={Math.round(progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`${goal.title}: ${Math.round(progress * 100)}% van doel`}>
+        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${fillPct}%`, backgroundColor: hex }} />
+        <div className="absolute top-0 bottom-0 w-0.5 bg-ink/70" style={{ left: `${targetPct}%` }} aria-hidden="true" />
+      </div>
+    </div>
+  )
+}
+
+function DomainSection({ attr }: { attr: DomainAttribute }) {
+  const meta = domainMeta(attr.domain)
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center justify-between">
+        <DomainChip domain={attr.domain} />
+        <span className="text-[11px] font-mono tabular-nums text-faint">{Math.round(attr.avgProgress * 100)}%</span>
+      </div>
+      {attr.goals.length === 0 ? (
+        <div className="h-2.5 rounded-full border border-dashed border-line flex items-center px-2">
+          <p className="text-[10px] text-faint italic truncate">Nog geen doel ingesteld voor {meta.label}</p>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {attr.goals.map((g) => (
+            <GoalBar key={g.id} goal={g} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function AttributeBars({ attributes }: { attributes: DomainAttribute[] }) {
+  return (
+    <div className="card p-4 space-y-5">
+      {attributes.map((attr) => (
+        <DomainSection key={attr.domain} attr={attr} />
+      ))}
+    </div>
+  )
+}

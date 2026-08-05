@@ -7,10 +7,12 @@ import { CURRENT_CATEGORIES, DESIRED_CATEGORIES, LANDSCAPE_CATEGORIES, hasAnyIte
 import { INTERVIEW, type InterviewSection } from '../selfModel'
 import type { ProfileItem } from '../types'
 import { Fingerprint, Sparkles, Compass, Plus, X, Check, ChevronDown } from 'lucide-react'
+import CharacterTab from '../components/character/CharacterTab'
 
-type Tab = 'huidig' | 'droom' | 'landschap'
+type Tab = 'personage' | 'huidig' | 'droom' | 'landschap'
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: 'personage', label: 'Personage' },
   { id: 'huidig', label: 'Huidig' },
   { id: 'droom', label: 'Droom' },
   { id: 'landschap', label: 'Landschap' },
@@ -272,7 +274,7 @@ export default function Profile() {
     generateLandscape,
   } = useStore()
 
-  const [tab, setTab] = useState<Tab>('huidig')
+  const [tab, setTab] = useState<Tab>('personage')
   const [showLegacy, setShowLegacy] = useState(false)
   const { current, desired, landscape, legacyNotes } = identityProfile
   const desiredHasSignal = hasAnyItems(desired.categories)
@@ -297,6 +299,10 @@ export default function Profile() {
             </TabsTrigger>
           ))}
         </TabsList>
+
+        <TabsContent value="personage" className="mt-6">
+          <CharacterTab />
+        </TabsContent>
 
         <TabsContent value="huidig" className="mt-6 space-y-4">
           <div className="flex items-start justify-between gap-3 flex-wrap">
