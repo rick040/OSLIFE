@@ -384,6 +384,27 @@ export function SegmentedProgress({
 }
 
 /**
+ * 7-day hit/miss strip for a single habit — today at the right, 6 days back
+ * to the left. Answers "was I actually consistent this week", which a single
+ * streak number and today's tick can't: a streak resets to 0 the instant one
+ * day is missed, so a 0-streak habit that was hit 5 of the last 7 days looks
+ * identical to one that's been dead for a month without this.
+ */
+export function WeekStrip({ hits }: { hits: boolean[] }) {
+  return (
+    <div className="flex items-center gap-1" role="img" aria-label={`${hits.filter(Boolean).length} van ${hits.length} dagen deze week`}>
+      {hits.map((hit, i) => (
+        <span
+          key={i}
+          aria-hidden
+          className={`h-2 w-2 shrink-0 rounded-full ${hit ? 'bg-buurtkaart' : 'bg-line'}`}
+        />
+      ))}
+    </div>
+  )
+}
+
+/**
  * Minimal inline trend line — no axes, no tooltip, just "is this going up or
  * down". For a stat tile's corner, not for analysis (Vitals/Signalen's real
  * charts cover that). `values` in chronological order; renders nothing
