@@ -1,7 +1,7 @@
-import { DomainChip } from '../ui'
 import { domainMeta, DOMAIN_HEX } from '../../domains'
 import { fmtGoalValue } from '../../lib/format'
-import { goalProgress, type DomainAttribute } from '../../character'
+import { goalProgress, type DomainAttribute, type DomainLevel } from '../../character'
+import { DomainSkillIcon } from './DomainSkillIcon'
 import type { Goal } from '../../types'
 
 /**
@@ -34,13 +34,18 @@ function GoalBar({ goal }: { goal: Goal }) {
   )
 }
 
-function DomainSection({ attr }: { attr: DomainAttribute }) {
+function DomainSection({ attr, level }: { attr: DomainAttribute; level: DomainLevel }) {
   const meta = domainMeta(attr.domain)
   return (
     <div className="space-y-2.5">
-      <div className="flex items-center justify-between">
-        <DomainChip domain={attr.domain} />
-        <span className="text-[11px] font-mono tabular-nums text-faint">{Math.round(attr.avgProgress * 100)}%</span>
+      <div className="flex items-center gap-2.5">
+        <DomainSkillIcon level={level} size={30} />
+        <div className="min-w-0 flex-1">
+          <p className={`text-[11px] font-semibold uppercase truncate ${meta.color}`}>{meta.label}</p>
+          {attr.goals.length > 0 && (
+            <p className="text-[10px] text-faint">{Math.round(attr.avgProgress * 100)}% van targets gehaald</p>
+          )}
+        </div>
       </div>
       {attr.goals.length === 0 ? (
         <div className="h-2.5 rounded-full border border-dashed border-line flex items-center px-2">
@@ -57,11 +62,11 @@ function DomainSection({ attr }: { attr: DomainAttribute }) {
   )
 }
 
-export function AttributeBars({ attributes }: { attributes: DomainAttribute[] }) {
+export function AttributeBars({ attributes, levels }: { attributes: DomainAttribute[]; levels: DomainLevel[] }) {
   return (
     <div className="card p-4 space-y-5">
-      {attributes.map((attr) => (
-        <DomainSection key={attr.domain} attr={attr} />
+      {attributes.map((attr, i) => (
+        <DomainSection key={attr.domain} attr={attr} level={levels[i]} />
       ))}
     </div>
   )

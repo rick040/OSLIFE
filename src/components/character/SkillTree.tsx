@@ -1,5 +1,6 @@
 import { CheckCircle2, Zap, Lock, Circle, Check } from 'lucide-react'
 import { domainMeta, DOMAIN_HEX, fmtDate } from '../../domains'
+import { DomainSkillIcon } from './DomainSkillIcon'
 import type { SkillBranch, SkillNode, NodeStatus } from '../../character'
 
 /**
@@ -88,14 +89,24 @@ function MilestoneNode({ node, hex }: { node: SkillNode; hex: string }) {
 function BranchColumn({ branch }: { branch: SkillBranch }) {
   const meta = domainMeta(branch.domain)
   const hex = DOMAIN_HEX[branch.domain]
+  const { xpIntoLevel, xpForNextLevel, atMaxLevel } = branch.level
+  const xpPct = atMaxLevel ? 1 : xpForNextLevel > 0 ? xpIntoLevel / xpForNextLevel : 0
+
   return (
     <div className="w-56 shrink-0 space-y-2.5">
-      <div className="flex items-center justify-between gap-2 sticky top-0 bg-surface pb-1 z-10">
-        <span className={`flex items-center gap-1.5 text-[11px] font-semibold uppercase ${meta.color}`}>
-          <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${meta.dot}`} />
-          {meta.label}
-        </span>
-        <span className="text-[10px] font-mono tabular-nums text-faint shrink-0">{Math.round(branch.progress * 100)}%</span>
+      <div className="sticky top-0 bg-surface pb-2 z-10 space-y-1.5">
+        <div className="flex items-center gap-2.5">
+          <DomainSkillIcon level={branch.level} size={36} />
+          <div className="min-w-0 flex-1">
+            <p className={`text-[11px] font-semibold uppercase truncate ${meta.color}`}>{meta.label}</p>
+            <p className="text-[10px] font-mono tabular-nums text-faint">
+              {atMaxLevel ? 'max level' : `${xpIntoLevel}/${xpForNextLevel} xp`}
+            </p>
+          </div>
+        </div>
+        <div className="h-1 rounded-full bg-sunken overflow-hidden" role="progressbar" aria-valuenow={Math.round(xpPct * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`${meta.label} level ${branch.level.level}, voortgang naar volgend level`}>
+          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${xpPct * 100}%`, backgroundColor: hex }} />
+        </div>
       </div>
       <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
         {branch.nodes.map((node) => (
