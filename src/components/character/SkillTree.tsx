@@ -93,7 +93,7 @@ function BranchColumn({ branch }: { branch: SkillBranch }) {
   const xpPct = atMaxLevel ? 1 : xpForNextLevel > 0 ? xpIntoLevel / xpForNextLevel : 0
 
   return (
-    <div className="w-56 shrink-0 space-y-2.5">
+    <div className="w-full sm:w-56 sm:shrink-0 space-y-2.5">
       <div className="sticky top-0 bg-surface pb-2 z-10 space-y-1.5">
         <div className="flex items-center gap-2.5">
           <DomainSkillIcon level={branch.level} size={36} />
@@ -125,10 +125,21 @@ function BranchColumn({ branch }: { branch: SkillBranch }) {
 export function SkillTree({ branches }: { branches: SkillBranch[] }) {
   return (
     <div className="card p-4">
-      <div className="flex gap-5 overflow-x-auto pb-1">
-        {branches.map((branch) => (
-          <BranchColumn key={branch.domain} branch={branch} />
-        ))}
+      {/* Below sm, 5 fixed-width columns in a horizontal scroller left ~3.5 of
+          them permanently off-screen with no hint they existed — stacked, full-
+          width branches read top-to-bottom instead. From sm up there's room for
+          the original side-scrolling row; the fade on its trailing edge signals
+          there's more to swipe to. */}
+      <div className="relative">
+        <div className="flex flex-col gap-5 sm:flex-row sm:gap-5 sm:overflow-x-auto sm:pb-1">
+          {branches.map((branch) => (
+            <BranchColumn key={branch.domain} branch={branch} />
+          ))}
+        </div>
+        <div
+          className="hidden sm:block pointer-events-none absolute right-0 top-0 bottom-1 w-10 bg-gradient-to-l from-surface to-transparent"
+          aria-hidden="true"
+        />
       </div>
       <div className="mt-3 pt-3 border-t border-line flex items-center gap-4 flex-wrap text-[10px] text-faint">
         <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> behaald</span>

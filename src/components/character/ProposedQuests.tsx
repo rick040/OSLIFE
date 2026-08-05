@@ -41,16 +41,16 @@ export function ProposedQuests({
 
       {proposals.map((p) => (
         <div key={p.id} className="card p-4 border-2 border-dashed border-prjct/40 bg-prjct/5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Sparkles className="h-3.5 w-3.5 text-prjct shrink-0" aria-hidden="true" />
-                <h3 className="text-sm font-medium text-ink truncate">{p.title}</h3>
+          <div className="flex items-start gap-2.5">
+            <Sparkles className="h-3.5 w-3.5 text-prjct shrink-0 mt-0.5" aria-hidden="true" />
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-medium text-ink leading-snug">{p.title}</h3>
+              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                 <DomainChip domain={p.domain} small />
+                <span className="text-xs text-faint">
+                  {fmtGoalValue(p.current, p.metric)} → {fmtGoalValue(p.target, p.metric)} · {fmtDate(p.deadline)}
+                </span>
               </div>
-              <p className="text-xs text-faint mt-1">
-                {fmtGoalValue(p.current, p.metric)} → {fmtGoalValue(p.target, p.metric)} · {fmtDate(p.deadline)}
-              </p>
               {p.rationale && <p className="text-xs text-ink-soft mt-1.5">{p.rationale}</p>}
             </div>
           </div>

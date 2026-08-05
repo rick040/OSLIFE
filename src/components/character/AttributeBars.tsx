@@ -19,16 +19,16 @@ function GoalBar({ goal }: { goal: Goal }) {
 
   return (
     <div className="space-y-1">
-      <div className="flex items-baseline justify-between gap-2 text-xs">
-        <span className="text-ink-soft truncate">{goal.title}</span>
-        <span className="font-mono tabular-nums text-faint shrink-0">
+      <p className="text-xs text-ink-soft leading-snug">{goal.title}</p>
+      <div className="flex items-center gap-2">
+        <div className="relative h-2.5 flex-1 rounded-full bg-sunken overflow-hidden" role="progressbar" aria-valuenow={Math.round(progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`${goal.title}: ${Math.round(progress * 100)}% van doel`}>
+          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${fillPct}%`, backgroundColor: hex }} />
+          <div className="absolute top-0 bottom-0 w-0.5 bg-ink/70" style={{ left: `${targetPct}%` }} aria-hidden="true" />
+        </div>
+        <span className="font-mono tabular-nums text-[11px] text-faint shrink-0">
           {fmtGoalValue(goal.current, goal.metric)} / {fmtGoalValue(goal.target, goal.metric)}
           {overshoot && <span className="text-forest-hi ml-1">+</span>}
         </span>
-      </div>
-      <div className="relative h-2.5 rounded-full bg-sunken overflow-hidden" role="progressbar" aria-valuenow={Math.round(progress * 100)} aria-valuemin={0} aria-valuemax={100} aria-label={`${goal.title}: ${Math.round(progress * 100)}% van doel`}>
-        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${fillPct}%`, backgroundColor: hex }} />
-        <div className="absolute top-0 bottom-0 w-0.5 bg-ink/70" style={{ left: `${targetPct}%` }} aria-hidden="true" />
       </div>
     </div>
   )
