@@ -86,8 +86,8 @@ import { classifyWithBrain, type Classification } from './understand'
 import { invokeBraindumpIngest } from './lib/braindump'
 import type { ClaudeImportRecord } from './lib/claudeImport'
 import { runReflect, computeCorrelations, computeAnomalies, buildNarrativePrompt, NARRATIVE_SYSTEM_PROMPT } from './reflect'
-import { askBrain } from './heyra/brainClient'
-import { buildFinanceCoachPrompt } from './finance/financeCoach'
+import { askBrain, askBrainTool } from './heyra/brainClient'
+import { buildFinanceCoachPrompt, buildFinancePlanPrompt, type FinancePlanItem } from './finance/financeCoach'
 import { buildDogCoachPrompt } from './dog/dogCoach'
 import { extractFacts, mergeFacts, type LearnedFact } from './heyra/learning'
 import type { CardTemplate, ActionKind, ActionFieldType } from './heyra/actions/types'
@@ -152,6 +152,7 @@ import {
   upsertNotificationPrefs,
   persistBrainState,
   persistPaymentStatus,
+  updatePaymentRow,
   deletePaymentRow,
   persistBlockStatus,
   isDbId,
@@ -354,7 +355,7 @@ interface State {
   stockQuotes: Record<string, HoldingQuote>
   fx: { EURUSD: number | null; EURGBP: number | null }
   loadingQuotes: boolean
-  financeCoach: { text: string; generatedAt: string } | null
+  financeCoach: { text: string; generatedAt: string; plan: FinancePlanItem[] } | null
   financeCoachLoading: boolean
   financeCoachError: string | null
   dogProfile: DogProfile
@@ -658,6 +659,8 @@ interface State {
   addTransactions: (txns: Transaction[]) => void
   importTransactions: (txns: Transaction[]) => Promise<{ inserted: number; duplicates: number }>
   markPaymentPaid: (id: string) => void
+  // Manual urgency override (Payment.urgent) — set from the Te-betalen tab or the coach's plan.
+  updatePayment: (id: string, patch: Partial<Pick<Payment, 'urgent' | 'note' | 'due'>>) => void
   // Manually add a bill/invoice to "Te betalen" (payee/amount/due/IBAN/link/note).
   addPayment: (payment: Omit<Payment, 'id' | 'status' | 'source'>) => void
   // Remove an outstanding (or any) payment entirely — from the store and the DB.
@@ -772,7 +775,7 @@ const seed = () => ({
   stockQuotes: {} as Record<string, HoldingQuote>,
   fx: { EURUSD: null, EURGBP: null } as { EURUSD: number | null; EURGBP: number | null },
   loadingQuotes: false,
-  financeCoach: null as { text: string; generatedAt: string } | null,
+  financeCoach: null as { text: string; generatedAt: string; plan: FinancePlanItem[] } | null,
   financeCoachLoading: false,
   financeCoachError: null as string | null,
   dogProfile: mock.dogProfile,
@@ -906,6 +909,7 @@ export function applyPersistDefaults(
   if (state.lastLandscapeError === undefined) state.lastLandscapeError = null
   if (!state.stockQuotes) state.stockQuotes = {}
   if (state.financeCoach === undefined) state.financeCoach = null
+  if (state.financeCoach && !Array.isArray(state.financeCoach.plan)) state.financeCoach.plan = []
   if (state.financeCoachError === undefined) state.financeCoachError = null
   if (state.dogCoach === undefined) state.dogCoach = null
   if (state.weekPlanAt === undefined) state.weekPlanAt = null
@@ -2368,6 +2372,11 @@ export const useStore = create<State>()(
         void persistPaymentStatus(id, 'paid')
       },
 
+      updatePayment: (id, patch) => {
+        patchSlice(set, 'payments', id, patch)
+        void updatePaymentRow(id, patch)
+      },
+
       deletePayment: (id) => {
         set((s) => {
           const p = s.payments.find((x) => x.id === id)
@@ -3126,9 +3135,25 @@ export const useStore = create<State>()(
         const s = get()
         try {
           const { system, prompt } = buildFinanceCoachPrompt(s)
-          const text = await askBrain(system, prompt, { maxTokens: 500 })
+          const planInput = buildFinancePlanPrompt(s)
+          const validIds = new Set(s.payments.map((p) => p.id))
+          const [text, planResult] = await Promise.all([
+            askBrain(system, prompt, { maxTokens: 500 }),
+            planInput
+              ? askBrainTool(planInput.system, planInput.prompt, planInput.tool, { maxTokens: 900, timeoutMs: 15000 })
+              : Promise.resolve(null),
+          ])
+          // Only keep items whose payment_id is a real, currently-open payment
+          // and whose action is one of the known enum values — the model is
+          // instructed to only use given ids, but never trust that blindly
+          // against something that drives real "mark as paid" buttons.
+          const validActions = new Set<FinancePlanItem['action']>(['pay_now', 'wait', 'ask_extension', 'partial', 'move_money', 'follow_up'])
+          const rawItems = (planResult?.input.items as { payment_id?: string; action?: string; reasoning?: string }[] | undefined) ?? []
+          const plan: FinancePlanItem[] = rawItems
+            .filter((i) => !!i.payment_id && validIds.has(i.payment_id) && validActions.has(i.action as FinancePlanItem['action']) && !!i.reasoning)
+            .map((i) => ({ paymentId: i.payment_id!, action: i.action as FinancePlanItem['action'], reasoning: i.reasoning! }))
           set({
-            financeCoach: text ? { text, generatedAt: new Date().toISOString() } : get().financeCoach,
+            financeCoach: text ? { text, generatedAt: new Date().toISOString(), plan } : get().financeCoach,
             financeCoachLoading: false,
             // askBrain resolves null on any failure (missing secret, offline,
             // timeout, empty reply) without saying which — surface a generic

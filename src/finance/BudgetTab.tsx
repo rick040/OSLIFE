@@ -3,10 +3,12 @@ import { Empty, SectionTitle } from '../components/ui'
 import { Markdown } from '../components/Markdown'
 import { eur0, eur } from '../lib/format'
 import { fmtDate, TODAY } from '../domains'
+import { dueLabel } from '../lib/dates'
 import { TX_CATEGORIES } from './categories'
 import { realTransactions } from './balance'
-import type { Goal, BudgetCap, Transaction } from '../types'
-import { Plus, Target, Trash2, Sparkles, RefreshCw, PiggyBank, AlertCircle } from 'lucide-react'
+import type { FinancePlanItem, FinancePlanAction } from './financeCoach'
+import type { Goal, BudgetCap, Transaction, Payment } from '../types'
+import { Plus, Target, Trash2, Sparkles, RefreshCw, PiggyBank, AlertCircle, ListChecks, CheckCircle2, Flag, Clock } from 'lucide-react'
 
 export function BudgetTab({
   goals,
@@ -22,12 +24,15 @@ export function BudgetTab({
   onAddBudgetCap,
   onDeleteBudgetCap,
   transactions,
+  payments,
+  onMarkPaymentPaid,
+  onUpdatePayment,
 }: {
   goals: Goal[]
   onAddGoal: (g: Omit<Goal, 'id'>) => void
   onUpdateGoal: (id: string, patch: Partial<Omit<Goal, 'id'>>) => void
   onDeleteGoal: (id: string) => void
-  coach: { text: string; generatedAt: string } | null
+  coach: { text: string; generatedAt: string; plan: FinancePlanItem[] } | null
   coachLoading: boolean
   coachError: string | null
   onRefreshCoach: () => void
@@ -36,6 +41,9 @@ export function BudgetTab({
   onAddBudgetCap: (category: string, monthlyMax: number) => void
   onDeleteBudgetCap: (id: string) => void
   transactions: Transaction[]
+  payments: Payment[]
+  onMarkPaymentPaid: (id: string) => void
+  onUpdatePayment: (id: string, patch: Partial<Pick<Payment, 'urgent' | 'note' | 'due'>>) => void
 }) {
   const financialGoals = goals.filter((g) => g.metric === 'EUR')
   const [form, setForm] = useState(false)
@@ -49,6 +57,11 @@ export function BudgetTab({
       .forEach((t) => map.set(t.category, (map.get(t.category) ?? 0) + Math.abs(t.amount)))
     return map
   }, [transactions, thisMonth])
+
+  const paymentById = useMemo(() => new Map(payments.map((p) => [p.id, p])), [payments])
+  // A plan item goes stale the moment its payment is paid/removed — filter
+  // those out instead of trusting the coach's snapshot from generation time.
+  const openPlan = (coach?.plan ?? []).filter((item) => paymentById.get(item.paymentId)?.status === 'open')
 
   return (
     <div className="space-y-6">
@@ -73,6 +86,27 @@ export function BudgetTab({
           </p>
         )}
       </div>
+
+      {openPlan.length > 0 && (
+        <div className="space-y-3">
+          <SectionTitle><span className="flex items-center gap-2"><ListChecks className="h-4 w-4 text-prjct" /> Plan</span></SectionTitle>
+          <div className="space-y-2">
+            {openPlan.map((item) => {
+              const p = paymentById.get(item.paymentId)
+              if (!p) return null
+              return (
+                <PlanItemRow
+                  key={item.paymentId}
+                  item={item}
+                  payment={p}
+                  onMarkPaid={() => onMarkPaymentPaid(p.id)}
+                  onSetUrgent={(urgent) => onUpdatePayment(p.id, { urgent })}
+                />
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-3">
         <SectionTitle><span className="flex items-center gap-2"><Target className="h-4 w-4 text-prjct" /> Doelen</span></SectionTitle>
@@ -128,6 +162,62 @@ export function BudgetTab({
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+const PLAN_ACTION_META: Record<FinancePlanAction, { label: string; className: string }> = {
+  pay_now: { label: 'Nu betalen', className: 'bg-cross/15 text-cross' },
+  wait: { label: 'Kan wachten', className: 'bg-line text-muted' },
+  ask_extension: { label: 'Uitstel vragen', className: 'bg-personal/15 text-personal-deep' },
+  partial: { label: 'Deels betalen', className: 'bg-personal/15 text-personal-deep' },
+  move_money: { label: 'Geld overboeken', className: 'bg-buurtkaart/15 text-buurtkaart-deep' },
+  follow_up: { label: 'Opvolgen bij klant', className: 'bg-prjct/15 text-prjct' },
+}
+
+function PlanItemRow({
+  item,
+  payment,
+  onMarkPaid,
+  onSetUrgent,
+}: {
+  item: FinancePlanItem
+  payment: Payment
+  onMarkPaid: () => void
+  onSetUrgent: (urgent: boolean) => void
+}) {
+  const meta = PLAN_ACTION_META[item.action]
+  const due = dueLabel(payment.due, { prefix: 'vervalt ' })
+  const showResolveButton = item.action === 'pay_now' || item.action === 'follow_up'
+
+  return (
+    <div className="card p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-ink truncate">{payment.payee}</div>
+          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+            <span className={`chip !py-0.5 !px-1.5 ${meta.className}`}>{meta.label}</span>
+            <span className={`text-xs ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>{due.label}</span>
+          </div>
+          <p className="text-xs text-faint mt-1">{item.reasoning}</p>
+        </div>
+        <span className={`text-sm font-medium tabular-nums shrink-0 ${payment.direction === 'incoming' ? 'text-buurtkaart-deep' : 'text-ink'}`}>
+          {payment.direction === 'incoming' ? '+' : '-'}{eur(payment.amount)}
+        </span>
+      </div>
+      <div className="flex items-center gap-2 mt-2 flex-wrap">
+        {showResolveButton && (
+          <button onClick={onMarkPaid} className="btn-ghost !py-1 !text-xs">
+            <CheckCircle2 className="h-3.5 w-3.5" /> {payment.direction === 'incoming' ? 'Ontvangen' : 'Betaald'}
+          </button>
+        )}
+        <button onClick={() => onSetUrgent(true)} className="btn-ghost !py-1 !text-xs" title="Markeer als urgent">
+          <Flag className="h-3.5 w-3.5" /> Urgent
+        </button>
+        <button onClick={() => onSetUrgent(false)} className="btn-ghost !py-1 !text-xs" title="Markeer als 'kan wachten'">
+          <Clock className="h-3.5 w-3.5" /> Kan wachten
+        </button>
+      </div>
     </div>
   )
 }

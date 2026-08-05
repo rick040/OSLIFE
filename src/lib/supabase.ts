@@ -1152,7 +1152,7 @@ export async function materializeWikiEntry(entry: WikiEntry): Promise<void> {
 }
 
 export async function fetchPayments(): Promise<Payment[]> {
-  return fetchRows('payments', 'id,payee,amount,due,direction,status,domain,source,external_id,iban,payment_link,notes', { column: 'due', ascending: true, nullsFirst: false }, (r) => ({
+  return fetchRows('payments', 'id,payee,amount,due,direction,status,domain,source,external_id,iban,payment_link,notes,urgent', { column: 'due', ascending: true, nullsFirst: false }, (r) => ({
     id: r.id as string,
     payee: (r.payee as string) ?? '',
     amount: (r.amount as number) ?? 0,
@@ -1165,6 +1165,7 @@ export async function fetchPayments(): Promise<Payment[]> {
     iban: (r.iban as string) ?? null,
     paymentLink: (r.payment_link as string) ?? null,
     note: (r.notes as string) ?? null,
+    urgent: (r.urgent as boolean | null) ?? null,
   }))
 }
 
@@ -1182,6 +1183,14 @@ export async function createPaymentRow(payment: Omit<Payment, 'id' | 'status' | 
     payment_link: payment.paymentLink ?? null,
     notes: payment.note ?? null,
   })
+}
+
+const PAYMENT_COLS: Record<string, string> = { urgent: 'urgent', note: 'notes', due: 'due' }
+
+/** Patch a payment — currently used for the manual urgency override (see
+ *  Payment.urgent) from the Budget-tab plan and the Te-betalen tab. */
+export async function updatePaymentRow(id: string, patch: Partial<Pick<Payment, 'urgent' | 'note' | 'due'>>): Promise<void> {
+  await updateRow('payments', id, patch, PAYMENT_COLS)
 }
 
 // ── Investment holdings ───────────────────────────────────────────────────────
