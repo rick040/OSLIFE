@@ -1012,9 +1012,14 @@ function isOrphanedDerivedThread(t: Thread, projects: Project[], clients: Client
 /** True for a thread that's a real row in the `tasks` table — a Supabase id that isn't a derived project/client loop. Used to merge tasks-table refetches with brain_state.threads (legacy/derived) without either clobbering the other. */
 const isTaskRow = (t: Thread) => isDbId(t.id) && !isDerivedThreadId(t.id)
 
-/** Only persist closed-state and captured threads — derived ones come from projects. */
+/**
+ * Only persist closed-state and captured threads — derived ones come from
+ * projects. A derived loop that's been pinned as one of today's most important
+ * tasks is the exception: the pin is a real decision Rick made and has to
+ * survive a reload, even though the loop itself is re-derived.
+ */
 function persistableThreads(threads: Thread[]): Thread[] {
-  return threads.filter((t) => t.status === 'closed' || !isDerivedThreadId(t.id))
+  return threads.filter((t) => t.status === 'closed' || !!t.focusDate || !isDerivedThreadId(t.id))
 }
 
 // ── Optimistic-write micro-helpers ─────────────────────────────────────────────
@@ -1530,6 +1535,7 @@ export const useStore = create<State>()(
           priority: draft.priority ?? null,
           notes: draft.notes ?? null,
           checklist: [],
+          focusDate: draft.focusDate ?? null,
         }
         set((s) => ({
           threads: [thread, ...s.threads],
@@ -1544,7 +1550,7 @@ export const useStore = create<State>()(
         void insertTaskRow({
           domain: thread.domain, title: thread.title, owedTo: thread.owedTo, due: thread.due,
           status: thread.status, createdAt: thread.createdAt, priority: thread.priority, notes: thread.notes,
-          checklist: thread.checklist,
+          checklist: thread.checklist, focusDate: thread.focusDate,
         }).then(swapTempId(set, 'threads', tempId))
         return tempId
       },
@@ -3242,7 +3248,10 @@ export const useStore = create<State>()(
         const merged = [
           ...derived.map((t) => {
             const prev = existingById.get(t.id)
-            return prev ? { ...t, status: prev.status } : t
+            // Status and today's focus pin are the two things Rick sets by
+            // hand on a derived loop; everything else is re-derived from the
+            // project/client row, so only those two survive the recompute.
+            return prev ? { ...t, status: prev.status, focusDate: prev.focusDate ?? null } : t
           }),
           ...s.threads.filter(
             (t) => !derivedIds.has(t.id) && !isOrphanedDerivedThread(t, s.projects, s.clients),
