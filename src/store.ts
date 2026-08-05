@@ -73,6 +73,9 @@ import type {
   WorkoutSet,
   IdentityProfile,
   ProfileItem,
+  Lead,
+  OutreachTarget,
+  OutreachEmail,
 } from './types'
 import { vendorKey, isUntagged, isTransfer } from './finance/categories'
 import { categorizeVendor } from './heyra/agents/vendorAgent'
@@ -276,6 +279,9 @@ import {
   insertBusinessIdeaRow,
   updateBusinessIdeaRow,
   deleteBusinessIdeaRow,
+  fetchLeads,
+  fetchOutreachTargets,
+  fetchOutreachEmails,
   invokeIdeaElaborate,
   invokeIdeaMvpPlan,
   invokeIdeaCustomerAnalysis,
@@ -403,6 +409,10 @@ interface State {
   expandingDesired: boolean
   lastExpandDesiredError: string | null
   businessIdeas: BusinessIdea[]
+  /** Outreach: Rick's local-business leads list + segmentation/draft state — all Routine-written, read-only from the app. */
+  leads: Lead[]
+  outreachTargets: OutreachTarget[]
+  outreachEmails: OutreachEmail[]
   /** Cached extra fields per HEYRA action kind (proposeAction.ts) — see recordCardTemplateUsage. */
   cardTemplates: CardTemplate[]
   settings: AppSettings
@@ -824,6 +834,9 @@ const seed = () => ({
   expandingDesired: false,
   lastExpandDesiredError: null as string | null,
   businessIdeas: [] as BusinessIdea[],
+  leads: [] as Lead[],
+  outreachTargets: [] as OutreachTarget[],
+  outreachEmails: [] as OutreachEmail[],
   // Set right before navigating to CRM from elsewhere (e.g. Strategie HQ's
   // "Bekijk project" button) so CRM can auto-open that project's detail modal
   // on mount, then clear it — a lightweight deep-link with no routing.
@@ -857,6 +870,7 @@ const EMPTY_WHEN_FALSY = [
   'projectMilestones', 'projectTasks', 'projectHours', 'projectInvoices',
   'projectActivity', 'checkins', 'learnedFacts', 'vendorTags', 'braindumpEntries',
   'goalProposals', 'weekPlan', 'businessIdeas', 'wikiEntries',
+  'leads', 'outreachTargets', 'outreachEmails',
   'holdings', 'balanceCheckpoints', 'workoutPlans', 'workoutExercises', 'workoutSessions',
   'walks', 'locationVisits', 'activitySessions',
 ] as const
@@ -1327,6 +1341,16 @@ export const useStore = create<State>()(
           customerAnalysisError: null,
           customerAnalysis: null,
           linkedProjectId: null,
+          campaignPlanStatus: null,
+          campaignPlanError: null,
+          campaignPlan: null,
+          contentCreationStatus: null,
+          contentCreationError: null,
+          contentCreation: null,
+          emailSequenceStatus: null,
+          emailSequenceError: null,
+          emailSequence: null,
+          outreachIdentity: null,
         }
         set((s) => ({
           businessIdeas: [optimistic, ...s.businessIdeas],
@@ -3307,7 +3331,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, braindumpLinks, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, identityProfile, walks, locationVisits, activitySessions, lastCsvImportAt] = await Promise.all([
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, braindumpLinks, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, leads, outreachTargets, outreachEmails, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, identityProfile, walks, locationVisits, activitySessions, lastCsvImportAt] = await Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -3333,6 +3357,9 @@ export const useStore = create<State>()(
             fetchSummaries(),
             fetchCleaningLog(),
             fetchBusinessIdeas(),
+            fetchLeads(),
+            fetchOutreachTargets(),
+            fetchOutreachEmails(),
             fetchHoldings(),
             fetchBalanceCheckpoints(),
             fetchTasks(),
@@ -3408,6 +3435,9 @@ export const useStore = create<State>()(
             summaries,
             cleaningLog,
             businessIdeas,
+            leads,
+            outreachTargets,
+            outreachEmails,
             holdings,
             balanceCheckpoints,
             cardTemplates,
@@ -3521,6 +3551,9 @@ export const useStore = create<State>()(
           { table: 'admin_item', onChange: () => fetchAdminItems().then((d) => set({ adminItems: d })) },
           { table: 'health_condition', onChange: () => fetchHealthConditions().then((d) => set({ healthConditions: d })) },
           { table: 'business_ideas', onChange: () => fetchBusinessIdeas().then((d) => set({ businessIdeas: d })) },
+          { table: 'leads', onChange: () => fetchLeads().then((d) => set({ leads: d })) },
+          { table: 'outreach_targets', onChange: () => fetchOutreachTargets().then((d) => set({ outreachTargets: d })) },
+          { table: 'outreach_emails', onChange: () => fetchOutreachEmails().then((d) => set({ outreachEmails: d })) },
           { table: 'workout_plans', onChange: () => fetchWorkoutPlans().then((d) => set({ workoutPlans: d })) },
           { table: 'workout_exercises', onChange: () => fetchWorkoutExercises().then((d) => set({ workoutExercises: d })) },
           { table: 'workout_sessions', onChange: () => fetchWorkoutSessions().then((d) => set({ workoutSessions: d })) },

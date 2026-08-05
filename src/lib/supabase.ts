@@ -67,6 +67,9 @@ import type {
   IdentitySnapshot,
   DesiredProfile,
   Landscape,
+  Lead,
+  OutreachTarget,
+  OutreachEmail,
 } from '../types'
 import { today, habitStreak } from '../domains'
 import { parseLegacyInterviewText } from '../selfModel'
@@ -2868,7 +2871,7 @@ export async function searchMemory(query: string, limit = 8): Promise<MemoryHit[
 // returns array/object shapes so the UI never has to null-check.
 
 const BUSINESS_IDEA_COLS =
-  'id,created_at,updated_at,source,raw_input,elaboration_status,error,status,title,overview,domain,tags,feasibility_score,feasibility_reasoning,score_breakdown,timeline,milestones,financials,risks,opportunities,swot,markdown,tier,mvp_plan_status,mvp_plan_error,mvp_plan,customer_analysis_status,customer_analysis_error,customer_analysis,linked_project_id'
+  'id,created_at,updated_at,source,raw_input,elaboration_status,error,status,title,overview,domain,tags,feasibility_score,feasibility_reasoning,score_breakdown,timeline,milestones,financials,risks,opportunities,swot,markdown,tier,mvp_plan_status,mvp_plan_error,mvp_plan,customer_analysis_status,customer_analysis_error,customer_analysis,linked_project_id,campaign_plan_status,campaign_plan_error,campaign_plan,content_creation_status,content_creation_error,content_creation,email_sequence_status,email_sequence_error,email_sequence,outreach_identity'
 
 function mapBusinessIdeaRow(r: Record<string, unknown>): BusinessIdea {
   const financials = (r.financials as Record<string, unknown>) ?? {}
@@ -2915,6 +2918,16 @@ function mapBusinessIdeaRow(r: Record<string, unknown>): BusinessIdea {
     customerAnalysisError: (r.customer_analysis_error as string) ?? null,
     customerAnalysis: (r.customer_analysis as BusinessIdea['customerAnalysis']) ?? null,
     linkedProjectId: (r.linked_project_id as string) ?? null,
+    campaignPlanStatus: (r.campaign_plan_status as BusinessIdea['campaignPlanStatus']) ?? null,
+    campaignPlanError: (r.campaign_plan_error as string) ?? null,
+    campaignPlan: (r.campaign_plan as BusinessIdea['campaignPlan']) ?? null,
+    contentCreationStatus: (r.content_creation_status as BusinessIdea['contentCreationStatus']) ?? null,
+    contentCreationError: (r.content_creation_error as string) ?? null,
+    contentCreation: (r.content_creation as BusinessIdea['contentCreation']) ?? null,
+    emailSequenceStatus: (r.email_sequence_status as BusinessIdea['emailSequenceStatus']) ?? null,
+    emailSequenceError: (r.email_sequence_error as string) ?? null,
+    emailSequence: (r.email_sequence as BusinessIdea['emailSequence']) ?? null,
+    outreachIdentity: (r.outreach_identity as string) ?? null,
   }
 }
 
@@ -2965,6 +2978,7 @@ const BUSINESS_IDEA_COL_MAP: Record<string, string> = {
   mvpPlan: 'mvp_plan',
   customerAnalysis: 'customer_analysis',
   linkedProjectId: 'linked_project_id',
+  outreachIdentity: 'outreach_identity',
 }
 
 /** Manual edit from the detail/edit form — only the fields users can actually change. */
@@ -2991,6 +3005,7 @@ export async function updateBusinessIdeaRow(
       | 'mvpPlan'
       | 'customerAnalysis'
       | 'linkedProjectId'
+      | 'outreachIdentity'
     >
   >,
 ): Promise<void> {
@@ -3041,6 +3056,80 @@ export async function invokeIdeaCustomerAnalysis(ideaId: string): Promise<void> 
   } catch (err) {
     console.warn('[OSLIFE] idea-customer-analysis invoke failed', err)
   }
+}
+
+// ── Outreach: leads + segmentation + drafted emails ──────────────────────────
+// All three tables here are written by the scheduled outreach Routines (via
+// the Supabase MCP connector), not by the app — these are read-only fetchers,
+// same "app-owned, no mock fallback" contract as braindumpEntries/wikiEntries.
+
+function mapLeadRow(r: Record<string, unknown>): Lead {
+  return {
+    id: r.id as string,
+    businessName: (r.business_name as string) ?? '',
+    contactName: (r.contact_name as string) ?? null,
+    email: (r.email as string) ?? null,
+    phone: (r.phone as string) ?? null,
+    website: (r.website as string) ?? null,
+    sector: (r.sector as string) ?? null,
+    notes: (r.notes as string) ?? null,
+    createdAt: (r.created_at as string) ?? new Date().toISOString(),
+    updatedAt: (r.updated_at as string) ?? (r.created_at as string) ?? new Date().toISOString(),
+  }
+}
+
+export async function fetchLeads(): Promise<Lead[]> {
+  return fetchRows(
+    'leads',
+    'id,business_name,contact_name,email,phone,website,sector,notes,created_at,updated_at',
+    { column: 'created_at', ascending: false, limit: 1000 },
+    mapLeadRow,
+  )
+}
+
+function mapOutreachTargetRow(r: Record<string, unknown>): OutreachTarget {
+  return {
+    id: r.id as string,
+    businessIdeaId: r.business_idea_id as string,
+    leadId: r.lead_id as string,
+    fitScore: (r.fit_score as number) ?? null,
+    fitReasoning: (r.fit_reasoning as string) ?? null,
+    status: ((r.status as OutreachTarget['status']) ?? 'selected'),
+    createdAt: (r.created_at as string) ?? new Date().toISOString(),
+  }
+}
+
+export async function fetchOutreachTargets(): Promise<OutreachTarget[]> {
+  return fetchRows(
+    'outreach_targets',
+    'id,business_idea_id,lead_id,fit_score,fit_reasoning,status,created_at',
+    { column: 'created_at', ascending: false, limit: 1000 },
+    mapOutreachTargetRow,
+  )
+}
+
+function mapOutreachEmailRow(r: Record<string, unknown>): OutreachEmail {
+  return {
+    id: r.id as string,
+    outreachTargetId: r.outreach_target_id as string,
+    stepNumber: (r.step_number as number) ?? 1,
+    subject: (r.subject as string) ?? '',
+    body: (r.body as string) ?? '',
+    gmailDraftId: (r.gmail_draft_id as string) ?? null,
+    gmailThreadId: (r.gmail_thread_id as string) ?? null,
+    status: ((r.status as OutreachEmail['status']) ?? 'draft'),
+    sentAt: (r.sent_at as string) ?? null,
+    createdAt: (r.created_at as string) ?? new Date().toISOString(),
+  }
+}
+
+export async function fetchOutreachEmails(): Promise<OutreachEmail[]> {
+  return fetchRows(
+    'outreach_emails',
+    'id,outreach_target_id,step_number,subject,body,gmail_draft_id,gmail_thread_id,status,sent_at,created_at',
+    { column: 'created_at', ascending: false, limit: 1000 },
+    mapOutreachEmailRow,
+  )
 }
 
 // ── Workout (Trainen) ─────────────────────────────────────────────────────────
