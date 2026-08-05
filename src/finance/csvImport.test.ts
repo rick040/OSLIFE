@@ -7,6 +7,7 @@ import {
   toIsoDate,
   cleanMerchant,
   guessCategory,
+  guessDomain,
 } from './csvImport'
 
 describe('splitCsvLine', () => {
@@ -90,6 +91,22 @@ describe('guessCategory', () => {
     expect(guessCategory('Betaling Michelle de Vries', -20)).toBe('Uncategorized')
     expect(guessCategory('ABP pensioen incasso', -100)).toBe('Uncategorized')
     expect(guessCategory('OnePlus store', -300)).toBe('Uncategorized')
+  })
+  it('recognises monthly salary deposits as Salary, not Client income', () => {
+    expect(guessCategory('SEPA Overboeking ParkingYou B.V. salaris', 2450)).toBe('Salary')
+    expect(guessCategory('Belastingdienst Toeslagen', 350)).toBe('Salary')
+  })
+  it('an outgoing Belastingdienst payment is Taxes, not Salary', () => {
+    expect(guessCategory('Belastingdienst Aanslag Inkomstenbelasting', -800)).toBe('Taxes')
+  })
+})
+
+describe('guessDomain', () => {
+  it('routes ParkingYou salary to the parkingyou domain', () => {
+    expect(guessDomain('SEPA Overboeking ParkingYou B.V. salaris', 'Salary', 2450)).toBe('parkingyou')
+  })
+  it('routes Belastingdienst salary to the personal domain', () => {
+    expect(guessDomain('Belastingdienst Toeslagen', 'Salary', 350)).toBe('personal')
   })
 })
 

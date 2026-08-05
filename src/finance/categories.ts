@@ -9,7 +9,7 @@ import type { Domain } from '../types'
 export const TX_CATEGORIES = [
   'Groceries', 'Takeout', 'Convenience', 'Transport', 'Dog', 'Health',
   'Subscriptions', 'Software', 'Gear', 'Utilities', 'Housing', 'Shopping',
-  'Entertainment', 'Cash', 'Fees', 'Taxes', 'Client income', 'Stock media', 'Other',
+  'Entertainment', 'Cash', 'Fees', 'Taxes', 'Salary', 'Client income', 'Stock media', 'Other',
   'Internal transfer',
 ] as const
 
@@ -31,6 +31,12 @@ export const CATEGORY_DOMAIN: Record<string, Domain> = {
   Cash: 'personal',
   Fees: 'personal',
   Taxes: 'personal',
+  // Default for 'Salary' — the Belastingdienst case (tax refund / toeslag).
+  // ParkingYou salary overrides to the 'parkingyou' domain explicitly, since
+  // one category can't map to two domains here — see guessDomain() in
+  // csvImport.ts, the only place that actually assigns a Salary transaction's
+  // domain.
+  Salary: 'personal',
   Software: 'prjct',
   Gear: 'prjct',
   'Client income': 'prjct',

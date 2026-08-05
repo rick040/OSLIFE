@@ -5,7 +5,8 @@ import { dueLabel } from '../lib/dates'
 import { eur } from '../lib/format'
 import { MiniCalendar } from './MiniCalendar'
 import { effectiveUrgent } from './financeCoach'
-import type { Domain, Payment, PaymentDirection, Subscription, Cadence } from '../types'
+import { projectPipeline } from '../lib/crm/invoicing'
+import type { Domain, Payment, PaymentDirection, Subscription, Cadence, Project, Invoice } from '../types'
 import {
   Plus, Trash2, CheckCircle2, ArrowDownLeft, ArrowUpRight, Copy, Link2, Repeat, Pause, Play, X, Flag,
 } from 'lucide-react'
@@ -38,6 +39,8 @@ export function monthly(amount: number, cadence: Cadence): number {
 export function BillsTab({
   payments,
   subscriptions,
+  projects,
+  projectInvoices,
   onAddPayment,
   onMarkPaid,
   onDeletePayment,
@@ -48,6 +51,8 @@ export function BillsTab({
 }: {
   payments: Payment[]
   subscriptions: Subscription[]
+  projects: Project[]
+  projectInvoices: Invoice[]
   onAddPayment: (p: Omit<Payment, 'id' | 'status' | 'source'>) => void
   onMarkPaid: (id: string) => void
   onDeletePayment: (id: string) => void
@@ -73,7 +78,15 @@ export function BillsTab({
       </div>
 
       {segment === 'eenmalig' ? (
-        <OneOffBills payments={payments} onAdd={onAddPayment} onMarkPaid={onMarkPaid} onDelete={onDeletePayment} onUpdate={onUpdatePayment} />
+        <OneOffBills
+          payments={payments}
+          projects={projects}
+          projectInvoices={projectInvoices}
+          onAdd={onAddPayment}
+          onMarkPaid={onMarkPaid}
+          onDelete={onDeletePayment}
+          onUpdate={onUpdatePayment}
+        />
       ) : (
         <Subscriptions
           subscriptions={subscriptions}
@@ -89,12 +102,16 @@ export function BillsTab({
 // ── Eenmalig: manually-tracked bills/invoices ────────────────────────────────
 function OneOffBills({
   payments,
+  projects,
+  projectInvoices,
   onAdd,
   onMarkPaid,
   onDelete,
   onUpdate,
 }: {
   payments: Payment[]
+  projects: Project[]
+  projectInvoices: Invoice[]
   onAdd: (p: Omit<Payment, 'id' | 'status' | 'source'>) => void
   onMarkPaid: (id: string) => void
   onDelete: (id: string) => void
@@ -111,7 +128,12 @@ function OneOffBills({
         .sort((a, b) => (a.due ? a.due : '9999').localeCompare(b.due ? b.due : '9999')),
     [payments],
   )
-  const toReceive = openPayments.filter((p) => p.direction === 'incoming').reduce((a, p) => a + p.amount, 0)
+  // "Nog te ontvangen" = the CRM pipeline (nog te factureren, from open project
+  // work — see projectPipeline) plus any manually-tracked incoming payment that
+  // isn't project-related (e.g. someone paying Rick back personally).
+  const pipeline = useMemo(() => projectPipeline(projects, projectInvoices), [projects, projectInvoices])
+  const manualToReceive = openPayments.filter((p) => p.direction === 'incoming').reduce((a, p) => a + p.amount, 0)
+  const toReceive = pipeline + manualToReceive
   const toPay = openPayments.filter((p) => p.direction === 'outgoing').reduce((a, p) => a + p.amount, 0)
 
   const markedDates = useMemo(
@@ -131,7 +153,10 @@ function OneOffBills({
         <div className="card p-4">
           <div className="text-xs uppercase tracking-wider text-muted flex items-center gap-1"><ArrowDownLeft className="h-3.5 w-3.5 text-buurtkaart" /> Nog te ontvangen</div>
           <div className="text-2xl font-bold tabular-nums mt-1 text-buurtkaart-deep">{eur(toReceive)}</div>
-          <div className="text-xs text-faint mt-1">{openPayments.filter((p) => p.direction === 'incoming').length} openstaand</div>
+          <div className="text-xs text-faint mt-1">
+            {pipeline > 0 ? `${eur(pipeline)} pipeline` : 'geen pipeline'}
+            {manualToReceive > 0 && ` · ${eur(manualToReceive)} handmatig`}
+          </div>
         </div>
       </div>
 
