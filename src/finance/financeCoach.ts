@@ -55,9 +55,63 @@ export interface FinanceCoachInput {
   budgetCaps: BudgetCap[]
 }
 
+export interface OverBudgetCategory {
+  category: string
+  spent: number
+  monthlyMax: number
+}
+
+/** The numbers the Budget tab renders visually (progress bars, stat tiles) —
+ *  computed once here so the UI and the coach's prompt never drift apart.
+ *  No LLM call, no rounding: exact numbers, the UI decides how to format. */
+export interface FinanceSnapshot {
+  balance: number
+  safeToSpend: number
+  outgoingTotal: number
+  incomingTotal: number
+  openOutgoingCount: number
+  overdueCount: number
+  urgentCount: number
+  overBudget: OverBudgetCategory[]
+}
+
+export function computeFinanceSnapshot(
+  input: Pick<FinanceCoachInput, 'transactions' | 'payments' | 'balanceCheckpoints' | 'budgetCaps'>,
+): FinanceSnapshot {
+  const { balance } = computeBalance(input.transactions, input.balanceCheckpoints, OPENING_BALANCE)
+  const thisMonth = TODAY.slice(0, 7)
+
+  const openOutgoing = input.payments.filter((p) => p.status === 'open' && p.direction === 'outgoing')
+  const openIncoming = input.payments.filter((p) => p.status === 'open' && p.direction === 'incoming')
+  const overdue = openOutgoing.filter((p) => p.due && p.due < TODAY)
+  const urgent = openOutgoing.filter((p) => effectiveUrgent(p))
+  const outgoingTotal = openOutgoing.reduce((a, p) => a + p.amount, 0)
+  const incomingTotal = openIncoming.reduce((a, p) => a + p.amount, 0)
+
+  const spentByCategory = new Map<string, number>()
+  realTransactions(input.transactions)
+    .filter((t) => t.date.slice(0, 7) === thisMonth && t.amount < 0)
+    .forEach((t) => spentByCategory.set(t.category, (spentByCategory.get(t.category) ?? 0) + Math.abs(t.amount)))
+  const overBudget = input.budgetCaps
+    .filter((b) => b.active && b.monthlyMax > 0)
+    .map((b) => ({ category: b.category, spent: spentByCategory.get(b.category) ?? 0, monthlyMax: b.monthlyMax }))
+    .filter((b) => b.spent > b.monthlyMax)
+
+  return {
+    balance,
+    safeToSpend: balance - outgoingTotal,
+    outgoingTotal,
+    incomingTotal,
+    openOutgoingCount: openOutgoing.length,
+    overdueCount: overdue.length,
+    urgentCount: urgent.length,
+    overBudget,
+  }
+}
+
 /** Builds the grounded facts prompt the coach reasons over — no LLM call here. */
 export function buildFinanceCoachPrompt(input: FinanceCoachInput): { system: string; prompt: string } {
-  const { balance } = computeBalance(input.transactions, input.balanceCheckpoints, OPENING_BALANCE)
+  const snapshot = computeFinanceSnapshot(input)
 
   const thisMonth = TODAY.slice(0, 7)
   const lastMonth = prevMonthKey(thisMonth)
@@ -70,35 +124,23 @@ export function buildFinanceCoachPrompt(input: FinanceCoachInput): { system: str
   const openOutgoing = input.payments.filter((p) => p.status === 'open' && p.direction === 'outgoing')
   const overdue = openOutgoing.filter((p) => p.due && p.due < TODAY)
   const within30 = openOutgoing.filter((p) => p.due && p.due >= TODAY && p.due <= isoDaysFromNow(30))
-  const urgentFlagged = openOutgoing.filter((p) => effectiveUrgent(p))
-  const outgoingTotal = openOutgoing.reduce((a, p) => a + p.amount, 0)
-  const safeToSpend = balance - outgoingTotal
-
-  const spentByCategory = new Map<string, number>()
-  realTransactions(input.transactions)
-    .filter((t) => t.date.slice(0, 7) === thisMonth && t.amount < 0)
-    .forEach((t) => spentByCategory.set(t.category, (spentByCategory.get(t.category) ?? 0) + Math.abs(t.amount)))
-  const overBudget = input.budgetCaps
-    .filter((b) => b.active && b.monthlyMax > 0)
-    .map((b) => ({ ...b, spent: spentByCategory.get(b.category) ?? 0 }))
-    .filter((b) => b.spent > b.monthlyMax)
 
   const facts = [
-    `Huidig saldo: €${Math.round(balance)}. Vrij besteedbaar na aftrek van nog te betalen: €${Math.round(safeToSpend)}.`,
+    `Huidig saldo: €${Math.round(snapshot.balance)}. Vrij besteedbaar na aftrek van nog te betalen: €${Math.round(snapshot.safeToSpend)}.`,
     `Deze maand: €${Math.round(earnedThis)} binnengekomen, €${Math.round(spentThis)} uitgegeven.` +
       (spentLast > 0 ? ` Vorige maand was €${Math.round(spentLast)} uitgegeven.` : ' Geen vergelijking met vorige maand beschikbaar.'),
     topCategories.length
       ? `Grootste uitgavecategorieën deze maand: ${topCategories.slice(0, 3).map((c) => `${c.cat} €${c.v}`).join(', ')}.`
       : 'Nog geen gecategoriseerde uitgaven deze maand.',
     `Abonnementen: ${activeSubs.length} actief, samen €${Math.round(subsMonthly)} per maand (€${Math.round(subsMonthly * 12)} per jaar).`,
-    `Nog te betalen: ${openOutgoing.length} openstaand, totaal €${Math.round(outgoingTotal)}.` +
+    `Nog te betalen: ${openOutgoing.length} openstaand, totaal €${Math.round(snapshot.outgoingTotal)}.` +
       (overdue.length ? ` ${overdue.length} daarvan te laat: ${overdue.slice(0, 3).map((p) => `${p.payee} €${p.amount} (verviel ${p.due})`).join(', ')}.` : '') +
       (within30.length ? ` ${within30.length} vervalt binnen 30 dagen: ${within30.slice(0, 3).map((p) => `${p.payee} €${p.amount} (${p.due})`).join(', ')}.` : '') +
-      (urgentFlagged.length ? ` Rick markeerde ${urgentFlagged.length} als urgent (inclusief handmatige overrides).` : ''),
+      (snapshot.urgentCount ? ` Rick markeerde ${snapshot.urgentCount} als urgent (inclusief handmatige overrides).` : ''),
   ]
-  if (overBudget.length) {
+  if (snapshot.overBudget.length) {
     facts.push(
-      `Budgetplafond overschreden: ${overBudget.map((b) => `${b.category} €${Math.round(b.spent)} van €${Math.round(b.monthlyMax)}`).join(', ')}.`,
+      `Budgetplafond overschreden: ${snapshot.overBudget.map((b) => `${b.category} €${Math.round(b.spent)} van €${Math.round(b.monthlyMax)}`).join(', ')}.`,
     )
   }
   if (input.holdings.length) {
@@ -158,7 +200,8 @@ export const FINANCE_PLAN_TOOL: BrainTool = {
   },
 }
 
-const PLAN_ACTION_HORIZON_DAYS = 14
+/** Also used by the Budget tab to draw each plan item's due-date urgency bar. */
+export const PLAN_ACTION_HORIZON_DAYS = 14
 
 /** Payments worth putting in front of the model for a plan: open, and either
  *  urgent (flag or date heuristic), overdue, or due soon — capped so the
@@ -180,13 +223,10 @@ export function buildFinancePlanPrompt(
   const candidates = planCandidates(input.payments)
   if (!candidates.length) return null
 
-  const { balance } = computeBalance(input.transactions, input.balanceCheckpoints, OPENING_BALANCE)
-  const openOutgoing = input.payments.filter((p) => p.status === 'open' && p.direction === 'outgoing')
-  const outgoingTotal = openOutgoing.reduce((a, p) => a + p.amount, 0)
-  const safeToSpend = balance - outgoingTotal
+  const snapshot = computeFinanceSnapshot(input)
 
   const lines = [
-    `Huidig saldo: €${Math.round(balance)}. Vrij besteedbaar na aftrek van alle nog te betalen bedragen: €${Math.round(safeToSpend)}.`,
+    `Huidig saldo: €${Math.round(snapshot.balance)}. Vrij besteedbaar na aftrek van alle nog te betalen bedragen: €${Math.round(snapshot.safeToSpend)}.`,
     'Betalingen om een plan voor te maken:',
     ...candidates.map((p) => {
       const richting = p.direction === 'incoming' ? 'te ontvangen van' : 'te betalen aan'

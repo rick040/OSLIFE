@@ -2,13 +2,17 @@ import { useMemo, useState } from 'react'
 import { Empty, SectionTitle } from '../components/ui'
 import { Markdown } from '../components/Markdown'
 import { eur0, eur } from '../lib/format'
-import { fmtDate, TODAY } from '../domains'
+import { fmtDate, TODAY, daysBetween } from '../domains'
 import { dueLabel } from '../lib/dates'
 import { TX_CATEGORIES } from './categories'
 import { realTransactions } from './balance'
-import type { FinancePlanItem, FinancePlanAction } from './financeCoach'
-import type { Goal, BudgetCap, Transaction, Payment } from '../types'
-import { Plus, Target, Trash2, Sparkles, RefreshCw, PiggyBank, AlertCircle, ListChecks, CheckCircle2, Flag, Clock } from 'lucide-react'
+import { computeFinanceSnapshot, PLAN_ACTION_HORIZON_DAYS } from './financeCoach'
+import type { FinancePlanItem, FinancePlanAction, FinanceSnapshot } from './financeCoach'
+import type { Goal, BudgetCap, Transaction, Payment, BalanceCheckpoint, TaskDraft } from '../types'
+import {
+  Plus, Target, Trash2, Sparkles, RefreshCw, PiggyBank, AlertCircle, ListChecks, CheckCircle2, Flag, Clock,
+  Wallet, ListPlus,
+} from 'lucide-react'
 
 export function BudgetTab({
   goals,
@@ -25,8 +29,10 @@ export function BudgetTab({
   onDeleteBudgetCap,
   transactions,
   payments,
+  balanceCheckpoints,
   onMarkPaymentPaid,
   onUpdatePayment,
+  onAddTask,
 }: {
   goals: Goal[]
   onAddGoal: (g: Omit<Goal, 'id'>) => void
@@ -42,8 +48,10 @@ export function BudgetTab({
   onDeleteBudgetCap: (id: string) => void
   transactions: Transaction[]
   payments: Payment[]
+  balanceCheckpoints: BalanceCheckpoint[]
   onMarkPaymentPaid: (id: string) => void
   onUpdatePayment: (id: string, patch: Partial<Pick<Payment, 'urgent' | 'note' | 'due'>>) => void
+  onAddTask: (draft: TaskDraft) => void
 }) {
   const financialGoals = goals.filter((g) => g.metric === 'EUR')
   const [form, setForm] = useState(false)
@@ -58,13 +66,24 @@ export function BudgetTab({
     return map
   }, [transactions, thisMonth])
 
+  // No AI call needed for this — the same numbers the coach reasons over,
+  // available the instant the tab opens instead of waiting on "Ververs advies".
+  const snapshot = useMemo(
+    () => computeFinanceSnapshot({ transactions, payments, balanceCheckpoints, budgetCaps }),
+    [transactions, payments, balanceCheckpoints, budgetCaps],
+  )
+
   const paymentById = useMemo(() => new Map(payments.map((p) => [p.id, p])), [payments])
   // A plan item goes stale the moment its payment is paid/removed — filter
   // those out instead of trusting the coach's snapshot from generation time.
   const openPlan = (coach?.plan ?? []).filter((item) => paymentById.get(item.paymentId)?.status === 'open')
+  const totalPlan = coach?.plan.length ?? 0
+  const resolvedPlan = totalPlan - openPlan.length
 
   return (
     <div className="space-y-6">
+      <FinanceSnapshotCard snapshot={snapshot} />
+
       <div className="card p-4">
         <div className="flex items-center justify-between gap-3 mb-1">
           <SectionTitle><span className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-prjct" /> Financieel coach</span></SectionTitle>
@@ -87,24 +106,33 @@ export function BudgetTab({
         )}
       </div>
 
-      {openPlan.length > 0 && (
+      {totalPlan > 0 && (
         <div className="space-y-3">
-          <SectionTitle><span className="flex items-center gap-2"><ListChecks className="h-4 w-4 text-prjct" /> Plan</span></SectionTitle>
-          <div className="space-y-2">
-            {openPlan.map((item) => {
-              const p = paymentById.get(item.paymentId)
-              if (!p) return null
-              return (
-                <PlanItemRow
-                  key={item.paymentId}
-                  item={item}
-                  payment={p}
-                  onMarkPaid={() => onMarkPaymentPaid(p.id)}
-                  onSetUrgent={(urgent) => onUpdatePayment(p.id, { urgent })}
-                />
-              )
-            })}
+          <div className="flex items-center justify-between gap-3">
+            <SectionTitle><span className="flex items-center gap-2"><ListChecks className="h-4 w-4 text-prjct" /> Plan</span></SectionTitle>
+            <span className="text-xs text-faint shrink-0">{resolvedPlan} van {totalPlan} afgehandeld</span>
           </div>
+          <div className="h-1.5 w-full rounded-full bg-line overflow-hidden">
+            <div className="h-full rounded-full bg-buurtkaart" style={{ width: `${(resolvedPlan / totalPlan) * 100}%` }} />
+          </div>
+          {openPlan.length > 0 && (
+            <div className="space-y-2">
+              {openPlan.map((item) => {
+                const p = paymentById.get(item.paymentId)
+                if (!p) return null
+                return (
+                  <PlanItemRow
+                    key={item.paymentId}
+                    item={item}
+                    payment={p}
+                    onMarkPaid={() => onMarkPaymentPaid(p.id)}
+                    onSetUrgent={(urgent) => onUpdatePayment(p.id, { urgent })}
+                    onAddTask={onAddTask}
+                  />
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -166,13 +194,72 @@ export function BudgetTab({
   )
 }
 
-const PLAN_ACTION_META: Record<FinancePlanAction, { label: string; className: string }> = {
-  pay_now: { label: 'Nu betalen', className: 'bg-cross/15 text-cross' },
-  wait: { label: 'Kan wachten', className: 'bg-line text-muted' },
-  ask_extension: { label: 'Uitstel vragen', className: 'bg-personal/15 text-personal-deep' },
-  partial: { label: 'Deels betalen', className: 'bg-personal/15 text-personal-deep' },
-  move_money: { label: 'Geld overboeken', className: 'bg-buurtkaart/15 text-buurtkaart-deep' },
-  follow_up: { label: 'Opvolgen bij klant', className: 'bg-prjct/15 text-prjct' },
+function FinanceSnapshotCard({ snapshot }: { snapshot: FinanceSnapshot }) {
+  const { balance, safeToSpend, outgoingTotal, openOutgoingCount, overdueCount, urgentCount, overBudget } = snapshot
+  const short = safeToSpend < 0
+  const safePct = balance > 0 ? Math.max(0, Math.min(1, safeToSpend / balance)) : 0
+  const reservedPct = balance > 0 ? Math.max(0, Math.min(1 - safePct, outgoingTotal / balance)) : 0
+
+  return (
+    <div className="card p-4">
+      <SectionTitle><span className="flex items-center gap-2"><Wallet className="h-4 w-4 text-prjct" /> Overzicht</span></SectionTitle>
+      <div className="grid grid-cols-3 gap-3 mt-2">
+        <div>
+          <div className="text-xs uppercase tracking-wider text-muted">Saldo</div>
+          <div className="text-lg font-bold tabular-nums mt-0.5">{eur(balance)}</div>
+        </div>
+        <div>
+          <div className="text-xs uppercase tracking-wider text-muted">Vrij besteedbaar</div>
+          <div className={`text-lg font-bold tabular-nums mt-0.5 ${short ? 'text-cross' : ''}`}>{eur(safeToSpend)}</div>
+        </div>
+        <div>
+          <div className="text-xs uppercase tracking-wider text-muted">Nog te betalen</div>
+          <div className="text-lg font-bold tabular-nums mt-0.5">{eur0(outgoingTotal)}<span className="text-xs text-faint font-normal"> ({openOutgoingCount})</span></div>
+        </div>
+      </div>
+
+      <div className="h-2 w-full rounded-full bg-line overflow-hidden mt-3 flex">
+        {short ? (
+          <div className="h-full bg-cross w-full" />
+        ) : (
+          <>
+            <div className="h-full bg-buurtkaart" style={{ width: `${safePct * 100}%` }} />
+            <div className="h-full bg-personal" style={{ width: `${reservedPct * 100}%` }} />
+          </>
+        )}
+      </div>
+      <p className="text-xs text-faint mt-1.5">
+        {short
+          ? `Nog te betalen (${eur0(outgoingTotal)}) is meer dan je saldo — tekort van ${eur0(Math.abs(safeToSpend))}.`
+          : `${eur0(safeToSpend)} vrij te besteden, ${eur0(outgoingTotal)} gereserveerd voor nog te betalen.`}
+      </p>
+
+      {(overdueCount > 0 || urgentCount > 0 || overBudget.length > 0) && (
+        <div className="flex items-center gap-1.5 flex-wrap mt-3">
+          {overdueCount > 0 && <span className="chip bg-cross/15 text-cross">{overdueCount} te laat</span>}
+          {urgentCount > 0 && <span className="chip bg-personal/15 text-personal-deep">{urgentCount} urgent</span>}
+          {overBudget.length > 0 && <span className="chip bg-personal/15 text-personal-deep">{overBudget.length} budget over</span>}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const PLAN_ACTION_META: Record<FinancePlanAction, { label: string; className: string; barClassName: string; taskVerb: string }> = {
+  pay_now: { label: 'Nu betalen', className: 'bg-cross/15 text-cross', barClassName: 'bg-cross', taskVerb: 'Betaal' },
+  wait: { label: 'Kan wachten', className: 'bg-line text-muted', barClassName: 'bg-line-strong', taskVerb: 'Check' },
+  ask_extension: { label: 'Uitstel vragen', className: 'bg-personal/15 text-personal-deep', barClassName: 'bg-personal', taskVerb: 'Vraag uitstel voor' },
+  partial: { label: 'Deels betalen', className: 'bg-personal/15 text-personal-deep', barClassName: 'bg-personal', taskVerb: 'Betaal deels' },
+  move_money: { label: 'Geld overboeken', className: 'bg-buurtkaart/15 text-buurtkaart-deep', barClassName: 'bg-buurtkaart', taskVerb: 'Boek geld over voor' },
+  follow_up: { label: 'Opvolgen bij klant', className: 'bg-prjct/15 text-prjct', barClassName: 'bg-prjct', taskVerb: 'Volg op:' },
+}
+
+/** How full the due-date urgency bar is: 0 far out, 1 at/past the due date. */
+function urgencyPct(due: string | null): number {
+  if (!due) return 0
+  const days = daysBetween(TODAY, due)
+  if (days <= 0) return 1
+  return Math.max(0, Math.min(1, 1 - days / PLAN_ACTION_HORIZON_DAYS))
 }
 
 function PlanItemRow({
@@ -180,15 +267,29 @@ function PlanItemRow({
   payment,
   onMarkPaid,
   onSetUrgent,
+  onAddTask,
 }: {
   item: FinancePlanItem
   payment: Payment
   onMarkPaid: () => void
   onSetUrgent: (urgent: boolean) => void
+  onAddTask: (draft: TaskDraft) => void
 }) {
   const meta = PLAN_ACTION_META[item.action]
   const due = dueLabel(payment.due, { prefix: 'vervalt ' })
   const showResolveButton = item.action === 'pay_now' || item.action === 'follow_up'
+  const pct = urgencyPct(payment.due)
+
+  const addAsTask = () => {
+    onAddTask({
+      title: `${meta.taskVerb} ${payment.payee} (${eur(payment.amount)})`,
+      due: payment.due,
+      time: null,
+      domain: payment.domain,
+      priority: due.overdue || item.action === 'pay_now' ? 'High' : 'Medium',
+      notes: item.reasoning,
+    })
+  }
 
   return (
     <div className="card p-3">
@@ -205,12 +306,20 @@ function PlanItemRow({
           {payment.direction === 'incoming' ? '+' : '-'}{eur(payment.amount)}
         </span>
       </div>
+      {payment.due && (
+        <div className="h-1 w-full rounded-full bg-line overflow-hidden mt-2">
+          <div className={`h-full rounded-full ${meta.barClassName}`} style={{ width: `${pct * 100}%` }} />
+        </div>
+      )}
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {showResolveButton && (
           <button onClick={onMarkPaid} className="btn-ghost !py-1 !text-xs">
             <CheckCircle2 className="h-3.5 w-3.5" /> {payment.direction === 'incoming' ? 'Ontvangen' : 'Betaald'}
           </button>
         )}
+        <button onClick={addAsTask} className="btn-ghost !py-1 !text-xs" title="Voeg toe als taak">
+          <ListPlus className="h-3.5 w-3.5" /> Voeg toe aan taken
+        </button>
         <button onClick={() => onSetUrgent(true)} className="btn-ghost !py-1 !text-xs" title="Markeer als urgent">
           <Flag className="h-3.5 w-3.5" /> Urgent
         </button>
