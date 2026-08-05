@@ -76,7 +76,7 @@ export function AppShell({
           onShowSettings={onShowSettings}
         />
         <main className="flex-1 overflow-x-hidden p-4 pb-24 md:p-6 md:pb-6 lg:p-8">
-          <div className="mx-auto max-w-5xl">{children}</div>
+          <div className={`mx-auto ${screen?.wide ? 'max-w-[1600px]' : 'max-w-5xl'}`}>{children}</div>
         </main>
       </SidebarInset>
 

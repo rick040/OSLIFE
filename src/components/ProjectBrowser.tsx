@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { LayoutGrid, List } from 'lucide-react'
+import { LayoutGrid, List, Columns3 } from 'lucide-react'
 import { Empty } from './ui'
 import ProjectDetail from '../views/ProjectDetail'
 import ClientDetail from '../views/ClientDetail'
@@ -18,6 +18,60 @@ export const STATUS_FILTERS = [
 ]
 
 export type ProjectViewMode = 'grid' | 'lijst'
+
+/** Page-level layout: the normal browse view, or the tablet-style "Bureau"
+ *  desk workspace (board rail + focused project/client + side panel) — see
+ *  src/tablet/desk. Desktop-only; the toggle is hidden below the lg breakpoint. */
+export type PageLayoutMode = 'overzicht' | 'bureau'
+
+/** Overzicht/Bureau layout toggle, shared by CRM and Projects. Hidden on
+ *  narrow screens — the desk layout's multi-column grid needs desktop width. */
+export function LayoutModeToggle({
+  mode, onChange,
+}: { mode: PageLayoutMode; onChange: (mode: PageLayoutMode) => void }) {
+  return (
+    <div className="hidden lg:flex rounded-xl bg-sunken p-1 shrink-0">
+      <button
+        onClick={() => onChange('overzicht')}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+          mode === 'overzicht' ? 'bg-surface shadow-sm text-ink' : 'text-faint'
+        }`}
+      >
+        <LayoutGrid className="h-3.5 w-3.5" /> Overzicht
+      </button>
+      <button
+        onClick={() => onChange('bureau')}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+          mode === 'bureau' ? 'bg-surface shadow-sm text-ink' : 'text-faint'
+        }`}
+      >
+        <Columns3 className="h-3.5 w-3.5" /> Bureau
+      </button>
+    </div>
+  )
+}
+
+/** Picks the project a desk-style layout should focus by default: an explicit
+ *  id, else the project with a running timer, else the soonest deadline, else
+ *  the first live project. Shared by the tablet desk kiosk and the desktop
+ *  "Bureau" layout so both land on the same project. */
+export function pickFocusedProject(
+  projects: Project[],
+  focusedId: string | null,
+  runningProjectId?: string | null,
+): Project | null {
+  if (focusedId) {
+    const found = projects.find((p) => p.id === focusedId)
+    if (found) return found
+  }
+  if (runningProjectId) {
+    const running = projects.find((p) => p.id === runningProjectId)
+    if (running) return running
+  }
+  const live = projects.filter((p) => !p.archived && p.status !== 'done')
+  const withDeadline = [...live].filter((p) => p.deadline).sort((a, b) => a.deadline!.localeCompare(b.deadline!))
+  return withDeadline[0] ?? live[0] ?? null
+}
 
 /** Status filter chips + grid/lijst view toggle row, shared by CRM and Projects. */
 export function FilterViewBar({

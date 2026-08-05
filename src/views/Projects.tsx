@@ -8,8 +8,12 @@ import {
 } from '../components/crm'
 import {
   FilterViewBar, ProjectGridList, useProjectBrowserModals,
+  LayoutModeToggle, pickFocusedProject,
 } from '../components/ProjectBrowser'
-import type { ProjectViewMode } from '../components/ProjectBrowser'
+import type { ProjectViewMode, PageLayoutMode } from '../components/ProjectBrowser'
+import { ProjectBoardRail } from '../tablet/desk/ProjectBoardRail'
+import { ProjectFocusPanel } from '../tablet/desk/ProjectFocusPanel'
+import { ProjectSidePanel } from '../tablet/desk/ProjectSidePanel'
 import {
   FolderKanban, Wallet, AlertTriangle, CheckCircle2, Search,
   Plus, UserPlus, ArrowUpDown,
@@ -39,16 +43,23 @@ function sortProjects(list: Project[], key: SortKey): Project[] {
 }
 
 export default function Projects() {
-  const { projects, clients, projectInvoices } = useStore()
+  const { projects, clients, projectInvoices, activeTimer } = useStore()
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('Alle')
   const [clientFilter, setClientFilter] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('deadline')
   const [view, setView] = useState<ProjectViewMode>('grid')
+  const [layoutMode, setLayoutMode] = useState<PageLayoutMode>('overzicht')
+  const [focusedProjectId, setFocusedProjectId] = useState<string | null>(null)
   const {
     setOpenProject, setCreatingProject, setCreatingClient,
     openClientById, modals,
   } = useProjectBrowserModals(clients)
+
+  const focusedProject = useMemo(
+    () => pickFocusedProject(projects, focusedProjectId, activeTimer?.projectId),
+    [focusedProjectId, projects, activeTimer],
+  )
 
   const activeProjects = projects.filter((p) => p.status === 'active' || p.status === 'review')
   const pipeline = projectPipeline(projects, projectInvoices)
@@ -78,7 +89,7 @@ export default function Projects() {
   }, [projects, statusFilter, clientFilter, q, sortKey])
 
   return (
-    <div className="flex flex-col gap-7 max-w-5xl mx-auto">
+    <div className={`flex flex-col gap-7 ${layoutMode === 'bureau' ? '' : 'max-w-5xl mx-auto'}`}>
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
           <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sunken">
@@ -86,7 +97,8 @@ export default function Projects() {
           </span>
           <h1 className="text-xl font-medium text-ink">Projecten</h1>
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <LayoutModeToggle mode={layoutMode} onChange={setLayoutMode} />
           <button onClick={() => setCreatingClient(true)} className="btn-ghost !py-2">
             <UserPlus className="h-3.5 w-3.5" /> Klant
           </button>
@@ -96,60 +108,84 @@ export default function Projects() {
         </div>
       </div>
 
-      {/* KPI grid — icons stay neutral; the "Achterstallig" alert state is the
-          only place color signals anything, when there's actually something
-          overdue. */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Kpi icon={<FolderKanban className="h-4 w-4 text-ink-soft" />} label="Actief" value={String(activeProjects.length)} sub={`${projects.length} totaal`} />
-        <Kpi icon={<Wallet className="h-4 w-4 text-ink-soft" />} label="Pipeline" value={eur(pipeline)} sub="nog te factureren" />
-        <Kpi icon={<AlertTriangle className="h-4 w-4 text-ink-soft" />} label="Achterstallig" value={String(overdue.length)} sub={overdue.length ? 'over deadline' : 'alles op schema'} alert={overdue.length > 0} />
-        <Kpi icon={<CheckCircle2 className="h-4 w-4 text-ink-soft" />} label="Opgeleverd" value={eur(delivered)} sub={`${projects.filter((p) => p.status === 'done').length} projecten`} />
-      </div>
+      {layoutMode === 'bureau' ? (
+        // Bureau: the same desk workspace as the tablet kiosk (see
+        // src/tablet/ProjectDeskKiosk.tsx) — a board rail, the focused
+        // project's Pomodoro/milestones/taken, and a deadline+client side
+        // panel — so this can stay open on the PC while working a project.
+        <div className="grid grid-cols-12 gap-4 lg:gap-5 h-[75vh] min-h-[560px]">
+          <div className="col-span-3 min-h-0">
+            <ProjectBoardRail projects={projects} focusedId={focusedProject?.id ?? null} onSelect={setFocusedProjectId} />
+          </div>
+          <div className="col-span-6 min-h-0">
+            {focusedProject ? (
+              <ProjectFocusPanel project={focusedProject} onClientClick={openClientById} />
+            ) : (
+              <div className="card p-8 text-center text-faint">Nog geen projecten — maak er een aan.</div>
+            )}
+          </div>
+          <div className="col-span-3 min-h-0">
+            <ProjectSidePanel project={focusedProject} projects={projects} onClientClick={openClientById} />
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* KPI grid — icons stay neutral; the "Achterstallig" alert state is
+              the only place color signals anything, when there's actually
+              something overdue. */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <Kpi icon={<FolderKanban className="h-4 w-4 text-ink-soft" />} label="Actief" value={String(activeProjects.length)} sub={`${projects.length} totaal`} />
+            <Kpi icon={<Wallet className="h-4 w-4 text-ink-soft" />} label="Pipeline" value={eur(pipeline)} sub="nog te factureren" />
+            <Kpi icon={<AlertTriangle className="h-4 w-4 text-ink-soft" />} label="Achterstallig" value={String(overdue.length)} sub={overdue.length ? 'over deadline' : 'alles op schema'} alert={overdue.length > 0} />
+            <Kpi icon={<CheckCircle2 className="h-4 w-4 text-ink-soft" />} label="Opgeleverd" value={eur(delivered)} sub={`${projects.filter((p) => p.status === 'done').length} projecten`} />
+          </div>
 
-      {/* Search + client filter */}
-      <div className="flex gap-2.5 flex-wrap">
-        <div className="flex-1 min-w-[180px] flex items-center gap-2 bg-sunken rounded-xl px-4 py-2.5">
-          <Search className="h-4 w-4 text-faint shrink-0" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Zoek op naam, klant of type…"
-            className="flex-1 min-w-0 bg-transparent text-sm outline-none"
+          {/* Search + client filter */}
+          <div className="flex gap-2.5 flex-wrap">
+            <div className="flex-1 min-w-[180px] flex items-center gap-2 bg-sunken rounded-xl px-4 py-2.5">
+              <Search className="h-4 w-4 text-faint shrink-0" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Zoek op naam, klant of type…"
+                className="flex-1 min-w-0 bg-transparent text-sm outline-none"
+              />
+            </div>
+            {clientsWithProjects.length > 0 && (
+              <select
+                value={clientFilter}
+                onChange={(e) => setClientFilter(e.target.value)}
+                className="text-sm bg-sunken rounded-xl px-4 py-2.5 outline-none text-ink-soft"
+              >
+                <option value="">Alle klanten</option>
+                {clientsWithProjects.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
+            <div className="flex items-center gap-1.5 bg-sunken rounded-xl px-4 py-2.5">
+              <ArrowUpDown className="h-3.5 w-3.5 text-faint shrink-0" />
+              <select
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+                className="bg-transparent text-sm outline-none text-ink-soft"
+              >
+                {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Status filter + view toggle */}
+          <FilterViewBar filter={statusFilter} onFilterChange={setStatusFilter} view={view} onViewChange={setView} />
+
+          <ProjectGridList
+            projects={filtered}
+            view={view}
+            gridClassName="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
+            emptyMessage={projects.length === 0 ? 'Nog geen projecten — maak je eerste project aan.' : 'Geen projecten voor dit filter.'}
+            onOpenProject={setOpenProject}
+            onClientClick={openClientById}
           />
-        </div>
-        {clientsWithProjects.length > 0 && (
-          <select
-            value={clientFilter}
-            onChange={(e) => setClientFilter(e.target.value)}
-            className="text-sm bg-sunken rounded-xl px-4 py-2.5 outline-none text-ink-soft"
-          >
-            <option value="">Alle klanten</option>
-            {clientsWithProjects.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        )}
-        <div className="flex items-center gap-1.5 bg-sunken rounded-xl px-4 py-2.5">
-          <ArrowUpDown className="h-3.5 w-3.5 text-faint shrink-0" />
-          <select
-            value={sortKey}
-            onChange={(e) => setSortKey(e.target.value as SortKey)}
-            className="bg-transparent text-sm outline-none text-ink-soft"
-          >
-            {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        </div>
-      </div>
-
-      {/* Status filter + view toggle */}
-      <FilterViewBar filter={statusFilter} onFilterChange={setStatusFilter} view={view} onViewChange={setView} />
-
-      <ProjectGridList
-        projects={filtered}
-        view={view}
-        gridClassName="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
-        emptyMessage={projects.length === 0 ? 'Nog geen projecten — maak je eerste project aan.' : 'Geen projecten voor dit filter.'}
-        onOpenProject={setOpenProject}
-        onClientClick={openClientById}
-      />
+        </>
+      )}
 
       {modals}
     </div>

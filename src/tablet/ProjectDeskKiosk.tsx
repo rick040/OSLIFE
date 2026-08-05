@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { FolderKanban, Users2 } from 'lucide-react'
 import { useStore } from '../store'
+import { pickFocusedProject } from '../components/ProjectBrowser'
 import { ProjectBoardRail } from './desk/ProjectBoardRail'
 import { ProjectFocusPanel } from './desk/ProjectFocusPanel'
 import { ProjectSidePanel } from './desk/ProjectSidePanel'
@@ -55,20 +56,10 @@ export default function ProjectDeskKiosk() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ focusedProjectId, focusedClientId }))
   }, [focusedProjectId, focusedClientId])
 
-  const liveProjects = useMemo(() => projects.filter((p) => !p.archived && p.status !== 'done'), [projects])
-
-  const focusedProject = useMemo(() => {
-    if (focusedProjectId) {
-      const found = projects.find((p) => p.id === focusedProjectId)
-      if (found) return found
-    }
-    if (activeTimer) {
-      const running = projects.find((p) => p.id === activeTimer.projectId)
-      if (running) return running
-    }
-    const withDeadline = [...liveProjects].filter((p) => p.deadline).sort((a, b) => a.deadline!.localeCompare(b.deadline!))
-    return withDeadline[0] ?? liveProjects[0] ?? null
-  }, [focusedProjectId, projects, activeTimer, liveProjects])
+  const focusedProject = useMemo(
+    () => pickFocusedProject(projects, focusedProjectId, activeTimer?.projectId),
+    [focusedProjectId, projects, activeTimer],
+  )
 
   const focusedClient = (focusedClientId ? clients.find((c) => c.id === focusedClientId) : null) ?? clients[0] ?? null
 

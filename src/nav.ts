@@ -69,6 +69,8 @@ export interface Screen {
   primary?: boolean
   /** accent color token (tailwind text-* class) for the app-grid tile */
   accent: string
+  /** needs more than the default max-w-5xl reading width (e.g. a desk-style multi-column layout) */
+  wide?: boolean
 }
 
 export const SCREENS: Screen[] = [
@@ -92,8 +94,8 @@ export const SCREENS: Screen[] = [
   { id: 'profile', label: 'Profiel', icon: Fingerprint, layer: 'Leven · wie je nu bent & wordt', group: 'Life', accent: 'text-personal' },
 
   // Business
-  { id: 'crm', label: 'CRM', icon: Users, layer: 'Business · klanten', group: 'Business', primary: true, accent: 'text-prjct' },
-  { id: 'projects', label: 'Projecten', icon: FolderKanban, layer: 'Business · werk', group: 'Business', accent: 'text-prjct' },
+  { id: 'crm', label: 'CRM', icon: Users, layer: 'Business · klanten', group: 'Business', primary: true, accent: 'text-prjct', wide: true },
+  { id: 'projects', label: 'Projecten', icon: FolderKanban, layer: 'Business · werk', group: 'Business', accent: 'text-prjct', wide: true },
   { id: 'strategiehq', label: 'Strategie HQ', icon: Compass, layer: 'Business · strategie', group: 'Business', accent: 'text-forest' },
   { id: 'buurtkaart', label: 'Buurtkaart', icon: Map, layer: 'Business · Geldrop', group: 'Business', accent: 'text-buurtkaart' },
 
