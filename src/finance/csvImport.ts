@@ -3,7 +3,7 @@
 //   accountNumber, mutationcode(EUR), transactiondate(YYYYMMDD), valuedate,
 //   startsaldo, endsaldo, amount(NL komma), description(lange vrije tekst)
 // Valt terug op een vergevingsgezinde generieke parse per regel.
-import type { Transaction } from '../types'
+import type { Domain, Transaction } from '../types'
 import { TODAY } from '../domains'
 import { domainForCategory, isTransferCounterparty, isTransferIban } from './categories'
 
@@ -17,6 +17,13 @@ export function guessCategory(desc: string, amount: number): string {
   // business account is deliberately NOT in that list, so KNAB->checking
   // still falls through to the amount>0 'Client income' case below.
   if (isTransferCounterparty(desc) || isTransferIban(desc)) return 'Internal transfer'
+  // Recurring salary: ParkingYou (employer) pays monthly, Belastingdienst
+  // (tax authority) credits twice a month — both are real income, kept out
+  // of the generic 'Client income' bucket so the income breakdown separates
+  // salary from project fees. A Belastingdienst *debit* (e.g. paying BTW) is
+  // a tax expense, not salary, hence the amount check for that one.
+  if (/\bparkingyou\b/.test(d) && amount > 0) return 'Salary'
+  if (/\bbelastingdienst\b/.test(d)) return amount > 0 ? 'Salary' : 'Taxes'
   if (amount > 0) return 'Client income'
   // Word boundaries throughout: unbounded substrings caused false positives like
   // "shell" matching "Michelle", "bp" matching "ABP", "plus" matching "OnePlus".
@@ -28,6 +35,15 @@ export function guessCategory(desc: string, amount: number): string {
   if (/\b(dier|vet|kyra|hond)\b/.test(d)) return 'Dog'
   if (/\b(ns|trein|ov-|9292|transavia|ovpay)\b/.test(d)) return 'Transport'
   return 'Uncategorized'
+}
+
+/** Domain for an imported row. Mirrors domainForCategory() but overrides it
+ *  for ParkingYou salary specifically — 'Salary' alone can't distinguish an
+ *  employer (parkingyou domain) from the Belastingdienst (personal domain,
+ *  the CATEGORY_DOMAIN default), so that one case needs the merchant text. */
+export function guessDomain(desc: string, category: string, amount: number): Domain {
+  if (category === 'Salary' && /\bparkingyou\b/i.test(desc)) return 'parkingyou'
+  return domainForCategory(category, amount)
 }
 
 export function cleanMerchant(desc: string): string {
@@ -159,7 +175,7 @@ export function parseCsv(text: string): Transaction[] {
       amount,
       merchant,
       category,
-      domain: domainForCategory(category, amount),
+      domain: guessDomain(desc, category, amount),
     })
   }
   return out

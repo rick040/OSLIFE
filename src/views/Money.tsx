@@ -38,6 +38,8 @@ export default function Money() {
     goals,
     payments,
     subscriptions,
+    projects,
+    projectInvoices,
     holdings,
     balanceCheckpoints,
     vendorTags,
@@ -230,6 +232,8 @@ export default function Money() {
           <BillsTab
             payments={payments}
             subscriptions={subscriptions}
+            projects={projects}
+            projectInvoices={projectInvoices}
             onAddPayment={addPayment}
             onMarkPaid={markPaymentPaid}
             onDeletePayment={deletePayment}
