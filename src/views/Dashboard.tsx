@@ -21,6 +21,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../components/ui/collapsible'
 import CheckinCard from '../components/CheckinCard'
+import FocusToday from '../components/FocusToday'
+import { taskUrgency } from '../lib/taskFocus'
 import { fetchSyncStatusFor, humanizeAge, type SyncSourceStatus } from '../lib/syncStatus'
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip } from 'recharts'
 import { CHART_TIP, AXIS_TICK_11 } from '../components/chart'
@@ -383,6 +385,11 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
   // of money.
   const clientsNeedingFollowUp = clients.filter((c) => clientHealth(c, TODAY) === 'red')
 
+  // Taken: open loops whose deadline has already passed. The "Belangrijkste
+  // vandaag" block below shows what to *do*; this is the standing count that
+  // says the backlog itself is slipping.
+  const overdueTasks = threads.filter((t) => t.status === 'open' && taskUrgency(t.due) === 'overdue')
+
   // Strategie HQ: the most haalbare open ideeën (elaborated, not archived/
   // done-building), plus a count of ideas quietly stalling — same
   // object-permanence problem as the follow-up/habit signals above.
@@ -470,6 +477,15 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
         reason: 'gewoonten open',
         tone: 'attention',
         cta: { label: 'Naar Gewoonten', view: 'habits' },
+      })
+    if (overdueTasks.length)
+      list.push({
+        text: `**${overdueTasks.length} ta${overdueTasks.length > 1 ? 'ken' : 'ak'} over de deadline** — o.a. ${overdueTasks[0].title}`,
+        domain: overdueTasks[0].domain,
+        reason: 'taken te laat',
+        tone: 'urgent',
+        cta: { label: 'Naar Taken', view: 'tasks' },
+        badge: overdueTasks[0].due ? `${-daysBetween(TODAY, overdueTasks[0].due)}d te laat` : undefined,
       })
     if (dueToday.length)
       list.push({
@@ -771,6 +787,12 @@ export default function Dashboard({ onNav }: { onNav: (v: string) => void }) {
           </div>
         </div>
       )}
+
+      {/* ── belangrijkste vandaag: the day's short, tickable to-do list. Sits
+          directly under the attention list on purpose — that block says what's
+          wrong, this one says what to actually do about it, and it's the only
+          block on this screen you can complete work from. ────────────────── */}
+      <FocusToday onNav={onNav} />
 
       {/* ── hero: whatever's actually most pressing today earns the one giant-
           number slot — overdue money first, a calm-day recovery score

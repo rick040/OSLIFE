@@ -160,6 +160,12 @@ export interface Thread {
   priority?: Priority | null
   notes?: string | null
   checklist?: ChecklistItem[] | null
+  /**
+   * ISO date this task is pinned to as one of that day's most important tasks
+   * — what the dashboard's "Belangrijkste vandaag" block reads. null/absent =
+   * not pinned; a pin for a past day is simply no longer today's.
+   */
+  focusDate?: string | null
 }
 
 export interface Pattern {
@@ -611,6 +617,8 @@ export interface TaskDraft {
   domain: Domain
   priority: Priority
   notes?: string
+  /** Pin the new task straight onto a day's most-important list (see Thread.focusDate). */
+  focusDate?: string | null
 }
 
 export interface Project {

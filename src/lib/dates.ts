@@ -18,6 +18,13 @@ export function overdueLabel(days: number): string {
   return `${-days}d te laat`
 }
 
+/** `iso` shifted by `n` days (negative = back), as a plain YYYY-MM-DD date. */
+export function addDays(iso: string, n: number): string {
+  const d = new Date(iso.slice(0, 10) + 'T00:00:00')
+  d.setDate(d.getDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
 export interface DeadlineInfo {
   label: string
   color: string
