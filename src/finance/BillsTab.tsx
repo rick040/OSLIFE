@@ -151,67 +151,73 @@ function OneOffBills({
           {shown.map((p) => {
             const due = dueLabel(p.due, { prefix: 'vervalt ' })
             return (
-              <div key={p.id} className="flex items-center gap-3 py-2.5 px-3">
-                <span className={`shrink-0 ${p.direction === 'incoming' ? 'text-buurtkaart' : 'text-cross'}`}>
-                  {p.direction === 'incoming' ? <ArrowDownLeft className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm text-ink truncate">{p.payee}</div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <DomainChip domain={p.domain} small />
-                    <span className={`text-xs ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>{due.label}</span>
-                    <button
-                      onClick={() => onUpdate(p.id, { urgent: nextUrgentState(p.urgent) })}
-                      className={`chip !py-0.5 !px-1.5 gap-1 ${
-                        p.urgent === true
-                          ? 'bg-cross/15 text-cross'
-                          : p.urgent === false
-                          ? 'bg-line text-muted'
-                          : effectiveUrgent(p)
-                          ? 'bg-cross/10 text-cross/80'
-                          : 'bg-sunken text-faint'
-                      }`}
-                      title={
-                        p.urgent === true
-                          ? 'Handmatig gemarkeerd als urgent — klik voor "kan wachten"'
-                          : p.urgent === false
-                          ? 'Handmatig gemarkeerd als "kan wachten" — klik om terug naar automatisch te gaan'
-                          : 'Urgentie automatisch bepaald op basis van de datum — klik om zelf te markeren als urgent'
-                      }
-                    >
-                      <Flag className="h-3 w-3" />
-                      {p.urgent === true ? 'Urgent' : p.urgent === false ? 'Kan wachten' : effectiveUrgent(p) ? 'Urgent (auto)' : 'Automatisch'}
-                    </button>
-                    {p.note && <span className="text-xs text-faint truncate">· {p.note}</span>}
-                  </div>
-                  {(p.iban || p.paymentLink) && (
-                    <div className="flex items-center gap-3 mt-1">
-                      {p.iban && (
-                        <button
-                          onClick={() => navigator.clipboard?.writeText(p.iban!)}
-                          className="text-[11px] text-faint hover:text-ink inline-flex items-center gap-1"
-                          title="Kopieer IBAN"
-                        >
-                          <Copy className="h-3 w-3" /> {p.iban}
-                        </button>
-                      )}
-                      {p.paymentLink && (
-                        <a href={p.paymentLink} target="_blank" rel="noreferrer" className="text-[11px] text-prjct hover:underline inline-flex items-center gap-1">
-                          <Link2 className="h-3 w-3" /> Betaallink
-                        </a>
-                      )}
+              <div key={p.id} className="p-3.5 space-y-2.5">
+                <div className="flex items-start gap-3">
+                  <span className={`shrink-0 mt-0.5 ${p.direction === 'incoming' ? 'text-buurtkaart' : 'text-cross'}`}>
+                    {p.direction === 'incoming' ? <ArrowDownLeft className="h-4 w-4" /> : <ArrowUpRight className="h-4 w-4" />}
+                  </span>
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <div className="text-sm font-medium text-ink break-words">{p.payee}</div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <DomainChip domain={p.domain} small />
+                      <span className={`text-xs ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>{due.label}</span>
+                      <button
+                        onClick={() => onUpdate(p.id, { urgent: nextUrgentState(p.urgent) })}
+                        className={`chip !py-0.5 !px-1.5 gap-1 ${
+                          p.urgent === true
+                            ? 'bg-cross/15 text-cross'
+                            : p.urgent === false
+                            ? 'bg-line text-muted'
+                            : effectiveUrgent(p)
+                            ? 'bg-cross/10 text-cross/80'
+                            : 'bg-sunken text-faint'
+                        }`}
+                        title={
+                          p.urgent === true
+                            ? 'Handmatig gemarkeerd als urgent — klik voor "kan wachten"'
+                            : p.urgent === false
+                            ? 'Handmatig gemarkeerd als "kan wachten" — klik om terug naar automatisch te gaan'
+                            : 'Urgentie automatisch bepaald op basis van de datum — klik om zelf te markeren als urgent'
+                        }
+                      >
+                        <Flag className="h-3 w-3" />
+                        {p.urgent === true ? 'Urgent' : p.urgent === false ? 'Kan wachten' : effectiveUrgent(p) ? 'Urgent (auto)' : 'Automatisch'}
+                      </button>
+                      {p.note && <span className="text-xs text-faint break-words">· {p.note}</span>}
                     </div>
-                  )}
+                  </div>
+                  <span className={`text-base font-semibold tabular-nums shrink-0 ${p.direction === 'incoming' ? 'text-buurtkaart-deep' : 'text-ink'}`}>
+                    {p.direction === 'incoming' ? '+' : '-'}{eur(p.amount)}
+                  </span>
                 </div>
-                <span className={`text-sm font-medium tabular-nums shrink-0 ${p.direction === 'incoming' ? 'text-buurtkaart-deep' : 'text-ink'}`}>
-                  {p.direction === 'incoming' ? '+' : '-'}{eur(p.amount)}
-                </span>
-                <button className="btn-ghost shrink-0 !py-1.5" onClick={() => onMarkPaid(p.id)}>
-                  <CheckCircle2 className="h-4 w-4" /> {p.direction === 'incoming' ? 'Ontvangen' : 'Betaald'}
-                </button>
-                <button className="text-faint hover:text-cross shrink-0 p-1" onClick={() => setConfirmDelete(p)} aria-label="Verwijder betaling">
-                  <Trash2 className="h-4 w-4" />
-                </button>
+
+                {(p.iban || p.paymentLink) && (
+                  <div className="flex items-center gap-3 flex-wrap pl-7">
+                    {p.iban && (
+                      <button
+                        onClick={() => navigator.clipboard?.writeText(p.iban!)}
+                        className="text-xs text-faint hover:text-ink inline-flex items-center gap-1"
+                        title="Kopieer IBAN"
+                      >
+                        <Copy className="h-3 w-3" /> {p.iban}
+                      </button>
+                    )}
+                    {p.paymentLink && (
+                      <a href={p.paymentLink} target="_blank" rel="noreferrer" className="text-xs text-prjct hover:underline inline-flex items-center gap-1">
+                        <Link2 className="h-3 w-3" /> Betaallink
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 pl-7">
+                  <button className="btn-ghost !py-1.5 flex-1 justify-center" onClick={() => onMarkPaid(p.id)}>
+                    <CheckCircle2 className="h-4 w-4" /> {p.direction === 'incoming' ? 'Ontvangen' : 'Betaald'}
+                  </button>
+                  <button className="text-faint hover:text-cross hover:bg-sunken shrink-0 p-2 rounded-xl" onClick={() => setConfirmDelete(p)} aria-label="Verwijder betaling">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             )
           })}
