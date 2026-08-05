@@ -83,7 +83,11 @@ function GapStone({ delta }: { delta: GapDelta }) {
 export function GapVisualization({ overallProgressPct, deltas }: { overallProgressPct: number; deltas: GapDelta[] }) {
   return (
     <div className="card p-5">
-      <div className="flex items-end justify-center gap-4 sm:gap-8">
+      {/* Below sm, the "Nu"/stones/"Worden" triptych can't share one row without
+          squeezing the stones into an invisible sliver (measured: ~1 of 3 stones
+          visible, no scroll cue) — stack them instead, each getting the card's
+          full width. From sm up there's room for the original side-by-side read. */}
+      <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-end sm:justify-center sm:gap-8">
         <div className="flex flex-col items-center gap-1.5 w-24 sm:w-28">
           <div className="h-28 w-24 sm:h-32 sm:w-28">
             <Silhouette fillPct={overallProgressPct} />
@@ -91,7 +95,7 @@ export function GapVisualization({ overallProgressPct, deltas }: { overallProgre
           <span className="text-xs font-semibold uppercase tracking-wider text-forest-hi">Nu</span>
         </div>
 
-        <div className="flex-1 min-w-0">
+        <div className="w-full sm:flex-1 sm:min-w-0">
           {deltas.length > 0 ? (
             <>
               <p className="text-[11px] text-faint text-center mb-2 uppercase tracking-wider">Grootste kloven</p>

@@ -24,15 +24,13 @@ export function QuestLog({ quests }: { quests: QuestItem[] }) {
         <div key={q.id} className="flex items-center gap-3 rounded-xl bg-sunken px-3 py-2.5">
           <Swords className="h-4 w-4 text-ink-soft shrink-0" aria-hidden="true" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm text-ink-soft truncate">{q.title}</p>
-            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+            <p className="text-sm text-ink-soft leading-snug">{q.title}</p>
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
               <DomainChip domain={q.domain} small />
               <span className="chip bg-line text-faint text-[10px] px-1.5 py-0">{q.difficulty}</span>
-              {q.goalTitle && <span className="text-[11px] text-faint truncate">{q.goalTitle}</span>}
+              {q.goalTitle && <span className="text-[11px] text-faint">{q.goalTitle}</span>}
             </div>
-            {q.requiresTitle && (
-              <p className="text-[10px] text-faint mt-0.5 truncate">Vereist: {q.requiresTitle}</p>
-            )}
+            {q.requiresTitle && <p className="text-[10px] text-faint mt-1">Vereist: {q.requiresTitle}</p>}
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
             <span className="chip bg-prjct/15 text-prjct-deep text-[10px] px-1.5 py-0">+{q.xpReward} XP</span>
