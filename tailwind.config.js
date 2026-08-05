@@ -116,6 +116,17 @@ export default {
           from: { height: 'var(--radix-accordion-content-height)' },
           to: { height: '0' },
         },
+        // Collapsible (used for dashboard drawers) sets its own CSS var,
+        // distinct from Accordion's — reusing accordion-down/up here would
+        // animate against an undefined var and just snap instead of glide.
+        'collapsible-down': {
+          from: { height: '0' },
+          to: { height: 'var(--radix-collapsible-content-height)' },
+        },
+        'collapsible-up': {
+          from: { height: 'var(--radix-collapsible-content-height)' },
+          to: { height: '0' },
+        },
         // HeyraOrb — idle is a slow, calm breathe; thinking is faster and
         // reaches a brighter peak so the orb visibly "comes alive" while a
         // brain call is in flight, without needing a JS animation library.
@@ -134,6 +145,8 @@ export default {
         'flow-dash': 'flow-dash 1s linear infinite',
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
+        'collapsible-down': 'collapsible-down 0.2s ease-out',
+        'collapsible-up': 'collapsible-up 0.2s ease-out',
         'orb-breathe': 'orb-breathe 4.5s ease-in-out infinite',
         'orb-think': 'orb-think 1.6s ease-in-out infinite',
       },
