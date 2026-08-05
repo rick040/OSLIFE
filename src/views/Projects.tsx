@@ -113,19 +113,35 @@ export default function Projects() {
         // src/tablet/ProjectDeskKiosk.tsx) — a board rail, the focused
         // project's Pomodoro/milestones/taken, and a deadline+client side
         // panel — so this can stay open on the PC while working a project.
-        <div className="grid grid-cols-12 gap-4 lg:gap-5 h-[75vh] min-h-[560px]">
-          <div className="col-span-3 min-h-0">
-            <ProjectBoardRail projects={projects} focusedId={focusedProject?.id ?? null} onSelect={setFocusedProjectId} />
+        // Unlike the kiosk, this copy is `editable`: quick-add + delete on
+        // tasks/milestones, and a button through to the full project sheet.
+        // Fixed-width rails (not 12-col percentages) so the layout doesn't
+        // stretch awkwardly on ultra-wide monitors.
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-4 text-sm text-muted px-1">
+            <span><strong className="text-ink font-semibold tabular-nums">{activeProjects.length}</strong> actief</span>
+            <span><strong className="text-ink font-semibold tabular-nums">{eur(pipeline)}</strong> pipeline</span>
+            {overdue.length > 0 && <span className="text-cross-deep font-medium">{overdue.length} achterstallig</span>}
           </div>
-          <div className="col-span-6 min-h-0">
-            {focusedProject ? (
-              <ProjectFocusPanel project={focusedProject} onClientClick={openClientById} />
-            ) : (
-              <div className="card p-8 text-center text-faint">Nog geen projecten — maak er een aan.</div>
-            )}
-          </div>
-          <div className="col-span-3 min-h-0">
-            <ProjectSidePanel project={focusedProject} projects={projects} onClientClick={openClientById} />
+          <div className="grid grid-cols-[240px_minmax(0,1fr)_260px] xl:grid-cols-[280px_minmax(0,1fr)_300px] gap-4 lg:gap-5 h-[calc(100vh-15rem)] min-h-[560px]">
+            <div className="min-h-0">
+              <ProjectBoardRail projects={projects} focusedId={focusedProject?.id ?? null} onSelect={setFocusedProjectId} />
+            </div>
+            <div className="min-h-0">
+              {focusedProject ? (
+                <ProjectFocusPanel
+                  project={focusedProject}
+                  onClientClick={openClientById}
+                  editable
+                  onEdit={() => setOpenProject(focusedProject)}
+                />
+              ) : (
+                <div className="card p-8 text-center text-faint">Nog geen projecten — maak er een aan.</div>
+              )}
+            </div>
+            <div className="min-h-0">
+              <ProjectSidePanel project={focusedProject} projects={projects} onClientClick={openClientById} />
+            </div>
           </div>
         </div>
       ) : (

@@ -138,17 +138,33 @@ export default function CRM() {
       {layoutMode === 'bureau' ? (
         // Bureau: the same client desk as the tablet kiosk's CRM mode (see
         // src/tablet/ProjectDeskKiosk.tsx) — a client rail plus the focused
-        // client's contacts, linked projects and recent messages.
-        <div className="grid grid-cols-12 gap-4 lg:gap-5 h-[75vh] min-h-[560px]">
-          <div className="col-span-4 min-h-0">
-            <ClientRail clients={clients} focusedId={focusedClient?.id ?? null} onSelect={setFocusedClientId} />
+        // client's contacts, linked projects and recent messages. Unlike the
+        // kiosk, this copy is `editable`: a button through to the full client
+        // sheet (edit fields, add a project, log contact). Fixed-width rail
+        // (not a 12-col percentage) so it doesn't stretch on wide monitors.
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-4 text-sm text-muted px-1">
+            <span><strong className="text-ink font-semibold tabular-nums">{activeCount}</strong> actief</span>
+            <span><strong className="text-ink font-semibold tabular-nums">{eur(pipeline)}</strong> pipeline</span>
+            <span><strong className="text-ink font-semibold tabular-nums">{clients.length}</strong> klanten</span>
+            {followUps.length > 0 && <span className="text-cross-deep font-medium">{followUps.length} op te volgen</span>}
           </div>
-          <div className="col-span-8 min-h-0">
-            {focusedClient ? (
-              <ClientFocusPanel client={focusedClient} onOpenProject={openProjectById} />
-            ) : (
-              <div className="card p-8 text-center text-faint">Nog geen klanten — maak er een aan.</div>
-            )}
+          <div className="grid grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)] gap-4 lg:gap-5 h-[calc(100vh-15rem)] min-h-[560px]">
+            <div className="min-h-0">
+              <ClientRail clients={clients} focusedId={focusedClient?.id ?? null} onSelect={setFocusedClientId} />
+            </div>
+            <div className="min-h-0">
+              {focusedClient ? (
+                <ClientFocusPanel
+                  client={focusedClient}
+                  onOpenProject={openProjectById}
+                  editable
+                  onEdit={() => setOpenClient(focusedClient)}
+                />
+              ) : (
+                <div className="card p-8 text-center text-faint">Nog geen klanten — maak er een aan.</div>
+              )}
+            </div>
           </div>
         </div>
       ) : (
