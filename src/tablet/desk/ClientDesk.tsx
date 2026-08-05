@@ -1,4 +1,4 @@
-import { Globe, Mail, MessageSquare } from 'lucide-react'
+import { Globe, Mail, MessageSquare, Pencil } from 'lucide-react'
 import { useStore } from '../../store'
 import type { Client } from '../../types'
 import { TODAY } from '../../domains'
@@ -50,8 +50,12 @@ export function ClientRail({
 }
 
 /** Right panel: contact info, linked people, linked projects and recent
- *  messages for the focused client — everything useful before a call. */
-export function ClientFocusPanel({ client, onOpenProject }: { client: Client; onOpenProject: (projectId: string) => void }) {
+ *  messages for the focused client — everything useful before a call.
+ *  `editable` shows an "open full client" button — on for the desktop
+ *  Bureau layout, left off for the tablet kiosk. */
+export function ClientFocusPanel({
+  client, onOpenProject, editable = false, onEdit,
+}: { client: Client; onOpenProject: (projectId: string) => void; editable?: boolean; onEdit?: () => void }) {
   const people = useStore((s) => s.people)
   const projects = useStore((s) => s.projects)
   const messages = useStore((s) => s.messages)
@@ -77,14 +81,21 @@ export function ClientFocusPanel({ client, onOpenProject }: { client: Client; on
               <span className="text-sm text-faint">{healthMeta.label}</span>
             </div>
           </div>
-          {client.clientStatus && (
-            <span
-              className="text-xs md:text-sm font-semibold px-2.5 py-1 rounded-md shrink-0"
-              style={{ color: CLIENT_HEX[client.clientStatus], background: `${CLIENT_HEX[client.clientStatus]}22` }}
-            >
-              {CLIENT_STATUS_NL[client.clientStatus] ?? client.clientStatus}
-            </span>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {editable && onEdit && (
+              <button onClick={onEdit} title="Volledige klant openen" className="h-8 w-8 rounded-full bg-sunken flex items-center justify-center text-muted hover:text-ink shrink-0">
+                <Pencil className="h-4 w-4" />
+              </button>
+            )}
+            {client.clientStatus && (
+              <span
+                className="text-xs md:text-sm font-semibold px-2.5 py-1 rounded-md shrink-0"
+                style={{ color: CLIENT_HEX[client.clientStatus], background: `${CLIENT_HEX[client.clientStatus]}22` }}
+              >
+                {CLIENT_STATUS_NL[client.clientStatus] ?? client.clientStatus}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 mt-3">
           <DomainChip domain={client.domain} />
