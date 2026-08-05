@@ -9,7 +9,7 @@ import {
   Download, Printer, GitCompare, Settings2, Scale,
 } from 'lucide-react'
 import type { View } from '../nav'
-import type { BusinessIdea, IdeaLifecycleStatus, ImpactLevel, Domain, Persona, ScoreBreakdown } from '../types'
+import type { BusinessIdea, IdeaLifecycleStatus, ImpactLevel, Domain, Persona, ScoreBreakdown, OutreachAssetStatus, OutreachTarget, OutreachEmail } from '../types'
 import { useStore } from '../store'
 import { DOMAIN_META, DOMAIN_HEX, fmtDate, TODAY } from '../domains'
 import { eur0 as eur } from '../lib/format'
@@ -847,6 +847,8 @@ function IdeaDetailModal({
 
                 <MvpPlanSection idea={idea} onGenerate={onGenerateMvpPlan} onToggleTask={onToggleMvpTask} />
 
+                <OutreachSection idea={idea} />
+
                 {idea.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {idea.tags.map((t) => <span key={t} className="chip bg-line text-muted text-[11px]">#{t}</span>)}
@@ -1185,6 +1187,164 @@ function CustomerAnalysisSection({
           <button onClick={onGenerate} className="btn-ghost !py-1.5 text-xs w-full justify-center">
             <RotateCcw className="h-3.5 w-3.5" /> Opnieuw genereren
           </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Outreach: campaign plan → content → email sequence → segmented leads with
+// drafted emails. Everything here is written by scheduled Routines (Supabase
+// MCP), never by the app — this is a read-only view, no "genereer" button.
+const OUTREACH_TARGET_HEX: Record<OutreachTarget['status'], string> = {
+  selected: '#93C5FD', drafted: '#FCD34D', sent: '#60A5FA', replied: '#6ee7b7', rejected: '#B4B4B4',
+}
+const OUTREACH_TARGET_LABEL: Record<OutreachTarget['status'], string> = {
+  selected: 'Geselecteerd', drafted: 'Concept klaar', sent: 'Verzonden', replied: 'Gereageerd', rejected: 'Afgewezen',
+}
+
+function OutreachAssetStatusNote({ status }: { status: OutreachAssetStatus | null }) {
+  if (!status) return <p className="text-xs text-faint italic">Wordt automatisch gegenereerd zodra dit idee is uitgewerkt.</p>
+  if (status === 'pending' || status === 'processing') {
+    return (
+      <div className="flex items-center gap-2 text-xs text-muted">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-buurtkaart" /> Wordt gegenereerd door de outreach-routine…
+      </div>
+    )
+  }
+  if (status === 'failed') return <p className="text-xs text-cross-deep">Mislukt — de routine probeert het opnieuw bij de volgende run.</p>
+  return null
+}
+
+function OutreachSection({ idea }: { idea: BusinessIdea }) {
+  const leads = useStore((s) => s.leads)
+  const outreachTargets = useStore((s) => s.outreachTargets)
+  const outreachEmails = useStore((s) => s.outreachEmails)
+
+  const leadById = useMemo(() => new Map(leads.map((l) => [l.id, l])), [leads])
+  const targets = useMemo(
+    () =>
+      outreachTargets
+        .filter((t) => t.businessIdeaId === idea.id)
+        .sort((a, b) => (b.fitScore ?? 0) - (a.fitScore ?? 0)),
+    [outreachTargets, idea.id],
+  )
+  const emailsByTarget = useMemo(() => {
+    const m = new Map<string, OutreachEmail[]>()
+    for (const e of outreachEmails) {
+      const arr = m.get(e.outreachTargetId) ?? []
+      arr.push(e)
+      m.set(e.outreachTargetId, arr)
+    }
+    return m
+  }, [outreachEmails])
+
+  return (
+    <div className="space-y-3">
+      <SectionLabel icon={Mail}>Outreach</SectionLabel>
+
+      <div className="card p-3.5 space-y-2.5">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-faint flex items-center gap-1.5">
+            <Target className="h-3 w-3" /> Campagneplan
+          </div>
+          {idea.campaignPlan && idea.campaignPlanStatus === 'ready' ? (
+            <div className="space-y-1.5 mt-1">
+              <p className="text-sm text-ink-soft leading-relaxed break-words">{idea.campaignPlan.goal}</p>
+              <p className="text-xs text-muted break-words">Doelgroep: {idea.campaignPlan.targetAudience}</p>
+              <p className="text-xs text-muted break-words">Kernboodschap: {idea.campaignPlan.keyMessage}</p>
+              {idea.campaignPlan.channels.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {idea.campaignPlan.channels.map((c, i) => (
+                    <span key={i} className="chip bg-line text-muted text-[11px]">{c.name}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="mt-1"><OutreachAssetStatusNote status={idea.campaignPlanStatus} /></div>
+          )}
+        </div>
+
+        <div className="border-t border-line pt-2.5">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-faint flex items-center gap-1.5">
+            <Sparkles className="h-3 w-3" /> Content
+          </div>
+          {idea.contentCreation && idea.contentCreationStatus === 'ready' ? (
+            <div className="space-y-1.5 mt-1">
+              {idea.contentCreation.pieces.map((p, i) => (
+                <div key={i} className="rounded-xl bg-sunken p-2.5">
+                  <div className="text-xs font-semibold text-ink-soft break-words">{p.channel} · {p.title}</div>
+                  <p className="text-xs text-muted leading-relaxed mt-0.5 break-words">{p.body}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-1"><OutreachAssetStatusNote status={idea.contentCreationStatus} /></div>
+          )}
+        </div>
+
+        <div className="border-t border-line pt-2.5">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-faint flex items-center gap-1.5">
+            <Mail className="h-3 w-3" /> E-mailreeks{idea.outreachIdentity ? ` · verstuurd als "${idea.outreachIdentity}"` : ''}
+          </div>
+          {idea.emailSequence && idea.emailSequenceStatus === 'ready' ? (
+            <div className="space-y-1.5 mt-1">
+              {idea.emailSequence.steps.map((s) => (
+                <div key={s.step} className="rounded-xl bg-sunken p-2.5">
+                  <div className="text-xs font-semibold text-ink-soft break-words">
+                    Stap {s.step}{s.daysAfterPrevious > 0 ? ` · +${s.daysAfterPrevious}d` : ''} — {s.subject}
+                  </div>
+                  <p className="text-xs text-muted leading-relaxed mt-0.5 break-words">{s.goal}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-1"><OutreachAssetStatusNote status={idea.emailSequenceStatus} /></div>
+          )}
+        </div>
+      </div>
+
+      {targets.length > 0 && (
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-faint mb-1.5 flex items-center gap-1.5">
+            <Building2 className="h-3 w-3" /> Geselecteerde leads ({targets.length})
+          </div>
+          <div className="space-y-1.5">
+            {targets.map((t) => {
+              const lead = leadById.get(t.leadId)
+              const emails = (emailsByTarget.get(t.id) ?? []).sort((a, b) => a.stepNumber - b.stepNumber)
+              return (
+                <div key={t.id} className="card p-3 text-sm space-y-1.5">
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <span className="text-ink-soft flex-1 min-w-0 break-words font-medium">
+                      {lead?.businessName ?? 'Onbekende lead'}
+                    </span>
+                    <span
+                      className="chip text-[10px] px-2 py-0 shrink-0"
+                      style={{ color: OUTREACH_TARGET_HEX[t.status], background: `${OUTREACH_TARGET_HEX[t.status]}1f` }}
+                    >
+                      {OUTREACH_TARGET_LABEL[t.status]}
+                    </span>
+                  </div>
+                  {t.fitReasoning && <p className="text-xs text-faint break-words">{t.fitReasoning}{t.fitScore !== null ? ` (fit ${t.fitScore}/100)` : ''}</p>}
+                  {emails.length > 0 && (
+                    <div className="space-y-1 pt-1 border-t border-line">
+                      {emails.map((e) => (
+                        <div key={e.id} className="text-xs text-muted flex items-center gap-1.5 flex-wrap">
+                          <Mail className="h-3 w-3 shrink-0" />
+                          <span className="break-words">{e.subject}</span>
+                          <span className="chip bg-line text-faint text-[10px] px-1.5 py-0 shrink-0">
+                            {e.status === 'sent' ? 'Verzonden' : 'Concept in Gmail'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>

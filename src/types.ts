@@ -1328,4 +1328,104 @@ export interface BusinessIdea {
   customerAnalysisError: string | null
   customerAnalysis: CustomerAnalysis | null
   linkedProjectId: string | null // FK → projects.id, set once the idea is converted to a real project
+  campaignPlanStatus: OutreachAssetStatus | null
+  campaignPlanError: string | null
+  campaignPlan: CampaignPlan | null
+  contentCreationStatus: OutreachAssetStatus | null
+  contentCreationError: string | null
+  contentCreation: ContentCreation | null
+  emailSequenceStatus: OutreachAssetStatus | null
+  emailSequenceError: string | null
+  emailSequence: EmailSequence | null
+  outreachIdentity: string | null // display name/signature persona for this idea's cold emails
+}
+
+// ── Outreach: fourth pipeline on business_ideas — campaign plan → content →
+// email sequence, written by a scheduled Routine (not an edge function, not
+// user-triggered) once elaboration is ready. Same status contract as
+// MvpPlanStatus/CustomerAnalysisStatus.
+export type OutreachAssetStatus = 'pending' | 'processing' | 'ready' | 'failed'
+
+export interface CampaignChannel {
+  name: string
+  angle: string
+}
+
+export interface CampaignPlan {
+  goal: string
+  targetAudience: string
+  keyMessage: string
+  channels: CampaignChannel[]
+  timeline: string
+  budget: string | null
+  kpis: string[]
+}
+
+export interface ContentPiece {
+  channel: string // e.g. "Instagram post", "Landingspagina", "Flyer"
+  title: string
+  body: string
+  cta: string | null
+}
+
+export interface ContentCreation {
+  pieces: ContentPiece[]
+}
+
+export interface EmailSequenceStep {
+  step: number
+  daysAfterPrevious: number
+  subject: string
+  body: string
+  goal: string
+}
+
+export interface EmailSequence {
+  steps: EmailSequenceStep[]
+}
+
+/**
+ * A lead from Rick's local-business list, synced in from a Google Sheet by
+ * the outreach Routine.
+ */
+export interface Lead {
+  id: string
+  businessName: string
+  contactName: string | null
+  email: string | null
+  phone: string | null
+  website: string | null
+  sector: string | null
+  notes: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type OutreachTargetStatus = 'selected' | 'drafted' | 'sent' | 'replied' | 'rejected'
+
+/** One (business idea × lead) pairing the segmentation step picked as a good fit. */
+export interface OutreachTarget {
+  id: string
+  businessIdeaId: string
+  leadId: string
+  fitScore: number | null
+  fitReasoning: string | null
+  status: OutreachTargetStatus
+  createdAt: string
+}
+
+export type OutreachEmailStatus = 'draft' | 'sent'
+
+/** One drafted/sent email for an outreach target — a sequence can have several. */
+export interface OutreachEmail {
+  id: string
+  outreachTargetId: string
+  stepNumber: number
+  subject: string
+  body: string
+  gmailDraftId: string | null
+  gmailThreadId: string | null
+  status: OutreachEmailStatus
+  sentAt: string | null
+  createdAt: string
 }
