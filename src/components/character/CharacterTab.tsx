@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { useStore } from '../../store'
 import { today } from '../../domains'
 import { SectionTitle } from '../ui'
@@ -16,6 +17,7 @@ import { AttributeBars } from './AttributeBars'
 import { SkillTree } from './SkillTree'
 import { QuestLog } from './QuestLog'
 import { MilestonePath } from './MilestonePath'
+import { ProposedQuests } from './ProposedQuests'
 
 /**
  * The gamified character view: every number on this tab is read straight off
@@ -28,6 +30,12 @@ export default function CharacterTab() {
   const goals = useStore((s) => s.goals)
   const milestones = useStore((s) => s.milestones)
   const habits = useStore((s) => s.habits)
+  const goalProposals = useStore((s) => s.goalProposals)
+  const proposingGoals = useStore((s) => s.proposingGoals)
+  const lastGoalProposalError = useStore((s) => s.lastGoalProposalError)
+  const proposeGoals = useStore((s) => s.proposeGoals)
+  const acceptGoalProposal = useStore((s) => s.acceptGoalProposal)
+  const dismissGoalProposal = useStore((s) => s.dismissGoalProposal)
 
   const attributes = computeDomainAttributes(goals)
   const overallProgressPct = overallProgress(attributes)
@@ -36,6 +44,18 @@ export default function CharacterTab() {
   const path = computeMilestonePath(goals, milestones)
   const quests = computeQuestLog(goals, milestones, today())
   const stats = computeCharacterStats(goals, milestones, habits)
+
+  // Auto-suggest: as soon as the tray is empty (nothing pending to accept or
+  // dismiss), quietly ask HEYRA for new quest offers — same call North Star's
+  // "voorstel doelen" button makes, just fired without waiting for a click.
+  // Emptying the tray (accept/dismiss everything) is what re-arms this.
+  const autoProposedRef = useRef(false)
+  useEffect(() => {
+    if (autoProposedRef.current) return
+    if (goalProposals.length > 0 || proposingGoals) return
+    autoProposedRef.current = true
+    void proposeGoals()
+  }, [goalProposals.length, proposingGoals, proposeGoals])
 
   return (
     <div className="space-y-5">
@@ -55,6 +75,21 @@ export default function CharacterTab() {
         </SectionTitle>
         <SkillTree branches={branches} />
       </div>
+
+      {(proposingGoals || lastGoalProposalError || goalProposals.length > 0) && (
+        <div>
+          <SectionTitle hint="HEYRA stelt deze zelf voor op basis van wat er al over je bekend is — accepteer om er een echt doel + skill-node van te maken.">
+            Nieuwe quests
+          </SectionTitle>
+          <ProposedQuests
+            proposals={goalProposals}
+            loading={proposingGoals}
+            error={lastGoalProposalError}
+            onAccept={acceptGoalProposal}
+            onDismiss={dismissGoalProposal}
+          />
+        </div>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-2">
         <div>

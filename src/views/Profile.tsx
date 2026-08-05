@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useStore } from '../store'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '../components/ui/collapsible'
@@ -269,15 +269,37 @@ export default function Profile() {
     lastDistillError,
     generatingLandscape,
     lastLandscapeError,
+    expandingDesired,
+    lastExpandDesiredError,
+    braindumpEntries,
     generateCurrentProfile,
     distillFromInterview,
     generateLandscape,
+    expandDesiredFromSignal,
   } = useStore()
 
   const [tab, setTab] = useState<Tab>('personage')
   const [showLegacy, setShowLegacy] = useState(false)
   const { current, desired, landscape, legacyNotes } = identityProfile
   const desiredHasSignal = hasAnyItems(desired.categories)
+
+  const freshBraindumpCount = desired.generatedAt
+    ? braindumpEntries.filter((b) => b.createdAt > desired.generatedAt!).length
+    : braindumpEntries.length
+
+  // Auto-suggest, once per fresh batch: as soon as there's braindump signal
+  // written since the desired profile was last touched, quietly check it for
+  // explicit aspirational statements — no button press required. The action
+  // itself no-ops (cheaply) if there's nothing fresh, so this is safe to fire
+  // on every mount; the ref just stops it firing twice for the same batch
+  // within one mount (e.g. React StrictMode's double-invoke in dev).
+  const autoExpandedRef = useRef(false)
+  useEffect(() => {
+    if (autoExpandedRef.current) return
+    if (freshBraindumpCount === 0 || expandingDesired) return
+    autoExpandedRef.current = true
+    void expandDesiredFromSignal()
+  }, [freshBraindumpCount, expandingDesired, expandDesiredFromSignal])
 
   return (
     <div className="flex flex-col gap-6 max-w-5xl mx-auto">
@@ -377,7 +399,29 @@ export default function Profile() {
             <div className="card p-3 text-sm text-personal-deep bg-personal/10">{lastDistillError}</div>
           )}
 
-          <SectionTitle>Droomprofiel</SectionTitle>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <SectionTitle hint="HEYRA leest je braindumps mee en vult dit automatisch aan zodra je iets expliciets schrijft over wie je wilt worden.">
+              Droomprofiel
+            </SectionTitle>
+            <div className="flex items-center gap-2 shrink-0">
+              {freshBraindumpCount > 0 && !expandingDesired && (
+                <span className="text-[11px] text-faint">{freshBraindumpCount} nieuwe braindump(s) niet gescand</span>
+              )}
+              <button className="btn-ghost !py-1.5" onClick={() => expandDesiredFromSignal()} disabled={expandingDesired}>
+                {expandingDesired ? (
+                  <span className="h-4 w-4 rounded-full border-2 border-prjct border-t-transparent animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4 text-prjct" />
+                )}
+                {expandingDesired ? 'Scant braindumps…' : 'Zoek in braindumps'}
+              </button>
+            </div>
+          </div>
+
+          {lastExpandDesiredError && !expandingDesired && (
+            <div className="card p-3 text-sm text-personal-deep bg-personal/10">{lastExpandDesiredError}</div>
+          )}
+
           <DesiredGrid />
         </TabsContent>
 

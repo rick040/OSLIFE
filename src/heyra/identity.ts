@@ -326,3 +326,69 @@ export async function synthesizeTensionsAndLandscape(ctx: LandscapeContext): Pro
   }
   return tensions.length ? { categories: {}, tensions, generatedAt: new Date().toISOString() } : null
 }
+
+// ── Desired profile — auto-expanded from braindumps (no interview needed) ───
+// The interview-based synthesizeDesiredProfile above requires Rick to sit down
+// and answer questions. This is the passive counterpart: it watches what he
+// ALREADY writes in braindumps for explicit "ik wil worden…"/"ik wil
+// stoppen met…" statements and folds only those into the same droomprofiel —
+// same honesty contract (never infer from mood or tangential remarks, only
+// what's explicitly stated), so a stray venting session can't get mistaken
+// for a life goal.
+
+export interface DesiredFromSignalContext {
+  braindumpEntries: BraindumpEntry[]
+  existingDesired: DesiredProfile
+}
+
+const DESIRED_FROM_SIGNAL_SYSTEM = `Je bent de introspectie-laag van HEYRA (OSLIFE). Rick schrijft braindumps — losse notities, geen interview. Soms zegt hij daarin EXPLICIET iets over wie hij wil worden of wat hij wil bereiken/vermijden (bv. "ik wil...", "ik zou willen dat ik...", "ik wil stoppen met...", "ik wil nooit meer...", "op termijn wil ik...").
+
+Vind ALLEEN zulke expliciete uitspraken en zet ze om in aanvullingen op zijn droomprofiel.
+
+Categorieën (gebruik exact deze keys): "identity_sketch", "aspirations", "no_gos"
+- identity_sketch: "ik ben iemand die…" — de aspiratieversie van zichzelf
+- aspirations: waar hij consistent naartoe wil groeien, wat hij zou willen (blijven) doen
+- no_gos: wie hij nooit wil worden, harde grenzen die hij niet overschrijdt
+
+Regels:
+- ALLEEN expliciete uitspraken uit de tekst — geen interpretatie, geen afleiding uit stemming, toon of zijdelingse opmerkingen.
+- Dupliceer NIET wat al in zijn bestaande droomprofiel staat (hieronder gegeven) — sla over wat er al (in andere woorden) staat.
+- Elk item kort en concreet (max ~12 woorden), geen verhalende zin, geen citaat.
+- Geen expliciete uitspraak gevonden in deze braindumps? Antwoord met lege lijsten — verzin niets.
+
+Antwoord ALLEEN met een fenced \`\`\`json blok, geen andere tekst:
+{"identity_sketch":["..."],"aspirations":["..."],"no_gos":["..."]}`
+
+function buildDesiredFromSignalContext(ctx: DesiredFromSignalContext): string {
+  const parts: string[] = []
+
+  const existing = renderCategories('Bestaand droomprofiel (niet dupliceren)', ctx.existingDesired.categories)
+  parts.push(existing || 'Bestaand droomprofiel: nog leeg.')
+
+  const dumps = [...ctx.braindumpEntries].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+  parts.push(
+    `Braindumps:\n${dumps
+      .map((b) => `- [${b.domain ?? 'onbekend'}] ${(b.title ? `${b.title}: ` : '') + (b.summary || b.markdown || '').slice(0, 400)}`)
+      .join('\n')}`,
+  )
+
+  return parts.join('\n\n')
+}
+
+/**
+ * Scan recent braindumps for explicit aspirational statements and propose
+ * additions to the desired profile. Brain-only (free text can't be bucketed
+ * reliably by rules). Returns null on failure/no braindumps to scan — the
+ * caller treats that as "nothing new", not an error.
+ */
+export async function synthesizeDesiredFromSignal(ctx: DesiredFromSignalContext): Promise<Record<string, string[]> | null> {
+  if (!ctx.braindumpEntries.length) return null
+  const raw = await askBrain(DESIRED_FROM_SIGNAL_SYSTEM, buildDesiredFromSignalContext(ctx).slice(0, 16000), {
+    maxTokens: 500,
+    timeoutMs: 12000,
+  })
+  if (!raw) return null
+  const parsed = parseBrainJson(raw)
+  const categories = toCategoryRecord(parsed, DESIRED_CATEGORIES)
+  return Object.keys(categories).length ? categories : null
+}
