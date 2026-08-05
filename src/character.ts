@@ -326,6 +326,30 @@ export function computeMilestonePath(goals: Goal[], milestones: Milestone[]): Mi
       })
     }
   }
+
+  // A goal with no milestones of its own isn't "done" — but every quest/
+  // milestone view above is 100% milestone-driven, so without this it's
+  // silently invisible everywhere: an accepted quest proposal (a bare Goal,
+  // no milestones yet) would sit in North Star with nothing to show for it
+  // in the Quest Log or Milestone Path, reading as "nothing happened" even
+  // though the accept genuinely worked. One virtual "current" step per such
+  // goal — using the goal's own title/deadline, nothing invented — keeps
+  // every real goal actionable here from the moment it exists.
+  for (const g of goals) {
+    if (chains.has(g.id) || goalProgress(g) >= 1) continue
+    steps.push({
+      id: `virtual-${g.id}`,
+      title: g.title,
+      domain: g.domain,
+      goalTitle: null,
+      status: 'current',
+      dueDate: g.deadline,
+      indexInGoal: 0,
+      requiresTitle: null,
+      difficulty: 'Beginner',
+    })
+  }
+
   return steps.sort((a, b) => (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999'))
 }
 

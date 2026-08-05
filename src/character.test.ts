@@ -259,6 +259,28 @@ describe('computeMilestonePath', () => {
     expect(byId.m5.difficulty).toBe('Meester') // caps out, doesn't keep escalating forever
     expect(byId.m5.requiresTitle).toBe('Stap 4')
   })
+  it('gives a goal with zero real milestones a virtual "current" step so it is never invisible', () => {
+    const goals = [goal({ id: 'g1', domain: 'prjct', title: 'Nieuw doel zonder mijlpalen', current: 5, target: 100, deadline: '2026-09-01' })]
+    const path = computeMilestonePath(goals, [])
+    expect(path).toHaveLength(1)
+    expect(path[0].id).toBe('virtual-g1')
+    expect(path[0].title).toBe('Nieuw doel zonder mijlpalen')
+    expect(path[0].status).toBe('current')
+    expect(path[0].dueDate).toBe('2026-09-01')
+    expect(path[0].difficulty).toBe('Beginner')
+    expect(path[0].requiresTitle).toBeNull()
+  })
+  it('does not synthesize a virtual step once the goal is already achieved', () => {
+    const goals = [goal({ id: 'g1', current: 100, target: 100 })]
+    expect(computeMilestonePath(goals, [])).toEqual([])
+  })
+  it('does not duplicate a virtual step for a goal that already has real milestones', () => {
+    const goals = [goal({ id: 'g1', current: 5, target: 100 })]
+    const milestones = [milestone({ id: 'm1', goalId: 'g1' })]
+    const path = computeMilestonePath(goals, milestones)
+    expect(path).toHaveLength(1)
+    expect(path[0].id).toBe('m1')
+  })
 })
 
 describe('computeQuestLog', () => {
@@ -297,6 +319,14 @@ describe('computeQuestLog', () => {
     const goals = ALL_DOMAINS.map((domain, i) => goal({ id: `g${i}`, domain }))
     const milestones = goals.map((g, i) => milestone({ id: `m${i}`, goalId: g.id, due: `2026-0${i + 1}-01` }))
     expect(computeQuestLog(goals, milestones, '2026-01-01', 2)).toHaveLength(2)
+  })
+  it('surfaces a freshly-accepted goal (no milestones yet) as an active quest, not an empty log', () => {
+    const goals = [goal({ id: 'g1', title: 'Nieuw geaccepteerd doel', current: 0, target: 10, deadline: '2026-09-01' })]
+    const quests = computeQuestLog(goals, [], '2026-08-01')
+    expect(quests).toHaveLength(1)
+    expect(quests[0].id).toBe('virtual-g1')
+    expect(quests[0].title).toBe('Nieuw geaccepteerd doel')
+    expect(quests[0].xpReward).toBeGreaterThan(0)
   })
 })
 
