@@ -51,6 +51,7 @@ export default function Money() {
     markPaymentPaid,
     addPayment,
     deletePayment,
+    updatePayment,
     deleteTransaction,
     updateTransaction,
     autoTagTransactions,
@@ -216,6 +217,9 @@ export default function Money() {
             onAddBudgetCap={addBudgetCap}
             onDeleteBudgetCap={deleteBudgetCap}
             transactions={transactions}
+            payments={payments}
+            onMarkPaymentPaid={markPaymentPaid}
+            onUpdatePayment={updatePayment}
           />
         </TabsContent>
 
@@ -226,6 +230,7 @@ export default function Money() {
             onAddPayment={addPayment}
             onMarkPaid={markPaymentPaid}
             onDeletePayment={deletePayment}
+            onUpdatePayment={updatePayment}
             onAddSubscription={addSubscription}
             onToggleSubscription={toggleSubscription}
             onDeleteSubscription={deleteSubscription}

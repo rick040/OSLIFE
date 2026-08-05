@@ -4,10 +4,19 @@ import { DOMAIN_META, domainMeta, TODAY, fmtDate, daysBetween } from '../domains
 import { dueLabel } from '../lib/dates'
 import { eur } from '../lib/format'
 import { MiniCalendar } from './MiniCalendar'
+import { effectiveUrgent } from './financeCoach'
 import type { Domain, Payment, PaymentDirection, Subscription, Cadence } from '../types'
 import {
-  Plus, Trash2, CheckCircle2, ArrowDownLeft, ArrowUpRight, Copy, Link2, Repeat, Pause, Play, X,
+  Plus, Trash2, CheckCircle2, ArrowDownLeft, ArrowUpRight, Copy, Link2, Repeat, Pause, Play, X, Flag,
 } from 'lucide-react'
+
+/** Cycles Payment.urgent through the three states a click can set: unset
+ *  (auto, follows the due-date heuristic) -> urgent -> can-wait -> unset. */
+function nextUrgentState(current: boolean | null | undefined): boolean | null {
+  if (current === true) return false
+  if (current === false) return null
+  return true
+}
 
 type Segment = 'eenmalig' | 'abonnementen'
 
@@ -32,6 +41,7 @@ export function BillsTab({
   onAddPayment,
   onMarkPaid,
   onDeletePayment,
+  onUpdatePayment,
   onAddSubscription,
   onToggleSubscription,
   onDeleteSubscription,
@@ -41,6 +51,7 @@ export function BillsTab({
   onAddPayment: (p: Omit<Payment, 'id' | 'status' | 'source'>) => void
   onMarkPaid: (id: string) => void
   onDeletePayment: (id: string) => void
+  onUpdatePayment: (id: string, patch: Partial<Pick<Payment, 'urgent' | 'note' | 'due'>>) => void
   onAddSubscription: (s: Omit<Subscription, 'id'>) => void
   onToggleSubscription: (id: string) => void
   onDeleteSubscription: (id: string) => void
@@ -62,7 +73,7 @@ export function BillsTab({
       </div>
 
       {segment === 'eenmalig' ? (
-        <OneOffBills payments={payments} onAdd={onAddPayment} onMarkPaid={onMarkPaid} onDelete={onDeletePayment} />
+        <OneOffBills payments={payments} onAdd={onAddPayment} onMarkPaid={onMarkPaid} onDelete={onDeletePayment} onUpdate={onUpdatePayment} />
       ) : (
         <Subscriptions
           subscriptions={subscriptions}
@@ -81,11 +92,13 @@ function OneOffBills({
   onAdd,
   onMarkPaid,
   onDelete,
+  onUpdate,
 }: {
   payments: Payment[]
   onAdd: (p: Omit<Payment, 'id' | 'status' | 'source'>) => void
   onMarkPaid: (id: string) => void
   onDelete: (id: string) => void
+  onUpdate: (id: string, patch: Partial<Pick<Payment, 'urgent' | 'note' | 'due'>>) => void
 }) {
   const [form, setForm] = useState(false)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -147,6 +160,28 @@ function OneOffBills({
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <DomainChip domain={p.domain} small />
                     <span className={`text-xs ${due.overdue ? 'text-cross font-medium' : 'text-faint'}`}>{due.label}</span>
+                    <button
+                      onClick={() => onUpdate(p.id, { urgent: nextUrgentState(p.urgent) })}
+                      className={`chip !py-0.5 !px-1.5 gap-1 ${
+                        p.urgent === true
+                          ? 'bg-cross/15 text-cross'
+                          : p.urgent === false
+                          ? 'bg-line text-muted'
+                          : effectiveUrgent(p)
+                          ? 'bg-cross/10 text-cross/80'
+                          : 'bg-sunken text-faint'
+                      }`}
+                      title={
+                        p.urgent === true
+                          ? 'Handmatig gemarkeerd als urgent — klik voor "kan wachten"'
+                          : p.urgent === false
+                          ? 'Handmatig gemarkeerd als "kan wachten" — klik om terug naar automatisch te gaan'
+                          : 'Urgentie automatisch bepaald op basis van de datum — klik om zelf te markeren als urgent'
+                      }
+                    >
+                      <Flag className="h-3 w-3" />
+                      {p.urgent === true ? 'Urgent' : p.urgent === false ? 'Kan wachten' : effectiveUrgent(p) ? 'Urgent (auto)' : 'Automatisch'}
+                    </button>
                     {p.note && <span className="text-xs text-faint truncate">· {p.note}</span>}
                   </div>
                   {(p.iban || p.paymentLink) && (

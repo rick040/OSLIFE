@@ -888,6 +888,11 @@ export interface Payment {
   iban?: string | null // counterparty IBAN, for manually-added bills
   paymentLink?: string | null // pasted payment/checkout URL
   note?: string | null // free-text (what this is, invoice number, …)
+  /** Manual override of the due-date urgency heuristic. null/undefined = auto
+   *  (overdue or due within a few days); true = Rick flagged it urgent even
+   *  if the date doesn't scream it; false = flagged "can wait" even if the
+   *  date looks urgent. Feeds the finance coach's plan. */
+  urgent?: boolean | null
 }
 
 // ── Investments: lightweight owned-holdings tracker ──────────────────────────
