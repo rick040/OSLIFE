@@ -54,15 +54,16 @@ maken niet uit. De verwachte tabs/kolommen + sheet-id properties staan boven in 
   capture). Setup: `../.claude/skills/oslife-remember/SKILL.md`.
 - `kwgt-api` (`supabase/functions/kwgt-api/`) — backend voor de 5 premium KWGT-widgets (to-do
   lijst, belangrijkste items, actieve projecten, brain-dump quick add, HEYRA quick chat/voice):
-  GET-only, secret via query-param, service-role. Setup + bouwgids per widget: `kwgt/README.md`.
+  GET-only, secret via query-param, service-role. Setup: `kwgt/README.md`.
 
 ## KWGT-widgets (`kwgt/`)
 
-Vijf losse premium home-screen-widgets voor [KWGT](https://play.google.com/store/apps/details?id=org.kustom.widget)
-("Kustom Widget"), gebaseerd op `kwgt-api` hierboven. Geen aparte server — je bouwt de widget zelf
-in Kustom's eigen editor aan de hand van een exacte, module-voor-module gids per widget (kleuren,
-formules, JSON-paden, tik-acties), en exporteert daarna als gewoon `.kwgt`-bestand om te delen.
-Zie `kwgt/README.md` voor het gedeelde design-systeem en de opzet-stappen.
+Vijf kant-en-klare, direct importeerbare `.kwgt`-bestanden (`kwgt/presets/`) voor
+[KWGT](https://play.google.com/store/apps/details?id=org.kustom.widget) ("Kustom Widget"),
+gebaseerd op `kwgt-api` hierboven. Gebouwd met `kwgt/scripts/build_presets.py` volgens een
+`preset.json`-schema dat is teruggelezen uit echte, werkende widgets van andere makers (zie
+`kwgt/README.md` voor de bronnen en wat geverifieerd vs. best-effort is). Importeren, twee
+tekstvelden invullen (API-URL + secret), klaar — zie `kwgt/README.md`.
 
 ## Claude Skill (`../.claude/skills/oslife-remember/`)
 

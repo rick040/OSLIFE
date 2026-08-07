@@ -2,7 +2,7 @@
  * Supabase Edge Function: kwgt-api
  * ---------------------------------
  * Backend for the 5 premium KWGT (Kustom Widget) home-screen widgets — see
- * integrations/kwgt/README.md for the full widget build guide. Same
+ * integrations/kwgt/README.md and integrations/kwgt/presets/*.kwgt. Same
  * single-phone/single-device convention as widget-summary/screentime-app-ingest:
  * GET everywhere (KWGT's network engine and its "Open URL" touch action are
  * both GET-only), shared secret via header or query param, service role,
@@ -11,6 +11,7 @@
  *   GET  ?w=todos                       → open tasks (todo-list widget)
  *   GET  ?w=focus                       → "Belangrijkste vandaag" shortlist
  *   GET  ?w=projects                    → active projects
+ *   GET  ?w=braindump-count             → today's Braindump capture count (read-only badge)
  *   GET  ?w=braindump&text=...          → quick-capture into Braindump
  *   GET  ?w=heyra&msg=...               → one-shot HEYRA reply (chat/voice widget)
  *   GET  ?w=task-toggle&id=...          → flip a task open/closed, returns fresh ?w=todos
@@ -152,6 +153,18 @@ async function fetchProjects(sb: Sb, limit: number) {
   };
 }
 
+/** Read-only count of today's Braindump captures — powers the quick-add widget's live badge. */
+async function fetchBraindumpCountToday(sb: Sb) {
+  const today = amsterdamToday();
+  const { count, error } = await sb
+    .from("braindump_entries")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", USER_ID)
+    .gte("created_at", `${today}T00:00:00.000Z`);
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const, asOf: new Date().toISOString(), count: count ?? 0 };
+}
+
 /** Quick-capture into Braindump — same pipeline as telegram-webhook's plain-text path. */
 async function captureBraindump(sb: Sb, text: string) {
   const trimmed = text.trim();
@@ -254,6 +267,8 @@ Deno.serve(async (req) => {
       return json(await fetchFocus(sb));
     case "projects":
       return json(await fetchProjects(sb, LIMITS.projects));
+    case "braindump-count":
+      return json(await fetchBraindumpCountToday(sb));
     case "braindump":
       return json(await captureBraindump(sb, url.searchParams.get("text") ?? ""));
     case "heyra":
@@ -261,6 +276,6 @@ Deno.serve(async (req) => {
     case "task-toggle":
       return json(await toggleTask(sb, url.searchParams.get("id") ?? ""));
     default:
-      return json({ ok: false, error: "Unknown widget — use ?w=todos|focus|projects|braindump|heyra|task-toggle" }, 400);
+      return json({ ok: false, error: "Unknown widget — use ?w=todos|focus|projects|braindump-count|braindump|heyra|task-toggle" }, 400);
   }
 });
