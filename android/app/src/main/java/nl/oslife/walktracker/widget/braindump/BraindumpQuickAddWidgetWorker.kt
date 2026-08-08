@@ -29,7 +29,7 @@ class BraindumpQuickAddWidgetWorker(context: Context, params: WorkerParameters) 
         val views = when (val result = OslifeWidgetApi.get(context, "widget-braindump-add")) {
             is OslifeWidgetApi.Result.Success -> buildViews(context, todayCount = result.json.optInt("todayCount", 0))
             is OslifeWidgetApi.Result.NotConfigured -> buildViews(context, notConfiguredMessage = true)
-            is OslifeWidgetApi.Result.Failure -> buildViews(context)
+            is OslifeWidgetApi.Result.Failure -> buildViews(context, errorMessage = result.message)
         }
         pushViews(context, views)
         return Result.success()
@@ -46,7 +46,12 @@ class BraindumpQuickAddWidgetWorker(context: Context, params: WorkerParameters) 
             ids.forEach { id -> manager.updateAppWidget(id, views) }
         }
 
-        fun buildViews(context: Context, todayCount: Int? = null, notConfiguredMessage: Boolean = false): RemoteViews {
+        fun buildViews(
+            context: Context,
+            todayCount: Int? = null,
+            notConfiguredMessage: Boolean = false,
+            errorMessage: String? = null,
+        ): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_braindump_add)
 
             val openQuickAdd = PendingIntent.getActivity(
@@ -69,6 +74,7 @@ class BraindumpQuickAddWidgetWorker(context: Context, params: WorkerParameters) 
                 R.id.widget_count,
                 when {
                     notConfiguredMessage -> "Nog niet ingesteld"
+                    errorMessage != null -> "⚠️ $errorMessage"
                     todayCount == null -> ""
                     todayCount == 0 -> "Nog niets vandaag"
                     todayCount == 1 -> "1 vandaag vastgelegd"
