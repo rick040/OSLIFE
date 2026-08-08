@@ -5,4 +5,20 @@
         <item name="colorAccent">@color/accent</item>
         <item name="android:windowBackground">@color/ic_launcher_background</item>
     </style>
+
+    <!-- Floating "quick capture" dialog activities launched straight from a
+         widget tap (QuickAddActivity, HeyraQuickChatActivity) — transparent
+         window with a scrim + rounded card drawn by the layout itself, no
+         action bar, no window animation flicker. -->
+    <style name="Theme.WalkTracker.Overlay" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+        <item name="colorPrimary">@color/accent</item>
+        <item name="colorAccent">@color/accent</item>
+    </style>
 </resources>

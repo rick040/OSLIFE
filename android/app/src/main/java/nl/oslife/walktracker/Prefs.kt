@@ -32,6 +32,26 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_WIDGET_SUMMARY_SECRET, "") ?: ""
         set(value) = sp.edit().putString(KEY_WIDGET_SUMMARY_SECRET, value).apply()
 
+    // ── Premium OSLIFE widgets (to-do, priority, projects, brain-dump, HEYRA) ──
+    // One shared base URL + secret for all five — each function derives its own
+    // full URL by appending its own name, so setup is "paste once", not five
+    // separate URL/secret pairs. Defaults to the widget-summary secret's own
+    // convention (WIDGET_SUMMARY_SECRET) so most installs need zero new config.
+
+    var oslifeFunctionsBaseUrl: String
+        get() = sp.getString(KEY_OSLIFE_BASE_URL, "") ?: ""
+        set(value) = sp.edit().putString(KEY_OSLIFE_BASE_URL, value).apply()
+
+    var oslifeWidgetSecret: String
+        get() = sp.getString(KEY_OSLIFE_SECRET, "") ?: ""
+        set(value) = sp.edit().putString(KEY_OSLIFE_SECRET, value).apply()
+
+    /** Full URL for one of the widget-* edge functions, or "" if not configured yet. */
+    fun oslifeFunctionUrl(functionName: String): String {
+        val base = oslifeFunctionsBaseUrl.trim().trimEnd('/')
+        return if (base.isBlank()) "" else "$base/$functionName"
+    }
+
     var homeLat: Double
         get() = java.lang.Double.longBitsToDouble(sp.getLong(KEY_HOME_LAT, 0L))
         set(value) = sp.edit().putLong(KEY_HOME_LAT, java.lang.Double.doubleToLongBits(value)).apply()
@@ -74,6 +94,8 @@ class Prefs(context: Context) {
         private const val KEY_SECRET = "secret"
         private const val KEY_WIDGET_SUMMARY_URL = "widget_summary_url"
         private const val KEY_WIDGET_SUMMARY_SECRET = "widget_summary_secret"
+        private const val KEY_OSLIFE_BASE_URL = "oslife_functions_base_url"
+        private const val KEY_OSLIFE_SECRET = "oslife_widget_secret"
         private const val KEY_HOME_LAT = "home_lat"
         private const val KEY_HOME_LON = "home_lon"
         private const val KEY_WALK_ACTIVE = "walk_active"

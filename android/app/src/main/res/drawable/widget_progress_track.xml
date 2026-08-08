@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Track for the active-projects progress bars: a flat rounded groove the accent-colored progress drawable sits on top of. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/widget_divider" />
+    <corners android:radius="4dp" />
+</shape>

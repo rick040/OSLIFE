@@ -19,6 +19,10 @@ import nl.oslife.walktracker.detect.DetectionRegistrar
 import nl.oslife.walktracker.detect.WalkDetector
 import nl.oslife.walktracker.walks.WalksListActivity
 import nl.oslife.walktracker.widget.WidgetUpdateWorker
+import nl.oslife.walktracker.widget.braindump.BraindumpQuickAddWidgetWorker
+import nl.oslife.walktracker.widget.priority.TopPriorityWidgetWorker
+import nl.oslife.walktracker.widget.projects.ActiveProjectsWidgetWorker
+import nl.oslife.walktracker.widget.todo.TodoListWidgetProvider
 
 class MainActivity : AppCompatActivity() {
 
@@ -59,6 +63,8 @@ class MainActivity : AppCompatActivity() {
         binding.secretInput.setText(prefs.secret)
         binding.widgetUrlInput.setText(prefs.widgetSummaryUrl)
         binding.widgetSecretInput.setText(prefs.widgetSummarySecret)
+        binding.oslifeBaseUrlInput.setText(prefs.oslifeFunctionsBaseUrl)
+        binding.oslifeSecretInput.setText(prefs.oslifeWidgetSecret)
         renderHomeStatus()
         renderPermissionStatus()
 
@@ -77,6 +83,20 @@ class MainActivity : AppCompatActivity() {
         binding.refreshWidgetButton.setOnClickListener {
             WidgetUpdateWorker.refreshNow(this)
             Toast.makeText(this, "Widget wordt ververst…", Toast.LENGTH_SHORT).show()
+        }
+
+        binding.saveOslifeSettingsButton.setOnClickListener {
+            prefs.oslifeFunctionsBaseUrl = binding.oslifeBaseUrlInput.text.toString().trim()
+            prefs.oslifeWidgetSecret = binding.oslifeSecretInput.text.toString().trim()
+            Toast.makeText(this, "OSLIFE-widget-instellingen opgeslagen", Toast.LENGTH_SHORT).show()
+        }
+
+        binding.refreshOslifeWidgetsButton.setOnClickListener {
+            TodoListWidgetProvider.notifyListChanged(this)
+            TopPriorityWidgetWorker.refreshNow(this)
+            ActiveProjectsWidgetWorker.refreshNow(this)
+            BraindumpQuickAddWidgetWorker.refreshNow(this)
+            Toast.makeText(this, "Widgets worden ververst…", Toast.LENGTH_SHORT).show()
         }
 
         binding.setHomeButton.setOnClickListener { captureHomeLocation() }

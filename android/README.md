@@ -167,6 +167,45 @@ Until step 2 is done, the widget shows "Widget nog niet ingesteld" instead
 of guessing at data. A failed refresh (no network, server error) leaves the
 last good snapshot on screen rather than clearing it.
 
+## Premium OSLIFE widgets (to-do · belangrijkste items · projecten · brain-dump · HEYRA)
+
+The same app also provides five separate, purpose-built home-screen widgets —
+each its own accent color and layout, not five copies of one template:
+
+| Widget | Shows | Interaction |
+|---|---|---|
+| **To-do lijst** | Every open task, real scrollable list | Tap a row to mark it done (disappears next refresh); tap the header to open the app |
+| **Belangrijkste items** | Top 5 open High/Medium-priority tasks | Glance card; tap to open the app |
+| **Actieve projecten** | Up to 4 active projects with a progress bar + deadline | Glance card; tap to open the app |
+| **Brain-dump snel toevoegen** | Today's capture count | Tap the card or the "+" to open a floating quick-capture dialog — type or tap the mic to speak, "Bewaar" saves it |
+| **HEYRA snel chatten/spreken** | Static prompt | Tap the card for a floating chat dialog, or tap the mic chip to start listening immediately — one grounded reply, rendered as chat bubbles |
+
+Voice input on the two floating dialogs uses Android's built-in speech
+recognizer (`RecognizerIntent.ACTION_RECOGNIZE_SPEECH`, delegated to the
+Google app) — no `RECORD_AUDIO` permission needed in this app, no extra setup.
+
+**Backend:** four new edge functions, all reusing the widget-summary secret
+(`WIDGET_SUMMARY_SECRET`) — nothing new to generate if that's already set up:
+
+```bash
+supabase functions deploy widget-tasks --project-ref nhyunnnmdcmojvkxrbpl
+supabase functions deploy widget-projects --project-ref nhyunnnmdcmojvkxrbpl
+supabase functions deploy widget-braindump-add --project-ref nhyunnnmdcmojvkxrbpl
+supabase functions deploy widget-heyra-chat --project-ref nhyunnnmdcmojvkxrbpl
+```
+
+`widget-heyra-chat` also needs `ANTHROPIC_API_KEY` — already set if
+braindump-ingest/heyra-brain are deployed.
+
+**Setup on the phone** (one shared config for all five, unlike the
+per-feature URL/secret pairs above): open the app → **OSLIFE-widgets** →
+paste the **functions base URL** (`https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1`,
+no trailing function name) and the same `WIDGET_SUMMARY_SECRET` value → save.
+Then long-press the home screen → **Widgets** → **OSLIFE Walk Tracker** and
+drag each of the five onto the home screen. Until the base URL/secret are
+set, each widget shows "Nog niet ingesteld" instead of guessing at data —
+same fail-quiet convention as the "Vandaag" glance widget above.
+
 ## Tuning
 
 All thresholds live in `Constants.kt`:
