@@ -15,7 +15,27 @@ android {
         versionName = "1.0"
     }
 
+    // Fixed debug-signing key, checked into the repo (app/debug.keystore) — a
+    // debug key carries no security risk (Android refuses debug-signed builds
+    // for anything sensitive; Play Store rejects debug-signed uploads outright).
+    // Without this, Gradle's own auto-generated fallback debug key differs on
+    // every machine, so a debug APK built on one GitHub Actions runner has a
+    // different app signature than the next run's — Android then treats each
+    // new build as a different app and refuses to update in place, wiping all
+    // saved settings/permissions on every reinstall.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
