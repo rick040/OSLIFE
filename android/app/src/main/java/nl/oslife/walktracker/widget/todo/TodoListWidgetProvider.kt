@@ -7,8 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.RemoteViews
-import nl.oslife.walktracker.MainActivity
 import nl.oslife.walktracker.R
+import nl.oslife.walktracker.widget.common.DeepLink
 
 /**
  * Home-screen "To-do lijst" widget: a real scrollable list of open tasks
@@ -38,12 +38,17 @@ class TodoListWidgetProvider : AppWidgetProvider() {
                 val taskId = intent.getStringExtra(EXTRA_TASK_ID) ?: return
                 TodoToggleWorker.enqueue(context, taskId)
             }
+            ACTION_OPEN -> {
+                val taskId = intent.getStringExtra(EXTRA_TASK_ID) ?: return
+                context.startActivity(DeepLink.intent(context, "tasks", taskId))
+            }
         }
     }
 
     companion object {
         const val ACTION_REFRESH = "nl.oslife.walktracker.widget.todo.ACTION_REFRESH"
         const val ACTION_TOGGLE = "nl.oslife.walktracker.widget.todo.ACTION_TOGGLE"
+        const val ACTION_OPEN = "nl.oslife.walktracker.widget.todo.ACTION_OPEN"
         const val EXTRA_TASK_ID = "task_id"
 
         private fun updateOne(context: Context, manager: AppWidgetManager, appWidgetId: Int) {
@@ -63,11 +68,7 @@ class TodoListWidgetProvider : AppWidgetProvider() {
             )
             views.setPendingIntentTemplate(R.id.todo_list, togglePendingIntent)
 
-            val openAppIntent = android.app.PendingIntent.getActivity(
-                context, 0, Intent(context, MainActivity::class.java),
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
-            )
-            views.setOnClickPendingIntent(R.id.widget_root, openAppIntent)
+            views.setOnClickPendingIntent(R.id.widget_root, DeepLink.pendingIntent(context, 0, "tasks"))
 
             val refreshIntent = Intent(context, TodoListWidgetProvider::class.java).apply { action = ACTION_REFRESH }
             val refreshPendingIntent = android.app.PendingIntent.getBroadcast(

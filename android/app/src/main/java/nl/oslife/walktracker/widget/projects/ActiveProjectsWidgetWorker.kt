@@ -18,15 +18,15 @@ import androidx.work.WorkManager
 import androidx.work.WorkRequest
 import androidx.work.Worker
 import androidx.work.WorkerParameters
-import nl.oslife.walktracker.MainActivity
 import nl.oslife.walktracker.R
 import nl.oslife.walktracker.widget.common.DateFmt
+import nl.oslife.walktracker.widget.common.DeepLink
 import nl.oslife.walktracker.widget.common.OslifeWidgetApi
 import org.json.JSONArray
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
-private data class ActiveProject(val name: String, val client: String, val progress: Double, val deadline: String?)
+private data class ActiveProject(val id: String, val name: String, val client: String, val progress: Double, val deadline: String?)
 
 private val ROW_IDS = intArrayOf(R.id.widget_row1, R.id.widget_row2, R.id.widget_row3, R.id.widget_row4)
 private val NAME_IDS = intArrayOf(R.id.widget_name1, R.id.widget_name2, R.id.widget_name3, R.id.widget_name4)
@@ -63,6 +63,7 @@ class ActiveProjectsWidgetWorker(context: Context, params: WorkerParameters) : W
             return (0 until projects.length()).map {
                 val o = projects.getJSONObject(it)
                 ActiveProject(
+                    id = o.optString("id"),
                     name = o.optString("name", "(zonder naam)"),
                     client = o.optString("client", ""),
                     progress = o.optDouble("progress", 0.0),
@@ -79,11 +80,7 @@ class ActiveProjectsWidgetWorker(context: Context, params: WorkerParameters) : W
         ): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_active_projects)
 
-            val openAppIntent = PendingIntent.getActivity(
-                context, 0, Intent(context, MainActivity::class.java),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-            views.setOnClickPendingIntent(R.id.widget_root, openAppIntent)
+            views.setOnClickPendingIntent(R.id.widget_root, DeepLink.pendingIntent(context, 0, "projects"))
 
             val refreshIntent = Intent(context, ActiveProjectsWidgetProvider::class.java).apply {
                 action = ActiveProjectsWidgetProvider.ACTION_REFRESH
@@ -107,13 +104,13 @@ class ActiveProjectsWidgetWorker(context: Context, params: WorkerParameters) : W
                     views.setTextViewText(R.id.widget_empty, "⚠️ $errorMessage")
                     views.setTextViewText(R.id.widget_updated, "")
                 }
-                else -> renderProjects(views, parseProjects(projects))
+                else -> renderProjects(context, views, parseProjects(projects))
             }
 
             return views
         }
 
-        private fun renderProjects(views: RemoteViews, items: List<ActiveProject>) {
+        private fun renderProjects(context: Context, views: RemoteViews, items: List<ActiveProject>) {
             views.setViewVisibility(R.id.widget_empty, if (items.isEmpty()) View.VISIBLE else View.GONE)
             for (i in ROW_IDS.indices) {
                 if (i >= items.size) {
@@ -126,6 +123,8 @@ class ActiveProjectsWidgetWorker(context: Context, params: WorkerParameters) : W
                 views.setTextViewText(CLIENT_IDS[i], p.client)
                 views.setTextViewText(DEADLINE_IDS[i], DateFmt.relative(p.deadline))
                 views.setProgressBar(PROGRESS_IDS[i], 100, (p.progress.coerceIn(0.0, 1.0) * 100).toInt(), false)
+                // Distinct request code per row so each row's PendingIntent carries its own project id.
+                views.setOnClickPendingIntent(ROW_IDS[i], DeepLink.pendingIntent(context, 200 + i, "projects", p.id))
             }
             views.setTextViewText(R.id.widget_updated, "Ververst: net")
         }

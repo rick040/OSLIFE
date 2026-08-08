@@ -37,10 +37,21 @@ import AppGrid from './components/AppGrid'
 import SuggestionSplash from './components/SuggestionSplash'
 import { ConfirmDialog } from './components/ui'
 import { AppShell } from './components/layout/app-shell'
-import { type View } from './nav'
+import { type View, SCREENS } from './nav'
+
+// Deep link from outside the app (e.g. an Android home-screen widget tap):
+// ?view=<View>&id=<entityId> opens straight to that screen, and for
+// tasks/projects, straight to that specific item's detail. Parsed once at
+// module scope, not per-render — window.location.search doesn't change
+// within a single SPA session.
+const deepLinkParams = new URLSearchParams(window.location.search)
+const deepLinkView = deepLinkParams.get('view') as View | null
+const deepLinkId = deepLinkParams.get('id')
 
 export default function App() {
-  const [view, setView] = useState<View>('dashboard')
+  const [view, setView] = useState<View>(() =>
+    deepLinkView && SCREENS.some((s) => s.id === deepLinkView) ? deepLinkView : 'dashboard',
+  )
   // PWA Web Share Target lands on /share (see public/sw.js + manifest).
   const [isShare, setIsShare] = useState(() => window.location.pathname === '/share')
   // Standalone redesign preview (docs/design.md Part 2) — no auth required
@@ -58,12 +69,12 @@ export default function App() {
 
   const Current: Record<View, JSX.Element> = {
     dashboard: <Dashboard onNav={(v) => setView(v as View)} />,
-    tasks: <Tasks />,
+    tasks: <Tasks initialTaskId={deepLinkView === 'tasks' ? deepLinkId : null} />,
     daybuilder: <DayBuilder />,
     vitals: <Vitals />,
     workout: <Workout />,
     money: <Money />,
-    projects: <Projects />,
+    projects: <Projects initialProjectId={deepLinkView === 'projects' ? deepLinkId : null} />,
     inbox: <InboxView />,
     northstar: <NorthStar />,
     profile: <ProfileScreen />,

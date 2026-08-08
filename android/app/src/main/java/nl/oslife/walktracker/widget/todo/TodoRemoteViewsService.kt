@@ -79,8 +79,16 @@ private class TodoRemoteViewsFactory(
         }
         views.setInt(R.id.todo_priority_dot, "setBackgroundResource", dotRes)
 
-        val fillInIntent = Intent().putExtra(TodoListWidgetProvider.EXTRA_TASK_ID, item.id)
-        views.setOnClickFillInIntent(R.id.row_root, fillInIntent)
+        // Two tap zones sharing the collection's one PendingIntentTemplate: the
+        // checkbox toggles done/open (fillInIntent's own action wins over the
+        // template's), tapping the rest of the row opens this task in OSLIFE.
+        val toggleFillIn = Intent().setAction(TodoListWidgetProvider.ACTION_TOGGLE)
+            .putExtra(TodoListWidgetProvider.EXTRA_TASK_ID, item.id)
+        views.setOnClickFillInIntent(R.id.todo_check, toggleFillIn)
+
+        val openFillIn = Intent().setAction(TodoListWidgetProvider.ACTION_OPEN)
+            .putExtra(TodoListWidgetProvider.EXTRA_TASK_ID, item.id)
+        views.setOnClickFillInIntent(R.id.row_root, openFillIn)
 
         return views
     }

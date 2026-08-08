@@ -17,15 +17,15 @@ import androidx.work.WorkManager
 import androidx.work.WorkRequest
 import androidx.work.Worker
 import androidx.work.WorkerParameters
-import nl.oslife.walktracker.MainActivity
 import nl.oslife.walktracker.R
 import nl.oslife.walktracker.widget.common.DateFmt
+import nl.oslife.walktracker.widget.common.DeepLink
 import nl.oslife.walktracker.widget.common.OslifeWidgetApi
 import org.json.JSONArray
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
-private data class PriorityTask(val title: String, val due: String?, val priority: String?)
+private data class PriorityTask(val id: String, val title: String, val due: String?, val priority: String?)
 
 private val ROW_IDS = intArrayOf(R.id.widget_row1, R.id.widget_row2, R.id.widget_row3, R.id.widget_row4, R.id.widget_row5)
 private val DOT_IDS = intArrayOf(R.id.widget_dot1, R.id.widget_dot2, R.id.widget_dot3, R.id.widget_dot4, R.id.widget_dot5)
@@ -63,7 +63,12 @@ class TopPriorityWidgetWorker(context: Context, params: WorkerParameters) : Work
             val high = all.filter { it.optString("priority") == "High" }
             val medium = all.filter { it.optString("priority") == "Medium" }
             return (high + medium).take(5).map {
-                PriorityTask(it.optString("title", "(zonder titel)"), it.optString("due", null), it.optString("priority", null))
+                PriorityTask(
+                    it.optString("id"),
+                    it.optString("title", "(zonder titel)"),
+                    it.optString("due", null),
+                    it.optString("priority", null),
+                )
             }
         }
 
@@ -75,11 +80,7 @@ class TopPriorityWidgetWorker(context: Context, params: WorkerParameters) : Work
         ): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_top_priority)
 
-            val openAppIntent = PendingIntent.getActivity(
-                context, 0, Intent(context, MainActivity::class.java),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-            views.setOnClickPendingIntent(R.id.widget_root, openAppIntent)
+            views.setOnClickPendingIntent(R.id.widget_root, DeepLink.pendingIntent(context, 0, "tasks"))
 
             val refreshIntent = Intent(context, TopPriorityWidgetProvider::class.java).apply {
                 action = TopPriorityWidgetProvider.ACTION_REFRESH
@@ -103,13 +104,13 @@ class TopPriorityWidgetWorker(context: Context, params: WorkerParameters) : Work
                     views.setTextViewText(R.id.widget_empty, "⚠️ $errorMessage")
                     views.setTextViewText(R.id.widget_updated, "")
                 }
-                else -> renderTasks(views, topPriorityTasks(tasks))
+                else -> renderTasks(context, views, topPriorityTasks(tasks))
             }
 
             return views
         }
 
-        private fun renderTasks(views: RemoteViews, items: List<PriorityTask>) {
+        private fun renderTasks(context: Context, views: RemoteViews, items: List<PriorityTask>) {
             views.setViewVisibility(R.id.widget_empty, if (items.isEmpty()) android.view.View.VISIBLE else android.view.View.GONE)
             for (i in ROW_IDS.indices) {
                 if (i >= items.size) {
@@ -122,6 +123,8 @@ class TopPriorityWidgetWorker(context: Context, params: WorkerParameters) : Work
                 views.setTextViewText(DUE_IDS[i], DateFmt.relative(item.due))
                 val dotRes = if (item.priority == "High") R.drawable.priority_dot_high else R.drawable.priority_dot_medium
                 views.setInt(DOT_IDS[i], "setBackgroundResource", dotRes)
+                // Distinct request code per row so each row's PendingIntent carries its own task id.
+                views.setOnClickPendingIntent(ROW_IDS[i], DeepLink.pendingIntent(context, 100 + i, "tasks", item.id))
             }
             views.setTextViewText(R.id.widget_updated, "Ververst: net")
         }

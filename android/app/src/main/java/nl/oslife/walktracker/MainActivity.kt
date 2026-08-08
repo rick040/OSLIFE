@@ -65,6 +65,7 @@ class MainActivity : AppCompatActivity() {
         binding.widgetSecretInput.setText(prefs.widgetSummarySecret)
         binding.oslifeBaseUrlInput.setText(prefs.oslifeFunctionsBaseUrl)
         binding.oslifeSecretInput.setText(prefs.oslifeWidgetSecret)
+        binding.oslifeWebAppUrlInput.setText(prefs.oslifeWebAppUrl)
         renderHomeStatus()
         renderPermissionStatus()
 
@@ -88,6 +89,7 @@ class MainActivity : AppCompatActivity() {
         binding.saveOslifeSettingsButton.setOnClickListener {
             prefs.oslifeFunctionsBaseUrl = binding.oslifeBaseUrlInput.text.toString().trim()
             prefs.oslifeWidgetSecret = binding.oslifeSecretInput.text.toString().trim()
+            prefs.oslifeWebAppUrl = binding.oslifeWebAppUrlInput.text.toString().trim()
             Toast.makeText(this, "OSLIFE-widget-instellingen opgeslagen", Toast.LENGTH_SHORT).show()
         }
 

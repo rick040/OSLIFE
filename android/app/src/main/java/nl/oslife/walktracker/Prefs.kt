@@ -42,6 +42,12 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_OSLIFE_BASE_URL, "") ?: ""
         set(value) = sp.edit().putString(KEY_OSLIFE_BASE_URL, value).apply()
 
+    /** The deployed OSLIFE web app's URL (e.g. https://oslife.vercel.app) — tapping a
+     * task/project in a widget opens straight to that item there (see DeepLink.kt). */
+    var oslifeWebAppUrl: String
+        get() = sp.getString(KEY_OSLIFE_WEB_APP_URL, "") ?: ""
+        set(value) = sp.edit().putString(KEY_OSLIFE_WEB_APP_URL, value).apply()
+
     var oslifeWidgetSecret: String
         get() = sp.getString(KEY_OSLIFE_SECRET, "") ?: ""
         set(value) = sp.edit().putString(KEY_OSLIFE_SECRET, value).apply()
@@ -95,6 +101,7 @@ class Prefs(context: Context) {
         private const val KEY_WIDGET_SUMMARY_URL = "widget_summary_url"
         private const val KEY_WIDGET_SUMMARY_SECRET = "widget_summary_secret"
         private const val KEY_OSLIFE_BASE_URL = "oslife_functions_base_url"
+        private const val KEY_OSLIFE_WEB_APP_URL = "oslife_web_app_url"
         private const val KEY_OSLIFE_SECRET = "oslife_widget_secret"
         private const val KEY_HOME_LAT = "home_lat"
         private const val KEY_HOME_LON = "home_lon"

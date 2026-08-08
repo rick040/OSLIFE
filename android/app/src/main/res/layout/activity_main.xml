@@ -231,6 +231,20 @@
             android:hint="WIDGET_SUMMARY_SECRET waarde"
             android:inputType="textPassword" />
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="OSLIFE web app URL (voor 'open in OSLIFE' vanuit een widget)"
+            android:textSize="12sp"
+            android:alpha="0.7"
+            android:layout_marginTop="8dp" />
+        <EditText
+            android:id="@+id/oslifeWebAppUrlInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="https://oslife.vercel.app"
+            android:inputType="textUri" />
+
         <Button
             android:id="@+id/saveOslifeSettingsButton"
             android:layout_width="match_parent"
