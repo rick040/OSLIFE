@@ -21,6 +21,7 @@ import androidx.work.WorkerParameters
 import nl.oslife.widgets.R
 import nl.oslife.widgets.widget.common.DeepLink
 import nl.oslife.widgets.widget.common.OslifeWidgetApi
+import nl.oslife.widgets.widget.common.WidgetStyle
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
@@ -53,8 +54,11 @@ class CalendarWidgetWorker(context: Context, params: WorkerParameters) : Worker(
         private fun pushViews(context: Context, views: RemoteViews) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, CalendarWidgetProvider::class.java))
-            ids.forEach { id -> manager.updateAppWidget(id, views) }
+            ids.forEach { id -> manager.updateAppWidget(id, styled(context, views, id)) }
         }
+
+        fun styled(context: Context, views: RemoteViews, appWidgetId: Int): RemoteViews =
+            WidgetStyle.applyInstanceStyle(context, views, appWidgetId, ROW_IDS, rowHeightDp = 34, chromeDp = 90)
 
         fun buildViews(
             context: Context,

@@ -19,6 +19,7 @@ import androidx.work.Worker
 import androidx.work.WorkerParameters
 import nl.oslife.widgets.R
 import nl.oslife.widgets.widget.common.OslifeWidgetApi
+import nl.oslife.widgets.widget.common.WidgetStyle
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
@@ -43,7 +44,7 @@ class BraindumpQuickAddWidgetWorker(context: Context, params: WorkerParameters) 
         private fun pushViews(context: Context, views: RemoteViews) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, BraindumpQuickAddWidgetProvider::class.java))
-            ids.forEach { id -> manager.updateAppWidget(id, views) }
+            ids.forEach { id -> manager.updateAppWidget(id, WidgetStyle.applyInstanceStyle(context, views, id)) }
         }
 
         fun buildViews(

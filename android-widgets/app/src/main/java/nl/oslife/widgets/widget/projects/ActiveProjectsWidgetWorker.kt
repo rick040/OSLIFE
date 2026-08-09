@@ -22,6 +22,7 @@ import nl.oslife.widgets.R
 import nl.oslife.widgets.widget.common.DateFmt
 import nl.oslife.widgets.widget.common.DeepLink
 import nl.oslife.widgets.widget.common.OslifeWidgetApi
+import nl.oslife.widgets.widget.common.WidgetStyle
 import org.json.JSONArray
 import java.time.Duration
 import java.util.concurrent.TimeUnit
@@ -60,8 +61,11 @@ class ActiveProjectsWidgetWorker(context: Context, params: WorkerParameters) : W
         private fun pushViews(context: Context, views: RemoteViews) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, ActiveProjectsWidgetProvider::class.java))
-            ids.forEach { id -> manager.updateAppWidget(id, views) }
+            ids.forEach { id -> manager.updateAppWidget(id, styled(context, views, id)) }
         }
+
+        fun styled(context: Context, views: RemoteViews, appWidgetId: Int): RemoteViews =
+            WidgetStyle.applyInstanceStyle(context, views, appWidgetId, ROW_IDS, rowHeightDp = 62, chromeDp = 95)
 
         private fun parseProjects(projects: JSONArray?): List<ActiveProject> {
             if (projects == null) return emptyList()

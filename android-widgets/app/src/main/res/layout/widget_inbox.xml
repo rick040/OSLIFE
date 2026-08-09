@@ -53,39 +53,54 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="14dp"
-        android:text="Nog niet ingesteld"
+        android:text="Geen ongelezen mail"
         android:textSize="13sp"
         android:textColor="@color/widget_text_secondary"
         android:visibility="gone" />
 
-    <LinearLayout
-        android:id="@+id/widget_row1"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
-        android:orientation="vertical">
-        <TextView android:id="@+id/widget_from1" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="13sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
-        <TextView android:id="@+id/widget_subject1" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:textSize="12sp" android:textColor="@color/widget_text_secondary" android:maxLines="1" android:ellipsize="end" android:text="" />
+    <LinearLayout android:id="@+id/widget_row1" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:orientation="vertical">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:id="@+id/widget_from1" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textSize="13sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
+            <TextView android:id="@+id/widget_time1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textSize="11sp" android:textColor="@color/widget_text_tertiary" android:text="" />
+        </LinearLayout>
+        <TextView android:id="@+id/widget_subject1" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textSize="12sp" android:textColor="@color/widget_text_secondary" android:maxLines="1" android:ellipsize="end" android:text="" />
+        <TextView android:id="@+id/widget_snippet1" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:textSize="11sp" android:textColor="@color/widget_text_tertiary" android:maxLines="1" android:ellipsize="end" android:text="" />
     </LinearLayout>
 
-    <LinearLayout
-        android:id="@+id/widget_row2"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:orientation="vertical">
-        <TextView android:id="@+id/widget_from2" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="13sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
-        <TextView android:id="@+id/widget_subject2" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:textSize="12sp" android:textColor="@color/widget_text_secondary" android:maxLines="1" android:ellipsize="end" android:text="" />
+    <LinearLayout android:id="@+id/widget_row2" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:orientation="vertical">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:id="@+id/widget_from2" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textSize="13sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
+            <TextView android:id="@+id/widget_time2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textSize="11sp" android:textColor="@color/widget_text_tertiary" android:text="" />
+        </LinearLayout>
+        <TextView android:id="@+id/widget_subject2" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textSize="12sp" android:textColor="@color/widget_text_secondary" android:maxLines="1" android:ellipsize="end" android:text="" />
+        <TextView android:id="@+id/widget_snippet2" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:textSize="11sp" android:textColor="@color/widget_text_tertiary" android:maxLines="1" android:ellipsize="end" android:text="" />
     </LinearLayout>
 
-    <LinearLayout
-        android:id="@+id/widget_row3"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:orientation="vertical">
-        <TextView android:id="@+id/widget_from3" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="13sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
-        <TextView android:id="@+id/widget_subject3" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:textSize="12sp" android:textColor="@color/widget_text_secondary" android:maxLines="1" android:ellipsize="end" android:text="" />
+    <LinearLayout android:id="@+id/widget_row3" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:orientation="vertical">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:id="@+id/widget_from3" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textSize="13sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
+            <TextView android:id="@+id/widget_time3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textSize="11sp" android:textColor="@color/widget_text_tertiary" android:text="" />
+        </LinearLayout>
+        <TextView android:id="@+id/widget_subject3" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textSize="12sp" android:textColor="@color/widget_text_secondary" android:maxLines="1" android:ellipsize="end" android:text="" />
+        <TextView android:id="@+id/widget_snippet3" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:textSize="11sp" android:textColor="@color/widget_text_tertiary" android:maxLines="1" android:ellipsize="end" android:text="" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/widget_row4" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:orientation="vertical">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:id="@+id/widget_from4" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textSize="13sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
+            <TextView android:id="@+id/widget_time4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textSize="11sp" android:textColor="@color/widget_text_tertiary" android:text="" />
+        </LinearLayout>
+        <TextView android:id="@+id/widget_subject4" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textSize="12sp" android:textColor="@color/widget_text_secondary" android:maxLines="1" android:ellipsize="end" android:text="" />
+        <TextView android:id="@+id/widget_snippet4" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:textSize="11sp" android:textColor="@color/widget_text_tertiary" android:maxLines="1" android:ellipsize="end" android:text="" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/widget_row5" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:orientation="vertical">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+            <TextView android:id="@+id/widget_from5" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textSize="13sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
+            <TextView android:id="@+id/widget_time5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textSize="11sp" android:textColor="@color/widget_text_tertiary" android:text="" />
+        </LinearLayout>
+        <TextView android:id="@+id/widget_subject5" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textSize="12sp" android:textColor="@color/widget_text_secondary" android:maxLines="1" android:ellipsize="end" android:text="" />
+        <TextView android:id="@+id/widget_snippet5" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="1dp" android:textSize="11sp" android:textColor="@color/widget_text_tertiary" android:maxLines="1" android:ellipsize="end" android:text="" />
     </LinearLayout>
 
     <TextView

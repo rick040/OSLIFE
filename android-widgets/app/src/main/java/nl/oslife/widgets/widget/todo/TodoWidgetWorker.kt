@@ -22,6 +22,7 @@ import nl.oslife.widgets.R
 import nl.oslife.widgets.widget.common.DateFmt
 import nl.oslife.widgets.widget.common.DeepLink
 import nl.oslife.widgets.widget.common.OslifeWidgetApi
+import nl.oslife.widgets.widget.common.WidgetStyle
 import org.json.JSONArray
 import java.time.Duration
 import java.util.concurrent.TimeUnit
@@ -72,8 +73,12 @@ class TodoWidgetWorker(context: Context, params: WorkerParameters) : Worker(cont
         private fun pushViews(context: Context, views: RemoteViews) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, TodoListWidgetProvider::class.java))
-            ids.forEach { id -> manager.updateAppWidget(id, views) }
+            ids.forEach { id -> manager.updateAppWidget(id, styled(context, views, id)) }
         }
+
+        /** Per-instance opacity + row count for this widgetId's current on-screen size. */
+        fun styled(context: Context, views: RemoteViews, appWidgetId: Int): RemoteViews =
+            WidgetStyle.applyInstanceStyle(context, views, appWidgetId, ROW_IDS, rowHeightDp = 40, chromeDp = 100)
 
         private fun parseTasks(tasks: JSONArray?): List<TodoItem> {
             if (tasks == null) return emptyList()

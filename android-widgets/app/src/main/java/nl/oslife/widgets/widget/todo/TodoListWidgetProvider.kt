@@ -4,6 +4,8 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
+import nl.oslife.widgets.widget.common.WidgetStyle
 
 /**
  * Home-screen "To-do lijst" widget: up to six open tasks (widget-tasks edge
@@ -23,7 +25,7 @@ class TodoListWidgetProvider : AppWidgetProvider() {
         } catch (e: Exception) {
             TodoWidgetWorker.buildViews(context, errorMessage = "Interne fout: ${e.message}")
         }
-        appWidgetIds.forEach { id -> appWidgetManager.updateAppWidget(id, views) }
+        appWidgetIds.forEach { id -> appWidgetManager.updateAppWidget(id, TodoWidgetWorker.styled(context, views, id)) }
         TodoWidgetWorker.refreshNow(context)
     }
 
@@ -33,6 +35,15 @@ class TodoListWidgetProvider : AppWidgetProvider() {
 
     override fun onDisabled(context: Context) {
         TodoWidgetWorker.cancelPeriodic(context)
+    }
+
+    override fun onAppWidgetOptionsChanged(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int, newOptions: Bundle) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+        TodoWidgetWorker.refreshNow(context)
+    }
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        appWidgetIds.forEach { id -> WidgetStyle.clear(context, id) }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
