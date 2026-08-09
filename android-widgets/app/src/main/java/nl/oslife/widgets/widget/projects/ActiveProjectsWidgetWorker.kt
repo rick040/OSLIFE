@@ -135,7 +135,7 @@ class ActiveProjectsWidgetWorker(context: Context, params: WorkerParameters) : W
                 } else {
                     views.setViewVisibility(DEADLINE_IDS[i], View.VISIBLE)
                     views.setTextViewText(DEADLINE_IDS[i], deadlineLabel)
-                    views.setInt(DEADLINE_IDS[i], "setBackgroundResource", if (overdue) R.drawable.pill_danger else R.drawable.pill_neutral)
+                    views.setInt(DEADLINE_IDS[i], "setBackgroundResource", if (overdue) R.drawable.pill_danger else R.drawable.pill_glass)
                     views.setTextColor(DEADLINE_IDS[i], if (overdue) context.getColor(R.color.widget_danger) else context.getColor(R.color.widget_text_secondary))
                 }
 

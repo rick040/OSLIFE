@@ -2,37 +2,39 @@
     <color name="ic_launcher_background">#0F172A</color>
     <color name="accent">#34D399</color>
 
-    <!-- ── Premium widget design system ─────────────────────────────────────
-         One shared card shape + typography scale, one distinct accent per
-         widget so five widgets on the same home screen read as a family, not
-         five unrelated boxes. -->
-    <color name="widget_card_bg">#FFFFFF</color>
-    <color name="widget_text_primary">#111318</color>
-    <color name="widget_text_secondary">#5B6270</color>
-    <color name="widget_text_tertiary">#9AA0AC</color>
-    <color name="widget_divider">#EDEFF3</color>
+    <!-- ── Native widget design system (v3) ──────────────────────────────────
+         Dark glass card (translucent, blends with the home-screen wallpaper
+         the way the OS's own widgets do — see the "Stappen" reference), no
+         icon badges, bold light typography. One accent color per widget used
+         only for progress bars / small tag text, never for backgrounds. -->
+    <color name="widget_card_bg">#CC15151A</color>
+    <color name="widget_text_primary">#FFFFFF</color>
+    <color name="widget_text_secondary">#B0B4BD</color>
+    <color name="widget_text_tertiary">#7D8189</color>
+    <color name="widget_divider">#26FFFFFF</color>
 
-    <color name="widget_accent_todo">#3B82F6</color>
-    <color name="widget_accent_priority">#F59E0B</color>
-    <color name="widget_accent_projects">#8B5CF6</color>
-    <color name="widget_accent_braindump">#10B981</color>
-    <color name="widget_accent_heyra">#14B8A6</color>
-    <color name="widget_accent_health">#F43F5E</color>
-    <color name="widget_accent_finance">#6366F1</color>
-    <color name="widget_accent_inbox">#0EA5E9</color>
-    <color name="widget_accent_calendar">#F97316</color>
+    <color name="widget_accent_todo">#5B9BFF</color>
+    <color name="widget_accent_priority">#FBBF24</color>
+    <color name="widget_accent_projects">#A78BFA</color>
+    <color name="widget_accent_braindump">#34D399</color>
+    <color name="widget_accent_heyra">#2DD4BF</color>
+    <color name="widget_accent_health">#FB7185</color>
+    <color name="widget_accent_finance">#818CF8</color>
+    <color name="widget_accent_inbox">#38BDF8</color>
+    <color name="widget_accent_calendar">#FB923C</color>
 
-    <color name="widget_accent_todo_soft">#EAF1FF</color>
-    <color name="widget_accent_priority_soft">#FEF3E2</color>
-    <color name="widget_accent_projects_soft">#F1EAFE</color>
-    <color name="widget_accent_braindump_soft">#E5F9F0</color>
-    <color name="widget_accent_heyra_soft">#E1F7F4</color>
-    <color name="widget_accent_health_soft">#FDE8EC</color>
-    <color name="widget_accent_finance_soft">#EAEAFC</color>
-    <color name="widget_accent_inbox_soft">#E4F4FD</color>
-    <color name="widget_accent_calendar_soft">#FEEBDD</color>
+    <color name="widget_danger">#FF6B6B</color>
+    <color name="widget_ghost_bg">#1FFFFFFF</color>
+    <color name="widget_glass_bg">#1FFFFFFF</color>
+    <color name="widget_danger_bg">#40FF453A</color>
+    <color name="widget_hero_number">#FFFFFF</color>
 
-    <color name="widget_danger">#DC2626</color>
-    <color name="widget_ghost_bg">#F1F2F5</color>
-    <color name="widget_hero_number">#0A0A0F</color>
+    <!-- ── Floating quick-capture dialogs (QuickAddActivity, HeyraQuickChatActivity) ──
+         A separate, deliberately light card system — NOT RemoteViews, a normal
+         Activity — kept independent from the dark widget_* tokens above so a
+         future widget theme change can never silently break these again. -->
+    <color name="dialog_card_bg">#FFFFFF</color>
+    <color name="dialog_text_primary">#111318</color>
+    <color name="dialog_text_tertiary">#9AA0AC</color>
+    <color name="dialog_heyra_reply_bg">#E1F7F4</color>
 </resources>

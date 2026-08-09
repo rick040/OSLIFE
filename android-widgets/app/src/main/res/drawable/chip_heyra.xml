@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Used by the floating chat dialog (activity_heyra_chat.xml) only — that
+     dialog keeps its own light-card design language, separate from the
+     dark-glass home-screen widget cards. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <solid android:color="@color/widget_accent_heyra" />
     <corners android:radius="12dp" />

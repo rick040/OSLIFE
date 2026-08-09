@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shared "glass tag" pill for meta badges on the dark card — a barely-there
+     translucent-white chip; the tag reads via its TEXT color (set per use:
+     an accent color, widget_text_secondary, or widget_danger), not the
+     background. Replaces the nine separate per-widget soft-pastel pills,
+     which read as light patches pasted onto a dark card. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/widget_glass_bg" />
+    <corners android:radius="10dp" />
+</shape>

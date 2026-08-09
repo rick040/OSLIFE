@@ -13,24 +13,10 @@
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
-        <FrameLayout
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:background="@drawable/chip_inbox">
-            <ImageView
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:layout_gravity="center"
-                android:tint="@android:color/white"
-                android:src="@drawable/ic_mail"
-                android:contentDescription="@null" />
-        </FrameLayout>
-
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="10dp"
             android:text="Inbox"
             android:textStyle="bold"
             android:textSize="16sp"
@@ -45,10 +31,10 @@
             android:paddingEnd="9dp"
             android:paddingTop="4dp"
             android:paddingBottom="4dp"
-            android:background="@drawable/pill_inbox"
+            android:background="@drawable/pill_glass"
             android:textSize="11sp"
             android:textStyle="bold"
-            android:textColor="@color/widget_text_primary"
+            android:textColor="@color/widget_accent_inbox"
             android:text=""
             android:visibility="gone" />
 

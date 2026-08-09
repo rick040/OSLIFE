@@ -13,24 +13,10 @@
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
-        <FrameLayout
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:background="@drawable/chip_calendar">
-            <ImageView
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:layout_gravity="center"
-                android:tint="@android:color/white"
-                android:src="@drawable/ic_calendar"
-                android:contentDescription="@null" />
-        </FrameLayout>
-
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="10dp"
             android:text="Agenda"
             android:textStyle="bold"
             android:textSize="16sp"
@@ -57,22 +43,22 @@
         android:visibility="gone" />
 
     <LinearLayout android:id="@+id/widget_row1" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:orientation="horizontal" android:gravity="center_vertical">
-        <TextView android:id="@+id/widget_time1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minWidth="44dp" android:gravity="center" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:background="@drawable/pill_calendar" android:textSize="11sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:text="" />
+        <TextView android:id="@+id/widget_time1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minWidth="44dp" android:gravity="center" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:background="@drawable/pill_glass" android:textSize="11sp" android:textStyle="bold" android:textColor="@color/widget_accent_calendar" android:text="" />
         <TextView android:id="@+id/widget_title1" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:textSize="14sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
     </LinearLayout>
 
     <LinearLayout android:id="@+id/widget_row2" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:orientation="horizontal" android:gravity="center_vertical">
-        <TextView android:id="@+id/widget_time2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minWidth="44dp" android:gravity="center" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:background="@drawable/pill_calendar" android:textSize="11sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:text="" />
+        <TextView android:id="@+id/widget_time2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minWidth="44dp" android:gravity="center" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:background="@drawable/pill_glass" android:textSize="11sp" android:textStyle="bold" android:textColor="@color/widget_accent_calendar" android:text="" />
         <TextView android:id="@+id/widget_title2" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:textSize="14sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
     </LinearLayout>
 
     <LinearLayout android:id="@+id/widget_row3" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:orientation="horizontal" android:gravity="center_vertical">
-        <TextView android:id="@+id/widget_time3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minWidth="44dp" android:gravity="center" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:background="@drawable/pill_calendar" android:textSize="11sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:text="" />
+        <TextView android:id="@+id/widget_time3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minWidth="44dp" android:gravity="center" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:background="@drawable/pill_glass" android:textSize="11sp" android:textStyle="bold" android:textColor="@color/widget_accent_calendar" android:text="" />
         <TextView android:id="@+id/widget_title3" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:textSize="14sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
     </LinearLayout>
 
     <LinearLayout android:id="@+id/widget_row4" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:orientation="horizontal" android:gravity="center_vertical">
-        <TextView android:id="@+id/widget_time4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minWidth="44dp" android:gravity="center" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:background="@drawable/pill_calendar" android:textSize="11sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:text="" />
+        <TextView android:id="@+id/widget_time4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minWidth="44dp" android:gravity="center" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="4dp" android:paddingBottom="4dp" android:background="@drawable/pill_glass" android:textSize="11sp" android:textStyle="bold" android:textColor="@color/widget_accent_calendar" android:text="" />
         <TextView android:id="@+id/widget_title4" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:textSize="14sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
     </LinearLayout>
 

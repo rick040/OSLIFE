@@ -13,24 +13,10 @@
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
-        <FrameLayout
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:background="@drawable/chip_priority">
-            <ImageView
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:layout_gravity="center"
-                android:tint="@android:color/white"
-                android:src="@drawable/ic_flag"
-                android:contentDescription="@null" />
-        </FrameLayout>
-
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="10dp"
             android:text="Belangrijkste"
             android:textStyle="bold"
             android:textSize="16sp"
@@ -50,7 +36,7 @@
         android:id="@+id/widget_empty"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
+        android:layout_marginTop="14dp"
         android:text="Geen belangrijke items open. 🎉"
         android:textSize="13sp"
         android:textColor="@color/widget_text_secondary"
@@ -65,7 +51,7 @@
         android:gravity="center_vertical">
         <View android:layout_width="7dp" android:layout_height="7dp" android:id="@+id/widget_dot1" android:background="@drawable/priority_dot_high" />
         <TextView android:id="@+id/widget_title1" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:textSize="14sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
-        <TextView android:id="@+id/widget_due1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:background="@drawable/pill_neutral" android:textSize="11sp" android:textColor="@color/widget_text_secondary" android:text="" />
+        <TextView android:id="@+id/widget_due1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:background="@drawable/pill_glass" android:textSize="11sp" android:textColor="@color/widget_text_secondary" android:text="" />
     </LinearLayout>
 
     <LinearLayout
@@ -77,7 +63,7 @@
         android:gravity="center_vertical">
         <View android:layout_width="7dp" android:layout_height="7dp" android:id="@+id/widget_dot2" android:background="@drawable/priority_dot_high" />
         <TextView android:id="@+id/widget_title2" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:textSize="14sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
-        <TextView android:id="@+id/widget_due2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:background="@drawable/pill_neutral" android:textSize="11sp" android:textColor="@color/widget_text_secondary" android:text="" />
+        <TextView android:id="@+id/widget_due2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:background="@drawable/pill_glass" android:textSize="11sp" android:textColor="@color/widget_text_secondary" android:text="" />
     </LinearLayout>
 
     <LinearLayout
@@ -89,7 +75,7 @@
         android:gravity="center_vertical">
         <View android:layout_width="7dp" android:layout_height="7dp" android:id="@+id/widget_dot3" android:background="@drawable/priority_dot_high" />
         <TextView android:id="@+id/widget_title3" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:textSize="14sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
-        <TextView android:id="@+id/widget_due3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:background="@drawable/pill_neutral" android:textSize="11sp" android:textColor="@color/widget_text_secondary" android:text="" />
+        <TextView android:id="@+id/widget_due3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:background="@drawable/pill_glass" android:textSize="11sp" android:textColor="@color/widget_text_secondary" android:text="" />
     </LinearLayout>
 
     <LinearLayout
@@ -101,7 +87,7 @@
         android:gravity="center_vertical">
         <View android:layout_width="7dp" android:layout_height="7dp" android:id="@+id/widget_dot4" android:background="@drawable/priority_dot_high" />
         <TextView android:id="@+id/widget_title4" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:textSize="14sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
-        <TextView android:id="@+id/widget_due4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:background="@drawable/pill_neutral" android:textSize="11sp" android:textColor="@color/widget_text_secondary" android:text="" />
+        <TextView android:id="@+id/widget_due4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:background="@drawable/pill_glass" android:textSize="11sp" android:textColor="@color/widget_text_secondary" android:text="" />
     </LinearLayout>
 
     <LinearLayout
@@ -113,7 +99,7 @@
         android:gravity="center_vertical">
         <View android:layout_width="7dp" android:layout_height="7dp" android:id="@+id/widget_dot5" android:background="@drawable/priority_dot_high" />
         <TextView android:id="@+id/widget_title5" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="10dp" android:textSize="14sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
-        <TextView android:id="@+id/widget_due5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:background="@drawable/pill_neutral" android:textSize="11sp" android:textColor="@color/widget_text_secondary" android:text="" />
+        <TextView android:id="@+id/widget_due5" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:background="@drawable/pill_glass" android:textSize="11sp" android:textColor="@color/widget_text_secondary" android:text="" />
     </LinearLayout>
 
     <TextView

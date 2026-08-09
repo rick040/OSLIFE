@@ -13,24 +13,10 @@
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
-        <FrameLayout
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:background="@drawable/chip_health">
-            <ImageView
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:layout_gravity="center"
-                android:tint="@android:color/white"
-                android:src="@drawable/ic_heart"
-                android:contentDescription="@null" />
-        </FrameLayout>
-
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="10dp"
             android:text="Gezondheid"
             android:textStyle="bold"
             android:textSize="16sp"
@@ -61,16 +47,31 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:layout_marginTop="14dp">
+        android:layout_marginTop="12dp">
 
-        <TextView
-            android:id="@+id/widget_steps"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="28sp"
-            android:textStyle="bold"
-            android:textColor="@color/widget_hero_number"
-            android:text="" />
+            android:orientation="horizontal"
+            android:gravity="bottom">
+            <TextView
+                android:id="@+id/widget_steps"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:textColor="@color/widget_hero_number"
+                android:text="" />
+            <TextView
+                android:id="@+id/widget_steps_goal"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="4dp"
+                android:textSize="13sp"
+                android:textColor="@color/widget_text_tertiary"
+                android:text="" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/widget_steps_caption"
@@ -80,11 +81,21 @@
             android:textColor="@color/widget_text_secondary"
             android:text="stappen vandaag" />
 
+        <ProgressBar
+            android:id="@+id/widget_steps_progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="8dp"
+            android:layout_marginTop="10dp"
+            android:max="100"
+            android:progress="0"
+            android:progressDrawable="@drawable/widget_progress_fill_health" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="12dp">
+            android:layout_marginTop="14dp">
 
             <TextView
                 android:id="@+id/widget_sleep"
@@ -94,7 +105,7 @@
                 android:paddingEnd="10dp"
                 android:paddingTop="6dp"
                 android:paddingBottom="6dp"
-                android:background="@drawable/pill_health"
+                android:background="@drawable/pill_glass"
                 android:textSize="12sp"
                 android:textColor="@color/widget_text_primary"
                 android:text="" />
@@ -108,7 +119,7 @@
                 android:paddingEnd="10dp"
                 android:paddingTop="6dp"
                 android:paddingBottom="6dp"
-                android:background="@drawable/pill_health"
+                android:background="@drawable/pill_glass"
                 android:textSize="12sp"
                 android:textColor="@color/widget_text_primary"
                 android:text="" />
