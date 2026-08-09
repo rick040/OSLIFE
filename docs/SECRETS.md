@@ -48,6 +48,8 @@ Publiek/veilig (RLS beschermt de data).
 | `TELEGRAM_WEBHOOK_SECRET` | telegram-webhook | **zelf verzinnen** (random) — meegegeven aan `setWebhook` als `secret_token`; Telegram stuurt 'm terug als header `X-Telegram-Bot-Api-Secret-Token` |
 | `CRON_SECRET` | notify-tick | **zelf verzinnen** (random) — ook letterlijk gebruikt in de eenmalige `cron.schedule()`-SQL (niet elders opgeslagen, nooit ingevuld committen) |
 | `CLAUDE_INGEST_SECRET` | claude-chat-ingest | **zelf verzinnen** (random) — gedeeld met de `oslife-remember` Claude Skill (`.claude/skills/oslife-remember/`, als env var op de machine waar Claude draait), niet met de telefoon/MacroDroid-secrets. Zonder deze secret weigert claude-chat-ingest elk verzoek (fail closed). |
+| `FIVERR_DOC_WEBHOOK_URL` | fiverr-process-intake | de `/exec` URL van de Apps Script Web App-deployment (zie §9) — **niet automatisch gezet, moet je zelf plakken na deployen** |
+| `FIVERR_DOC_WEBHOOK_SECRET` | fiverr-process-intake | **zelf verzinnen** (random) — **exact dezelfde** waarde als de Apps Script Script Property `FIVERR_DOC_WEBHOOK_SECRET` (zie §9). Zonder deze twee secrets slaat de proposal-doc-generatie gewoon over (project/invoice worden nog steeds aangemaakt, alleen zonder `document_url`) — geen harde fail. |
 
 > Legacy: `RICK_USER_ID` wordt nog als fallback gelezen, maar gebruik `OSLIFE_USER_ID`.
 
@@ -69,6 +71,8 @@ Er zijn geen GitHub Actions meer (de Spotify-workflow is verwijderd). Oude repo-
 | `HEALTH_SHEET_ID` | id uit de Health-sheet URL |
 | `PAYMENTS_SYNC_URL` | `https://nhyunnnmdcmojvkxrbpl.supabase.co/functions/v1/payments-sheet-ingest` |
 | `PAYMENTS_SHEET_ID` | id uit de Betalingen-sheet URL |
+| `FIVERR_TEMPLATE_DOC_ID` | Google Doc-id van het PRJCT voorstel/factuur-template (`1bAR-iexpTYoDcPgWlW7aAVXMnXEjE9A8QVmHBe-09oc`, of je eigen kopie) |
+| `FIVERR_DOC_WEBHOOK_SECRET` | **exact dezelfde** waarde als de Supabase-secret hierboven |
 
 > Sheet-id = het lange stuk in de URL: `docs.google.com/spreadsheets/d/`**`<ID>`**`/edit`.
 > Daarna `installAllTriggers()` één keer draaien en de scopes autoriseren.
@@ -237,17 +241,42 @@ zelf, in deze volgorde:
      hierboven). Zonder deze drie geeft "concept opslaan in Gmail" een 502 terug — de rest
      van de Inbox (lijst, samenvatting, concept-tekst genereren) werkt al zonder.
 
----
+## 9. Fiverr client/project intake (fiverr-poll + fiverr-process-intake): eenmalige setup
+
+Volledig server-side (Edge Functions + pg_cron), zoals notify-tick — geen afhankelijkheid
+van een laptop die aan moet staan. Zie `docs/README-fiverr-intake.md` voor de volledige
+flow-uitleg; hier alleen de stappen die **niet** vanuit de sandbox konden (Apps Script
+plakken/deployen is altijd handmatig — Apps Script heeft geen API die een agent kan
+aanroepen).
+
+1. **Apps Script bijwerken**: plak de bijgewerkte inhoud van
+   `integrations/apps-script/Code.gs` in het bestaande "OSLIFE ingest"-project (zie §4) —
+   voegt `doPost()` + `createProposalDoc_()` toe, raakt de bestaande sync-functies niet aan.
+2. **Script Properties toevoegen** (zie tabel in §4): `FIVERR_TEMPLATE_DOC_ID`,
+   `FIVERR_DOC_WEBHOOK_SECRET` (zelf verzinnen, bv. `openssl rand -hex 24`).
+3. **Deployen als Web App**: Deploy → New deployment → type **Web app**, execute as **Me**,
+   who has access **Anyone**. Kopieer de `/exec` URL.
+4. **Supabase secrets zetten** (dashboard of `supabase secrets set`):
+   `FIVERR_DOC_WEBHOOK_URL` = de `/exec` URL uit stap 3, `FIVERR_DOC_WEBHOOK_SECRET` =
+   **exact dezelfde** waarde als stap 2. (`CRON_SECRET`, `ANTHROPIC_API_KEY`,
+   `TELEGRAM_BOT_TOKEN` zijn al project-secrets — die hoef je niet opnieuw te zetten.)
+5. Beide Edge Functions (`fiverr-poll`, `fiverr-process-intake`) en de twee `pg_cron`-jobs
+   (`oslife-fiverr-poll` elke 3 min, `oslife-fiverr-process-intake` elke 5 min) staan al live.
+6. **Pricing invullen**: vul `service_packages` handmatig met je echte tarieven — leeg is
+   prima om mee te starten, dan schat de AI redelijk in en flagt het als schatting.
+7. Test: stuur jezelf (of wacht op) een echte Fiverr-melding, check na ~15-20 min
+   `client_messages`/`projects`/`project_invoices` in de app en de Telegram-melding.
 
 ## Waarden die op meerdere plekken **gelijk** moeten zijn
 
 - `INGEST_SECRET` → Supabase **én** Apps Script (zelfde random string).
 - `OSLIFE_USER_ID` → Supabase **én** Apps Script.
 - `SUPABASE_SERVICE_KEY` (Apps Script) = de service_role key uit Supabase.
+- `FIVERR_DOC_WEBHOOK_SECRET` → Supabase **én** Apps Script (zelfde random string).
 
 ## Zelf verzinnen vs. opzoeken
 
-- **Verzinnen** (`openssl rand -base64 32`): `INGEST_SECRET`, `WALLET_WEBHOOK_SECRET`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, `WORKER_SECRET`, `COGNEE_WORKER_SECRET`, `GEOFENCE_WEBHOOK_SECRET`, `CLAUDE_INGEST_SECRET`.
+- **Verzinnen** (`openssl rand -base64 32`): `INGEST_SECRET`, `WALLET_WEBHOOK_SECRET`, `TELEGRAM_WEBHOOK_SECRET`, `CRON_SECRET`, `WORKER_SECRET`, `COGNEE_WORKER_SECRET`, `GEOFENCE_WEBHOOK_SECRET`, `CLAUDE_INGEST_SECRET`, `FIVERR_DOC_WEBHOOK_SECRET`.
 - **Opzoeken**: `VITE_SUPABASE_ANON_KEY`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `OSLIFE_USER_ID`, `GBK_API_KEY`, `TELEGRAM_BOT_TOKEN`, `VOYAGE_API_KEY`, `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN` (§8).
 
 ## Per databron: welke secrets heb je nodig
@@ -271,6 +300,7 @@ zelf, in deze volgorde:
 | Vault-notes (Markdown-spiegel van braindump/interaction/summary/message) | geen eigen secret — materialize-note schrijft alleen naar Storage |
 | Obsidian vault-inbox (vault-inbox-sync) | `CRON_SECRET` (hergebruikt), `OSLIFE_USER_ID` — plus een S3 access key aan de Obsidian-kant (geen Supabase-secret, zie §7) |
 | Claude-gesprekken → geheugen (claude-chat-ingest + `oslife-remember` Skill) | `CLAUDE_INGEST_SECRET`, `OSLIFE_USER_ID` — zie `.claude/skills/oslife-remember/SKILL.md` |
+| Fiverr client/project intake (fiverr-poll + fiverr-process-intake) | `CRON_SECRET`, `ANTHROPIC_API_KEY`, `TELEGRAM_BOT_TOKEN` (alle drie al gezet), plus `FIVERR_DOC_WEBHOOK_URL`/`FIVERR_DOC_WEBHOOK_SECRET` (nieuw, zie §9) — zie `docs/README-fiverr-intake.md` |
 | Braindump · YouTube-transcript (inline, geen worker) | `YOUTUBE_COOKIE_HEADER` (optioneel, maar in de praktijk nodig — zie §3, anders vrijwel altijd `LOGIN_REQUIRED`) |
 | Braindump · Instagram-post (inline og-scrape, geen worker) | `INSTAGRAM_COOKIE_HEADER` (optioneel, maar in de praktijk steeds vaker nodig — zonder cookies vaak Instagram's inlogmuur i.p.v. de echte post) |
 | Braindump media-worker (video/audio transcriptie, caption-loze YouTube, Instagram/Pinterest-posts) | `BRAINDUMP_WORKER_URL`, `WORKER_SECRET` (beide optioneel — zonder valt media terug op metadata-only); `YT_COOKIES_PATH`/`IG_COOKIES_PATH`/`PINTEREST_COOKIES_PATH` (alle optioneel, Netscape `cookies.txt` als Secret File op de worker-host zelf — zie `integrations/braindump-worker/README.md`). Pinterest-pins gaan bovendien via een echte headless Chromium (Playwright, in het Docker-image) i.p.v. een plain fetch — Pinterest's bot-detectie blokkeert onbevestigde scripted requests hard (403), zelfs richting zijn eigen `oembed.json`, dus cookies alleen zijn hier (anders dan bij Instagram) niet genoeg. |
