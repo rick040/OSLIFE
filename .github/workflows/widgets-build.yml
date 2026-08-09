@@ -16,6 +16,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: android-widgets
@@ -45,3 +47,16 @@ jobs:
           name: oslife-widgets-debug-apk
           path: android-widgets/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      # Actions-artifact downloads are served from Azure Blob Storage, which some
+      # network policies block. A GitHub Release asset is served from GitHub's own
+      # domains instead, so it stays reachable everywhere the Actions artifact isn't.
+      # This release is overwritten on every build — it's a rolling "latest APK" link,
+      # not a versioned release.
+      - name: Publish APK to a rolling release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: widgets-latest
+          name: OSLIFE widgets — latest debug APK
+          body: Auto-published from the latest successful widgets-only build (commit ${{ github.sha }}). Overwritten on every build — not a versioned release.
+          files: android-widgets/app/build/outputs/apk/debug/app-debug.apk
