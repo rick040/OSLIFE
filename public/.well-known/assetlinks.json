@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "nl.oslife.app",
+      "sha256_cert_fingerprints": [
+        "EA:94:C7:65:3D:6D:23:A6:38:12:67:B8:B1:B8:63:47:5F:71:A5:11:79:61:76:4A:35:0E:D7:6D:9D:F9:D6:CE"
+      ]
+    }
+  }
+]
