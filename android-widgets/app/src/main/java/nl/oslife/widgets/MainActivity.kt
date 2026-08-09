@@ -5,6 +5,10 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import nl.oslife.widgets.databinding.ActivityMainBinding
 import nl.oslife.widgets.widget.braindump.BraindumpQuickAddWidgetWorker
+import nl.oslife.widgets.widget.calendar.CalendarWidgetWorker
+import nl.oslife.widgets.widget.finance.FinanceWidgetWorker
+import nl.oslife.widgets.widget.health.HealthWidgetWorker
+import nl.oslife.widgets.widget.inbox.InboxWidgetWorker
 import nl.oslife.widgets.widget.priority.TopPriorityWidgetWorker
 import nl.oslife.widgets.widget.projects.ActiveProjectsWidgetWorker
 import nl.oslife.widgets.widget.todo.TodoListWidgetProvider
@@ -36,6 +40,10 @@ class MainActivity : AppCompatActivity() {
             TopPriorityWidgetWorker.refreshNow(this)
             ActiveProjectsWidgetWorker.refreshNow(this)
             BraindumpQuickAddWidgetWorker.refreshNow(this)
+            HealthWidgetWorker.refreshNow(this)
+            FinanceWidgetWorker.refreshNow(this)
+            InboxWidgetWorker.refreshNow(this)
+            CalendarWidgetWorker.refreshNow(this)
             Toast.makeText(this, "Widgets worden ververst…", Toast.LENGTH_SHORT).show()
         }
     }

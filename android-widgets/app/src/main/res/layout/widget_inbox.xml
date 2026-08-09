@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="@drawable/widget_card_inbox">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <FrameLayout
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:background="@drawable/chip_inbox">
+            <ImageView
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_gravity="center"
+                android:tint="@android:color/white"
+                android:src="@drawable/ic_mail"
+                android:contentDescription="@null" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
+            android:text="Inbox"
+            android:textStyle="bold"
+            android:textSize="15sp"
+            android:textColor="@color/widget_text_primary" />
+
+        <ImageButton
+            android:id="@+id/widget_refresh"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:background="@android:color/transparent"
+            android:src="@drawable/ic_refresh_small"
+            android:contentDescription="Ververs" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="Nog niet ingesteld"
+        android:textSize="13sp"
+        android:textColor="@color/widget_text_secondary"
+        android:visibility="gone" />
+
+    <TextView android:id="@+id/widget_row1" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:textSize="13sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
+    <TextView android:id="@+id/widget_row2" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:textSize="13sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
+    <TextView android:id="@+id/widget_row3" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:textSize="13sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
+
+    <TextView
+        android:id="@+id/widget_updated"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text=""
+        android:textSize="10sp"
+        android:textColor="@color/widget_text_tertiary" />
+
+</LinearLayout>

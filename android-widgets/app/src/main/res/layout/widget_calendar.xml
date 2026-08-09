@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="@drawable/widget_card_calendar">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <FrameLayout
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:background="@drawable/chip_calendar">
+            <ImageView
+                android:layout_width="16dp"
+                android:layout_height="16dp"
+                android:layout_gravity="center"
+                android:tint="@android:color/white"
+                android:src="@drawable/ic_calendar"
+                android:contentDescription="@null" />
+        </FrameLayout>
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="10dp"
+            android:text="Agenda"
+            android:textStyle="bold"
+            android:textSize="15sp"
+            android:textColor="@color/widget_text_primary" />
+
+        <ImageButton
+            android:id="@+id/widget_refresh"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:background="@android:color/transparent"
+            android:src="@drawable/ic_refresh_small"
+            android:contentDescription="Ververs" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="Niets meer vandaag"
+        android:textSize="13sp"
+        android:textColor="@color/widget_text_secondary"
+        android:visibility="gone" />
+
+    <LinearLayout android:id="@+id/widget_row1" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/widget_time1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="12sp" android:textColor="@color/widget_text_tertiary" android:text="" android:minWidth="40dp" />
+        <TextView android:id="@+id/widget_title1" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp" android:textSize="13sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/widget_row2" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/widget_time2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="12sp" android:textColor="@color/widget_text_tertiary" android:text="" android:minWidth="40dp" />
+        <TextView android:id="@+id/widget_title2" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp" android:textSize="13sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/widget_row3" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/widget_time3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="12sp" android:textColor="@color/widget_text_tertiary" android:text="" android:minWidth="40dp" />
+        <TextView android:id="@+id/widget_title3" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp" android:textSize="13sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/widget_row4" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:id="@+id/widget_time4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textSize="12sp" android:textColor="@color/widget_text_tertiary" android:text="" android:minWidth="40dp" />
+        <TextView android:id="@+id/widget_title4" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="8dp" android:textSize="13sp" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_updated"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text=""
+        android:textSize="10sp"
+        android:textColor="@color/widget_text_tertiary" />
+
+</LinearLayout>
