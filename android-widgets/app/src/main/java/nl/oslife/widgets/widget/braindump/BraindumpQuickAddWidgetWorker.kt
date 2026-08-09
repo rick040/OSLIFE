@@ -54,12 +54,27 @@ class BraindumpQuickAddWidgetWorker(context: Context, params: WorkerParameters) 
         ): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_braindump_add)
 
-            val openQuickAdd = PendingIntent.getActivity(
+            val openChat = PendingIntent.getActivity(
                 context, 0, Intent(context, QuickAddActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
-            views.setOnClickPendingIntent(R.id.widget_root, openQuickAdd)
-            views.setOnClickPendingIntent(R.id.widget_add_button, openQuickAdd)
+            views.setOnClickPendingIntent(R.id.widget_root, openChat)
+            views.setOnClickPendingIntent(R.id.widget_shortcut_chat, openChat)
+
+            val openTalk = PendingIntent.getActivity(
+                context, 1,
+                Intent(context, QuickAddActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    .putExtra(QuickAddActivity.EXTRA_AUTO_VOICE, true),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            views.setOnClickPendingIntent(R.id.widget_shortcut_talk, openTalk)
+
+            val openUpload = PendingIntent.getActivity(
+                context, 2, Intent(context, BraindumpUploadActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            views.setOnClickPendingIntent(R.id.widget_shortcut_upload, openUpload)
 
             val refreshIntent = Intent(context, BraindumpQuickAddWidgetProvider::class.java).apply {
                 action = BraindumpQuickAddWidgetProvider.ACTION_REFRESH

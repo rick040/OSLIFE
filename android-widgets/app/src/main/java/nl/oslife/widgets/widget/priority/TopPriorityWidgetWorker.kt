@@ -138,7 +138,7 @@ class TopPriorityWidgetWorker(context: Context, params: WorkerParameters) : Work
                 } else {
                     views.setViewVisibility(DUE_IDS[i], android.view.View.VISIBLE)
                     views.setTextViewText(DUE_IDS[i], dueLabel)
-                    views.setInt(DUE_IDS[i], "setBackgroundResource", if (overdue) R.drawable.pill_danger else R.drawable.pill_neutral)
+                    views.setInt(DUE_IDS[i], "setBackgroundResource", if (overdue) R.drawable.pill_danger else R.drawable.pill_glass)
                     views.setTextColor(DUE_IDS[i], if (overdue) context.getColor(R.color.widget_danger) else context.getColor(R.color.widget_text_secondary))
                 }
 

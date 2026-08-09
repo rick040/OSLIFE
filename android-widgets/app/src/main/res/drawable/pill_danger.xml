@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Soft-red pill badge for "needs attention now" meta: overdue dates,
-     urgent bills — one consistent danger color across every widget,
-     independent of that widget's own accent color. -->
+<!-- Soft-red "needs attention now" pill — overdue dates, urgent bills — one
+     consistent danger treatment across every widget, still legible as an
+     alert (not just colored text) against the dark glass card. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#FEE2E2" />
+    <solid android:color="@color/widget_danger_bg" />
     <corners android:radius="10dp" />
 </shape>

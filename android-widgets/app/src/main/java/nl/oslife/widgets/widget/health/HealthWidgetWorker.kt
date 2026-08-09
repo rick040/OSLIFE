@@ -46,6 +46,9 @@ class HealthWidgetWorker(context: Context, params: WorkerParameters) : Worker(co
         private const val UNIQUE_PERIODIC_WORK = "health_widget_refresh_periodic"
         private const val UNIQUE_ONE_TIME_WORK = "health_widget_refresh_once"
         private val REFRESH_INTERVAL = Duration.ofMinutes(30)
+        // No per-user goal endpoint yet — a reasonable fixed daily target, same
+        // idea as the OS's own steps widget, until widget-health returns a real one.
+        private const val STEP_GOAL = 10_000
 
         private fun pushViews(context: Context, views: RemoteViews) {
             val manager = AppWidgetManager.getInstance(context)
@@ -98,8 +101,11 @@ class HealthWidgetWorker(context: Context, params: WorkerParameters) : Worker(co
             val today = data?.optJSONObject("today")
             val steps = today?.takeIf { it.has("steps") && !it.isNull("steps") }?.optInt("steps")
             val sleepMin = today?.takeIf { it.has("sleepMin") && !it.isNull("sleepMin") }?.optInt("sleepMin")
-            views.setTextViewText(R.id.widget_steps, steps?.toString() ?: "—")
+            val nlInt = java.text.NumberFormat.getIntegerInstance(java.util.Locale("nl", "NL"))
+            views.setTextViewText(R.id.widget_steps, if (steps != null) nlInt.format(steps) else "—")
             views.setTextViewText(R.id.widget_steps_caption, if (steps != null) "stappen vandaag" else "nog geen stappen vandaag")
+            views.setTextViewText(R.id.widget_steps_goal, "/${nlInt.format(STEP_GOAL)}")
+            views.setProgressBar(R.id.widget_steps_progress, 100, ((steps ?: 0).coerceIn(0, STEP_GOAL) * 100 / STEP_GOAL), false)
 
             views.setTextViewText(R.id.widget_sleep, if (sleepMin != null) "😴 ${sleepMin / 60}u ${sleepMin % 60}m" else "😴 geen data")
 

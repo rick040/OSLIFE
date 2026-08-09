@@ -13,24 +13,10 @@
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
-        <FrameLayout
-            android:layout_width="34dp"
-            android:layout_height="34dp"
-            android:background="@drawable/chip_finance">
-            <ImageView
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:layout_gravity="center"
-                android:tint="@android:color/white"
-                android:src="@drawable/ic_wallet"
-                android:contentDescription="@null" />
-        </FrameLayout>
-
         <TextView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="10dp"
             android:text="Financiën"
             android:textStyle="bold"
             android:textSize="16sp"
@@ -61,7 +47,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:layout_marginTop="14dp">
+        android:layout_marginTop="12dp">
 
         <TextView
             android:id="@+id/widget_balance"
@@ -94,7 +80,7 @@
                 android:paddingEnd="10dp"
                 android:paddingTop="6dp"
                 android:paddingBottom="6dp"
-                android:background="@drawable/pill_finance"
+                android:background="@drawable/pill_glass"
                 android:textSize="12sp"
                 android:textColor="@color/widget_text_primary"
                 android:text="" />

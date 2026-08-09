@@ -53,6 +53,10 @@ class QuickAddActivity : AppCompatActivity() {
         findViewById<ImageButton>(R.id.closeButton).setOnClickListener { finish() }
         findViewById<android.view.View>(R.id.micButton).setOnClickListener { startVoiceInput() }
         findViewById<android.view.View>(R.id.saveButton).setOnClickListener { save() }
+
+        // The widget's "start talking" shortcut opens straight into voice input,
+        // same EXTRA_AUTO_VOICE convention as HeyraQuickChatActivity.
+        if (intent.getBooleanExtra(EXTRA_AUTO_VOICE, false)) startVoiceInput()
     }
 
     private fun startVoiceInput() {
@@ -77,5 +81,9 @@ class QuickAddActivity : AppCompatActivity() {
         BraindumpAddWorker.enqueue(this, text)
         Toast.makeText(this, "Opgeslagen ✅", Toast.LENGTH_SHORT).show()
         finish()
+    }
+
+    companion object {
+        const val EXTRA_AUTO_VOICE = "auto_voice"
     }
 }
