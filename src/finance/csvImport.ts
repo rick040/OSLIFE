@@ -29,7 +29,14 @@ export function guessCategory(desc: string, amount: number): string {
   // "shell" matching "Michelle", "bp" matching "ABP", "plus" matching "OnePlus".
   if (/\b(albert heijn|jumbo|lidl|aldi|plus|supermarkt)\b/.test(d)) return 'Groceries'
   if (/\b(thuisbezorg|takeaway|dominos|new york pizza|mcdonald)\b/.test(d)) return 'Takeout'
-  if (/\b(adobe|canva|figma|notion|vercel|openai|chatgpt|google|microsoft)\b/.test(d)) return 'Software'
+  // "google"/"apple" alone used to catch EVERY contactless tap-to-pay row —
+  // ABN's own description text is "BEA, Google Pay <merchant>,PASxxx ..." /
+  // "Apple Pay <merchant>", so the payment METHOD (not the merchant) matched
+  // first and mislabeled the real merchant (Shell, a supermarket, ...) as
+  // Software. The negative lookahead excludes just that phrase — a genuine
+  // Google/Apple purchase ("Google Play", "Google Cloud", ...) still matches.
+  if (/\b(adobe|canva|figma|notion|vercel|openai|chatgpt|microsoft)\b/.test(d) ||
+      /\bgoogle\b(?!\s*pay\b)/.test(d) || /\bapple\b(?!\s*pay\b)/.test(d)) return 'Software'
   if (/\b(spotify|netflix|disney|videoland)\b/.test(d)) return 'Subscriptions'
   if (/\b(esso|shell|bp|tango|tankstation)\b/.test(d)) return 'Convenience'
   if (/\b(dier|vet|kyra|hond)\b/.test(d)) return 'Dog'
@@ -47,8 +54,11 @@ export function guessDomain(desc: string, category: string, amount: number): Dom
 }
 
 export function cleanMerchant(desc: string): string {
-  // ABN beschrijvingen bevatten vaak "BEA, Betaalpas <naam> ,PAS123" of "/TRTP/..."
+  // ABN beschrijvingen bevatten vaak "BEA/GEA, Google Pay <naam>,PAS123 NR:..."
+  // (contactless tap-to-pay, the current export format — no longer "Betaalpas"),
+  // "BEA, Betaalpas <naam> ,PAS123" (older format) of "/TRTP/.../NAME/<naam>/...".
   const m =
+    desc.match(/(?:google|apple)\s*pay\s+(.+?)\s*,\s*PAS\d+/i)?.[1] ||
     desc.match(/Betaalpas\s+(.+?)(?:,|\s{2,}|$)/i)?.[1] ||
     desc.match(/\/NAME\/(.+?)\//i)?.[1] ||
     desc.match(/SEPA.*?\/NAME\/(.+?)\//i)?.[1]
