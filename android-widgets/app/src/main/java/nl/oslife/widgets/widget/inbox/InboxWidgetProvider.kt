@@ -4,6 +4,8 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
+import nl.oslife.widgets.widget.common.WidgetStyle
 
 /**
  * Home-screen "Inbox" widget: unread email count plus the most recent
@@ -18,7 +20,7 @@ class InboxWidgetProvider : AppWidgetProvider() {
         } catch (e: Exception) {
             InboxWidgetWorker.buildViews(context, errorMessage = "Interne fout: ${e.message}")
         }
-        appWidgetIds.forEach { id -> appWidgetManager.updateAppWidget(id, views) }
+        appWidgetIds.forEach { id -> appWidgetManager.updateAppWidget(id, InboxWidgetWorker.styled(context, views, id)) }
         InboxWidgetWorker.refreshNow(context)
     }
 
@@ -28,6 +30,15 @@ class InboxWidgetProvider : AppWidgetProvider() {
 
     override fun onDisabled(context: Context) {
         InboxWidgetWorker.cancelPeriodic(context)
+    }
+
+    override fun onAppWidgetOptionsChanged(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int, newOptions: Bundle) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+        InboxWidgetWorker.refreshNow(context)
+    }
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        appWidgetIds.forEach { id -> WidgetStyle.clear(context, id) }
     }
 
     override fun onReceive(context: Context, intent: Intent) {

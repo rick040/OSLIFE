@@ -150,6 +150,16 @@
                 android:resource="@xml/widget_calendar_info" />
         </receiver>
 
+        <activity
+            android:name=".widget.common.WidgetConfigureActivity"
+            android:exported="true"
+            android:theme="@style/Theme.OslifeWidgets.Overlay"
+            android:excludeFromRecents="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
     </application>
 
 </manifest>

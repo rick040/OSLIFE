@@ -36,4 +36,25 @@ object DateFmt {
         val date = try { LocalDate.parse(dateStr.take(10)) } catch (_: DateTimeParseException) { return false }
         return date.isBefore(LocalDate.now())
     }
+
+    /** Gmail-style short label for a received timestamp: "14:32" today, "Gisteren", a day
+     * name this week, or "6 aug" further back. Accepts a full ISO-8601 instant (with offset). */
+    fun shortTime(isoStr: String?): String {
+        if (isoStr.isNullOrBlank()) return ""
+        val instant = try {
+            java.time.OffsetDateTime.parse(isoStr).toInstant()
+        } catch (_: Exception) {
+            try { java.time.Instant.parse(isoStr) } catch (_: Exception) { return "" }
+        }
+        val zoned = instant.atZone(java.time.ZoneId.systemDefault())
+        val date = zoned.toLocalDate()
+        val today = LocalDate.now()
+        val diff = java.time.temporal.ChronoUnit.DAYS.between(date, today)
+        return when {
+            diff <= 0L -> String.format("%02d:%02d", zoned.hour, zoned.minute)
+            diff == 1L -> "Gisteren"
+            diff <= 6L -> DAY_NAMES[(date.dayOfWeek.value - 1).coerceIn(0, 6)]
+            else -> "${date.dayOfMonth} ${MONTH_NAMES[(date.monthValue - 1).coerceIn(0, 11)]}"
+        }
+    }
 }

@@ -4,6 +4,8 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
+import nl.oslife.widgets.widget.common.WidgetStyle
 
 /**
  * Home-screen "Belangrijkste items" widget: a curated top-5 of open
@@ -24,7 +26,7 @@ class TopPriorityWidgetProvider : AppWidgetProvider() {
         } catch (e: Exception) {
             TopPriorityWidgetWorker.buildViews(context, errorMessage = "Interne fout: ${e.message}")
         }
-        appWidgetIds.forEach { id -> appWidgetManager.updateAppWidget(id, views) }
+        appWidgetIds.forEach { id -> appWidgetManager.updateAppWidget(id, TopPriorityWidgetWorker.styled(context, views, id)) }
         TopPriorityWidgetWorker.refreshNow(context)
     }
 
@@ -34,6 +36,15 @@ class TopPriorityWidgetProvider : AppWidgetProvider() {
 
     override fun onDisabled(context: Context) {
         TopPriorityWidgetWorker.cancelPeriodic(context)
+    }
+
+    override fun onAppWidgetOptionsChanged(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int, newOptions: Bundle) {
+        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
+        TopPriorityWidgetWorker.refreshNow(context)
+    }
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        appWidgetIds.forEach { id -> WidgetStyle.clear(context, id) }
     }
 
     override fun onReceive(context: Context, intent: Intent) {

@@ -21,6 +21,7 @@ import androidx.work.WorkerParameters
 import nl.oslife.widgets.R
 import nl.oslife.widgets.widget.common.DeepLink
 import nl.oslife.widgets.widget.common.OslifeWidgetApi
+import nl.oslife.widgets.widget.common.WidgetStyle
 import org.json.JSONObject
 import java.time.Duration
 import java.util.concurrent.TimeUnit
@@ -53,7 +54,7 @@ class HealthWidgetWorker(context: Context, params: WorkerParameters) : Worker(co
         private fun pushViews(context: Context, views: RemoteViews) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, HealthWidgetProvider::class.java))
-            ids.forEach { id -> manager.updateAppWidget(id, views) }
+            ids.forEach { id -> manager.updateAppWidget(id, WidgetStyle.applyInstanceStyle(context, views, id)) }
         }
 
         fun buildViews(

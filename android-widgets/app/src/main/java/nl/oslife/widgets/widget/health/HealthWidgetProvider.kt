@@ -4,6 +4,7 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
+import nl.oslife.widgets.widget.common.WidgetStyle
 
 /**
  * Home-screen "Gezondheid" widget: today's steps/sleep/active minutes,
@@ -19,7 +20,7 @@ class HealthWidgetProvider : AppWidgetProvider() {
         } catch (e: Exception) {
             HealthWidgetWorker.buildViews(context, errorMessage = "Interne fout: ${e.message}")
         }
-        appWidgetIds.forEach { id -> appWidgetManager.updateAppWidget(id, views) }
+        appWidgetIds.forEach { id -> appWidgetManager.updateAppWidget(id, WidgetStyle.applyInstanceStyle(context, views, id)) }
         HealthWidgetWorker.refreshNow(context)
     }
 
@@ -29,6 +30,10 @@ class HealthWidgetProvider : AppWidgetProvider() {
 
     override fun onDisabled(context: Context) {
         HealthWidgetWorker.cancelPeriodic(context)
+    }
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        appWidgetIds.forEach { id -> WidgetStyle.clear(context, id) }
     }
 
     override fun onReceive(context: Context, intent: Intent) {

@@ -19,15 +19,19 @@ import androidx.work.WorkRequest
 import androidx.work.Worker
 import androidx.work.WorkerParameters
 import nl.oslife.widgets.R
+import nl.oslife.widgets.widget.common.DateFmt
 import nl.oslife.widgets.widget.common.DeepLink
 import nl.oslife.widgets.widget.common.OslifeWidgetApi
+import nl.oslife.widgets.widget.common.WidgetStyle
 import org.json.JSONObject
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 
-private val ROW_IDS = intArrayOf(R.id.widget_row1, R.id.widget_row2, R.id.widget_row3)
-private val FROM_IDS = intArrayOf(R.id.widget_from1, R.id.widget_from2, R.id.widget_from3)
-private val SUBJECT_IDS = intArrayOf(R.id.widget_subject1, R.id.widget_subject2, R.id.widget_subject3)
+private val ROW_IDS = intArrayOf(R.id.widget_row1, R.id.widget_row2, R.id.widget_row3, R.id.widget_row4, R.id.widget_row5)
+private val FROM_IDS = intArrayOf(R.id.widget_from1, R.id.widget_from2, R.id.widget_from3, R.id.widget_from4, R.id.widget_from5)
+private val TIME_IDS = intArrayOf(R.id.widget_time1, R.id.widget_time2, R.id.widget_time3, R.id.widget_time4, R.id.widget_time5)
+private val SUBJECT_IDS = intArrayOf(R.id.widget_subject1, R.id.widget_subject2, R.id.widget_subject3, R.id.widget_subject4, R.id.widget_subject5)
+private val SNIPPET_IDS = intArrayOf(R.id.widget_snippet1, R.id.widget_snippet2, R.id.widget_snippet3, R.id.widget_snippet4, R.id.widget_snippet5)
 
 class InboxWidgetWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
 
@@ -54,8 +58,11 @@ class InboxWidgetWorker(context: Context, params: WorkerParameters) : Worker(con
         private fun pushViews(context: Context, views: RemoteViews) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, InboxWidgetProvider::class.java))
-            ids.forEach { id -> manager.updateAppWidget(id, views) }
+            ids.forEach { id -> manager.updateAppWidget(id, styled(context, views, id)) }
         }
+
+        fun styled(context: Context, views: RemoteViews, appWidgetId: Int): RemoteViews =
+            WidgetStyle.applyInstanceStyle(context, views, appWidgetId, ROW_IDS, rowHeightDp = 56, chromeDp = 100)
 
         fun buildViews(
             context: Context,
@@ -119,7 +126,11 @@ class InboxWidgetWorker(context: Context, params: WorkerParameters) : Worker(con
                 views.setViewVisibility(ROW_IDS[i], View.VISIBLE)
                 val from = m.optString("from", "").substringBefore("<").trim()
                 views.setTextViewText(FROM_IDS[i], if (from.isBlank()) "(onbekend)" else from)
+                views.setTextViewText(TIME_IDS[i], DateFmt.shortTime(m.optString("receivedAt", null)))
                 views.setTextViewText(SUBJECT_IDS[i], m.optString("subject", "(geen onderwerp)"))
+                val snippet = m.optString("snippet", "").trim()
+                views.setViewVisibility(SNIPPET_IDS[i], if (snippet.isBlank()) View.GONE else View.VISIBLE)
+                views.setTextViewText(SNIPPET_IDS[i], snippet)
             }
 
             views.setTextViewText(R.id.widget_updated, "Ververst: net")
