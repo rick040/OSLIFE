@@ -4,8 +4,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp"
-    android:background="@drawable/widget_card_finance">
+    android:padding="18dp"
+    android:background="@drawable/card_bg">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -14,12 +14,12 @@
         android:gravity="center_vertical">
 
         <FrameLayout
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
             android:background="@drawable/chip_finance">
             <ImageView
-                android:layout_width="16dp"
-                android:layout_height="16dp"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
                 android:layout_gravity="center"
                 android:tint="@android:color/white"
                 android:src="@drawable/ic_wallet"
@@ -33,14 +33,15 @@
             android:layout_marginStart="10dp"
             android:text="Financiën"
             android:textStyle="bold"
-            android:textSize="15sp"
+            android:textSize="16sp"
             android:textColor="@color/widget_text_primary" />
 
         <ImageButton
             android:id="@+id/widget_refresh"
-            android:layout_width="26dp"
-            android:layout_height="26dp"
-            android:background="@android:color/transparent"
+            android:layout_width="30dp"
+            android:layout_height="30dp"
+            android:background="@drawable/ghost_button_bg"
+            android:padding="6dp"
             android:src="@drawable/ic_refresh_small"
             android:contentDescription="Ververs" />
     </LinearLayout>
@@ -49,7 +50,7 @@
         android:id="@+id/widget_empty"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
+        android:layout_marginTop="14dp"
         android:text="Nog niet ingesteld"
         android:textSize="13sp"
         android:textColor="@color/widget_text_secondary"
@@ -60,19 +61,68 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:layout_marginTop="10dp">
+        android:layout_marginTop="14dp">
 
-        <TextView android:id="@+id/widget_balance" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="22sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:text="" />
-        <TextView android:id="@+id/widget_balance_asof" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="11sp" android:textColor="@color/widget_text_tertiary" android:text="" />
-        <TextView android:id="@+id/widget_open_payments" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:textSize="13sp" android:textColor="@color/widget_text_primary" android:text="" />
-        <TextView android:id="@+id/widget_urgent" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:textSize="13sp" android:textColor="@color/widget_accent_health" android:text="" android:visibility="gone" />
+        <TextView
+            android:id="@+id/widget_balance"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:textColor="@color/widget_hero_number"
+            android:text="" />
+
+        <TextView
+            android:id="@+id/widget_balance_asof"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:textColor="@color/widget_text_secondary"
+            android:text="" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="12dp">
+
+            <TextView
+                android:id="@+id/widget_open_payments"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
+                android:background="@drawable/pill_finance"
+                android:textSize="12sp"
+                android:textColor="@color/widget_text_primary"
+                android:text="" />
+
+            <TextView
+                android:id="@+id/widget_urgent"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
+                android:background="@drawable/pill_danger"
+                android:textSize="12sp"
+                android:textColor="@color/widget_danger"
+                android:text=""
+                android:visibility="gone" />
+
+        </LinearLayout>
+
     </LinearLayout>
 
     <TextView
         android:id="@+id/widget_updated"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
+        android:layout_marginTop="12dp"
         android:text=""
         android:textSize="10sp"
         android:textColor="@color/widget_text_tertiary" />

@@ -7,49 +7,48 @@
     android:gravity="center_vertical"
     android:paddingStart="4dp"
     android:paddingEnd="8dp"
-    android:paddingTop="8dp"
-    android:paddingBottom="8dp"
+    android:paddingTop="9dp"
+    android:paddingBottom="9dp"
     android:background="@drawable/widget_row_pressed">
 
     <ImageView
         android:id="@+id/todo_check"
-        android:layout_width="20dp"
-        android:layout_height="20dp"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
         android:src="@drawable/ic_circle_outline"
         android:contentDescription="Markeer als gedaan" />
 
-    <LinearLayout
+    <View
+        android:id="@+id/todo_priority_dot"
+        android:layout_width="6dp"
+        android:layout_height="6dp"
+        android:layout_marginStart="10dp"
+        android:background="@drawable/priority_dot_low" />
+
+    <TextView
+        android:id="@+id/todo_title"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:layout_marginStart="10dp"
-        android:orientation="vertical">
-
-        <TextView
-            android:id="@+id/todo_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="13sp"
-            android:textColor="@color/widget_text_primary"
-            android:maxLines="2"
-            android:ellipsize="end"
-            android:text="Taak" />
-
-        <TextView
-            android:id="@+id/todo_meta"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="1dp"
-            android:textSize="11sp"
-            android:textColor="@color/widget_text_tertiary"
-            android:text="" />
-    </LinearLayout>
-
-    <View
-        android:id="@+id/todo_priority_dot"
-        android:layout_width="8dp"
-        android:layout_height="8dp"
         android:layout_marginStart="8dp"
-        android:background="@drawable/priority_dot_low" />
+        android:textSize="14sp"
+        android:textColor="@color/widget_text_primary"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:text="Taak" />
+
+    <TextView
+        android:id="@+id/todo_meta"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingTop="3dp"
+        android:paddingBottom="3dp"
+        android:background="@drawable/pill_neutral"
+        android:textSize="11sp"
+        android:textColor="@color/widget_text_secondary"
+        android:text="" />
 
 </LinearLayout>

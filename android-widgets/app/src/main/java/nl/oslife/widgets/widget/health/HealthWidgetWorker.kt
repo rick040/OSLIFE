@@ -98,17 +98,16 @@ class HealthWidgetWorker(context: Context, params: WorkerParameters) : Worker(co
             val today = data?.optJSONObject("today")
             val steps = today?.takeIf { it.has("steps") && !it.isNull("steps") }?.optInt("steps")
             val sleepMin = today?.takeIf { it.has("sleepMin") && !it.isNull("sleepMin") }?.optInt("sleepMin")
-            views.setTextViewText(R.id.widget_steps, if (steps != null) "👟 $steps stappen" else "👟 Geen stappen vandaag")
-            views.setTextViewText(
-                R.id.widget_sleep,
-                if (sleepMin != null) "😴 ${sleepMin / 60}u ${sleepMin % 60}m slaap" else "😴 Geen slaapdata",
-            )
+            views.setTextViewText(R.id.widget_steps, steps?.toString() ?: "—")
+            views.setTextViewText(R.id.widget_steps_caption, if (steps != null) "stappen vandaag" else "nog geen stappen vandaag")
+
+            views.setTextViewText(R.id.widget_sleep, if (sleepMin != null) "😴 ${sleepMin / 60}u ${sleepMin % 60}m" else "😴 geen data")
 
             val weight = data?.optJSONObject("weight")
             val weightKg = weight?.opt("kg") as? Number
             views.setTextViewText(
                 R.id.widget_weight,
-                if (weightKg != null) "⚖️ ${String.format(java.util.Locale.US, "%.1f", weightKg.toDouble())} kg" else "⚖️ Geen gewicht gelogd",
+                if (weightKg != null) "⚖️ ${String.format(java.util.Locale.US, "%.1f", weightKg.toDouble())} kg" else "⚖️ geen data",
             )
 
             val habits = data?.optJSONObject("habits")

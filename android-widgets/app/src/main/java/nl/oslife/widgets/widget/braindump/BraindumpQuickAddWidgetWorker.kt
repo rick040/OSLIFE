@@ -70,17 +70,20 @@ class BraindumpQuickAddWidgetWorker(context: Context, params: WorkerParameters) 
             )
             views.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent)
 
-            views.setTextViewText(
-                R.id.widget_count,
-                when {
-                    notConfiguredMessage -> "Nog niet ingesteld"
-                    errorMessage != null -> "⚠️ $errorMessage"
-                    todayCount == null -> ""
-                    todayCount == 0 -> "Nog niets vandaag"
-                    todayCount == 1 -> "1 vandaag vastgelegd"
-                    else -> "$todayCount vandaag vastgelegd"
-                },
-            )
+            when {
+                notConfiguredMessage -> {
+                    views.setTextViewText(R.id.widget_count, "—")
+                    views.setTextViewText(R.id.widget_caption, "Nog niet ingesteld — open de app → Instellingen")
+                }
+                errorMessage != null -> {
+                    views.setTextViewText(R.id.widget_count, "—")
+                    views.setTextViewText(R.id.widget_caption, "⚠️ $errorMessage")
+                }
+                else -> {
+                    views.setTextViewText(R.id.widget_count, (todayCount ?: 0).toString())
+                    views.setTextViewText(R.id.widget_caption, "vandaag vastgelegd — tik om iets vast te leggen")
+                }
+            }
 
             return views
         }

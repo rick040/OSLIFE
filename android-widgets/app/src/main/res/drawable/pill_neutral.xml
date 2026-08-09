@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Neutral pill badge for meta tags that aren't a per-widget accent color
+     (e.g. a due date that isn't overdue). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/widget_divider" />
+    <corners android:radius="10dp" />
+</shape>

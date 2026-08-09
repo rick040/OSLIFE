@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shared flat card background for every widget — no colored spine. Color/
+     identity comes from the icon chip + pill badges inside, not the card
+     shell, so all nine widgets read as one family on the home screen. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/widget_card_bg" />
+    <corners android:radius="24dp" />
+</shape>

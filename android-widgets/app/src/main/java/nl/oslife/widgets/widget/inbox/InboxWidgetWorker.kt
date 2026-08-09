@@ -26,6 +26,8 @@ import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 private val ROW_IDS = intArrayOf(R.id.widget_row1, R.id.widget_row2, R.id.widget_row3)
+private val FROM_IDS = intArrayOf(R.id.widget_from1, R.id.widget_from2, R.id.widget_from3)
+private val SUBJECT_IDS = intArrayOf(R.id.widget_subject1, R.id.widget_subject2, R.id.widget_subject3)
 
 class InboxWidgetWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
 
@@ -95,7 +97,12 @@ class InboxWidgetWorker(context: Context, params: WorkerParameters) : Worker(con
 
         private fun renderMessages(views: RemoteViews, data: JSONObject?) {
             val unreadCount = data?.optInt("unreadCount", 0) ?: 0
-            views.setTextViewText(R.id.widget_title, if (unreadCount > 0) "Inbox · $unreadCount ongelezen" else "Inbox")
+            if (unreadCount > 0) {
+                views.setViewVisibility(R.id.widget_unread_badge, View.VISIBLE)
+                views.setTextViewText(R.id.widget_unread_badge, unreadCount.toString())
+            } else {
+                views.setViewVisibility(R.id.widget_unread_badge, View.GONE)
+            }
 
             val recent = data?.optJSONArray("recent")
             val rows = (0 until (recent?.length() ?: 0)).map { i -> recent!!.getJSONObject(i) }
@@ -111,8 +118,8 @@ class InboxWidgetWorker(context: Context, params: WorkerParameters) : Worker(con
                 val m = rows[i]
                 views.setViewVisibility(ROW_IDS[i], View.VISIBLE)
                 val from = m.optString("from", "").substringBefore("<").trim()
-                val subject = m.optString("subject", "(geen onderwerp)")
-                views.setTextViewText(ROW_IDS[i], "$from — $subject")
+                views.setTextViewText(FROM_IDS[i], if (from.isBlank()) "(onbekend)" else from)
+                views.setTextViewText(SUBJECT_IDS[i], m.optString("subject", "(geen onderwerp)"))
             }
 
             views.setTextViewText(R.id.widget_updated, "Ververst: net")
