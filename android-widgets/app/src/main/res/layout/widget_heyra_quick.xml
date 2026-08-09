@@ -4,8 +4,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp"
-    android:background="@drawable/widget_card_heyra">
+    android:padding="18dp"
+    android:background="@drawable/card_bg">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -14,12 +14,12 @@
         android:gravity="center_vertical">
 
         <FrameLayout
-            android:layout_width="28dp"
-            android:layout_height="28dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
             android:background="@drawable/chip_heyra">
             <ImageView
-                android:layout_width="16dp"
-                android:layout_height="16dp"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
                 android:layout_gravity="center"
                 android:tint="@android:color/white"
                 android:src="@drawable/ic_chat"
@@ -33,7 +33,7 @@
             android:layout_marginStart="10dp"
             android:text="HEYRA"
             android:textStyle="bold"
-            android:textSize="15sp"
+            android:textSize="16sp"
             android:textColor="@color/widget_text_primary" />
     </LinearLayout>
 
@@ -43,8 +43,9 @@
         android:layout_weight="1"
         android:gravity="center_vertical"
         android:layout_marginTop="4dp"
+        android:layout_marginBottom="12dp"
         android:text="Tik om iets te vragen, of spreek direct in"
-        android:textSize="13sp"
+        android:textSize="12sp"
         android:textColor="@color/widget_text_secondary" />
 
     <LinearLayout
@@ -53,18 +54,30 @@
         android:orientation="horizontal"
         android:gravity="center_vertical">
 
-        <TextView
+        <LinearLayout
+            android:id="@+id/widget_chat_button"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Snelle vraag →"
-            android:textSize="11sp"
-            android:textColor="@color/widget_text_tertiary" />
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:paddingTop="11dp"
+            android:paddingBottom="11dp"
+            android:background="@drawable/cta_heyra">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Chat"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:textColor="@android:color/white" />
+        </LinearLayout>
 
         <FrameLayout
             android:id="@+id/widget_mic_button"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="42dp"
+            android:layout_height="42dp"
+            android:layout_marginStart="8dp"
             android:background="@drawable/chip_heyra">
             <ImageView
                 android:layout_width="18dp"

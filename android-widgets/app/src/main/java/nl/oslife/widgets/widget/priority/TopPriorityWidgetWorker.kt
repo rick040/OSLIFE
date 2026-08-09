@@ -87,7 +87,10 @@ class TopPriorityWidgetWorker(context: Context, params: WorkerParameters) : Work
         ): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_top_priority)
 
-            views.setOnClickPendingIntent(R.id.widget_root, DeepLink.pendingIntent(context, 0, "tasks"))
+            // requestCode 1 (not 0): TodoListWidgetProvider's header also links to view=tasks with
+            // no id, and PendingIntent identity ignores extras — a shared requestCode would make
+            // Android treat both widgets' header taps as literally the same PendingIntent object.
+            views.setOnClickPendingIntent(R.id.widget_root, DeepLink.pendingIntent(context, 1, "tasks"))
 
             val refreshIntent = Intent(context, TopPriorityWidgetProvider::class.java).apply {
                 action = TopPriorityWidgetProvider.ACTION_REFRESH
@@ -127,7 +130,18 @@ class TopPriorityWidgetWorker(context: Context, params: WorkerParameters) : Work
                 val item = items[i]
                 views.setViewVisibility(ROW_IDS[i], android.view.View.VISIBLE)
                 views.setTextViewText(TITLE_IDS[i], item.title)
-                views.setTextViewText(DUE_IDS[i], DateFmt.relative(item.due))
+
+                val dueLabel = DateFmt.relative(item.due)
+                val overdue = DateFmt.isOverdue(item.due)
+                if (dueLabel.isEmpty()) {
+                    views.setViewVisibility(DUE_IDS[i], android.view.View.GONE)
+                } else {
+                    views.setViewVisibility(DUE_IDS[i], android.view.View.VISIBLE)
+                    views.setTextViewText(DUE_IDS[i], dueLabel)
+                    views.setInt(DUE_IDS[i], "setBackgroundResource", if (overdue) R.drawable.pill_danger else R.drawable.pill_neutral)
+                    views.setTextColor(DUE_IDS[i], if (overdue) context.getColor(R.color.widget_danger) else context.getColor(R.color.widget_text_secondary))
+                }
+
                 val dotRes = if (item.priority == "High") R.drawable.priority_dot_high else R.drawable.priority_dot_medium
                 views.setInt(DOT_IDS[i], "setBackgroundResource", dotRes)
                 // Distinct request code per row so each row's PendingIntent carries its own task id.

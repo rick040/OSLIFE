@@ -77,8 +77,14 @@ private class TodoRemoteViewsFactory(
                 append(item.domain)
             }
         }
-        views.setTextViewText(R.id.todo_meta, meta)
-        views.setTextColor(R.id.todo_meta, if (overdue) 0xFFEF4444.toInt() else 0xFF9AA0AC.toInt())
+        if (meta.isEmpty()) {
+            views.setViewVisibility(R.id.todo_meta, android.view.View.GONE)
+        } else {
+            views.setViewVisibility(R.id.todo_meta, android.view.View.VISIBLE)
+            views.setTextViewText(R.id.todo_meta, meta)
+            views.setInt(R.id.todo_meta, "setBackgroundResource", if (overdue) R.drawable.pill_danger else R.drawable.pill_neutral)
+            views.setTextColor(R.id.todo_meta, if (overdue) context.getColor(R.color.widget_danger) else context.getColor(R.color.widget_text_secondary))
+        }
 
         val dotRes = when (item.priority) {
             "High" -> R.drawable.priority_dot_high

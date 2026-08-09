@@ -31,4 +31,8 @@
     <color name="widget_accent_finance_soft">#EAEAFC</color>
     <color name="widget_accent_inbox_soft">#E4F4FD</color>
     <color name="widget_accent_calendar_soft">#FEEBDD</color>
+
+    <color name="widget_danger">#DC2626</color>
+    <color name="widget_ghost_bg">#F1F2F5</color>
+    <color name="widget_hero_number">#0A0A0F</color>
 </resources>

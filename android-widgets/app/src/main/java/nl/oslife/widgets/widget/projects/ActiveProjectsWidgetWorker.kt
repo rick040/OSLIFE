@@ -125,8 +125,20 @@ class ActiveProjectsWidgetWorker(context: Context, params: WorkerParameters) : W
                 val p = items[i]
                 views.setViewVisibility(ROW_IDS[i], View.VISIBLE)
                 views.setTextViewText(NAME_IDS[i], p.name)
+                views.setViewVisibility(CLIENT_IDS[i], if (p.client.isBlank()) View.GONE else View.VISIBLE)
                 views.setTextViewText(CLIENT_IDS[i], p.client)
-                views.setTextViewText(DEADLINE_IDS[i], DateFmt.relative(p.deadline))
+
+                val deadlineLabel = DateFmt.relative(p.deadline)
+                val overdue = DateFmt.isOverdue(p.deadline)
+                if (deadlineLabel.isEmpty()) {
+                    views.setViewVisibility(DEADLINE_IDS[i], View.GONE)
+                } else {
+                    views.setViewVisibility(DEADLINE_IDS[i], View.VISIBLE)
+                    views.setTextViewText(DEADLINE_IDS[i], deadlineLabel)
+                    views.setInt(DEADLINE_IDS[i], "setBackgroundResource", if (overdue) R.drawable.pill_danger else R.drawable.pill_neutral)
+                    views.setTextColor(DEADLINE_IDS[i], if (overdue) context.getColor(R.color.widget_danger) else context.getColor(R.color.widget_text_secondary))
+                }
+
                 views.setProgressBar(PROGRESS_IDS[i], 100, (p.progress.coerceIn(0.0, 1.0) * 100).toInt(), false)
                 // Distinct request code per row so each row's PendingIntent carries its own project id.
                 views.setOnClickPendingIntent(ROW_IDS[i], DeepLink.pendingIntent(context, 200 + i, "projects", p.id))
