@@ -100,6 +100,54 @@
             android:excludeFromRecents="true"
             android:launchMode="singleTask" />
 
+        <receiver
+            android:name=".widget.health.HealthWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="nl.oslife.widgets.widget.health.ACTION_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_health_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.finance.FinanceWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="nl.oslife.widgets.widget.finance.ACTION_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_finance_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.inbox.InboxWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="nl.oslife.widgets.widget.inbox.ACTION_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_inbox_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.calendar.CalendarWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="nl.oslife.widgets.widget.calendar.ACTION_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_calendar_info" />
+        </receiver>
+
     </application>
 
 </manifest>

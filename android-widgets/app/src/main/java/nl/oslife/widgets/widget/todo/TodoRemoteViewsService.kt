@@ -33,21 +33,29 @@ private class TodoRemoteViewsFactory(
     override fun onCreate() = Unit
 
     override fun onDataSetChanged() {
-        items = when (val result = OslifeWidgetApi.get(context, "widget-tasks")) {
-            is OslifeWidgetApi.Result.Success -> {
-                val arr = result.json.optJSONArray("tasks") ?: org.json.JSONArray()
-                (0 until arr.length()).map { i ->
-                    val o = arr.getJSONObject(i)
-                    TodoItem(
-                        id = o.optString("id"),
-                        title = o.optString("title", "(zonder titel)"),
-                        due = o.optString("due", null),
-                        priority = o.optString("priority", null),
-                        domain = o.optString("domain", null),
-                    )
+        // Never let this throw: an uncaught exception here leaves the widget host's
+        // RemoteViewsAdapter stuck on its default "Laden..." placeholder forever
+        // (it never gets a completed metadata fetch to replace it with), which
+        // looks identical to "still loading" instead of a visible, retriable error.
+        items = try {
+            when (val result = OslifeWidgetApi.get(context, "widget-tasks")) {
+                is OslifeWidgetApi.Result.Success -> {
+                    val arr = result.json.optJSONArray("tasks") ?: org.json.JSONArray()
+                    (0 until arr.length()).map { i ->
+                        val o = arr.getJSONObject(i)
+                        TodoItem(
+                            id = o.optString("id"),
+                            title = o.optString("title", "(zonder titel)"),
+                            due = o.optString("due", null),
+                            priority = o.optString("priority", null),
+                            domain = o.optString("domain", null),
+                        )
+                    }
                 }
+                else -> emptyList()
             }
-            else -> emptyList()
+        } catch (_: Exception) {
+            emptyList()
         }
     }
 

@@ -16,7 +16,14 @@ import android.content.Intent
 class TopPriorityWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        val views = TopPriorityWidgetWorker.buildViews(context)
+        // The widget host aborts adding a widget entirely if onUpdate() throws — a
+        // rendering bug in the eventual real-data path must never take down the
+        // initial placeholder push.
+        val views = try {
+            TopPriorityWidgetWorker.buildViews(context)
+        } catch (e: Exception) {
+            TopPriorityWidgetWorker.buildViews(context, errorMessage = "Interne fout: ${e.message}")
+        }
         appWidgetIds.forEach { id -> appWidgetManager.updateAppWidget(id, views) }
         TopPriorityWidgetWorker.refreshNow(context)
     }

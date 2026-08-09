@@ -14,7 +14,14 @@ import android.content.Intent
 class BraindumpQuickAddWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        val views = BraindumpQuickAddWidgetWorker.buildViews(context)
+        // The widget host aborts adding a widget entirely if onUpdate() throws — a
+        // rendering bug in the eventual real-data path must never take down the
+        // initial placeholder push.
+        val views = try {
+            BraindumpQuickAddWidgetWorker.buildViews(context)
+        } catch (e: Exception) {
+            BraindumpQuickAddWidgetWorker.buildViews(context, errorMessage = "Interne fout: ${e.message}")
+        }
         appWidgetIds.forEach { id -> appWidgetManager.updateAppWidget(id, views) }
         BraindumpQuickAddWidgetWorker.refreshNow(context)
     }
