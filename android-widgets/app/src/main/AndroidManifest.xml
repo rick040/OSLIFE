@@ -1,0 +1,105 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.OslifeWidgets"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".widget.todo.TodoListWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="nl.oslife.widgets.widget.todo.ACTION_REFRESH" />
+                <action android:name="nl.oslife.widgets.widget.todo.ACTION_TOGGLE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_todo_list_info" />
+        </receiver>
+
+        <service
+            android:name=".widget.todo.TodoRemoteViewsService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <receiver
+            android:name=".widget.priority.TopPriorityWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="nl.oslife.widgets.widget.priority.ACTION_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_top_priority_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.projects.ActiveProjectsWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="nl.oslife.widgets.widget.projects.ACTION_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_active_projects_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.braindump.BraindumpQuickAddWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="nl.oslife.widgets.widget.braindump.ACTION_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_braindump_add_info" />
+        </receiver>
+
+        <activity
+            android:name=".widget.braindump.QuickAddActivity"
+            android:exported="false"
+            android:theme="@style/Theme.OslifeWidgets.Overlay"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask" />
+
+        <receiver
+            android:name=".widget.heyra.HeyraQuickWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_heyra_quick_info" />
+        </receiver>
+
+        <activity
+            android:name=".widget.heyra.HeyraQuickChatActivity"
+            android:exported="false"
+            android:theme="@style/Theme.OslifeWidgets.Overlay"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask" />
+
+    </application>
+
+</manifest>

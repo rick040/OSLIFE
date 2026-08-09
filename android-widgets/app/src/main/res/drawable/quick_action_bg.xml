@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Rounded solid pill for the primary action button in the two dialog activities
+     (quick-add "Bewaar", Heyra "Verstuur"). Tint via android:backgroundTint per screen. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/widget_accent_braindump" />
+    <corners android:radius="24dp" />
+</shape>
