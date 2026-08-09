@@ -61,21 +61,28 @@ class TodoListWidgetProvider : AppWidgetProvider() {
             views.setRemoteAdapter(R.id.todo_list, serviceIntent)
             views.setEmptyView(R.id.todo_list, R.id.empty_view)
 
-            val toggleTemplate = Intent(context, TodoListWidgetProvider::class.java).apply { action = ACTION_TOGGLE }
-            val togglePendingIntent = android.app.PendingIntent.getBroadcast(
-                context, 0, toggleTemplate,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE,
-            )
-            views.setPendingIntentTemplate(R.id.todo_list, togglePendingIntent)
+            // Best-effort: a failure wiring up click targets must never stop the list itself
+            // (setRemoteAdapter above) from reaching the widget host — an un-clickable but
+            // populated list beats one silently stuck on its blank placeholder forever.
+            try {
+                val toggleTemplate = Intent(context, TodoListWidgetProvider::class.java).apply { action = ACTION_TOGGLE }
+                val togglePendingIntent = android.app.PendingIntent.getBroadcast(
+                    context, 0, toggleTemplate,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_MUTABLE,
+                )
+                views.setPendingIntentTemplate(R.id.todo_list, togglePendingIntent)
 
-            views.setOnClickPendingIntent(R.id.widget_root, DeepLink.pendingIntent(context, 0, "tasks"))
+                views.setOnClickPendingIntent(R.id.widget_root, DeepLink.pendingIntent(context, 0, "tasks"))
 
-            val refreshIntent = Intent(context, TodoListWidgetProvider::class.java).apply { action = ACTION_REFRESH }
-            val refreshPendingIntent = android.app.PendingIntent.getBroadcast(
-                context, 0, refreshIntent,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
-            )
-            views.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent)
+                val refreshIntent = Intent(context, TodoListWidgetProvider::class.java).apply { action = ACTION_REFRESH }
+                val refreshPendingIntent = android.app.PendingIntent.getBroadcast(
+                    context, 0, refreshIntent,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE,
+                )
+                views.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent)
+            } catch (_: Exception) {
+                // views.setRemoteAdapter()/setEmptyView() above already succeeded — still push those.
+            }
 
             manager.updateAppWidget(appWidgetId, views)
         }

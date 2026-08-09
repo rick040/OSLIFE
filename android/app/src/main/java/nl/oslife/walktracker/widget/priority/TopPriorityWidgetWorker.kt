@@ -36,10 +36,17 @@ class TopPriorityWidgetWorker(context: Context, params: WorkerParameters) : Work
 
     override fun doWork(): Result {
         val context = applicationContext
-        val views = when (val result = OslifeWidgetApi.get(context, "widget-tasks")) {
-            is OslifeWidgetApi.Result.Success -> buildViews(context, tasks = result.json.optJSONArray("tasks"))
-            is OslifeWidgetApi.Result.NotConfigured -> buildViews(context, notConfiguredMessage = true)
-            is OslifeWidgetApi.Result.Failure -> buildViews(context, errorMessage = result.message)
+        // Any failure while rendering must still reach pushViews() — a widget stuck on its
+        // pre-render placeholder forever (looking identical to "no data") is worse than a
+        // visible error, and a network fetch that succeeded is no guarantee the render will.
+        val views = try {
+            when (val result = OslifeWidgetApi.get(context, "widget-tasks")) {
+                is OslifeWidgetApi.Result.Success -> buildViews(context, tasks = result.json.optJSONArray("tasks"))
+                is OslifeWidgetApi.Result.NotConfigured -> buildViews(context, notConfiguredMessage = true)
+                is OslifeWidgetApi.Result.Failure -> buildViews(context, errorMessage = result.message)
+            }
+        } catch (e: Exception) {
+            buildViews(context, errorMessage = "Interne fout: ${e.message}")
         }
         pushViews(context, views)
         return Result.success()

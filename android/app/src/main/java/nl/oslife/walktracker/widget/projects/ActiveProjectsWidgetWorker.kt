@@ -38,10 +38,15 @@ class ActiveProjectsWidgetWorker(context: Context, params: WorkerParameters) : W
 
     override fun doWork(): Result {
         val context = applicationContext
-        val views = when (val result = OslifeWidgetApi.get(context, "widget-projects")) {
-            is OslifeWidgetApi.Result.Success -> buildViews(context, projects = result.json.optJSONArray("projects"))
-            is OslifeWidgetApi.Result.NotConfigured -> buildViews(context, notConfiguredMessage = true)
-            is OslifeWidgetApi.Result.Failure -> buildViews(context, errorMessage = result.message)
+        // Any failure while rendering must still reach pushViews() — see TopPriorityWidgetWorker.
+        val views = try {
+            when (val result = OslifeWidgetApi.get(context, "widget-projects")) {
+                is OslifeWidgetApi.Result.Success -> buildViews(context, projects = result.json.optJSONArray("projects"))
+                is OslifeWidgetApi.Result.NotConfigured -> buildViews(context, notConfiguredMessage = true)
+                is OslifeWidgetApi.Result.Failure -> buildViews(context, errorMessage = result.message)
+            }
+        } catch (e: Exception) {
+            buildViews(context, errorMessage = "Interne fout: ${e.message}")
         }
         pushViews(context, views)
         return Result.success()
