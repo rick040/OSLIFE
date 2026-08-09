@@ -111,18 +111,23 @@ doorstuurt. `wallet-ingest` behandelt die twee bronnen nu asymmetrisch:
   het echte bewijs dat er geld is bewogen — die wordt altijd weggeschreven,
   ook als er geen winkelnaam bij zit (dan als `PENDING_MERCHANT`, zie boven).
 - Een melding van een **wallet-app** (Google Wallet, Apple Pay, ...) bevat
-  wél een winkelnaam maar is géén bewijs dat er geld is bewogen — telefoons
-  vuren dezelfde melding-vorm ook af bij een loyaliteitskaart-scan, "kaart
-  toegevoegd"-bevestiging of saldo-check. Zo'n melding wordt daarom **nooit**
-  als eigen rij gelogd; hij wordt alleen gebruikt om een bestaande rij met
-  hetzelfde bedrag+datum van de bank-melding te **verrijken** met de
-  winkelnaam. Is er (nog) geen bank-rij met dat bedrag+datum, dan wordt de
-  wallet-melding stilletjes genegeerd — beter een tijdelijk anonieme
-  bank-rij dan een verzonnen transactie.
+  wél een winkelnaam maar is géén *op zichzelf staand* bewijs dat er geld is
+  bewogen — telefoons vuren dezelfde melding-vorm ook af bij een
+  loyaliteitskaart-scan, "kaart toegevoegd"-bevestiging of saldo-check, en die
+  hebben geen bedrag+winkelnaam-combinatie om uit te parsen. Kan
+  `wallet-ingest` wél een winkelnaam uit de melding halen, dan schrijft hij
+  hem — Wallet-meldingen komen doorgaans eerder binnen dan de trage
+  bank-melding, dus wachten tot er al een bank-rij staat zou de winkelnaam
+  meestal gewoon weggooien. Komt de bank-melding daarna alsnog binnen voor
+  dezelfde datum+bedrag, dan wordt de rij bijgewerkt zonder de winkelnaam te
+  overschrijven met de naamloze `PENDING_MERCHANT`-placeholder — en omgekeerd:
+  komt de bank-melding eerder, dan verrijkt de latere Wallet-melding die rij
+  zoals voorheen. Kortom: wie er ook eerst is, de kant met de echte winkelnaam
+  wint altijd.
 
 Gevolg: zet in MacroDroid altijd de bank-trigger ("Iedere inhoud" op ABN
 AMRO) EN de Wallet-trigger aan naar hetzelfde endpoint — de bank-melding is
-wat telt, Wallet is puur de naam erbij.
+het bewijs dat het geld bewogen is, Wallet levert meestal de winkelnaam.
 
 ### Interne overboekingen (tussen je eigen rekeningen)
 
