@@ -187,5 +187,85 @@
             android:textSize="12sp"
             android:alpha="0.7" />
 
+        <!-- ── Premium OSLIFE widgets ──────────────────────────────────── -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="OSLIFE-widgets (to-do, belangrijkste items, projecten, brain-dump, HEYRA)"
+            android:textStyle="bold"
+            android:layout_marginTop="28dp"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Eén basis-URL en secret voor alle vijf widgets — elke widget haalt zijn eigen edge function op onder deze URL."
+            android:textSize="12sp"
+            android:alpha="0.7"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Functions base URL"
+            android:textSize="12sp"
+            android:alpha="0.7" />
+        <EditText
+            android:id="@+id/oslifeBaseUrlInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="https://xxxx.supabase.co/functions/v1"
+            android:inputType="textUri" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Widget secret"
+            android:textSize="12sp"
+            android:alpha="0.7"
+            android:layout_marginTop="8dp" />
+        <EditText
+            android:id="@+id/oslifeSecretInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="WIDGET_SUMMARY_SECRET waarde"
+            android:inputType="textPassword" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="OSLIFE web app URL (voor 'open in OSLIFE' vanuit een widget)"
+            android:textSize="12sp"
+            android:alpha="0.7"
+            android:layout_marginTop="8dp" />
+        <EditText
+            android:id="@+id/oslifeWebAppUrlInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="https://oslife.vercel.app"
+            android:inputType="textUri" />
+
+        <Button
+            android:id="@+id/saveOslifeSettingsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="OSLIFE-widget-instellingen opslaan" />
+
+        <Button
+            android:id="@+id/refreshOslifeWidgetsButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="Alle vijf widgets nu verversen" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Long-press het homescreen → Widgets → OSLIFE Walk Tracker om ze toe te voegen: To-do lijst, Belangrijkste items, Actieve projecten, Brain-dump snel toevoegen, HEYRA snel chatten/spreken."
+            android:textSize="12sp"
+            android:alpha="0.7" />
+
     </LinearLayout>
 </ScrollView>

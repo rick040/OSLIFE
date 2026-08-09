@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { TODAY, daysBetween } from '../domains'
 import type { Project } from '../types'
@@ -42,7 +42,7 @@ function sortProjects(list: Project[], key: SortKey): Project[] {
   }
 }
 
-export default function Projects() {
+export default function Projects({ initialProjectId = null }: { initialProjectId?: string | null } = {}) {
   const { projects, clients, projectInvoices, activeTimer } = useStore()
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('Alle')
@@ -55,6 +55,18 @@ export default function Projects() {
     setOpenProject, setCreatingProject, setCreatingClient,
     openClientById, modals,
   } = useProjectBrowserModals(clients)
+
+  // Deep link (e.g. an Android widget tap) opens straight to this project's
+  // detail modal — once only, so closing it doesn't immediately reopen it.
+  const deepLinkHandled = useRef(false)
+  useEffect(() => {
+    if (deepLinkHandled.current || !initialProjectId) return
+    const match = projects.find((p) => p.id === initialProjectId)
+    if (match) {
+      setOpenProject(match)
+      deepLinkHandled.current = true
+    }
+  }, [initialProjectId, projects, setOpenProject])
 
   const focusedProject = useMemo(
     () => pickFocusedProject(projects, focusedProjectId, activeTimer?.projectId),

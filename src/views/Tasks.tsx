@@ -759,7 +759,7 @@ function StatTile({
   )
 }
 
-export default function Tasks() {
+export default function Tasks({ initialTaskId = null }: { initialTaskId?: string | null } = {}) {
   const store = useStore()
   const { threads } = store
   const [filter, setFilter] = useState<Filter>('all')
@@ -771,7 +771,8 @@ export default function Tasks() {
   const [sort, setSort] = useState<SortMode>('urgency')
   const [showDone, setShowDone] = useState(false)
   const [creating, setCreating] = useState(false)
-  const [openId, setOpenId] = useState<string | null>(null)
+  // Deep link (e.g. an Android widget tap) opens straight to this task.
+  const [openId, setOpenId] = useState<string | null>(initialTaskId)
   const [confirmClearDone, setConfirmClearDone] = useState(false)
 
   const matchesFilter = (d: Domain) => (filter === 'all' ? true : filter === 'personal' ? d === 'personal' : WORK_DOMAINS.includes(d))
