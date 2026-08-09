@@ -80,7 +80,8 @@ export default function CRM() {
     STATUS_ORDER.forEach((s) => m.set(s, { count: 0, budget: 0 }))
     projects.forEach((p) => {
       const k = CRM_STATUS[p.status]
-      const e = m.get(k)!
+      const e = k ? m.get(k) : undefined
+      if (!e) return // unmapped/legacy status value — don't crash, just skip the bucket
       e.count++
       e.budget += p.value ?? 0
     })

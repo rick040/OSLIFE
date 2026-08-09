@@ -3294,25 +3294,16 @@ export const useStore = create<State>()(
       },
 
       loadLiveData: async () => {
+        // One quick retry on failure — a transient network hiccup (common on
+        // mobile) used to go silent until the next 5-min poll/focus, which is
+        // exactly the "data is a day behind" symptom. attemptFetch() returns
+        // whether it landed; the caller below decides whether to retry.
+        const attemptFetch = async (): Promise<boolean> => {
         try {
-          const [
-            healthDays,
-            transactions,
-            payments,
-            emails,
-            meetingDays,
-            blocks,
-            habits,
-            subscriptions,
-            goals,
-            goalMilestones,
-            dogEntries,
-            brainState,
-            screenDays,
-            projects,
-            clients,
-            checkins,
-          ] = await Promise.all([
+          // Both batches are independent (no batch reads the other's result), so
+          // kick off batch 2 before awaiting batch 1 — they run concurrently
+          // instead of doubling the wait on every open/refresh.
+          const batch1 = Promise.all([
             fetchHealthDays(),
             fetchTransactions(),
             fetchPayments(),
@@ -3331,7 +3322,7 @@ export const useStore = create<State>()(
             fetchCheckins(),
           ])
           // Load the native CRM slices (project template + messages) separately.
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, braindumpLinks, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, leads, outreachTargets, outreachEmails, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, identityProfile, walks, locationVisits, activitySessions, lastCsvImportAt] = await Promise.all([
+          const batch2 = Promise.all([
             fetchMilestones(),
             fetchProjectTaskRows(),
             fetchHours(),
@@ -3375,6 +3366,27 @@ export const useStore = create<State>()(
             fetchActivitySessions(),
             fetchLastCsvImportDate(),
           ])
+
+          const [
+            healthDays,
+            transactions,
+            payments,
+            emails,
+            meetingDays,
+            blocks,
+            habits,
+            subscriptions,
+            goals,
+            goalMilestones,
+            dogEntries,
+            brainState,
+            screenDays,
+            projects,
+            clients,
+            checkins,
+          ] = await batch1
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, braindumpLinks, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, leads, outreachTargets, outreachEmails, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, identityProfile, walks, locationVisits, activitySessions, lastCsvImportAt] = await batch2
+
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
             ...(healthDays.length > 0 && { healthDays }),
@@ -3462,11 +3474,21 @@ export const useStore = create<State>()(
           void get().refreshStockQuotes()
           // Pre-summarize "Belangrijk" mail that hasn't been summarized yet.
           void get().autoSummarizeImportantEmails()
+          return true
         } catch (err) {
           console.warn('[OSLIFE] Supabase fetch failed', err)
-          set({ isLoading: false })
-          // Still rebuild from whatever is loaded so REMEMBER isn't blank.
-          get().recomputeBrain()
+          return false
+        }
+        }
+
+        if (!(await attemptFetch())) {
+          await new Promise((resolve) => setTimeout(resolve, 2000))
+          if (!(await attemptFetch())) {
+            console.warn('[OSLIFE] Supabase fetch failed twice in a row, giving up for this cycle')
+            set({ isLoading: false })
+            // Still rebuild from whatever is loaded so REMEMBER isn't blank.
+            get().recomputeBrain()
+          }
         }
 
         // One Realtime channel for all passively-ingested tables. Each entry
@@ -3567,23 +3589,26 @@ export const useStore = create<State>()(
           // a phone-posted walk needs this to show up in the Kyra timeline live.
           { table: 'dog_log', onChange: () => fetchDogEntries().then((d) => { if (d.length > 0) set({ dogEntries: d }) }) },
         ]
-        // Tear down any channel from a previous loadLiveData() before opening a
-        // new one — otherwise each auth event leaks another full subscription.
-        if (liveChannel) {
-          supabase.removeChannel(liveChannel)
-          liveChannel = null
+        // loadLiveData() runs on every mount, tab-focus, and 5-min poll — the
+        // channel only needs to exist once per session. Tearing it down and
+        // resubscribing all ~40 postgres_changes filters on every one of those
+        // calls was adding a full websocket round-trip to every "just switched
+        // back to the app" refresh, which is most of what made re-opening OSLIFE
+        // feel slow. Build it once; a stale filter list from a rare mid-session
+        // schema change is not worth resubscribing on every focus event for.
+        if (!liveChannel) {
+          liveChannel = syncSlices
+            .reduce(
+              (channel, slice) =>
+                channel.on('postgres_changes', { event: '*', schema: 'public', table: slice.table }, () => {
+                  // Stamp the sync clock once this slice's refetch actually lands,
+                  // so "bijgewerkt Xm geleden" reflects real data, not just a tick.
+                  void Promise.resolve(slice.onChange()).then(() => set({ lastSyncedAt: new Date().toISOString() }))
+                }),
+              supabase.channel('oslife-live'),
+            )
+            .subscribe()
         }
-        liveChannel = syncSlices
-          .reduce(
-            (channel, slice) =>
-              channel.on('postgres_changes', { event: '*', schema: 'public', table: slice.table }, () => {
-                // Stamp the sync clock once this slice's refetch actually lands,
-                // so "bijgewerkt Xm geleden" reflects real data, not just a tick.
-                void Promise.resolve(slice.onChange()).then(() => set({ lastSyncedAt: new Date().toISOString() }))
-              }),
-            supabase.channel('oslife-live'),
-          )
-          .subscribe()
       },
 
       loadInferences: async () => {

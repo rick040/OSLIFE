@@ -128,8 +128,15 @@ function isTransferIban(text: string): boolean {
   return ibans.some((iban) => TRANSFER_IBANS.has(iban))
 }
 
-function inferCategory(merchant: string, context = ''): string {
-  if (TRANSFER_COUNTERPARTIES.some((re) => re.test(merchant)) || isTransferIban(`${merchant} ${context}`)) return 'Internal transfer'
+// Deliberately checks `merchant` only, never the raw notification title/text:
+// a bank debit push notification always mentions the SOURCE account being
+// debited (Rick's own checking/savings — exactly what's in TRANSFER_IBANS),
+// not the counterparty. Scanning the full notification body for that IBAN
+// self-matches on every single purchase, mislabeling all of them as internal
+// transfers. The merchant field itself CAN legitimately be/contain a transfer IBAN — e.g. a real
+// "naar rekening NL62..." transfer notification — so it's still checked.
+function inferCategory(merchant: string): string {
+  if (TRANSFER_COUNTERPARTIES.some((re) => re.test(merchant)) || isTransferIban(merchant)) return 'Internal transfer'
   const m = merchant.toLowerCase()
   for (const [key, cat] of Object.entries(CATEGORY_MAP)) {
     if (m.includes(key)) return cat
@@ -240,47 +247,72 @@ Deno.serve(async (req) => {
   const dedupKey = `${occurredOn}|${storedAmount.toFixed(2)}`
 
   const domain = mapAccountType(body.domain ?? body.account_type ?? '') || inferDomain(merchant)
-  const category = body.category?.trim() || inferCategory(merchant, `${title} ${text}`)
+  const category = body.category?.trim() || inferCategory(merchant)
   const source = normalizeSource(body.app ?? '')
   const description = `${title} | ${text}`.slice(0, 200)
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+  const bankApp = isBankApp(body.app ?? '')
+  const hasRealMerchant = merchant !== PENDING_MERCHANT
 
-  // A wallet notification (Google Wallet, Apple Pay, ...) only carries the
-  // vendor name — it's not proof money actually moved (loyalty scans, "card
-  // added" confirmations and balance peeks all fire the same notification
-  // shape). So it's only ever logged as an ENRICHMENT of a bank notification
-  // that already landed for the exact same date+amount, never as a new row
-  // on its own. If no matching bank row exists yet, drop it silently instead
-  // of risking a phantom transaction.
-  if (!isBankApp(body.app ?? '')) {
-    const { data: existing, error: lookupError } = await supabase
-      .from('finance_tx')
-      .select('id')
-      .eq('user_id', USER_ID)
-      .eq('dedup_key', dedupKey)
-      .maybeSingle()
+  // Look up any row already logged for this date+amount before deciding
+  // insert vs. enrich — a contactless tap fires the bank alert and the Wallet
+  // notification in either order (Wallet is often faster), so both paths need
+  // to handle "the other one already landed" AND "the other one hasn't yet".
+  const { data: existing, error: lookupError } = await supabase
+    .from('finance_tx')
+    .select('id, counterparty, category')
+    .eq('user_id', USER_ID)
+    .eq('dedup_key', dedupKey)
+    .maybeSingle()
 
-    if (lookupError) {
-      console.error('Lookup error:', lookupError)
-      return json({ ok: false, error: lookupError.message }, 500)
+  if (lookupError) {
+    console.error('Lookup error:', lookupError)
+    return json({ ok: false, error: lookupError.message }, 500)
+  }
+
+  if (existing) {
+    // Whichever side actually knows the real merchant wins — never let a
+    // generic placeholder (the bank's own nameless "bedrag afgeschreven"
+    // alert, or a Wallet notification whose text didn't parse a name) clobber
+    // a real merchant that's already on the row, no matter which source
+    // arrives second.
+    const existingHasRealMerchant = !!existing.counterparty && existing.counterparty !== PENDING_MERCHANT
+    if (!hasRealMerchant && existingHasRealMerchant) {
+      return json({ ok: true, skipped: true, reason: 'existing_merchant_kept' })
     }
-
-    if (!existing) {
-      return json({ ok: true, skipped: true, reason: 'no_matching_bank_notification' })
-    }
+    const finalMerchant = hasRealMerchant ? merchant : existing.counterparty
+    const finalCategory = hasRealMerchant ? category : existing.category
 
     const { error } = await supabase
       .from('finance_tx')
-      .update({ counterparty: merchant, category, domain, description, payment_method: body.payment_method?.trim() || 'contactless' })
+      .update({
+        counterparty: finalMerchant,
+        category: finalCategory,
+        domain,
+        description,
+        payment_method: body.payment_method?.trim() || 'contactless',
+      })
       .eq('id', existing.id)
 
     if (error) {
-      console.error('Enrich error:', error)
+      console.error('Update error:', error)
       return json({ ok: false, error: error.message }, 500)
     }
 
-    return json({ ok: true, merchant, amount, enriched: true })
+    return json({ ok: true, merchant: finalMerchant, amount, enriched: true })
+  }
+
+  // No row yet for this date+amount. A bank-app notification is always the
+  // authoritative record of a real debit, so it creates the row even with no
+  // merchant yet (PENDING_MERCHANT, enriched the moment the Wallet
+  // notification — or a later CSV import — lands). A wallet-only notification
+  // (Google Wallet, Apple Pay, ...) only creates the row when it actually
+  // extracted a real merchant name: that's evidence of an actual purchase,
+  // not just a loyalty-card scan/balance-peek/"card added" confirmation
+  // firing the same notification shape with no amount+name to show for it.
+  if (!bankApp && !hasRealMerchant) {
+    return json({ ok: true, skipped: true, reason: 'no_matching_bank_notification' })
   }
 
   const { error } = await supabase.from('finance_tx').upsert(
