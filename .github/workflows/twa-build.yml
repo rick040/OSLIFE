@@ -1,0 +1,47 @@
+name: OSLIFE TWA build
+
+# Builds the native Android wrapper (Trusted Web Activity) around the live
+# OSLIFE web app into a signed release APK without needing Android Studio
+# installed anywhere — download the APK from this workflow run's Artifacts
+# section and sideload it. Requires /twa to already exist — see
+# twa-init.yml, which generates it once.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "twa/**"
+      - ".github/workflows/twa-build.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: twa
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: oslife-twa-release-apk
+          path: twa/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error

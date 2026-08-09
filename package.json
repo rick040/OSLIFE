@@ -35,6 +35,7 @@
     "zustand": "^5.0.1"
   },
   "devDependencies": {
+    "@bubblewrap/core": "^1.25.0",
     "@types/leaflet": "^1.9.14",
     "@types/node": "^26.1.0",
     "@types/react": "^18.3.12",
