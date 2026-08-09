@@ -1,0 +1,26 @@
+<resources>
+    <color name="ic_launcher_background">#0F172A</color>
+    <color name="accent">#34D399</color>
+
+    <!-- ── Premium widget design system ─────────────────────────────────────
+         One shared card shape + typography scale, one distinct accent per
+         widget so five widgets on the same home screen read as a family, not
+         five unrelated boxes. -->
+    <color name="widget_card_bg">#FFFFFF</color>
+    <color name="widget_text_primary">#111318</color>
+    <color name="widget_text_secondary">#5B6270</color>
+    <color name="widget_text_tertiary">#9AA0AC</color>
+    <color name="widget_divider">#EDEFF3</color>
+
+    <color name="widget_accent_todo">#3B82F6</color>
+    <color name="widget_accent_priority">#F59E0B</color>
+    <color name="widget_accent_projects">#8B5CF6</color>
+    <color name="widget_accent_braindump">#10B981</color>
+    <color name="widget_accent_heyra">#14B8A6</color>
+
+    <color name="widget_accent_todo_soft">#EAF1FF</color>
+    <color name="widget_accent_priority_soft">#FEF3E2</color>
+    <color name="widget_accent_projects_soft">#F1EAFE</color>
+    <color name="widget_accent_braindump_soft">#E5F9F0</color>
+    <color name="widget_accent_heyra_soft">#E1F7F4</color>
+</resources>
