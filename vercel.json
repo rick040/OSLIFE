@@ -1,6 +1,6 @@
 {
   "rewrites": [
-    { "source": "/((?!icons/|manifest.webmanifest|sw.js|assets/).*)", "destination": "/" }
+    { "source": "/((?!icons/|manifest.webmanifest|sw.js|assets/|.well-known/).*)", "destination": "/" }
   ],
   "headers": [
     { "source": "/sw.js", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
