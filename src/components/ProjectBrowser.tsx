@@ -11,6 +11,7 @@ import type { Project, Client } from '../types'
 
 export const STATUS_FILTERS = [
   { value: 'Alle', label: 'Alle' },
+  { value: 'Concept', label: 'Concept' },
   { value: 'In uitvoering', label: 'Actief' },
   { value: 'Gepland', label: 'Gepland' },
   { value: 'Gepauzeerd', label: 'Pauze' },

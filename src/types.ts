@@ -605,7 +605,11 @@ export interface MeetingDay {
 
 // ── Projects (native CRM — full in-app CRUD, no external sync) ───────────────
 
-export type ProjectStatus = 'lead' | 'active' | 'review' | 'blocked' | 'done'
+// `draft` = written by the Fiverr intake pipeline (supabase/functions/
+// fiverr-process-intake) before Rick has reviewed the auto-drafted scope/price.
+// projects.status is free text in Postgres, so the UI must also survive values
+// that aren't in this union — see projectStatusStyle() in components/crm.tsx.
+export type ProjectStatus = 'draft' | 'lead' | 'active' | 'review' | 'blocked' | 'done'
 
 export type Priority = 'High' | 'Medium' | 'Low'
 

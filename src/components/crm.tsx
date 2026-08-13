@@ -25,6 +25,7 @@ export { eur, eur0 }
 
 // ── status maps (single source of truth, mirrors the old Dutch CRM labels) ─────
 export const CRM_STATUS: Record<ProjectStatus, string> = {
+  draft: 'Concept',
   active: 'In uitvoering',
   review: 'In uitvoering',
   lead: 'Gepland',
@@ -32,12 +33,29 @@ export const CRM_STATUS: Record<ProjectStatus, string> = {
   done: 'Opgeleverd',
 }
 export const STATUS_HEX: Record<string, string> = {
+  Concept: '#94A3B8',
   'In uitvoering': '#34D399',
   Gepland: '#60A5FA',
   Gepauzeerd: '#FBBF24',
   Opgeleverd: '#A78BFA',
 }
+/** Neutral grey for a status the app has no colour for — see projectStatusStyle. */
+export const UNKNOWN_STATUS_HEX = '#a3a3a3'
+
+/**
+ * Label + hex for a project status, tolerating values this build doesn't know.
+ * `projects.status` is free text in Postgres, so anything can land in the store
+ * (the Fiverr intake writes `draft`; a future writer may add more). An unmapped
+ * value renders as a neutral chip showing the raw value — never `undefined`,
+ * which used to reach `Pill solid` and crash the whole Projecten page.
+ */
+export function projectStatusStyle(status: ProjectStatus | string | null | undefined): { label: string; hex: string } {
+  const label = CRM_STATUS[status as ProjectStatus] ?? (status ? String(status) : '—')
+  return { label, hex: STATUS_HEX[label] ?? UNKNOWN_STATUS_HEX }
+}
+
 export const PROJECT_STATUS_OPTIONS: { value: ProjectStatus; label: string }[] = [
+  { value: 'draft', label: 'Concept' },
   { value: 'lead', label: 'Gepland (lead)' },
   { value: 'active', label: 'In uitvoering' },
   { value: 'review', label: 'In review' },
@@ -227,10 +245,9 @@ export function RingProgress({ pct, size = 56, stroke = 6, color = '#6FA07C' }: 
 }
 
 export function StatusBadge({ status }: { status: ProjectStatus }) {
-  const label = CRM_STATUS[status]
-  const c = STATUS_HEX[label]
+  const { label, hex } = projectStatusStyle(status)
   return (
-    <Pill solid hex={c} className="text-xs font-semibold px-2 py-0.5 rounded-md whitespace-nowrap">
+    <Pill solid hex={hex} className="text-xs font-semibold px-2 py-0.5 rounded-md whitespace-nowrap">
       {label}
     </Pill>
   )

@@ -34,8 +34,26 @@ export function KindChip({ kind }: { kind: string }) {
 }
 
 // ── WCAG contrast helpers ────────────────────────────────────────────────────
+
+/** Neutral grey used whenever a caller's colour lookup came back empty. */
+const FALLBACK_HEX = '#a3a3a3'
+
+/**
+ * Coerce whatever a caller passed into a usable `#rrggbb`. Callers derive these
+ * from lookup tables keyed on data (`STATUS_HEX[CRM_STATUS[p.status]]`), so a
+ * value the table doesn't know yields `undefined` — which used to throw inside
+ * render and blank the entire page behind the error boundary. A badge with the
+ * wrong colour is a cosmetic bug; a badge that crashes the page is not.
+ */
+export function normalizeHex(hex: string | null | undefined): string {
+  const c = (hex ?? '').trim().replace(/^#/, '')
+  if (/^[0-9a-f]{6}$/i.test(c)) return `#${c}`
+  if (/^[0-9a-f]{3}$/i.test(c)) return `#${c[0]}${c[0]}${c[1]}${c[1]}${c[2]}${c[2]}`
+  return FALLBACK_HEX
+}
+
 function hexToRgb(hex: string): [number, number, number] {
-  const c = hex.replace('#', '')
+  const c = normalizeHex(hex).slice(1)
   return [parseInt(c.substring(0, 2), 16), parseInt(c.substring(2, 4), 16), parseInt(c.substring(4, 6), 16)]
 }
 
@@ -100,13 +118,14 @@ export function Pill({
   solid,
   children,
 }: {
-  hex: string
+  hex: string | null | undefined // widened on purpose: data-driven lookups can miss
   className?: string
   solid?: boolean
   children: React.ReactNode
 }) {
+  const safe = normalizeHex(hex)
   return (
-    <span className={className} style={solid ? accessibleTextOn(hex) : { color: hex, background: `${hex}22` }}>
+    <span className={className} style={solid ? accessibleTextOn(safe) : { color: safe, background: `${safe}22` }}>
       {children}
     </span>
   )

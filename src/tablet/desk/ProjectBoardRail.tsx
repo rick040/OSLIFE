@@ -3,6 +3,9 @@ import { Pill } from '../../components/ui'
 import { deadlineInfo } from '../../components/crm'
 
 const GROUPS: { statuses: ProjectStatus[]; label: string }[] = [
+  // Concept first: these are Fiverr intakes waiting on a scope/price review,
+  // so they're the ones that need a decision before anything else moves.
+  { statuses: ['draft'], label: 'Concept' },
   { statuses: ['active', 'review'], label: 'Bezig' },
   { statuses: ['lead'], label: 'Gepland' },
   { statuses: ['blocked'], label: 'Gepauzeerd' },

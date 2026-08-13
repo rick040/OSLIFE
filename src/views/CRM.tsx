@@ -28,7 +28,7 @@ import {
 } from 'lucide-react'
 import OnboardingWizard from '../components/OnboardingWizard'
 
-const STATUS_ORDER = ['In uitvoering', 'Gepland', 'Gepauzeerd', 'Opgeleverd'] as const
+const STATUS_ORDER = ['Concept', 'In uitvoering', 'Gepland', 'Gepauzeerd', 'Opgeleverd'] as const
 
 export default function CRM() {
   const { projects, clients, messages, markConversationRead, focusProjectId, setFocusProjectId } = useStore()
