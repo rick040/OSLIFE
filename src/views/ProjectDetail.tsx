@@ -11,7 +11,7 @@ import { useStore } from '../store'
 import { useIsMobile } from '../hooks/use-mobile'
 import ProjectForm from './ProjectForm'
 import {
-  eur, CRM_STATUS, STATUS_HEX, PRIO_HEX, PRIO_NL,
+  eur, projectStatusStyle, PRIO_HEX, PRIO_NL,
   SheetShell, Field, TextInput, TextArea, SelectInput, RingProgress,
 } from '../components/crm'
 import type { ActivityAnalysis } from '../lib/crm/activityAnalyzer'
@@ -54,8 +54,7 @@ export default function ProjectDetail({ project: initial, onClose }: { project: 
 
   const client = clients.find((c) => c.id === project.clientId)
   const iconColor = DOMAIN_COLOR[project.domain] ?? '#A78BFA'
-  const crmStatus = CRM_STATUS[project.status]
-  const statusColor = STATUS_HEX[crmStatus]
+  const { label: crmStatus, hex: statusColor } = projectStatusStyle(project.status)
 
   const doneTasks = tasks.filter((t) => t.done).length
   const taskPct = tasks.length ? doneTasks / tasks.length : 0

@@ -8,7 +8,7 @@ import { useStore } from '../store'
 import ClientForm from './ClientForm'
 import ProjectForm from './ProjectForm'
 import ProjectDetail from './ProjectDetail'
-import { eur, CLIENT_HEX, CLIENT_STATUS_NL, CRM_STATUS, STATUS_HEX, SheetShell } from '../components/crm'
+import { eur, CLIENT_HEX, CLIENT_STATUS_NL, projectStatusStyle, SheetShell } from '../components/crm'
 import { deriveGmailMessages } from '../lib/crm/gmailInbox'
 
 export default function ClientDetail({ client: initial, onClose }: { client: Client; onClose: () => void }) {
@@ -106,7 +106,7 @@ export default function ClientDetail({ client: initial, onClose }: { client: Cli
             ) : (
               <div className="space-y-2">
                 {clientProjects.map((p) => {
-                  const crm = CRM_STATUS[p.status]; const sc = STATUS_HEX[crm]
+                  const { label: crm, hex: sc } = projectStatusStyle(p.status)
                   return (
                     <button key={p.id} onClick={() => setOpenProject(p)} className="w-full text-left rounded-2xl bg-surface border border-line px-4 py-3 hover:bg-sunken transition-colors">
                       <div className="flex items-center justify-between gap-2">

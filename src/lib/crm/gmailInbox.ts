@@ -28,8 +28,8 @@ export const PRJCT_LABEL = 'Rick - PRJCT Agency'
 export const FIVERR_LABEL = 'fiverr-logged'
 
 /** Prefer the client's active work when choosing their primary project. */
-const STATUS_RANK: Record<ProjectStatus, number> = { active: 0, review: 1, lead: 2, blocked: 3, done: 4 }
-const statusRank = (s: ProjectStatus): number => STATUS_RANK[s] ?? 5
+const STATUS_RANK: Record<ProjectStatus, number> = { active: 0, review: 1, lead: 2, draft: 3, blocked: 4, done: 5 }
+const statusRank = (s: ProjectStatus): number => STATUS_RANK[s] ?? 6
 
 export function extractSenderName(addr: string): string {
   if (!addr) return '(onbekend)'
