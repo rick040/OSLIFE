@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { SCREENS, type View } from '@/nav'
+import { logScreenView } from '@/lib/supabase'
 import type { Nudge } from '@/types'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
@@ -52,6 +53,17 @@ export function AppShell({
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [])
+
+  // Read telemetry — the one place every in-app navigation passes through.
+  //
+  // Debounced so that flicking through screens on the way to somewhere doesn't
+  // count as reading them: a view has to be on screen for a moment before it
+  // logs. The timer is cleared on change, so only the screen you actually
+  // land on is recorded.
+  useEffect(() => {
+    const t = setTimeout(() => void logScreenView(view), 1200)
+    return () => clearTimeout(t)
+  }, [view])
 
   return (
     <SidebarProvider>

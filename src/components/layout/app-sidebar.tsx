@@ -1,6 +1,6 @@
 import { Play, RotateCcw, Settings, Workflow, Grid3x3 } from 'lucide-react'
 
-import { SCREENS, GROUP_ORDER, type View, type ScreenGroup } from '@/nav'
+import { NAV_SCREENS, GROUP_ORDER, type View, type ScreenGroup } from '@/nav'
 import type { Nudge } from '@/types'
 import Orb from '@/components/Orb'
 import { storeNudgeToDash } from '@/components/NudgeCard'
@@ -26,6 +26,7 @@ const GROUP_LABELS: Record<ScreenGroup, string> = {
   Business: 'Business',
   Intake: 'Vastleggen',
   Reflect: 'Reflectie',
+  Archief: 'Archief',
 }
 
 export interface AppSidebarProps {
@@ -96,7 +97,7 @@ export function AppSidebar({
 
       <SidebarContent>
         {GROUP_ORDER.map((group) => {
-          const items = SCREENS.filter((s) => s.group === group)
+          const items = NAV_SCREENS.filter((s) => s.group === group)
           if (!items.length) return null
           return (
             <SidebarGroup key={group}>

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { renderRegistrySnapshot, collectRegistrySearchRows } from './contextRegistry'
+import { TODAY } from '../domains'
+import { addDays } from '../lib/dates'
 import type { useStore } from '../store'
 import type { Project, ProjectTask, ProjectMilestone, Invoice, Goal, Person, Client } from '../types'
 
@@ -58,7 +60,11 @@ describe('renderRegistrySnapshot', () => {
     const lines = renderRegistrySnapshot(
       store({
         projects: [project({ id: 'p1', name: 'Buurtkaart Q3' })],
-        projectMilestones: [{ id: 'm1', projectId: 'p1', title: 'Launch', dueDate: '2026-07-30', progress: 0, done: false } as ProjectMilestone],
+        // Relative to TODAY, not a literal: the registry's horizon is measured
+        // from the wall clock, so a hardcoded date silently ages out of range
+        // and the test starts failing on a calendar boundary rather than a
+        // code change.
+        projectMilestones: [{ id: 'm1', projectId: 'p1', title: 'Launch', dueDate: addDays(TODAY, 3), progress: 0, done: false } as ProjectMilestone],
       }),
       7,
     )

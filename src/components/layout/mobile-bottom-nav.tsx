@@ -1,18 +1,23 @@
-import { Gauge, CheckSquare, Inbox, Activity, Grid2x2 } from 'lucide-react'
-import { type View } from '@/nav'
+import { Gauge, Grid2x2 } from 'lucide-react'
+import { NAV_SCREENS, type View } from '@/nav'
 
 // Mobile bottom tab bar — the primary way to move around on a phone. Capped
 // at 5 items (Apple/Google HIG guidance: beyond that, touch targets shrink
-// and choice overload sets in) rather than cramming in every `primary`
-// screen from nav.ts. "Meer" opens the existing AppGrid, which already
-// covers all 22 screens grouped, so nothing is actually unreachable —
-// these 5 are just the everyday ones that deserve a one-tap slot.
+// and choice overload sets in): 4 screens plus "Meer", which opens the
+// AppGrid, so nothing is unreachable.
+//
+// The 4 are read from nav.ts's `primary` flag rather than hardcoded here —
+// they used to be two separate lists that had silently drifted apart (three
+// `primary` screens never appeared in the bar, and one screen in the bar
+// wasn't `primary`). One list means changing what's prominent is a one-line
+// edit in the registry, and `primary` can't quietly become a lie again.
+const MAX_SLOTS = 4
+
 const ITEMS: { id: View | 'more'; label: string; icon: typeof Gauge }[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: Gauge },
-  { id: 'tasks', label: 'Taken', icon: CheckSquare },
-  { id: 'capture', label: 'Vastleggen', icon: Inbox },
-  { id: 'vitals', label: 'Gezondheid', icon: Activity },
-  { id: 'more', label: 'Meer', icon: Grid2x2 },
+  ...NAV_SCREENS.filter((s) => s.primary)
+    .slice(0, MAX_SLOTS)
+    .map((s) => ({ id: s.id, label: s.label, icon: s.icon })),
+  { id: 'more' as const, label: 'Meer', icon: Grid2x2 },
 ]
 
 export function MobileBottomNav({

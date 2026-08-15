@@ -1,4 +1,4 @@
-import { SCREENS, GROUP_ORDER, type View, type ScreenGroup } from '@/nav'
+import { NAV_SCREENS, GROUP_ORDER, type View, type ScreenGroup } from '@/nav'
 import {
   CommandDialog,
   CommandEmpty,
@@ -14,6 +14,7 @@ const GROUP_LABELS: Record<ScreenGroup, string> = {
   Business: 'Business',
   Intake: 'Vastleggen',
   Reflect: 'Reflectie',
+  Archief: 'Archief',
 }
 
 export interface CommandMenuProps {
@@ -34,7 +35,7 @@ export function CommandMenu({ open, onOpenChange, onNav }: CommandMenuProps) {
       <CommandList>
         <CommandEmpty>Geen resultaten gevonden.</CommandEmpty>
         {GROUP_ORDER.map((group) => {
-          const items = SCREENS.filter((s) => s.group === group)
+          const items = NAV_SCREENS.filter((s) => s.group === group)
           if (!items.length) return null
           return (
             <CommandGroup key={group} heading={GROUP_LABELS[group]}>
