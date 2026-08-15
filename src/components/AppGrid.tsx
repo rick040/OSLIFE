@@ -1,8 +1,9 @@
 import { useEffect } from 'react'
 import { X } from 'lucide-react'
-import { SCREENS, GROUP_ORDER, type View } from '../nav'
+import { NAV_SCREENS, GROUP_ORDER, type View } from '../nav'
 
-/** Full-screen app launcher: every screen as a tappable tile, grouped by layer. */
+/** Full-screen app launcher: every live screen as a tappable tile, grouped by
+ *  layer. Archived screens are reached through the Archief tile instead. */
 export default function AppGrid({
   active,
   onNav,
@@ -44,7 +45,7 @@ export default function AppGrid({
 
         <div className="space-y-6">
           {GROUP_ORDER.map((group) => {
-            const screens = SCREENS.filter((s) => s.group === group)
+            const screens = NAV_SCREENS.filter((s) => s.group === group)
             if (!screens.length) return null
             return (
               <div key={group}>

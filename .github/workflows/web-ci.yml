@@ -1,0 +1,40 @@
+name: OSLIFE web CI
+
+# Typecheck, build and test the web app.
+#
+# Until now nothing in CI touched the web app at all — the four existing
+# workflows build Android/TWA/widget APKs, and Vercel deploys whatever lands on
+# main. So a type error or a broken test could only be caught by someone
+# running `npm run build` locally and remembering to look.
+#
+# That matters more than usual right now: `tsconfig.json` sets
+# `noUnusedLocals: false`, so the compiler stays quiet about imports and
+# variables orphaned by deletions — which is exactly how three unreachable
+# view files (Eyes, Dakmeester, SideBusiness) sat in the tree for seven weeks
+# without anything complaining.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `npm run build` is `tsc -b && vite build`, so this covers typechecking.
+      - name: Typecheck and build
+        run: npm run build
+
+      - name: Test
+        run: npm test

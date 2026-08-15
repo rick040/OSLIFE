@@ -4,6 +4,7 @@ import { SKILLS, type AgentId } from '../heyra/skills'
 import { contextualSuggestions, followUpSuggestions, actionFollowUpSuggestion, brainFollowUps, type Topic } from '../heyra/suggestions'
 import { routeMessage } from '../heyra/router'
 import { emptyMemory, remember, rememberSuggestions, type ConversationMemory } from '../heyra/memory'
+import { insertHeyraMessage } from '../lib/supabase'
 import type { LearnedFact } from '../heyra/learning'
 import type { SearchCardData, ChartCardData, ClientIntakeDraft, IdeaCaptureDraft } from '../heyra/cards'
 import { DomainChip, SentimentChip, KindChip } from '../components/ui'
@@ -63,6 +64,10 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
   const [pendingLabel, setPendingLabel] = useState(PENDING_LABELS[0])
   const pendingTimers = useRef<number[]>([])
   const memoryRef = useRef<ConversationMemory>(emptyMemory())
+  // One id per mounted chat, so persisted turns read back as a conversation
+  // rather than a flat stream. See insertHeyraMessage / migration
+  // 20260815110000_heyra_messages.sql.
+  const conversationRef = useRef<string>(crypto.randomUUID())
   const [msgs, setMsgs] = useState<Msg[]>([
     {
       id: 'm0',
@@ -245,9 +250,11 @@ export default function Heyra({ onNav }: { onNav?: (v: string) => void } = {}) {
       { id: heyraId, role: 'heyra', text: '', pending: true },
     ])
     memoryRef.current = remember(memoryRef.current, { role: 'rick', text: clean })
+    void insertHeyraMessage({ conversationId: conversationRef.current, role: 'rick', text: clean })
 
     try {
       const { agent, trigger, result, item } = await routeMessage(clean, { store, memory: memoryRef.current })
+      void insertHeyraMessage({ conversationId: conversationRef.current, role: 'heyra', text: result.text, agent })
 
       setMsgs((m) => m.map((x) => (x.id === rickId ? { ...x, classified: item } : x)))
 

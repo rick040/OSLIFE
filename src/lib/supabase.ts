@@ -3356,3 +3356,47 @@ export async function fetchLatestBodyWeight(): Promise<{ weightKg: number; at: s
   if (!data?.weight_kg) return null
   return { weightKg: data.weight_kg as number, at: data.datetime as string }
 }
+
+// ── Read telemetry ──────────────────────────────────────────────────────────────
+// See migration 20260815100000_screen_views.sql for why this exists: writes were
+// measurable, reads were not, so half the app could not be judged at all.
+
+/**
+ * Record that a screen was opened. Fire-and-forget by design — telemetry must
+ * never block a navigation or surface an error to Rick, so this swallows
+ * failures rather than warning like the write helpers do. Signed out → no-op.
+ *
+ * Not routed through `insertRow` because that round-trips `.select('id')` for
+ * an id nothing here ever reads.
+ */
+export async function logScreenView(view: string): Promise<void> {
+  const user_id = await currentUserId()
+  if (!user_id) return
+  await supabase.from('screen_views').insert({ user_id, view })
+}
+
+// ── HEYRA transcript ────────────────────────────────────────────────────────────
+// See migration 20260815110000_heyra_messages.sql: conversations used to live
+// only in component state and vanish on unmount.
+
+/**
+ * Append one turn of a HEYRA conversation. Fire-and-forget, same reasoning as
+ * `logScreenView` — persistence must never make the chat feel slower or fail
+ * louder than the chat itself. Signed out → no-op.
+ */
+export async function insertHeyraMessage(m: {
+  conversationId: string
+  role: 'rick' | 'heyra'
+  text: string
+  agent?: string | null
+}): Promise<void> {
+  const user_id = await currentUserId()
+  if (!user_id) return
+  await supabase.from('heyra_messages').insert({
+    user_id,
+    conversation_id: m.conversationId,
+    role: m.role,
+    text: m.text,
+    agent: m.agent ?? null,
+  })
+}

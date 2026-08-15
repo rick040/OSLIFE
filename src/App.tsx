@@ -29,6 +29,7 @@ import ProfileScreen from './views/Profile'
 import Mindmap from './views/Mindmap'
 import Relaties from './views/Relaties'
 import HuisAdmin from './views/HuisAdmin'
+import Archief from './views/Archief'
 import RedesignDemo from './design-demo/RedesignDemo'
 import TabletApp from './tablet/TabletApp'
 import LoopExplainer from './components/LoopExplainer'
@@ -70,13 +71,10 @@ export default function App() {
   const Current: Record<View, JSX.Element> = {
     dashboard: <Dashboard onNav={(v) => setView(v as View)} />,
     tasks: <Tasks initialTaskId={deepLinkView === 'tasks' ? deepLinkId : null} />,
-    daybuilder: <DayBuilder />,
     vitals: <Vitals />,
-    workout: <Workout />,
     money: <Money />,
     projects: <Projects initialProjectId={deepLinkView === 'projects' ? deepLinkId : null} />,
     inbox: <InboxView />,
-    northstar: <NorthStar />,
     profile: <ProfileScreen />,
     heyra: <Heyra onNav={(v) => setView(v as View)} />,
     capture: <Capture />,
@@ -85,14 +83,20 @@ export default function App() {
     kennisbank: <Kennisbank />,
     reflect: <Reflect />,
     mindmap: <Mindmap />,
-    // built in later phases
-    habits: <Habits />,
-    cleaning: <Cleaning />,
     crm: <CRM />,
     strategiehq: <StrategieHQ onNav={(v) => setView(v)} />,
     buurtkaart: <Buurtkaart />,
     dog: <Dog />,
     locations: <Locations />,
+    archief: <Archief onNav={(v) => setView(v)} />,
+    // Archived (nav.ts `archived: true`) — kept here on purpose: parking a
+    // screen removes it from navigation, not from the app, so deep links and
+    // the Archief index still resolve.
+    daybuilder: <DayBuilder />,
+    workout: <Workout />,
+    habits: <Habits />,
+    cleaning: <Cleaning />,
+    northstar: <NorthStar />,
     relaties: <Relaties />,
     huisadmin: <HuisAdmin />,
   }
