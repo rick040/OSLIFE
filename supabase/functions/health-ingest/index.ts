@@ -7,7 +7,8 @@
  *   health_daily_stats  — distance, calories, active duration (+ steps, only
  *                          when the caller actually has a reading — see
  *                          steps-ingest for the primary, real-time steps path)
- *   health_body_metrics — weight, body fat
+ *   health_body_metrics — weight, body fat, and any body-composition field
+ *                          from _shared/bodyMetrics.ts (muscle_pct, …)
  *   health_sleep        — sleep sessions with stage breakdown
  *
  * Deploy:
@@ -24,6 +25,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { SUPABASE_SERVICE_KEY, SUPABASE_URL, USER_ID, jsonResponder } from '../_shared/http.ts'
+import { pickBodyFields, type BodyFields } from '../_shared/bodyMetrics.ts'
 
 const INGEST_SECRET = Deno.env.get('INGEST_SECRET') ?? ''
 
@@ -39,7 +41,7 @@ interface ActivityRow {
   duration_min: number
 }
 
-interface BodyRow {
+interface BodyRow extends BodyFields {
   datetime: string      // ISO timestamp, e.g. '2026-06-28T12:00:00Z'
   weight_kg: number | null
   body_fat_pct: number | null
@@ -142,12 +144,15 @@ Deno.serve(async (req) => {
   if (payload.body?.length) {
     const rows = dedupeBy(
       payload.body
-        .filter((r) => r.weight_kg != null || r.body_fat_pct != null)
-        .map((r) => ({
+        .map((r) => ({ r, composition: pickBodyFields(r as unknown as Record<string, unknown>) }))
+        .filter(({ r, composition }) => r.weight_kg != null || r.body_fat_pct != null || Object.keys(composition).length > 0)
+        .map(({ r, composition }) => ({
           user_id:      USER_ID,
           datetime:     r.datetime,
           weight_kg:    r.weight_kg    ?? null,
           body_fat_pct: r.body_fat_pct ?? null,
+          // only the measured extras — a weight-only row upserts the same columns as before
+          ...composition,
         })),
       (r) => r.datetime,
     )

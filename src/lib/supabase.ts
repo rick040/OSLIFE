@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type {
   HealthDay,
+  BodyMetric,
   Checkin,
   Transaction,
   EmailItem,
@@ -3355,6 +3356,47 @@ export async function fetchLatestBodyWeight(): Promise<{ weightKg: number; at: s
   warnWrite('health_body_metrics.fetchLatest', error)
   if (!data?.weight_kg) return null
   return { weightKg: data.weight_kg as number, at: data.datetime as string }
+}
+
+/**
+ * Smart-scale history for the last year, oldest first. Selects `*` rather than
+ * naming the body-composition columns so this keeps working (weight + fat only)
+ * on a database where migration 20261006100000_body_composition hasn't run yet.
+ */
+export async function fetchBodyMetrics(): Promise<BodyMetric[]> {
+  const since = new Date(Date.now() - 365 * 86400000).toISOString()
+  const { data, error } = await supabase
+    .from('health_body_metrics')
+    .select('*')
+    .gte('datetime', since)
+    .order('datetime', { ascending: true })
+    .limit(1000)
+  warnWrite('health_body_metrics.fetchHistory', error)
+  // numeric columns can arrive as strings from PostgREST — coerce, and keep
+  // null (not measured) distinct from 0.
+  const num = (v: unknown): number | null => {
+    if (v == null || v === '') return null
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  return (data ?? []).map((r) => ({
+    at: r.datetime as string,
+    weightKg: num(r.weight_kg),
+    bodyFatPct: num(r.body_fat_pct),
+    bmi: num(r.bmi),
+    muscleMassKg: num(r.muscle_mass_kg),
+    musclePct: num(r.muscle_pct),
+    skeletalMuscleKg: num(r.skeletal_muscle_kg),
+    skeletalMusclePct: num(r.skeletal_muscle_pct),
+    fatFreeMassKg: num(r.fat_free_mass_kg),
+    bodyWaterPct: num(r.body_water_pct),
+    boneMassKg: num(r.bone_mass_kg),
+    proteinPct: num(r.protein_pct),
+    subcutaneousFatPct: num(r.subcutaneous_fat_pct),
+    visceralFat: num(r.visceral_fat),
+    bmrKcal: num(r.bmr_kcal),
+    metabolicAge: num(r.metabolic_age),
+  }))
 }
 
 // ── Read telemetry ──────────────────────────────────────────────────────────────

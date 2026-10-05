@@ -114,6 +114,14 @@
   }
 }
 
+/* Gym wall display (27" portrait screen, see src/tablet/useWallDisplay.ts):
+   every rem scales with the screen width, 45rem across. That is ~24px per rem
+   on a 1080px-wide panel and stays the same physical size at any OS scaling,
+   so text sized for reading from a few metres away stays that way. */
+html.wall-display {
+  font-size: calc(100vw / 45);
+}
+
 /* calm scrollbars */
 ::-webkit-scrollbar {
   width: 10px;

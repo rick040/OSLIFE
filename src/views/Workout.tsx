@@ -313,10 +313,9 @@ export default function Workout() {
           exercises={exercisesFor(logPlan.id)}
           previousByExercise={previousByExercise}
           onClose={() => setLogPlan(null)}
-          onSave={(sets) => {
-            const startedAt = new Date().toISOString()
+          onSave={(sets, { startedAt, durationMin }) => {
             logWorkoutSession(
-              { planId: logPlan.id, planName: logPlan.name, startedAt, completedAt: new Date().toISOString(), durationMin: null, notes: null },
+              { planId: logPlan.id, planName: logPlan.name, startedAt, completedAt: new Date().toISOString(), durationMin, notes: null },
               sets,
             )
             setLogPlan(null)

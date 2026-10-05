@@ -28,6 +28,11 @@
  *
  * Structured alternative (if MacroDroid already extracted the number via a
  * local variable / regex action): {"weight_kg": 82.3, "body_fat_pct": 23.4}
+ * plus any body-composition field from _shared/bodyMetrics.ts, e.g.
+ * {"muscle_pct": 41.5, "body_water_pct": 55.4, "bone_mass_kg": 3.2,
+ *  "visceral_fat": 9, "bmr_kcal": 1820}. Labelled values in the notification
+ * text ("Spierpercentage 41,5%", "BMR 1820 kcal", …) are picked up too.
+ * Needs migration 20261006100000_body_composition.sql for those extra columns.
  *
  * Deploy:
  *   supabase functions deploy weight-ingest --project-ref nhyunnnmdcmojvkxrbpl
@@ -37,6 +42,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { SUPABASE_SERVICE_KEY, SUPABASE_URL, USER_ID, jsonResponder } from '../_shared/http.ts'
+import { parseBodyFatFromText, parseBodyFieldsFromText, pickBodyFields, type BodyFields } from '../_shared/bodyMetrics.ts'
 
 // Reuse the Phone-events secret by default — same phone/MacroDroid instance,
 // no reason to invent a third secret. WEIGHT_WEBHOOK_SECRET can still override.
@@ -60,12 +66,6 @@ function parseWeight(combined: string): number | null {
   return null
 }
 
-/** Body-fat percentage, if the notification includes one (e.g. "23,4% vet"). */
-function parseBodyFat(combined: string): number | null {
-  const m = combined.match(/(\d{1,2}(?:[.,]\d{1,2})?)\s*%/)
-  return m ? parseDecimal(m[1]) : null
-}
-
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return json({ ok: false, error: 'Method not allowed' }, 405)
@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: 'Unauthorized' }, 401)
   }
 
-  let body: { title?: string; text?: string; weight_kg?: number; body_fat_pct?: number; datetime?: string }
+  let body: { title?: string; text?: string; weight_kg?: number; body_fat_pct?: number; datetime?: string } & Record<string, unknown>
   try {
     body = await req.json()
   } catch {
@@ -89,12 +89,16 @@ Deno.serve(async (req) => {
 
   let weightKg: number | null
   let bodyFatPct: number | null
+  let composition: BodyFields
   if (Number.isFinite(body.weight_kg)) {
     weightKg = body.weight_kg as number
     bodyFatPct = Number.isFinite(body.body_fat_pct) ? (body.body_fat_pct as number) : null
+    composition = pickBodyFields(body)
   } else {
     weightKg = parseWeight(combined)
-    bodyFatPct = parseBodyFat(combined)
+    // Body fat: a labelled value ("vet 18,2%") or a single unambiguous % (see _shared/bodyMetrics.ts).
+    bodyFatPct = parseBodyFatFromText(combined)
+    composition = parseBodyFieldsFromText(combined)
   }
 
   if (weightKg == null || !Number.isFinite(weightKg) || weightKg < 20 || weightKg > 300) {
@@ -107,7 +111,7 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
   const { error } = await supabase.from('health_body_metrics').upsert(
-    { user_id: USER_ID, datetime, weight_kg: weightKg, body_fat_pct: bodyFatPct },
+    { user_id: USER_ID, datetime, weight_kg: weightKg, body_fat_pct: bodyFatPct, ...composition },
     { onConflict: 'user_id,datetime' },
   )
 
@@ -116,5 +120,5 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: error.message }, 500)
   }
 
-  return json({ ok: true, weight_kg: weightKg, body_fat_pct: bodyFatPct })
+  return json({ ok: true, weight_kg: weightKg, body_fat_pct: bodyFatPct, ...composition })
 })

@@ -14,6 +14,7 @@ import type {
   CaptureSource,
   Domain,
   HealthDay,
+  BodyMetric,
   Project,
   Goal,
   Milestone,
@@ -195,6 +196,7 @@ import {
   createWorkoutSessionRow,
   deleteWorkoutSessionRow,
   fetchLatestBodyWeight,
+  fetchBodyMetrics,
   createSubscriptionRow,
   updateSubscriptionRow,
   deleteSubscriptionRow,
@@ -318,6 +320,8 @@ interface State {
   workoutExercises: WorkoutExercise[]
   workoutSessions: WorkoutSession[]
   bodyWeight: { weightKg: number; at: string } | null
+  /** Smart-scale history (last year, oldest first) — weight + body composition. */
+  bodyMetrics: BodyMetric[]
   blocks: Block[]
   nudge: Nudge
   lastDigest: ReflectDigest | null
@@ -752,6 +756,7 @@ const seed = () => ({
   workoutExercises: [] as WorkoutExercise[],
   workoutSessions: [] as WorkoutSession[],
   bodyWeight: null as { weightKg: number; at: string } | null,
+  bodyMetrics: [] as BodyMetric[],
   blocks: mock.blocks,
   nudge: mock.initialNudge,
   lastDigest: null,
@@ -872,7 +877,7 @@ const EMPTY_WHEN_FALSY = [
   'goalProposals', 'weekPlan', 'businessIdeas', 'wikiEntries',
   'leads', 'outreachTargets', 'outreachEmails',
   'holdings', 'balanceCheckpoints', 'workoutPlans', 'workoutExercises', 'workoutSessions',
-  'walks', 'locationVisits', 'activitySessions',
+  'walks', 'locationVisits', 'activitySessions', 'bodyMetrics',
 ] as const
 
 /**
@@ -3360,6 +3365,7 @@ export const useStore = create<State>()(
             fetchWorkoutExercises(),
             fetchWorkoutSessions(),
             fetchLatestBodyWeight(),
+            fetchBodyMetrics(),
             fetchIdentityProfile(),
             fetchWalks(),
             fetchLocationVisits(),
@@ -3385,7 +3391,7 @@ export const useStore = create<State>()(
             clients,
             checkins,
           ] = await batch1
-          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, braindumpLinks, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, leads, outreachTargets, outreachEmails, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, identityProfile, walks, locationVisits, activitySessions, lastCsvImportAt] = await batch2
+          const [milestones, projectTasks, hours, invoices, projActivity, messages, notificationPrefs, learnedFacts, vendorTags, braindumpEntries, braindumpLinks, appSettings, inferences, wikiEntries, people, personConnections, interactions, adminItems, healthConditions, medications, budgetCaps, profileFacts, summaries, cleaningLog, businessIdeas, leads, outreachTargets, outreachEmails, holdings, balanceCheckpoints, tasks, cardTemplates, dogProfile, workoutPlans, workoutExercises, workoutSessions, bodyWeight, bodyMetrics, identityProfile, walks, locationVisits, activitySessions, lastCsvImportAt] = await batch2
 
           // only overwrite store fields that actually returned data — never replace with empty array
           set({
@@ -3457,6 +3463,9 @@ export const useStore = create<State>()(
             workoutExercises,
             workoutSessions,
             bodyWeight,
+            // a failed fetch returns [] — keep the last good history instead of
+            // blanking the gym wall display's charts until the next sync
+            ...(bodyMetrics.length > 0 && { bodyMetrics }),
             identityProfile,
             walks,
             locationVisits,
@@ -3580,7 +3589,13 @@ export const useStore = create<State>()(
           { table: 'workout_exercises', onChange: () => fetchWorkoutExercises().then((d) => set({ workoutExercises: d })) },
           { table: 'workout_sessions', onChange: () => fetchWorkoutSessions().then((d) => set({ workoutSessions: d })) },
           { table: 'workout_sets', onChange: () => fetchWorkoutSessions().then((d) => set({ workoutSessions: d })) },
-          { table: 'health_body_metrics', onChange: () => fetchLatestBodyWeight().then((d) => set({ bodyWeight: d })) },
+          {
+            table: 'health_body_metrics',
+            onChange: () => {
+              void fetchLatestBodyWeight().then((d) => set({ bodyWeight: d }))
+              void fetchBodyMetrics().then((d) => { if (d.length > 0) set({ bodyMetrics: d }) })
+            },
+          },
           { table: 'walks', onChange: () => fetchWalks().then((d) => set({ walks: d })) },
           { table: 'location_visits', onChange: () => fetchLocationVisits().then((d) => set({ locationVisits: d })) },
           { table: 'activity_sessions', onChange: () => fetchActivitySessions().then((d) => set({ activitySessions: d })) },

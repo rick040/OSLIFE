@@ -540,6 +540,30 @@ export interface WorkoutSession {
 
 // ── Health (Fit / Samsung Health style sense) ────────────────────────────────
 
+/**
+ * One smart-scale reading (health_body_metrics). Every field but `at` is
+ * optional: each scale/ingest path reports a different subset, and a reading
+ * with only a weight is still a valid reading.
+ */
+export interface BodyMetric {
+  at: string // ISO datetime of the weigh-in
+  weightKg: number | null
+  bodyFatPct: number | null
+  bmi: number | null
+  muscleMassKg: number | null
+  musclePct: number | null
+  skeletalMuscleKg: number | null
+  skeletalMusclePct: number | null
+  fatFreeMassKg: number | null
+  bodyWaterPct: number | null
+  boneMassKg: number | null
+  proteinPct: number | null
+  subcutaneousFatPct: number | null
+  visceralFat: number | null
+  bmrKcal: number | null
+  metabolicAge: number | null
+}
+
 export interface HealthDay {
   date: string // ISO date
   steps: number

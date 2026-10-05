@@ -9,6 +9,9 @@
  *
  *   Tab "Activiteiten" : … | Datum | … | Actieve tijd | Afstand (km)
  *   Tab "Gewicht"      : Datum | Tijd | Gewicht | Lichaamsvet percentage | …
+ *                        (+ any body-composition columns the scale fills:
+ *                        spiermassa, skeletspier, lichaamswater %, botmassa,
+ *                        visceraal vet, BMR, BMI, … — see healthBody_)
  *   Tab "Slaap"        : Datum | Tijd | Duur in seconden | Slaap stadium
  *
  * Tab + column names are matched case-insensitively with NL/EN aliases, so
@@ -77,7 +80,10 @@ function healthActivity_(ss) {
   return rows;
 }
 
-// health_body_metrics: weight + body-fat from "Gewicht".
+// health_body_metrics: weight + body-fat from "Gewicht", plus whatever
+// body-composition columns the export has. health-ingest range-checks each
+// value (supabase/functions/_shared/bodyMetrics.ts), so a misread column is
+// dropped there rather than stored.
 function healthBody_(ss) {
   var sheet = healthTab_(ss, ['gewicht', 'weight', 'body']);
   if (!sheet) return [];
@@ -87,6 +93,27 @@ function healthBody_(ss) {
   var wC = colIdx_(d[0], ['gewicht', 'weight'], ['vrij', 'massa']);
   var fatC = colIdx_(d[0], ['lichaamsvet perc', 'vetpercentage', 'body fat', 'lichaamsvet'], ['massa', 'vrij']);
   if (dateC === -1) return [];
+
+  // Percentages and masses often share a name ("Skeletspier" % vs kg), so the
+  // header must say which: PCT words for a %, none of them for a kg column.
+  var PCT = ['perc', '%', 'rate', 'ratio'];
+  var h = d[0];
+  var extraC = {
+    bmi:                  bodyCol_(h, ['bmi']),
+    muscle_pct:           bodyCol_(h, ['spier', 'muscle'], ['skelet'], PCT),
+    muscle_mass_kg:       bodyCol_(h, ['spier', 'muscle'], ['skelet'].concat(PCT)),
+    skeletal_muscle_pct:  bodyCol_(h, ['skelet'], [], PCT),
+    skeletal_muscle_kg:   bodyCol_(h, ['skelet'], PCT),
+    fat_free_mass_kg:     bodyCol_(h, ['vetvrij', 'fat free', 'fat-free', 'lean'], PCT),
+    body_water_pct:       bodyCol_(h, ['water', 'vocht'], [], PCT),
+    bone_mass_kg:         bodyCol_(h, ['botmassa', 'bone'], PCT),
+    protein_pct:          bodyCol_(h, ['eiwit', 'protein', 'proteïne']),
+    subcutaneous_fat_pct: bodyCol_(h, ['onderhuids', 'subcuta']),
+    visceral_fat:         bodyCol_(h, ['visceraal', 'visceral']),
+    bmr_kcal:             bodyCol_(h, ['bmr', 'basaal', 'basal', 'rustverbranding']),
+    metabolic_age:        bodyCol_(h, ['metabole leeftijd', 'lichaamsleeftijd', 'metabolic age', 'body age']),
+  };
+
   var rows = [];
   for (var i = 1; i < d.length; i++) {
     var dtFull = sheetDatetime_(d[i][dateC]); if (!dtFull) continue;
@@ -94,10 +121,33 @@ function healthBody_(ss) {
     var fat = fatC !== -1 ? sheetNumOrNull_(d[i][fatC]) : null;
     if (fat === 0) fat = null;          // 0% = not actually measured
     if (w === 0) w = null;
-    if (w == null && fat == null) continue;
-    rows.push({ datetime: dtFull, weight_kg: w, body_fat_pct: fat });
+    var row = { datetime: dtFull, weight_kg: w, body_fat_pct: fat };
+    var hasExtra = false;
+    for (var key in extraC) {
+      if (extraC[key] === -1) continue;
+      var v = sheetNumOrNull_(d[i][extraC[key]]);
+      if (v == null || v === 0) continue; // 0 = not measured, same as weight/fat
+      row[key] = v;
+      hasExtra = true;
+    }
+    if (w == null && fat == null && !hasExtra) continue;
+    rows.push(row);
   }
   return rows;
+}
+
+/** Like colIdx_, but optionally also requires one of `also` in the header. */
+function bodyCol_(header, inc, exc, also) {
+  exc = exc || [];
+  for (var c = 0; c < header.length; c++) {
+    var t = String(header[c] || '').trim().toLowerCase();
+    if (!t) continue;
+    if (!inc.some(function (k) { return t.indexOf(k) !== -1; })) continue;
+    if (exc.some(function (k) { return t.indexOf(k) !== -1; })) continue;
+    if (also && !also.some(function (k) { return t.indexOf(k) !== -1; })) continue;
+    return c;
+  }
+  return -1;
 }
 
 // health_sleep: aggregate segment minutes per stage per day from "Slaap".

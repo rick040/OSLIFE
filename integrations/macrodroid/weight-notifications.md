@@ -50,6 +50,29 @@ Auth: header `x-webhook-secret: <PHONE_WEBHOOK_SECRET>` (dezelfde secret die
    {"weight_kg": [lv=gewicht], "body_fat_pct": [lv=vetpercentage]}
    ```
 
+## Lichaamssamenstelling (spierpercentage, water, botmassa, …)
+
+Naast gewicht en vetpercentage slaat `weight-ingest` nu ook de rest van een
+smart-scale-meting op (vereist migratie `20261006100000_body_composition.sql`).
+Het gym-wandscherm (`/tablet/workout`) toont die als grafieken en tegels.
+
+- **Uit de notificatietekst:** gelabelde waarden worden automatisch herkend,
+  NL of EN — bv. `Spierpercentage 41,5%`, `Lichaamswater 55,4%`,
+  `Botmassa 3,2 kg`, `Visceraal vet 9`, `BMR 1820 kcal`, `BMI 24,1`.
+  Ongelabelde getallen worden nooit gegokt. Vetpercentage: een gelabelde
+  waarde (`vet 18,2%`) of anders alleen als er precies één `%` in de tekst staat.
+- **Gestructureerd** (als MacroDroid de waarden zelf uitleest), alle velden
+  optioneel naast `weight_kg`:
+  ```json
+  {"weight_kg": 82.3, "body_fat_pct": 18.2, "muscle_pct": 41.5, "muscle_mass_kg": 34.2,
+   "skeletal_muscle_pct": 37.1, "fat_free_mass_kg": 67.3, "body_water_pct": 55.4,
+   "bone_mass_kg": 3.2, "protein_pct": 17.8, "subcutaneous_fat_pct": 15.9,
+   "visceral_fat": 9, "bmr_kcal": 1820, "bmi": 24.1, "metabolic_age": 31}
+  ```
+
+Waarden buiten een realistisch bereik (bv. 120% water) worden per veld
+weggegooid; de rest van de meting wordt gewoon opgeslagen.
+
 ## Dubbele metingen
 
 Deze route en de Health-sheet-import (Samsung Health) schrijven naar dezelfde

@@ -5,6 +5,11 @@ import { buildPreviousByExercise } from '../workout/previousSets'
 import WorkoutMode from '../workout/WorkoutMode'
 import type { WorkoutPlan } from '../types'
 import { Play, Dumbbell, Check } from 'lucide-react'
+import { useWallDisplay } from './useWallDisplay'
+import { useBodyStats } from './gym/useBodyStats'
+import { GymWallHome } from './gym/GymWallHome'
+import { BodyStatsRow } from './gym/BodyStatsRow'
+import { WorkoutStatusStrip } from './gym/WorkoutStatusStrip'
 
 const WEEKDAY_FULL = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag']
 
@@ -14,12 +19,18 @@ const WEEKDAY_FULL = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', '
  * started, hands off to the same full-screen WorkoutMode the phone uses.
  * Plan/exercise editing only happens on the phone (see src/views/Workout.tsx)
  * — this screen never mounts that UI.
+ *
+ * On the 27" portrait wall screen (useWallDisplay) the same route becomes a
+ * full dashboard instead: today's training plus the health screen's weight,
+ * steps and smart-scale trends, and a timer/body-stats strip during a workout.
  */
 export default function GymWorkoutKiosk() {
   const { workoutPlans, workoutExercises, workoutSessions, logWorkoutSession } = useStore()
   const [date, setDate] = useState(today)
   const [activePlan, setActivePlan] = useState<WorkoutPlan | null>(null)
   const [justSaved, setJustSaved] = useState(false)
+  const wall = useWallDisplay()
+  const stats = useBodyStats(date)
 
   // A wall tablet's tab is never closed — recompute "today" so the proposal
   // doesn't freeze at whatever day the page happened to load on.
@@ -54,10 +65,10 @@ export default function GymWorkoutKiosk() {
         exercises={exercisesFor(activePlan.id)}
         previousByExercise={previousByExercise}
         onClose={() => setActivePlan(null)}
-        onSave={(sets) => {
-          const startedAt = new Date().toISOString()
+        renderStatus={wall ? (progress) => <WorkoutStatusStrip progress={progress} stats={stats} /> : undefined}
+        onSave={(sets, { startedAt, durationMin }) => {
           logWorkoutSession(
-            { planId: activePlan.id, planName: activePlan.name, startedAt, completedAt: new Date().toISOString(), durationMin: null, notes: null },
+            { planId: activePlan.id, planName: activePlan.name, startedAt, completedAt: new Date().toISOString(), durationMin, notes: null },
             sets,
           )
           setActivePlan(null)
@@ -68,9 +79,28 @@ export default function GymWorkoutKiosk() {
     )
   }
 
+  if (wall) {
+    return (
+      <GymWallHome
+        date={date}
+        weekday={WEEKDAY_FULL[weekday]}
+        stats={stats}
+        todaysPlans={todaysPlans}
+        otherPlans={otherPlans}
+        hasPlans={workoutPlans.length > 0}
+        exercisesFor={exercisesFor}
+        sessions={workoutSessions}
+        justSaved={justSaved}
+        onStart={startPlan}
+      />
+    )
+  }
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-8 md:gap-12 px-8 md:px-16 py-10 text-center">
+    <div className="min-h-screen flex flex-col items-center justify-center gap-6 md:gap-8 px-8 md:px-16 py-8 text-center">
       <div className="text-xl sm:text-2xl md:text-4xl text-faint capitalize">{WEEKDAY_FULL[weekday]}</div>
+
+      <BodyStatsRow stats={stats} />
 
       {justSaved && (
         <div className="chip bg-forest/15 text-forest-hi text-base md:text-xl px-4 py-2 md:px-6 md:py-3">

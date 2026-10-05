@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Overlay, ConfirmDialog, SegmentedProgress } from '../components/ui'
 import type { WorkoutPlan, WorkoutExercise, WorkoutSet } from '../types'
 import { X, Check, ChevronLeft, ChevronRight, Minus, Plus, Dumbbell } from 'lucide-react'
@@ -10,6 +10,14 @@ interface SetRow {
 }
 
 type LoggedSet = { exerciseId: string; exerciseName: string; muscleGroup: string; setNumber: number; weightKg: number | null; reps: number | null }
+
+/** Live progress of the open workout, for an optional status strip (the gym wall display). */
+export interface WorkoutProgress {
+  startedAt: string
+  setsDone: number
+  setsTotal: number
+  volumeKg: number
+}
 
 /** First number found in a free-text reps target ("8-12" → 8), or a sane fallback. */
 function parseTargetReps(target: string): number {
@@ -92,13 +100,17 @@ export default function WorkoutMode({
   previousByExercise,
   onClose,
   onSave,
+  renderStatus,
 }: {
   plan: WorkoutPlan
   exercises: WorkoutExercise[]
   previousByExercise: Map<string, WorkoutSet[]>
   onClose: () => void
-  onSave: (sets: LoggedSet[]) => void
+  onSave: (sets: LoggedSet[], timing: { startedAt: string; durationMin: number }) => void
+  /** Optional strip under the header — the wall display shows a timer + body stats here. */
+  renderStatus?: (progress: WorkoutProgress) => ReactNode
 }) {
+  const [startedAt] = useState(() => new Date().toISOString())
   const [exIdx, setExIdx] = useState(0)
   const [setIdx, setSetIdx] = useState(0)
   const [confirmExit, setConfirmExit] = useState(false)
@@ -126,6 +138,11 @@ export default function WorkoutMode({
   const prev = previousByExercise.get(ex.id) ?? []
 
   const anyLogged = useMemo(() => Object.values(rows).some((rs) => rs.some((r) => r.logged)), [rows])
+  const progress = useMemo<WorkoutProgress>(() => {
+    const all = Object.values(rows).flat()
+    const done = all.filter((r) => r.logged)
+    return { startedAt, setsDone: done.length, setsTotal: all.length, volumeKg: done.reduce((a, r) => a + r.weight * r.reps, 0) }
+  }, [rows, startedAt])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -169,7 +186,7 @@ export default function WorkoutMode({
         sets.push({ exerciseId: e.id, exerciseName: e.name, muscleGroup: e.muscleGroup, setNumber: i + 1, weightKg: r.weight, reps: r.reps })
       })
     }
-    onSave(sets)
+    onSave(sets, { startedAt, durationMin: Math.max(1, Math.round((Date.now() - new Date(startedAt).getTime()) / 60000)) })
   }
 
   const onTouchStart = (e: React.TouchEvent) => {
@@ -202,6 +219,7 @@ export default function WorkoutMode({
         <div className="text-center text-[11px] md:text-sm text-faint pt-1 pb-0.5 md:pt-1.5 md:pb-1 shrink-0">
           {plan.name} · oefening {exIdx + 1}/{exercises.length}
         </div>
+        {renderStatus && <div className="shrink-0 px-4 md:px-10 pt-2">{renderStatus(progress)}</div>}
 
         {/* visual + info — the image is the only flexible piece: it fills
             whatever room is left above the fixed name/chips block, instead of
