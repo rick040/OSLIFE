@@ -32,6 +32,7 @@ import HuisAdmin from './views/HuisAdmin'
 import Archief from './views/Archief'
 import RedesignDemo from './design-demo/RedesignDemo'
 import TabletApp from './tablet/TabletApp'
+import RemoteApp from './workout/RemoteControl'
 import LoopExplainer from './components/LoopExplainer'
 import SettingsModal from './components/SettingsModal'
 import AppGrid from './components/AppGrid'
@@ -49,7 +50,16 @@ const deepLinkParams = new URLSearchParams(window.location.search)
 const deepLinkView = deepLinkParams.get('view') as View | null
 const deepLinkId = deepLinkParams.get('id')
 
+// Phone-as-controller for the gym screen's workout (see src/workout/RemoteControl.tsx).
+// Decided before MainApp mounts, so the phone doesn't pay for the store's full
+// data load and live subscriptions just to show a few buttons. The path can't
+// change within a page load, so the hook order below stays constant.
 export default function App() {
+  if (window.location.pathname.startsWith('/remote')) return <RemoteApp />
+  return <MainApp />
+}
+
+function MainApp() {
   const [view, setView] = useState<View>(() =>
     deepLinkView && SCREENS.some((s) => s.id === deepLinkView) ? deepLinkView : 'dashboard',
   )
