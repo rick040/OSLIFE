@@ -1,23 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Overlay, ConfirmDialog, SegmentedProgress } from '../components/ui'
 import type { WorkoutPlan, WorkoutExercise, WorkoutSet } from '../types'
-import { X, Check, ChevronLeft, ChevronRight, Minus, Plus, Dumbbell } from 'lucide-react'
-
-interface SetRow {
-  weight: number
-  reps: number
-  logged: boolean
-}
+import { X, Check, ChevronLeft, ChevronRight, Minus, Plus, Dumbbell, Smartphone } from 'lucide-react'
+import {
+  anyLogged,
+  buildInitialRows,
+  goToExercise,
+  logCurrentSet,
+  mergeRemoteProgress,
+  patchCurrentRow,
+  selectSet,
+  toLiveExercise,
+  type LiveProgress,
+  type LiveRecord,
+  type LiveWorkout,
+  type SetRow,
+} from './liveSession'
+import { useLiveWorkoutSync } from './useLiveWorkoutSync'
 
 type LoggedSet = { exerciseId: string; exerciseName: string; muscleGroup: string; setNumber: number; weightKg: number | null; reps: number | null }
 
-/** First number found in a free-text reps target ("8-12" → 8), or a sane fallback. */
-function parseTargetReps(target: string): number {
-  const m = target.match(/\d+/)
-  return m ? Number(m[0]) : 10
-}
-
-function fmtWeight(v: number): string {
+export function fmtWeight(v: number): string {
   return Number.isInteger(v) ? String(v) : v.toFixed(1)
 }
 
@@ -47,7 +50,7 @@ function ExerciseVisual({ ex }: { ex: WorkoutExercise }) {
   )
 }
 
-function BigStepper({
+export function BigStepper({
   label,
   value,
   step,
@@ -90,87 +93,93 @@ export default function WorkoutMode({
   plan,
   exercises,
   previousByExercise,
+  liveSync = false,
   onClose,
   onSave,
 }: {
   plan: WorkoutPlan
   exercises: WorkoutExercise[]
   previousByExercise: Map<string, WorkoutSet[]>
+  /** Mirror this workout to `workout_live` so a phone at /remote can drive it (the gym screen sets this). */
+  liveSync?: boolean
   onClose: () => void
   onSave: (sets: LoggedSet[]) => void
 }) {
-  const [exIdx, setExIdx] = useState(0)
-  const [setIdx, setSetIdx] = useState(0)
   const [confirmExit, setConfirmExit] = useState(false)
   const touchStart = useRef<{ x: number; y: number } | null>(null)
 
-  const [rows, setRows] = useState<Record<string, SetRow[]>>(() =>
-    Object.fromEntries(
-      exercises.map((ex) => {
-        const prev = previousByExercise.get(ex.id) ?? []
-        return [
-          ex.id,
-          Array.from({ length: ex.targetSets }, (_, i) => ({
-            weight: prev[i]?.weightKg ?? 0,
-            reps: prev[i]?.reps ?? parseTargetReps(ex.targetReps),
-            logged: false,
-          })),
-        ]
-      }),
-    ),
-  )
+  const [progress, setProgress] = useState<LiveProgress>(() => ({
+    exIdx: 0,
+    setIdx: 0,
+    rows: buildInitialRows(exercises, previousByExercise),
+  }))
+  const { exIdx, setIdx, rows } = progress
 
   const ex = exercises[exIdx]
   const exRows = rows[ex.id] ?? []
   const row = exRows[setIdx]
   const prev = previousByExercise.get(ex.id) ?? []
 
-  const anyLogged = useMemo(() => Object.values(rows).some((rs) => rs.some((r) => r.logged)), [rows])
+  const logged = useMemo(() => anyLogged(rows), [rows])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') goNext()
-      else if (e.key === 'ArrowLeft') goPrev()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exIdx])
+  const goToExerciseIdx = (idx: number) => setProgress((p) => goToExercise(p, exercises, idx))
+  const goNext = () => goToExerciseIdx(exIdx + 1)
+  const goPrev = () => goToExerciseIdx(exIdx - 1)
+  const patchRow = (patch: Partial<SetRow>) => setProgress((p) => patchCurrentRow(p, exercises, patch))
+  const logSet = () => setProgress((p) => logCurrentSet(p, exercises))
 
-  const patchRow = (patch: Partial<SetRow>) =>
-    setRows((r) => ({ ...r, [ex.id]: r[ex.id].map((row, i) => (i === setIdx ? { ...row, ...patch } : row)) }))
-
-  const goToExercise = (idx: number) => {
-    if (idx < 0 || idx >= exercises.length) return
-    setExIdx(idx)
-    const nextRows = rows[exercises[idx].id] ?? []
-    const firstUnlogged = nextRows.findIndex((r) => !r.logged)
-    setSetIdx(firstUnlogged >= 0 ? firstUnlogged : 0)
-  }
-  const goNext = () => goToExercise(exIdx + 1)
-  const goPrev = () => goToExercise(exIdx - 1)
-
-  const logSet = () => {
-    patchRow({ logged: true })
-    const firstUnlogged = exRows.findIndex((r, i) => i !== setIdx && !r.logged)
-    if (firstUnlogged >= 0) setSetIdx(firstUnlogged)
-  }
-
-  const requestClose = () => {
-    if (anyLogged) setConfirmExit(true)
-    else onClose()
-  }
-
-  const finish = () => {
+  const finishWith = (finalRows: LiveProgress['rows']) => {
     const sets: LoggedSet[] = []
     for (const e of exercises) {
-      ;(rows[e.id] ?? []).forEach((r, i) => {
+      ;(finalRows[e.id] ?? []).forEach((r, i) => {
         if (!r.logged) return
         sets.push({ exerciseId: e.id, exerciseName: e.name, muscleGroup: e.muscleGroup, setNumber: i + 1, weightKg: r.weight, reps: r.reps })
       })
     }
     onSave(sets)
   }
+  const finish = () => finishWith(rows)
+  // The remote-sync callback outlives a render; keep it pointed at the latest closures.
+  const progressRef = useRef(progress)
+  progressRef.current = progress
+  const finishWithRef = useRef(finishWith)
+  finishWithRef.current = finishWith
+
+  // Remote mode: publish this workout and apply what the phone changes.
+  const liveExercises = useMemo(() => exercises.map(toLiveExercise), [exercises])
+  const liveState = useMemo<LiveWorkout>(
+    () => ({ planId: plan.id, planName: plan.name, exercises: liveExercises, ...progress, finishRequested: false }),
+    [plan.id, plan.name, liveExercises, progress],
+  )
+  const { connection } = useLiveWorkoutSync({
+    enabled: liveSync,
+    mode: 'screen',
+    state: liveState,
+    onRemote: (rec: LiveRecord) => {
+      if (rec.status !== 'active') return
+      const merged = mergeRemoteProgress(progressRef.current, rec.state, exercises)
+      if (rec.state.finishRequested) {
+        // Phone pressed "Voltooien": save exactly what it saw, but never an empty session.
+        if (anyLogged(merged.rows)) finishWithRef.current(merged.rows)
+        return
+      }
+      setProgress(merged)
+    },
+  })
+
+  const requestClose = () => {
+    if (logged) setConfirmExit(true)
+    else onClose()
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight') setProgress((p) => goToExercise(p, exercises, p.exIdx + 1))
+      else if (e.key === 'ArrowLeft') setProgress((p) => goToExercise(p, exercises, p.exIdx - 1))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [exercises])
 
   const onTouchStart = (e: React.TouchEvent) => {
     touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
@@ -201,6 +210,16 @@ export default function WorkoutMode({
         </div>
         <div className="text-center text-[11px] md:text-sm text-faint pt-1 pb-0.5 md:pt-1.5 md:pb-1 shrink-0">
           {plan.name} · oefening {exIdx + 1}/{exercises.length}
+          {liveSync && (
+            <span className="ml-3 inline-flex items-center gap-1 align-middle" title="Open dit adres op je telefoon om de workout te bedienen">
+              <Smartphone className="h-3 w-3 md:h-4 md:w-4" />
+              {window.location.host}/remote
+              <span
+                className={`ml-1 inline-block h-1.5 w-1.5 rounded-full ${connection === 'connected' ? 'bg-forest' : 'bg-faint/50'}`}
+                aria-label={connection === 'connected' ? 'Remote verbonden' : 'Remote niet verbonden'}
+              />
+            </span>
+          )}
         </div>
 
         {/* visual + info — the image is the only flexible piece: it fills
@@ -229,7 +248,7 @@ export default function WorkoutMode({
           {exRows.map((r, i) => (
             <button
               key={i}
-              onClick={() => setSetIdx(i)}
+              onClick={() => setProgress((p) => selectSet(p, i))}
               className={`h-8 w-8 md:h-10 md:w-10 rounded-full text-xs md:text-base font-medium flex items-center justify-center transition-colors ${
                 r.logged ? 'bg-forest text-canvas' : i === setIdx ? 'bg-ink text-canvas' : 'bg-sunken text-muted'
               }`}

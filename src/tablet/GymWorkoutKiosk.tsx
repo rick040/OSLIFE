@@ -53,6 +53,7 @@ export default function GymWorkoutKiosk() {
         plan={activePlan}
         exercises={exercisesFor(activePlan.id)}
         previousByExercise={previousByExercise}
+        liveSync
         onClose={() => setActivePlan(null)}
         onSave={(sets) => {
           const startedAt = new Date().toISOString()
