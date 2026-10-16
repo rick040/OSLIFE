@@ -144,6 +144,8 @@ export default function WorkoutMode({
   progressRef.current = progress
   const finishWithRef = useRef(finishWith)
   finishWithRef.current = finishWith
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   // Remote mode: publish this workout and apply what the phone changes.
   const liveExercises = useMemo(() => exercises.map(toLiveExercise), [exercises])
@@ -156,6 +158,11 @@ export default function WorkoutMode({
     mode: 'screen',
     state: liveState,
     onRemote: (rec: LiveRecord) => {
+      // The phone abandoned the workout ("Workout afbreken"): close without saving.
+      if (rec.status === 'ended') {
+        onCloseRef.current()
+        return
+      }
       if (rec.status !== 'active') return
       const merged = mergeRemoteProgress(progressRef.current, rec.state, exercises)
       if (rec.state.finishRequested) {

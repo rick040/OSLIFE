@@ -1,25 +1,32 @@
 import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { supabase } from '../lib/supabase'
+import { fetchWorkoutExercises, fetchWorkoutPlans, supabase } from '../lib/supabase'
 import LoginScreen from '../components/LoginScreen'
 import { ConfirmDialog } from '../components/ui'
 import { BigStepper } from './WorkoutMode'
 import { useLiveWorkoutSync } from './useLiveWorkoutSync'
 import {
   anyLogged,
+  endLiveFromRemote,
   goToExercise,
   logCurrentSet,
   patchCurrentRow,
+  requestLiveWorkout,
   selectSet,
   type LiveProgress,
+  type LiveStatus,
   type LiveWorkout,
   type SetRow,
 } from './liveSession'
-import { Check, ChevronLeft, ChevronRight, Dumbbell, Flag } from 'lucide-react'
+import type { WorkoutPlan } from '../types'
+import { Check, ChevronLeft, ChevronRight, Dumbbell, Flag, Play, X } from 'lucide-react'
 
 // A screen that vanished without ending its workout (tab killed, tablet off)
 // leaves the row 'active'; don't present a day-old workout as live.
 const STALE_MS = 6 * 60 * 60 * 1000
+// A start request the screen never answered (screen off / not on /tablet/workout).
+const REQUEST_STALE_MS = 5 * 60 * 1000
+const SLOW_HINT_MS = 15 * 1000
 
 /**
  * /remote - the phone as the controller for the gym screen's workout. The
@@ -54,20 +61,38 @@ export default function RemoteApp() {
 
 function RemoteControl() {
   const [live, setLive] = useState<LiveWorkout | null>(null)
-  const [status, setStatus] = useState<'active' | 'ended' | null>(null)
+  const [status, setStatus] = useState<LiveStatus | null>(null)
   const [updatedAt, setUpdatedAt] = useState('')
   const [confirmFinish, setConfirmFinish] = useState(false)
+  const [confirmAbort, setConfirmAbort] = useState(false)
+  const [plans, setPlans] = useState<{ plan: WorkoutPlan; exerciseCount: number }[] | null>(null)
+  const [startError, setStartError] = useState(false)
+  const [slow, setSlow] = useState(false)
 
-  const { connection, loaded } = useLiveWorkoutSync({
+  const { connection, loaded, clientId } = useLiveWorkoutSync({
     enabled: true,
     mode: 'remote',
-    state: live,
+    // Only a running workout has progress to publish; a pending request or an
+    // ended row must not be written back as progress.
+    state: status === 'active' ? live : null,
     onRemote: (rec) => {
       setLive(rec.state)
       setStatus(rec.status)
       setUpdatedAt(rec.updatedAt)
     },
   })
+
+  // Plans to pick from: same tables the screen reads, fetched directly so the
+  // phone doesn't need the full app store.
+  useEffect(() => {
+    void Promise.all([fetchWorkoutPlans(), fetchWorkoutExercises()]).then(([ps, exs]) => {
+      const today = new Date().getDay()
+      const withCounts = ps.map((plan) => ({ plan, exerciseCount: exs.filter((e) => e.planId === plan.id).length }))
+      // Today's plan first, then the rest in their usual order.
+      withCounts.sort((a, b) => Number(b.plan.dayOfWeek === today) - Number(a.plan.dayOfWeek === today))
+      setPlans(withCounts)
+    })
+  }, [])
 
   // Keep the phone awake while it's the controller - it's in your hand between sets.
   useEffect(() => {
@@ -87,24 +112,99 @@ function RemoteControl() {
   const edit = (fn: (p: LiveProgress, exercises: LiveWorkout['exercises']) => LiveProgress) =>
     setLive((w) => (w && !w.finishRequested ? { ...w, ...fn(w, w.exercises) } : w))
 
-  const stale = updatedAt !== '' && Date.now() - Date.parse(updatedAt) > STALE_MS
+  const age = updatedAt !== '' ? Date.now() - Date.parse(updatedAt) : 0
+  const stale = age > STALE_MS
   const running = live !== null && status === 'active' && !stale && live.exercises.length > 0
+  const pending = status === 'requested' && age < REQUEST_STALE_MS
+
+  // If the screen doesn't pick the request up within a few seconds, say why.
+  useEffect(() => {
+    setSlow(false)
+    if (!pending) return
+    const id = window.setTimeout(() => setSlow(true), SLOW_HINT_MS)
+    return () => window.clearTimeout(id)
+  }, [pending])
+
+  const startPlan = async (plan: WorkoutPlan) => {
+    setStartError(false)
+    const ok = await requestLiveWorkout(plan, clientId)
+    if (!ok) return setStartError(true)
+    // Our own write's echo is skipped by the sync hook, so reflect it here.
+    setLive(null)
+    setStatus('requested')
+    setUpdatedAt(new Date().toISOString())
+    navigator.vibrate?.(30)
+  }
+
+  const endWorkout = async () => {
+    const ok = await endLiveFromRemote(clientId)
+    if (!ok) return
+    setLive(null)
+    setStatus('ended')
+    setUpdatedAt(new Date().toISOString())
+  }
 
   if (!loaded) return <Shell connection={connection}><Centered>Verbinden…</Centered></Shell>
 
-  if (!running || !live) {
-    const justEnded = status === 'ended' && live !== null && !stale
+  if (pending) {
     return (
       <Shell connection={connection}>
         <Centered>
-          <Dumbbell className="h-10 w-10 text-faint" />
-          <div className="text-xl font-medium text-ink">{justEnded ? 'Workout afgerond' : 'Geen actieve workout'}</div>
+          <div className="h-8 w-8 rounded-full border-2 border-forest border-t-transparent animate-spin" />
+          <div className="text-xl font-medium text-ink">{live?.planName || 'Workout'} starten…</div>
           <p className="text-sm text-faint max-w-xs">
-            {justEnded
-              ? 'Het scherm heeft de training opgeslagen.'
-              : 'Start een workout op het gymscherm (/tablet/workout); deze pagina neemt hem dan automatisch over.'}
+            {slow
+              ? 'Het scherm reageert nog niet. Staat /tablet/workout open en ingelogd op het scherm?'
+              : 'Het gymscherm opent de training.'}
           </p>
+          <button onClick={() => void endWorkout()} className="mt-2 text-sm text-faint underline">
+            Annuleren
+          </button>
         </Centered>
+      </Shell>
+    )
+  }
+
+  if (!running || !live) {
+    const justEnded = status === 'ended' && !stale
+    return (
+      <Shell connection={connection}>
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-6 pt-2">
+          <div className="text-2xl font-medium text-ink">Kies je training</div>
+          {justEnded && <p className="mt-1 text-sm text-faint">Vorige workout is afgerond.</p>}
+          {startError && <p className="mt-1 text-sm text-red-600">Starten is niet gelukt, probeer het opnieuw.</p>}
+          <div className="mt-4 space-y-3">
+            {plans === null ? (
+              <p className="text-sm text-faint">Trainingen laden…</p>
+            ) : plans.length === 0 ? (
+              <p className="text-sm text-faint">Nog geen trainingsplannen; maak er een aan in OSLIFE.</p>
+            ) : (
+              plans.map(({ plan, exerciseCount }, i) => {
+                const isToday = plan.dayOfWeek === new Date().getDay()
+                return (
+                  <button
+                    key={plan.id}
+                    onClick={() => void startPlan(plan)}
+                    disabled={exerciseCount === 0}
+                    className={`card w-full p-5 text-left flex items-center gap-4 disabled:opacity-40 ${i === 0 && isToday ? 'ring-2 ring-forest' : ''}`}
+                  >
+                    <span className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-sunken">
+                      <Dumbbell className="h-6 w-6 text-ink-soft" />
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-lg font-medium text-ink truncate">{plan.name}</span>
+                      <span className="block text-sm text-faint truncate">
+                        {exerciseCount === 0 ? 'Nog geen oefeningen' : `${exerciseCount} oefeningen`}
+                        {isToday ? ' · vandaag' : ''}
+                      </span>
+                    </span>
+                    {exerciseCount > 0 && <Play className="h-5 w-5 text-forest shrink-0" />}
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </div>
       </Shell>
     )
   }
@@ -189,16 +289,33 @@ function RemoteControl() {
         >
           <Flag className="h-4 w-4" /> {waiting ? 'Wachten op het scherm…' : 'Workout voltooien'}
         </button>
-        {waiting && (
+        {waiting ? (
           <button
             onClick={() => setLive((w) => (w ? { ...w, finishRequested: false } : w))}
             className="w-full text-xs text-faint underline"
           >
             Annuleren
           </button>
+        ) : (
+          <button onClick={() => setConfirmAbort(true)} className="w-full py-1.5 text-xs text-faint flex items-center justify-center gap-1">
+            <X className="h-3.5 w-3.5" /> Workout afbreken
+          </button>
         )}
       </div>
 
+      {confirmAbort && (
+        <ConfirmDialog
+          title="Workout afbreken?"
+          message="Het scherm sluit de workout zonder iets op te slaan."
+          confirmLabel="Afbreken"
+          cancelLabel="Verder"
+          onCancel={() => setConfirmAbort(false)}
+          onConfirm={() => {
+            setConfirmAbort(false)
+            void endWorkout()
+          }}
+        />
+      )}
       {confirmFinish && (
         <ConfirmDialog
           title="Workout afronden?"
