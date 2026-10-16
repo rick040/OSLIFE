@@ -41,7 +41,7 @@ export function useLiveWorkoutSync({
   /** Local state to publish; null until the remote side has supplied one. */
   state: LiveWorkout | null
   onRemote: (rec: LiveRecord) => void
-}): { connection: LiveConnection; loaded: boolean } {
+}): { connection: LiveConnection; loaded: boolean; clientId: string } {
   const [connection, setConnection] = useState<LiveConnection>('connecting')
   const [loaded, setLoaded] = useState(false)
   const [ready, setReady] = useState(false)
@@ -152,5 +152,5 @@ export function useLiveWorkoutSync({
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [enabled, ready])
 
-  return { connection, loaded }
+  return { connection, loaded, clientId: clientId.current }
 }

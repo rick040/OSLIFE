@@ -3,6 +3,7 @@ import { useStore } from '../store'
 import { today } from '../domains'
 import { buildPreviousByExercise } from '../workout/previousSets'
 import WorkoutMode from '../workout/WorkoutMode'
+import { useLiveStartRequests } from '../workout/useLiveStartRequests'
 import type { WorkoutPlan } from '../types'
 import { Play, Dumbbell, Check } from 'lucide-react'
 
@@ -47,6 +48,13 @@ export default function GymWorkoutKiosk() {
 
   const startPlan = (p: WorkoutPlan) => setActivePlan(p)
 
+  // The screen has no input: the phone (/remote) picks a plan and starts it here.
+  // Wait for the plans to load so a request can always be resolved.
+  useLiveStartRequests(!activePlan && workoutPlans.length > 0, (planId) => {
+    const plan = workoutPlans.find((p) => p.id === planId)
+    if (plan && exercisesFor(plan.id).length > 0) startPlan(plan)
+  })
+
   if (activePlan) {
     return (
       <WorkoutMode
@@ -72,6 +80,7 @@ export default function GymWorkoutKiosk() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-8 md:gap-12 px-8 md:px-16 py-10 text-center">
       <div className="text-xl sm:text-2xl md:text-4xl text-faint capitalize">{WEEKDAY_FULL[weekday]}</div>
+      <div className="text-sm md:text-xl text-faint -mt-4 md:-mt-8">Start je training op je telefoon: {window.location.host}/remote</div>
 
       {justSaved && (
         <div className="chip bg-forest/15 text-forest-hi text-base md:text-xl px-4 py-2 md:px-6 md:py-3">

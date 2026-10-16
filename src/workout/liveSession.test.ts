@@ -148,4 +148,11 @@ describe('parseRecord', () => {
   it('maps an ended workout', () => {
     expect(parseRecord({ ...row, status: 'ended' })?.status).toBe('ended')
   })
+
+  it('maps a start request from the phone', () => {
+    const rec = parseRecord({ ...row, status: 'requested', plan_id: 'p1', exercises: [], sets: {} })
+    expect(rec?.status).toBe('requested')
+    expect(rec?.state.planId).toBe('p1')
+    expect(rec?.state.exercises).toEqual([])
+  })
 })

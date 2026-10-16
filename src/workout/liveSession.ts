@@ -39,8 +39,15 @@ export interface LiveWorkout extends LiveProgress {
   finishRequested: boolean
 }
 
+/**
+ * 'requested' = the phone asked the screen to start `planId` and the screen
+ * hasn't published the real workout yet; 'active' = running; 'ended' = saved
+ * or abandoned.
+ */
+export type LiveStatus = 'requested' | 'active' | 'ended'
+
 export interface LiveRecord {
-  status: 'active' | 'ended'
+  status: LiveStatus
   /** Server-incremented on every write; strictly increasing, even across workouts. */
   rev: number
   /** Random per-client id of the last writer, to skip the echo of our own write. */
@@ -179,7 +186,7 @@ export function parseRecord(r: Record<string, unknown> | null | undefined): Live
   const exIdx = Math.min(Math.max(num(r.exercise_idx, 0), 0), Math.max(exercises.length - 1, 0))
   const setIdx = Math.min(Math.max(num(r.set_idx, 0), 0), Math.max((rows[exercises[exIdx]?.id]?.length ?? 1) - 1, 0))
   return {
-    status: r.status === 'ended' ? 'ended' : 'active',
+    status: r.status === 'ended' ? 'ended' : r.status === 'requested' ? 'requested' : 'active',
     rev: r.rev,
     updatedBy: (r.updated_by as string) ?? null,
     updatedAt: (r.updated_at as string) ?? '',
@@ -260,6 +267,49 @@ export function writeLiveProgress(w: LiveWorkout, clientId: string): Promise<boo
       .eq('user_id', userId)
       .eq('status', 'active')
     if (error) console.warn('[OSLIFE] workout_live.progress', error)
+    return !error
+  })
+}
+
+/**
+ * Phone side: ask the (input-less) gym screen to start a plan. Upserts so it
+ * works even if the row doesn't exist yet; the screen answers by publishing the
+ * real workout, which turns the row 'active'.
+ */
+export function requestLiveWorkout(plan: { id: string; name: string }, clientId: string): Promise<boolean> {
+  return enqueue(async () => {
+    const user_id = await currentUserId()
+    if (!user_id) return false
+    const { error } = await supabase.from('workout_live').upsert(
+      {
+        user_id,
+        status: 'requested',
+        plan_id: isDbId(plan.id) ? plan.id : null,
+        plan_name: plan.name,
+        exercises: [],
+        sets: {},
+        exercise_idx: 0,
+        set_idx: 0,
+        finish_requested: false,
+        updated_by: clientId,
+      },
+      { onConflict: 'user_id' },
+    )
+    if (error) console.warn('[OSLIFE] workout_live.request', error)
+    return !error
+  })
+}
+
+/** Phone side: cancel a pending start or abandon a running workout without saving. */
+export function endLiveFromRemote(clientId: string): Promise<boolean> {
+  return enqueue(async () => {
+    const userId = await currentUserId()
+    if (!userId) return false
+    const { error } = await supabase
+      .from('workout_live')
+      .update({ status: 'ended', finish_requested: false, updated_by: clientId })
+      .eq('user_id', userId)
+    if (error) console.warn('[OSLIFE] workout_live.endRemote', error)
     return !error
   })
 }
