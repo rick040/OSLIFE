@@ -24,6 +24,10 @@ export function useLiveStartRequests(enabled: boolean, onRequest: (planId: strin
 
     const consider = (rec: LiveRecord) => {
       if (rec.rev <= handledRev) return
+      // A tab nobody is looking at (e.g. a stale /tablet/workout left open in a
+      // phone browser) must not answer: two screens would both open the workout
+      // and fight over it. Leave the request unhandled; we re-check on becoming visible.
+      if (document.visibilityState === 'hidden') return
       handledRev = rec.rev
       if (rec.status !== 'requested' || !rec.state.planId) return
       if (rec.updatedAt && Date.now() - Date.parse(rec.updatedAt) > FRESH_MS) return
@@ -41,9 +45,15 @@ export function useLiveStartRequests(enabled: boolean, onRequest: (planId: strin
       })
     })()
 
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void fetchLiveRecord().then((rec) => !cancelled && rec && consider(rec))
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
     return () => {
       cancelled = true
       unsubscribe?.()
+      document.removeEventListener('visibilitychange', onVisible)
     }
   }, [enabled])
 }

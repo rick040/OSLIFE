@@ -164,13 +164,15 @@ export default function WorkoutMode({
         return
       }
       if (rec.status !== 'active') return
-      const merged = mergeRemoteProgress(progressRef.current, rec.state, exercises)
+      const merged = mergeRemoteProgress(progressRef.current, rec.state, exercises, rec.state.exercises)
       if (rec.state.finishRequested) {
         // Phone pressed "Voltooien": save exactly what it saw, but never an empty session.
         if (anyLogged(merged.rows)) finishWithRef.current(merged.rows)
         return
       }
       setProgress(merged)
+      // What we ended up with, so the hook doesn't publish the merge back.
+      return { planId: plan.id, planName: plan.name, exercises: liveExercises, ...merged, finishRequested: false }
     },
   })
 

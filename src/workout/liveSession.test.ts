@@ -96,6 +96,35 @@ describe('fingerprint', () => {
   })
 })
 
+describe('order independence', () => {
+  const live = (order: string[], p: LiveProgress): LiveWorkout => ({
+    planId: null,
+    planName: 'Push',
+    exercises: order.map((id) => exercises.find((e) => e.id === id)!),
+    finishRequested: false,
+    ...p,
+  })
+
+  it('fingerprints the same progress identically whatever order the exercises are listed in', () => {
+    const p = patchCurrentRow(goToExercise(fresh(), exercises, 1), exercises, { weight: 40 })
+    // Same state, exercises reversed: the cursor index differs (1 vs 0) but it is the same exercise.
+    const reversed: LiveProgress = { ...p, exIdx: 0 }
+    expect(fingerprint(live(['b', 'a'], reversed))).toBe(fingerprint(live(['a', 'b'], p)))
+  })
+
+  it('translates the remote cursor to the local exercise by id', () => {
+    const remote = goToExercise(fresh(), exercises, 1) // remote list [a, b] -> Dips
+    const localOrder = [exercises[1], exercises[0]] // local list [b, a]
+    const merged = mergeRemoteProgress(
+      { exIdx: 0, setIdx: 0, rows: buildInitialRows(localOrder, new Map()) },
+      remote,
+      localOrder,
+      exercises,
+    )
+    expect(localOrder[merged.exIdx].id).toBe('b')
+  })
+})
+
 describe('mergeRemoteProgress', () => {
   it('takes the remote cursor and sets', () => {
     const remote = logCurrentSet(patchCurrentRow(fresh(), exercises, { weight: 70 }), exercises)
