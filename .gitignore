@@ -19,3 +19,9 @@ android/**/build
 android/**/*.iml
 android/captures
 android/.cxx
+
+# Gym launcher (/gym-launcher) build output
+gym-launcher/.gradle
+gym-launcher/local.properties
+gym-launcher/**/build
+gym-launcher/oslife-gym-launcher.apk
