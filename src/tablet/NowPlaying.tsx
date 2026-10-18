@@ -28,6 +28,7 @@ interface GymBridge {
   playPause?: () => void
   next?: () => void
   previous?: () => void
+  openSettings?: () => void
 }
 
 /** The launcher's bridge, or null outside the gym launcher. */

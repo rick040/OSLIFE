@@ -5,7 +5,8 @@ import LoginScreen from '../components/LoginScreen'
 import { ConfirmDialog } from '../components/ui'
 import { TABLET_SCREENS } from './screens'
 import TabletScreenPicker from './TabletScreenPicker'
-import { LogOut } from 'lucide-react'
+import { LogOut, Settings } from 'lucide-react'
+import { gymBridge } from './NowPlaying'
 
 /**
  * Entry point for wall-mounted kiosk views (docs: a tablet per room, each
@@ -36,6 +37,16 @@ export default function TabletApp() {
   return (
     <div className="min-h-screen bg-canvas relative overflow-hidden">
       <Screen />
+      {/* Only inside the gym launcher app: opens its settings (works with a mouse). */}
+      {gymBridge()?.openSettings && (
+        <button
+          onClick={() => gymBridge()?.openSettings?.()}
+          className="absolute top-3 right-12 text-faint/60 hover:text-faint p-2"
+          aria-label="Instellingen van het scherm"
+        >
+          <Settings className="h-4 w-4" />
+        </button>
+      )}
       <button
         onClick={() => setConfirmSignOut(true)}
         className="absolute top-3 right-3 text-faint/40 hover:text-faint p-2"
