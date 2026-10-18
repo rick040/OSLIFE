@@ -40,7 +40,14 @@ export function useLiveWorkoutSync({
   mode: 'screen' | 'remote'
   /** Local state to publish; null until the remote side has supplied one. */
   state: LiveWorkout | null
-  onRemote: (rec: LiveRecord) => void
+  /**
+   * Apply a remote record. Return the workout you ended up with when it differs
+   * from `rec.state` (e.g. the screen merges into its own exercise list), so the
+   * hook treats *that* as already in sync and never writes the transformation
+   * back - otherwise two devices that transform differently would overwrite
+   * each other forever.
+   */
+  onRemote: (rec: LiveRecord) => LiveWorkout | void
 }): { connection: LiveConnection; loaded: boolean; clientId: string } {
   const [connection, setConnection] = useState<LiveConnection>('connecting')
   const [loaded, setLoaded] = useState(false)
@@ -79,8 +86,8 @@ export function useLiveWorkoutSync({
       // Don't clobber a local edit that hasn't been written yet; it will be
       // published momentarily and supersede this snapshot.
       if (timer.current !== undefined) return
-      syncedFp.current = fingerprint(rec.state)
-      onRemoteRef.current(rec)
+      const applied = onRemoteRef.current(rec)
+      syncedFp.current = fingerprint(applied ?? rec.state)
     }
 
     const resync = async () => {
@@ -142,8 +149,8 @@ export function useLiveWorkoutSync({
         if (rec && rec.rev > lastRev.current) {
           lastRev.current = rec.rev
           if (rec.updatedBy !== clientId.current && timer.current === undefined) {
-            syncedFp.current = fingerprint(rec.state)
-            onRemoteRef.current(rec)
+            const applied = onRemoteRef.current(rec)
+            syncedFp.current = fingerprint(applied ?? rec.state)
           }
         }
       })

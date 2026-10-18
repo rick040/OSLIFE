@@ -1,4 +1,4 @@
-import { Play, RotateCcw, Settings, Workflow, Grid3x3 } from 'lucide-react'
+import { Play, RotateCcw, Settings, Workflow, Grid3x3, Dumbbell } from 'lucide-react'
 
 import { NAV_SCREENS, GROUP_ORDER, type View, type ScreenGroup } from '@/nav'
 import type { Nudge } from '@/types'
@@ -124,6 +124,24 @@ export function AppSidebar({
             </SidebarGroup>
           )
         })}
+
+        {/* Standalone pages outside the view switcher (own route, own full-page load). */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Snelkoppelingen</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                {/* Same tab on purpose: the gym screen only answers start requests from the phone while its tab is visible. */}
+                <SidebarMenuButton asChild tooltip="Gym-workoutscherm (/tablet/workout)">
+                  <a href="/tablet/workout">
+                    <Dumbbell />
+                    <span>Gym-workoutscherm</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter>

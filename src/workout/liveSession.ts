@@ -125,16 +125,18 @@ export function anyLogged(rows: LiveRows): boolean {
 }
 
 /**
- * Compact, key-order-independent identity of a workout's progress. Both sides
- * compare it to decide "is this remote state different from mine?" - a plain
- * JSON.stringify would differ by key order between devices and make them
- * re-publish each other's state forever.
+ * Compact identity of a workout's progress, independent of object key order AND
+ * of the order the exercises happen to be listed in: two devices can sort
+ * exercises with equal order_idx differently, and comparing by list position
+ * made them see each other's identical state as "different" and re-publish it
+ * back and forth forever. The cursor is identified by exercise id, not index.
  */
 export function fingerprint(w: LiveWorkout): string {
-  const rows = w.exercises
-    .map((e) => (w.rows[e.id] ?? []).map((r) => `${r.weight},${r.reps},${r.logged ? 1 : 0}`).join(';'))
+  const ids = w.exercises.map((e) => e.id).sort()
+  const rows = ids
+    .map((id) => `${id}:${(w.rows[id] ?? []).map((r) => `${r.weight},${r.reps},${r.logged ? 1 : 0}`).join(';')}`)
     .join('|')
-  return `${w.exIdx}/${w.setIdx}/${w.finishRequested ? 1 : 0}#${rows}`
+  return `${w.exercises[w.exIdx]?.id ?? ''}/${w.setIdx}/${w.finishRequested ? 1 : 0}#${rows}`
 }
 
 /**
@@ -142,14 +144,23 @@ export function fingerprint(w: LiveWorkout): string {
  * screen owns which exercises exist, so only take rows whose shape still
  * matches (same exercise, same number of sets) and clamp the cursor.
  */
-export function mergeRemoteProgress(local: LiveProgress, remote: LiveProgress, exercises: Pick<LiveExercise, 'id'>[]): LiveProgress {
+export function mergeRemoteProgress(
+  local: LiveProgress,
+  remote: LiveProgress,
+  exercises: Pick<LiveExercise, 'id'>[],
+  /** The remote side's exercise list, so its exIdx can be translated to ours by id. */
+  remoteExercises?: Pick<LiveExercise, 'id'>[],
+): LiveProgress {
   const rows: LiveRows = {}
   for (const ex of exercises) {
     const mine = local.rows[ex.id] ?? []
     const theirs = remote.rows[ex.id]
     rows[ex.id] = theirs && theirs.length === mine.length ? theirs : mine
   }
-  const exIdx = Math.min(Math.max(remote.exIdx, 0), Math.max(exercises.length - 1, 0))
+  const remoteId = remoteExercises?.[remote.exIdx]?.id
+  const byId = remoteId !== undefined ? exercises.findIndex((e) => e.id === remoteId) : -1
+  const wanted = byId >= 0 ? byId : remote.exIdx
+  const exIdx = Math.min(Math.max(wanted, 0), Math.max(exercises.length - 1, 0))
   const setCount = rows[exercises[exIdx]?.id]?.length ?? 0
   const setIdx = Math.min(Math.max(remote.setIdx, 0), Math.max(setCount - 1, 0))
   return { exIdx, setIdx, rows }
