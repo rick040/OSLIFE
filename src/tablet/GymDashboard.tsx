@@ -45,13 +45,13 @@ export function KioskHeader() {
   const ready = weather.tempC != null
 
   return (
-    <header className="flex items-end justify-between gap-6 pr-10">
-      <div className="min-w-0">
+    <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3 pr-10">
+      <div className="min-w-0 whitespace-nowrap">
         <div className="text-4xl md:text-6xl font-semibold tabular-nums text-ink leading-none">{time}</div>
         <div className="text-base md:text-2xl text-muted mt-1 md:mt-2">{date}</div>
       </div>
       {ready && (
-        <div className="flex items-center gap-3 md:gap-4 text-right shrink-0">
+        <div className="flex items-center gap-3 md:gap-4 md:text-right">
           <Icon className="h-9 w-9 md:h-14 md:w-14 text-ink-soft" aria-hidden />
           <div>
             <div className="text-3xl md:text-5xl font-semibold tabular-nums text-ink leading-none">{weather.tempC}°</div>

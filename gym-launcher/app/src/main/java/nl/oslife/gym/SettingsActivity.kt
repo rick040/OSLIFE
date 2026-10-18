@@ -28,6 +28,7 @@ class SettingsActivity : Activity() {
     private lateinit var volumeInput: EditText
     private lateinit var delayInput: EditText
     private lateinit var idleInput: EditText
+    private lateinit var widthInput: EditText
 
     @Volatile
     private var rootStatus = "nog niet gecontroleerd"
@@ -72,6 +73,10 @@ class SettingsActivity : Activity() {
         column.addView(label("Netjes afsluiten na zoveel minuten zonder muziek of aanraking (0 = nooit, werkt alleen met root)"))
         idleInput = input(prefs.idleShutdownMin.toString(), InputType.TYPE_CLASS_NUMBER)
         column.addView(idleInput)
+
+        column.addView(label("Paginabreedte in pixels (1080 past op dit scherm, 0 = Android-instelling gebruiken)"))
+        widthInput = input(prefs.pageWidth.toString(), InputType.TYPE_CLASS_NUMBER)
+        column.addView(widthInput)
 
         column.addView(button("Opslaan") {
             save()
@@ -137,6 +142,7 @@ class SettingsActivity : Activity() {
         prefs.volumePercent = volumeInput.text.toString().toIntOrNull() ?: prefs.volumePercent
         prefs.startDelaySec = delayInput.text.toString().toIntOrNull() ?: prefs.startDelaySec
         prefs.idleShutdownMin = idleInput.text.toString().toIntOrNull() ?: prefs.idleShutdownMin
+        prefs.pageWidth = widthInput.text.toString().toIntOrNull() ?: prefs.pageWidth
     }
 
     private fun backToScreen(reload: Boolean, runStartup: Boolean) {

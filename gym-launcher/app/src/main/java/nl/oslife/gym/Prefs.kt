@@ -37,6 +37,16 @@ class Prefs(context: Context) {
         get() = sp.getInt(KEY_IDLE, 30)
         set(value) = sp.edit().putInt(KEY_IDLE, value.coerceIn(0, 600)).apply()
 
+    /**
+     * Width in CSS pixels the page is laid out at, scaled to fill the screen.
+     * Makes the page independent of Android's display size setting.
+     * 1080 = one CSS pixel per screen pixel on this 1080-wide portrait screen.
+     * 0 = leave it to Android.
+     */
+    var pageWidth: Int
+        get() = sp.getInt(KEY_PAGE_WIDTH, 1080)
+        set(value) = sp.edit().putInt(KEY_PAGE_WIDTH, if (value <= 0) 0 else value.coerceIn(320, 3840)).apply()
+
     /** Android's boot counter at the last startup run, so it runs once per boot. */
     var lastBootCount: Int
         get() = sp.getInt(KEY_BOOT, Int.MIN_VALUE)
@@ -54,5 +64,6 @@ class Prefs(context: Context) {
         private const val KEY_DELAY = "start_delay_sec"
         private const val KEY_IDLE = "idle_shutdown_min"
         private const val KEY_BOOT = "last_boot_count"
+        private const val KEY_PAGE_WIDTH = "page_width"
     }
 }

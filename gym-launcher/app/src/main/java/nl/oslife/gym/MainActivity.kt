@@ -221,7 +221,8 @@ class MainActivity : Activity() {
         // Keep text at 100% no matter what Android's font size is set to.
         s.textZoom = 100
         s.useWideViewPort = true
-        s.loadWithOverviewMode = false
+        // With a fixed page width (see applyPageWidth) the page is zoomed to fit the screen.
+        s.loadWithOverviewMode = prefs.pageWidth > 0
         s.setSupportZoom(false)
         s.builtInZoomControls = false
 
@@ -252,7 +253,12 @@ class MainActivity : Activity() {
                 originAllowed = url != null && sameOrigin(Uri.parse(url))
             }
 
+            override fun onPageCommitVisible(view: WebView, url: String?) {
+                applyPageWidth()
+            }
+
             override fun onPageFinished(view: WebView, url: String?) {
+                applyPageWidth()
                 if (!pageFailed) offline.visibility = View.GONE
                 pushNowPlaying(nowPlaying.lastJson)
             }
@@ -272,7 +278,24 @@ class MainActivity : Activity() {
         return uri.scheme == home.scheme && uri.host == home.host && uri.port == home.port
     }
 
+    /**
+     * Lays the page out at a fixed width (Prefs.pageWidth) and lets the WebView
+     * scale it to the screen, so Android's "display size" can't turn the gym
+     * screen into a giant phone layout.
+     */
+    private fun applyPageWidth() {
+        val width = prefs.pageWidth
+        if (width <= 0 || !originAllowed) return
+        web.evaluateJavascript(
+            "(function(w){var m=document.querySelector('meta[name=viewport]');" +
+                "if(!m){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m);}" +
+                "var c='width='+w;if(m.content!==c)m.content=c;})($width);",
+            null,
+        )
+    }
+
     private fun loadHome() {
+        web.settings.loadWithOverviewMode = prefs.pageWidth > 0
         pageFailed = false
         loadedUrl = prefs.url
         web.loadUrl(prefs.url)
