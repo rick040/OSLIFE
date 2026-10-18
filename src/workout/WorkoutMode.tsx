@@ -17,6 +17,7 @@ import {
   type SetRow,
 } from './liveSession'
 import { useLiveWorkoutSync } from './useLiveWorkoutSync'
+import { NowPlayingPill, type NowPlaying } from '../tablet/NowPlaying'
 
 type LoggedSet = { exerciseId: string; exerciseName: string; muscleGroup: string; setNumber: number; weightKg: number | null; reps: number | null }
 
@@ -30,13 +31,22 @@ export function fmtWeight(v: number): string {
  * it, so it scales correctly on both a tall phone and a short landscape
  * tablet without either overflowing or leaving a giant dead gap above it.
  */
-function ExerciseVisual({ ex }: { ex: WorkoutExercise }) {
+function ExerciseVisual({ ex, zoom = false }: { ex: WorkoutExercise; zoom?: boolean }) {
   const src = ex.gifUrl || ex.imageUrl
   const [broken, setBroken] = useState(false)
   if (!src || broken) {
     return (
       <div className="h-full max-h-full w-auto max-w-full aspect-square rounded-3xl bg-sunken flex items-center justify-center">
         <Dumbbell className="h-14 w-14 md:h-20 md:w-20 text-faint" />
+      </div>
+    )
+  }
+  if (zoom) {
+    // Gym screen: the exercise GIFs have wide white margins, so crop into them
+    // to make the movement itself bigger in the same square.
+    return (
+      <div className="h-full max-h-full w-auto max-w-full aspect-square rounded-3xl overflow-hidden bg-white">
+        <img src={src} alt={ex.name} onError={() => setBroken(true)} className="h-full w-full object-cover scale-[1.22]" />
       </div>
     )
   }
@@ -94,6 +104,8 @@ export default function WorkoutMode({
   exercises,
   previousByExercise,
   liveSync = false,
+  kiosk = false,
+  nowPlaying = null,
   onClose,
   onSave,
 }: {
@@ -102,6 +114,10 @@ export default function WorkoutMode({
   previousByExercise: Map<string, WorkoutSet[]>
   /** Mirror this workout to `workout_live` so a phone at /remote can drive it (the gym screen sets this). */
   liveSync?: boolean
+  /** Wall-screen layout: bigger exercise image, now-playing line. */
+  kiosk?: boolean
+  /** What the gym launcher reports as playing (kiosk only). */
+  nowPlaying?: NowPlaying | null
   onClose: () => void
   onSave: (sets: LoggedSet[]) => void
 }) {
@@ -229,6 +245,11 @@ export default function WorkoutMode({
               />
             </span>
           )}
+          {kiosk && nowPlaying && (
+            <div className="mt-1 md:mt-1.5 flex justify-center px-6 text-[11px] md:text-base">
+              <NowPlayingPill np={nowPlaying} />
+            </div>
+          )}
         </div>
 
         {/* visual + info — the image is the only flexible piece: it fills
@@ -236,9 +257,9 @@ export default function WorkoutMode({
             a fixed size that leaves a dead gap on a tall screen or overflows
             a short one. overflow-y-auto is just a safety net for extreme cases
             (e.g. a very long name wrapping on a tiny screen). */}
-        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center px-6 py-2">
+        <div className={`flex-1 min-h-0 overflow-y-auto flex flex-col items-center py-2 ${kiosk ? 'px-3 md:px-5' : 'px-6'}`}>
           <div className="flex-1 min-h-0 w-full flex items-center justify-center">
-            <ExerciseVisual ex={ex} />
+            <ExerciseVisual ex={ex} zoom={kiosk} />
           </div>
           <div className="shrink-0 flex flex-col items-center gap-1.5 md:gap-2.5 pt-2 md:pt-3">
             <div className="text-lg md:text-2xl lg:text-3xl font-medium text-ink text-center">{ex.name}</div>

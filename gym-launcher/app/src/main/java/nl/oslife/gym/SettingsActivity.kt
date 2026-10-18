@@ -90,6 +90,9 @@ class SettingsActivity : Activity() {
         column.addView(button("Sta 'Weergeven over andere apps' toe") {
             open(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
         })
+        column.addView(button("Sta meldingtoegang toe (voor 'nu aan het spelen')") {
+            open(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        })
         column.addView(button("Controleer root") { checkRoot() })
 
         column.addView(section("Apparaat"))
@@ -121,6 +124,7 @@ class SettingsActivity : Activity() {
             "Startscherm: " + if (GymControl.isDefaultHome(this)) "ja" else "nee, kies het hieronder",
             "Spotify geïnstalleerd: " + if (GymControl.spotifyInstalled(this)) "ja" else "nee",
             "Weergeven over andere apps: " + if (GymControl.canDrawOverlays(this)) "toegestaan" else "nog niet toegestaan",
+            "Nu aan het spelen (meldingtoegang): " + if (NowPlayingWatcher.hasAccess(this)) "aan" else "nog niet toegestaan",
             "Root: $rootStatus",
         )
         status.text = lines.joinToString("\n")

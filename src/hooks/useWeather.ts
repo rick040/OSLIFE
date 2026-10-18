@@ -32,6 +32,10 @@ export interface WeatherState {
   windKmh?: number
   code?: number
   isDay?: boolean
+  /** today's forecast high / low and highest rain chance (%) */
+  maxC?: number
+  minC?: number
+  rainChance?: number
   /** true when we couldn't get a real fix and fell back to the home location */
   usedFallback: boolean
   updatedAt?: number
@@ -88,12 +92,19 @@ async function fetchWeather(lat: number, lon: number, signal: AbortSignal) {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
     `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m` +
+    `&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=1` +
     `&wind_speed_unit=kmh&timezone=auto`
   const res = await fetch(url, { signal })
   if (!res.ok) throw new Error('weather ' + res.status)
   const json = await res.json()
   const c = json.current ?? {}
+  const day = json.daily ?? {}
+  const first = (xs: unknown): number | undefined =>
+    Array.isArray(xs) && typeof xs[0] === 'number' ? Math.round(xs[0]) : undefined
   return {
+    maxC: first(day.temperature_2m_max),
+    minC: first(day.temperature_2m_min),
+    rainChance: first(day.precipitation_probability_max),
     tempC: Math.round(c.temperature_2m),
     feelsLikeC: Math.round(c.apparent_temperature),
     humidity: Math.round(c.relative_humidity_2m),
@@ -126,6 +137,10 @@ function getPosition(): Promise<GeolocationPosition> {
       reject(new Error('no-geolocation'))
       return
     }
+    // The browser's own timeout only starts once permission is granted. A
+    // prompt nobody answers (a wall screen, an embedded WebView) would hang
+    // forever, so fall back to the home location after 10 s regardless.
+    window.setTimeout(() => reject(new Error('geolocation-timeout')), 10_000)
     navigator.geolocation.getCurrentPosition(resolve, reject, {
       enableHighAccuracy: false,
       timeout: 8000,

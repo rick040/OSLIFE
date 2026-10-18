@@ -3357,6 +3357,20 @@ export async function fetchLatestBodyWeight(): Promise<{ weightKg: number; at: s
   return { weightKg: data.weight_kg as number, at: data.datetime as string }
 }
 
+/** Weigh-ins of the last `days` days, oldest first (the gym screen's weight trend). */
+export async function fetchBodyWeightHistory(days = 90): Promise<{ weightKg: number; at: string }[]> {
+  const since = new Date(Date.now() - days * 86_400_000).toISOString()
+  const { data, error } = await supabase
+    .from('health_body_metrics')
+    .select('weight_kg,datetime')
+    .not('weight_kg', 'is', null)
+    .gte('datetime', since)
+    .order('datetime', { ascending: true })
+    .limit(1000)
+  warnWrite('health_body_metrics.fetchHistory', error)
+  return (data ?? []).map((r) => ({ weightKg: Number(r.weight_kg), at: r.datetime as string }))
+}
+
 // ── Read telemetry ──────────────────────────────────────────────────────────────
 // See migration 20260815100000_screen_views.sql for why this exists: writes were
 // measurable, reads were not, so half the app could not be judged at all.

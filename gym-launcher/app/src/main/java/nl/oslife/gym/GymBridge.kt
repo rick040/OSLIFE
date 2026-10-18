@@ -29,7 +29,7 @@ class GymBridge(private val activity: MainActivity) {
 
     @JavascriptInterface
     fun playPause() {
-        if (allowed()) GymControl.mediaKey(activity, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+        if (allowed()) activity.mediaPlayPause()
     }
 
     @JavascriptInterface
@@ -44,13 +44,21 @@ class GymBridge(private val activity: MainActivity) {
 
     @JavascriptInterface
     fun next() {
-        if (allowed()) GymControl.mediaKey(activity, KeyEvent.KEYCODE_MEDIA_NEXT)
+        if (allowed()) activity.mediaNext()
     }
 
     @JavascriptInterface
     fun previous() {
-        if (allowed()) GymControl.mediaKey(activity, KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+        if (allowed()) activity.mediaPrevious()
     }
+
+    /** What's playing, as JSON: {available, title, artist, album, app, playing, positionMs, durationMs, updatedAt, art}. */
+    @JavascriptInterface
+    fun nowPlaying(): String = if (allowed()) activity.nowPlayingJson() else NowPlayingWatcher.EMPTY
+
+    /** False until "Notification access" is switched on for this app. */
+    @JavascriptInterface
+    fun hasMediaAccess(): Boolean = allowed() && NowPlayingWatcher.hasAccess(activity)
 
     /** 0 to 100. */
     @JavascriptInterface

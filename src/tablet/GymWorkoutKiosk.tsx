@@ -5,9 +5,9 @@ import { buildPreviousByExercise } from '../workout/previousSets'
 import WorkoutMode from '../workout/WorkoutMode'
 import { useLiveStartRequests } from '../workout/useLiveStartRequests'
 import type { WorkoutPlan } from '../types'
-import { Play, Dumbbell, Check } from 'lucide-react'
-
-const WEEKDAY_FULL = ['zondag', 'maandag', 'dinsdag', 'woensdag', 'donderdag', 'vrijdag', 'zaterdag']
+import { Play, Dumbbell, Check, Smartphone } from 'lucide-react'
+import { HealthPanels, KioskHeader, TrainingWeekLine } from './GymDashboard'
+import { NowPlayingBar, useNowPlaying } from './NowPlaying'
 
 /**
  * The gym tablet: launch-and-log only, nothing to configure. Proposes
@@ -21,6 +21,7 @@ export default function GymWorkoutKiosk() {
   const [date, setDate] = useState(today)
   const [activePlan, setActivePlan] = useState<WorkoutPlan | null>(null)
   const [justSaved, setJustSaved] = useState(false)
+  const nowPlaying = useNowPlaying()
 
   // A wall tablet's tab is never closed — recompute "today" so the proposal
   // doesn't freeze at whatever day the page happened to load on.
@@ -62,6 +63,8 @@ export default function GymWorkoutKiosk() {
         exercises={exercisesFor(activePlan.id)}
         previousByExercise={previousByExercise}
         liveSync
+        kiosk
+        nowPlaying={nowPlaying}
         onClose={() => setActivePlan(null)}
         onSave={(sets) => {
           const startedAt = new Date().toISOString()
@@ -78,61 +81,78 @@ export default function GymWorkoutKiosk() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-8 md:gap-12 px-8 md:px-16 py-10 text-center">
-      <div className="text-xl sm:text-2xl md:text-4xl text-faint capitalize">{WEEKDAY_FULL[weekday]}</div>
-      <div className="text-sm md:text-xl text-faint -mt-4 md:-mt-8">Start je training op je telefoon: {window.location.host}/remote</div>
+    <div className={`min-h-screen flex flex-col gap-5 md:gap-8 px-6 md:px-12 pt-6 md:pt-10 ${nowPlaying ? 'pb-32 md:pb-44' : 'pb-8 md:pb-12'}`}>
+      <KioskHeader />
 
-      {justSaved && (
-        <div className="chip bg-forest/15 text-forest-hi text-base md:text-xl px-4 py-2 md:px-6 md:py-3">
-          <Check className="h-4 w-4 md:h-5 md:w-5" /> Training opgeslagen
-        </div>
-      )}
-
-      {workoutPlans.length === 0 ? (
-        <p className="text-lg md:text-2xl text-faint max-w-md">Nog geen trainingsplannen — maak er een op je telefoon.</p>
-      ) : todaysPlans.length > 0 ? (
-        <div className="flex flex-col gap-5 md:gap-8 w-full max-w-3xl">
-          {todaysPlans.map((p) => (
-            <PlanHero key={p.id} plan={p} exerciseCount={exercisesFor(p.id).length} onStart={() => startPlan(p)} />
-          ))}
-        </div>
-      ) : (
-        <p className="text-lg md:text-2xl text-faint max-w-md">Geen training gepland voor vandaag.</p>
-      )}
-
-      {otherPlans.length > 0 && (
-        <div className="w-full max-w-4xl">
-          <div className="text-sm md:text-lg text-faint uppercase tracking-wide mb-3 md:mb-5">Andere trainingen</div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-5">
-            {otherPlans.map((p) => {
-              const count = exercisesFor(p.id).length
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => startPlan(p)}
-                  disabled={count === 0}
-                  className="card p-4 md:p-6 text-base md:text-xl font-medium text-ink disabled:opacity-40"
-                >
-                  {p.name}
-                </button>
-              )
-            })}
+      {/* Today's training: the reason the screen is in the gym */}
+      <section className="flex flex-col gap-4 md:gap-6">
+        {justSaved && (
+          <div className="chip self-start bg-forest/15 text-forest-hi text-base md:text-xl px-4 py-2 md:px-6 md:py-3">
+            <Check className="h-4 w-4 md:h-5 md:w-5" /> Training opgeslagen
           </div>
+        )}
+
+        {workoutPlans.length === 0 ? (
+          <p className="text-lg md:text-2xl text-faint">Nog geen trainingsplannen. Maak er een op je telefoon.</p>
+        ) : todaysPlans.length > 0 ? (
+          todaysPlans.map((p) => (
+            <PlanHero key={p.id} plan={p} exerciseCount={exercisesFor(p.id).length} onStart={() => startPlan(p)} />
+          ))
+        ) : (
+          <div className="card p-5 md:p-7 text-lg md:text-2xl text-muted">Geen training gepland voor vandaag.</div>
+        )}
+
+        {otherPlans.length > 0 && (
+          <div>
+            <div className="text-sm md:text-lg text-faint uppercase tracking-wide mb-2 md:mb-3">Andere trainingen</div>
+            <div className="grid grid-cols-3 gap-3 md:gap-4">
+              {otherPlans.map((p) => {
+                const count = exercisesFor(p.id).length
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => startPlan(p)}
+                    disabled={count === 0}
+                    className="card p-3 md:p-5 text-sm md:text-xl font-medium text-ink text-left disabled:opacity-40"
+                  >
+                    {p.name}
+                    <span className="block text-xs md:text-base text-faint font-normal mt-1">{count} {count === 1 ? 'oefening' : 'oefeningen'}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        <TrainingWeekLine />
+
+        <div className="text-sm md:text-lg text-faint inline-flex items-center gap-2">
+          <Smartphone className="h-4 w-4 md:h-5 md:w-5" aria-hidden />
+          Bedien de training met je telefoon: {window.location.host}/remote
         </div>
-      )}
+      </section>
+
+      <HealthPanels />
+
+      <NowPlayingBar np={nowPlaying} />
     </div>
   )
 }
 
 function PlanHero({ plan, exerciseCount, onStart }: { plan: WorkoutPlan; exerciseCount: number; onStart: () => void }) {
   return (
-    <div className="card p-6 md:p-10 flex flex-col items-center gap-4 md:gap-6">
-      <span className="inline-flex h-12 w-12 md:h-16 md:w-16 items-center justify-center rounded-2xl bg-sunken">
-        <Dumbbell className="h-6 w-6 md:h-8 md:w-8 text-ink-soft" />
-      </span>
-      <div className="text-2xl sm:text-3xl md:text-5xl font-medium text-ink">{plan.name}</div>
+    <div className="card p-5 md:p-8 flex flex-col gap-3 md:gap-5">
+      <div className="flex items-center gap-3 md:gap-4">
+        <span className="inline-flex h-11 w-11 md:h-14 md:w-14 shrink-0 items-center justify-center rounded-2xl bg-sunken">
+          <Dumbbell className="h-5 w-5 md:h-7 md:w-7 text-ink-soft" />
+        </span>
+        <div className="min-w-0">
+          <div className="text-xs md:text-base text-faint uppercase tracking-wide">Vandaag · {exerciseCount} oefeningen</div>
+          <div className="text-2xl md:text-4xl font-medium text-ink">{plan.name}</div>
+        </div>
+      </div>
       {plan.muscleGroups.length > 0 && (
-        <div className="flex flex-wrap justify-center gap-1.5 md:gap-2.5">
+        <div className="flex flex-wrap gap-1.5 md:gap-2.5">
           {plan.muscleGroups.map((m) => (
             <span key={m} className="chip bg-sunken text-ink-soft md:text-base md:px-3.5 md:py-1">{m}</span>
           ))}
@@ -141,7 +161,7 @@ function PlanHero({ plan, exerciseCount, onStart }: { plan: WorkoutPlan; exercis
       {exerciseCount === 0 ? (
         <p className="text-sm md:text-lg text-faint">Nog geen oefeningen — voeg toe op je telefoon.</p>
       ) : (
-        <button onClick={onStart} className="btn-primary !py-4 md:!py-6 !px-10 md:!px-16 text-lg md:text-2xl mt-2 md:mt-4">
+        <button onClick={onStart} className="btn-primary !py-4 md:!py-5 text-lg md:text-2xl w-full">
           <Play className="h-5 w-5 md:h-7 md:w-7" /> Start workout
         </button>
       )}

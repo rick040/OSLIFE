@@ -19,6 +19,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.CookieManager
+import android.webkit.GeolocationPermissions
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -53,6 +54,8 @@ class MainActivity : Activity() {
     @Volatile
     private var lastActive = SystemClock.elapsedRealtime()
 
+    private lateinit var nowPlaying: NowPlayingWatcher
+
     private var loadedUrl: String? = null
     private var pageFailed = false
 
@@ -74,6 +77,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
+        nowPlaying = NowPlayingWatcher(this) { json -> pushNowPlaying(json) }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         val root = FrameLayout(this)
@@ -131,6 +135,8 @@ class MainActivity : Activity() {
         hideSystemUi()
         markActive()
         if (loadedUrl != prefs.url) loadHome()
+        // Picks up notification access granted in settings since last time.
+        nowPlaying.start()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -140,6 +146,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        nowPlaying.stop()
         web.destroy()
         super.onDestroy()
     }
@@ -221,7 +228,13 @@ class MainActivity : Activity() {
         CookieManager.getInstance().setAcceptCookie(true)
         web.setBackgroundColor(Color.BLACK)
         web.addJavascriptInterface(GymBridge(this), "OSLifeGym")
-        web.webChromeClient = WebChromeClient()
+        web.webChromeClient = object : WebChromeClient() {
+            // No location permission: answer "no" right away so the page falls
+            // back to its home location instead of waiting on a prompt.
+            override fun onGeolocationPermissionsShowPrompt(origin: String?, callback: GeolocationPermissions.Callback?) {
+                callback?.invoke(origin, false, false)
+            }
+        }
         web.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val scheme = request.url.scheme ?: return true
@@ -241,6 +254,7 @@ class MainActivity : Activity() {
 
             override fun onPageFinished(view: WebView, url: String?) {
                 if (!pageFailed) offline.visibility = View.GONE
+                pushNowPlaying(nowPlaying.lastJson)
             }
 
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
@@ -274,6 +288,31 @@ class MainActivity : Activity() {
                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
             )
+    }
+
+    // ----- Now playing -----
+
+    /** Hands the latest now-playing JSON to the page as an `oslifegym:nowplaying` event. */
+    private fun pushNowPlaying(json: String) {
+        if (!originAllowed) return
+        web.evaluateJavascript(
+            "window.dispatchEvent(new CustomEvent('oslifegym:nowplaying',{detail:$json}));",
+            null,
+        )
+    }
+
+    fun nowPlayingJson(): String = nowPlaying.lastJson
+
+    fun mediaPlayPause() = runOnUiThread {
+        nowPlaying.playPause { GymControl.mediaKey(this, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) }
+    }
+
+    fun mediaNext() = runOnUiThread {
+        nowPlaying.next { GymControl.mediaKey(this, KeyEvent.KEYCODE_MEDIA_NEXT) }
+    }
+
+    fun mediaPrevious() = runOnUiThread {
+        nowPlaying.previous { GymControl.mediaKey(this, KeyEvent.KEYCODE_MEDIA_PREVIOUS) }
     }
 
     // ----- Startup: once per boot -----

@@ -8,11 +8,15 @@ screen does:
   no browser bar, no Android bars, screen always on, text fixed at 100%.
 - Once per boot: waits for Wi-Fi, sets the volume, opens Spotify on the gym
   playlist, presses play, and comes back to OSLIFE.
+- Reads what Spotify (or any player) is playing from Android's media
+  sessions and pushes it to the page, which shows a now-playing bar with
+  play/pause/skip. Needs "Notification access" for OSLIFE Gym, once.
 - Shuts the board down cleanly after N idle minutes without music, if the
   board is rooted.
 - Exposes `window.OSLifeGym` to the OSLIFE page (only on the configured origin):
   `isAvailable()`, `version()`, `keepAlive()`, `play()`, `pause()`,
-  `playPause()`, `next()`, `previous()`, `setVolume(0..100)`, `startMusic()`,
+  `playPause()`, `next()`, `previous()`, `nowPlaying()` (JSON),
+  `hasMediaAccess()`, `setVolume(0..100)`, `startMusic()`,
   `hasRoot()`, `shutdown()`, `reboot()`, `openSettings()`.
 
 No libraries, plain Android framework only.
@@ -26,7 +30,8 @@ No libraries, plain Android framework only.
 3. Open the hidden settings: hold **three fingers** on the screen, or hold the
    **right mouse button**, for 2 seconds.
 4. In settings: paste the Spotify playlist link, tap **Sta 'Weergeven over
-   andere apps' toe**, tap **Controleer root**, then **Opslaan en
+   andere apps' toe**, tap **Sta meldingtoegang toe** and switch on
+   OSLIFE Gym, tap **Controleer root**, then **Opslaan en
    opstartroutine nu testen**.
 5. Log in to OSLIFE once in the screen, and log in to Spotify once in the
    Spotify app.
@@ -36,6 +41,9 @@ Settings and logins are kept.
 
 ## Notes
 
+- The page receives now-playing updates as a `oslifegym:nowplaying` window
+  event (see `src/tablet/NowPlaying.tsx`) and can pull the current state with
+  `OSLifeGym.nowPlaying()`.
 - Music start uses Spotify's own app: open the playlist, then a media "play"
   key. Spotify resumes what it last played, so after the first run it keeps
   playing the gym playlist.

@@ -34,6 +34,17 @@
             </intent-filter>
         </activity>
 
+        <!-- Switched on under "Notification access" so the app can read what Spotify plays. -->
+        <service
+            android:name=".NowPlayingService"
+            android:exported="true"
+            android:label="OSLIFE Gym, nu aan het spelen"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <activity
             android:name=".SettingsActivity"
             android:exported="false"
