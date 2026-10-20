@@ -1,3 +1,27 @@
 <resources>
     <string name="app_name">OSLIFE Widgets</string>
+
+    <!-- Widget picker: each widget's own name and one-line description. -->
+    <string name="widget_label_today">Vandaag</string>
+    <string name="widget_desc_today">Je dag in één oogopslag: volgende afspraak, taken, gewoontes en de hond.</string>
+    <string name="widget_label_quick_actions">Snelle acties</string>
+    <string name="widget_desc_quick_actions">Eén tik om een notitie te typen of in te spreken, HEYRA iets te vragen, iets te uploaden of OSLIFE te openen.</string>
+    <string name="widget_label_todo">To-do</string>
+    <string name="widget_desc_todo">Al je open taken. Tik het rondje om af te vinken, de taak zelf om hem te openen.</string>
+    <string name="widget_label_priority">Belangrijkste</string>
+    <string name="widget_desc_priority">Open taken met hoge en middelhoge prioriteit — direct af te vinken.</string>
+    <string name="widget_label_projects">Projecten</string>
+    <string name="widget_desc_projects">Actieve projecten met deadline en voortgang.</string>
+    <string name="widget_label_braindump">Brain-dump</string>
+    <string name="widget_desc_braindump">Leg snel iets vast: typen, inspreken of een bestand uploaden.</string>
+    <string name="widget_label_heyra">HEYRA</string>
+    <string name="widget_desc_heyra">Stel HEYRA snel een vraag, of spreek direct in.</string>
+    <string name="widget_label_health">Gezondheid</string>
+    <string name="widget_desc_health">Stappen, slaap, gewicht en gewoontes van vandaag.</string>
+    <string name="widget_label_finance">Financiën</string>
+    <string name="widget_desc_finance">Saldo en openstaande betalingen.</string>
+    <string name="widget_label_inbox">Inbox</string>
+    <string name="widget_desc_inbox">Ongelezen mail, nieuwste bovenaan.</string>
+    <string name="widget_label_calendar">Agenda</string>
+    <string name="widget_desc_calendar">Wat er vandaag nog op je agenda staat.</string>
 </resources>

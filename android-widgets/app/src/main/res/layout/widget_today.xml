@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Vandaag: one glance at the day — next agenda block, tasks due, habits, the dog — each line opens its own screen. The date is a TextClock, so it flips at midnight without a refresh. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView android:id="@android:id/background" style="@style/WidgetBackground" />
+
+    <LinearLayout style="@style/WidgetBody">
+
+        <LinearLayout style="@style/WidgetHeader">
+            <TextClock style="@style/WidgetTitle" android:layout_marginStart="0dp" android:textSize="17sp" android:format12Hour="EEEE d MMMM" android:format24Hour="EEEE d MMMM" />
+            <ImageView android:id="@+id/widget_refresh" style="@style/WidgetRefresh" />
+        </LinearLayout>
+
+        <TextView android:id="@+id/widget_empty" style="@style/WidgetEmpty" />
+
+        <LinearLayout android:id="@+id/widget_content" style="@style/WidgetContent" android:orientation="vertical">
+            <LinearLayout android:id="@+id/widget_row1" style="@style/WidgetRow" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical" android:paddingTop="0dp" android:paddingBottom="0dp">
+                <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_w_calendar" android:tint="@color/widget_accent_calendar" android:importantForAccessibility="no" />
+                <TextView style="@style/WidgetText.Meta" android:layout_width="76dp" android:layout_marginStart="10dp" android:textSize="12sp" android:text="Volgende" />
+                <TextView android:id="@+id/widget_value1" style="@style/WidgetText.Body" android:layout_width="0dp" android:layout_weight="1" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/widget_row2" style="@style/WidgetRow" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical" android:paddingTop="0dp" android:paddingBottom="0dp">
+                <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_w_list" android:tint="@color/widget_accent_todo" android:importantForAccessibility="no" />
+                <TextView style="@style/WidgetText.Meta" android:layout_width="76dp" android:layout_marginStart="10dp" android:textSize="12sp" android:text="Taken" />
+                <TextView android:id="@+id/widget_value2" style="@style/WidgetText.Body" android:layout_width="0dp" android:layout_weight="1" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/widget_row3" style="@style/WidgetRow" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical" android:paddingTop="0dp" android:paddingBottom="0dp">
+                <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_w_check_circle" android:tint="@color/widget_accent_habits" android:importantForAccessibility="no" />
+                <TextView style="@style/WidgetText.Meta" android:layout_width="76dp" android:layout_marginStart="10dp" android:textSize="12sp" android:text="Gewoontes" />
+                <TextView android:id="@+id/widget_value3" style="@style/WidgetText.Body" android:layout_width="0dp" android:layout_weight="1" />
+            </LinearLayout>
+            <LinearLayout android:id="@+id/widget_row4" style="@style/WidgetRow" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical" android:paddingTop="0dp" android:paddingBottom="0dp">
+                <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_w_paw" android:tint="@color/widget_accent_dog" android:importantForAccessibility="no" />
+                <TextView style="@style/WidgetText.Meta" android:layout_width="76dp" android:layout_marginStart="10dp" android:textSize="12sp" android:text="Hond" />
+                <TextView android:id="@+id/widget_value4" style="@style/WidgetText.Body" android:layout_width="0dp" android:layout_weight="1" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <LinearLayout style="@style/WidgetFooterRow">
+            <TextView android:id="@+id/widget_updated" style="@style/WidgetFooter" />
+            <TextView android:id="@+id/widget_more" style="@style/WidgetMore" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

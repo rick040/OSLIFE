@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home-screen widget layouts are inflated by the launcher as RemoteViews, which only know
+     the platform's android:* attributes — AppCompat's app:tint / app:drawableTint would be
+     silently ignored there, so lint's "use the AppCompat attribute" advice is wrong for them. -->
+<lint>
+    <issue id="UseAppTint">
+        <ignore path="src/main/res/layout/widget_*.xml" />
+    </issue>
+    <issue id="UseCompatTextViewDrawableXml">
+        <ignore path="src/main/res/layout/widget_*.xml" />
+    </issue>
+</lint>

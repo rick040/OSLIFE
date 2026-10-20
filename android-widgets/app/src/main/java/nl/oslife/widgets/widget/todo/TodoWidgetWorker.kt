@@ -1,40 +1,17 @@
 package nl.oslife.widgets.widget.todo
 
-import android.app.PendingIntent
-import android.appwidget.AppWidgetManager
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.view.View
 import android.widget.RemoteViews
-import androidx.work.BackoffPolicy
-import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.WorkRequest
-import androidx.work.Worker
 import androidx.work.WorkerParameters
 import nl.oslife.widgets.R
-import nl.oslife.widgets.widget.common.DateFmt
+import nl.oslife.widgets.widget.common.DataWidgetWorker
 import nl.oslife.widgets.widget.common.DeepLink
-import nl.oslife.widgets.widget.common.OslifeWidgetApi
+import nl.oslife.widgets.widget.common.WidgetChrome
+import nl.oslife.widgets.widget.common.WidgetData
+import nl.oslife.widgets.widget.common.WidgetJobs
+import nl.oslife.widgets.widget.common.WidgetPush
 import nl.oslife.widgets.widget.common.WidgetStyle
-import org.json.JSONArray
-import java.time.Duration
-import java.util.concurrent.TimeUnit
-
-private data class TodoItem(val id: String, val title: String, val due: String?, val priority: String?)
-
-private const val MAX_ROWS = 6
-private val ROW_IDS = intArrayOf(R.id.widget_row1, R.id.widget_row2, R.id.widget_row3, R.id.widget_row4, R.id.widget_row5, R.id.widget_row6)
-private val CHECK_IDS = intArrayOf(R.id.widget_check1, R.id.widget_check2, R.id.widget_check3, R.id.widget_check4, R.id.widget_check5, R.id.widget_check6)
-private val DOT_IDS = intArrayOf(R.id.widget_dot1, R.id.widget_dot2, R.id.widget_dot3, R.id.widget_dot4, R.id.widget_dot5, R.id.widget_dot6)
-private val TITLE_IDS = intArrayOf(R.id.widget_title1, R.id.widget_title2, R.id.widget_title3, R.id.widget_title4, R.id.widget_title5, R.id.widget_title6)
-private val DUE_IDS = intArrayOf(R.id.widget_due1, R.id.widget_due2, R.id.widget_due3, R.id.widget_due4, R.id.widget_due5, R.id.widget_due6)
+import org.json.JSONObject
 
 /**
  * Renders the to-do widget by pushing a fixed set of rows directly, same
@@ -44,171 +21,68 @@ private val DUE_IDS = intArrayOf(R.id.widget_due1, R.id.widget_due2, R.id.widget
  * service bind the OS can silently refuse under battery/background
  * restrictions (observed in practice — the list got stuck on the system's
  * default "Laden..." placeholder forever, while every Worker-based widget on
- * the same device kept working). A fixed-row push has no such failure mode:
- * it's the exact same onUpdate()-pushes-RemoteViews mechanism every other
- * widget already uses successfully.
+ * the same device kept working). A fixed-row push has no such failure mode.
+ * How many of the eight rows show depends on each instance's height.
  */
-class TodoWidgetWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
+class TodoWidgetWorker(context: Context, params: WorkerParameters) : DataWidgetWorker(context, params) {
 
-    override fun doWork(): Result {
-        val context = applicationContext
-        val views = try {
-            when (val result = OslifeWidgetApi.get(context, "widget-tasks")) {
-                is OslifeWidgetApi.Result.Success -> buildViews(context, tasks = result.json.optJSONArray("tasks"))
-                is OslifeWidgetApi.Result.NotConfigured -> buildViews(context, notConfiguredMessage = true)
-                is OslifeWidgetApi.Result.Failure -> buildViews(context, errorMessage = result.message)
-            }
-        } catch (e: Exception) {
-            buildViews(context, errorMessage = "Interne fout: ${e.message}")
-        }
-        pushViews(context, views)
-        return Result.success()
+    override val function = TaskRows.FUNCTION
+
+    override fun onFresh(context: Context, json: JSONObject) {
+        PendingDone.reconcile(context, TaskRows.parse(json).map { it.id }.toSet())
     }
+
+    override fun push(context: Context, data: WidgetData) = TaskRows.pushAll(context, data)
 
     companion object {
         private const val UNIQUE_PERIODIC_WORK = "todo_widget_refresh_periodic"
         private const val UNIQUE_ONE_TIME_WORK = "todo_widget_refresh_once"
-        private val REFRESH_INTERVAL = Duration.ofMinutes(30)
 
-        private fun pushViews(context: Context, views: RemoteViews) {
-            val manager = AppWidgetManager.getInstance(context)
-            val ids = manager.getAppWidgetIds(ComponentName(context, TodoListWidgetProvider::class.java))
-            ids.forEach { id -> manager.updateAppWidget(id, styled(context, views, id)) }
-        }
+        private val IDS = TaskRows.Ids(
+            rows = intArrayOf(R.id.widget_row1, R.id.widget_row2, R.id.widget_row3, R.id.widget_row4, R.id.widget_row5, R.id.widget_row6, R.id.widget_row7, R.id.widget_row8),
+            checks = intArrayOf(R.id.widget_check1, R.id.widget_check2, R.id.widget_check3, R.id.widget_check4, R.id.widget_check5, R.id.widget_check6, R.id.widget_check7, R.id.widget_check8),
+            titles = intArrayOf(R.id.widget_title1, R.id.widget_title2, R.id.widget_title3, R.id.widget_title4, R.id.widget_title5, R.id.widget_title6, R.id.widget_title7, R.id.widget_title8),
+            dues = intArrayOf(R.id.widget_due1, R.id.widget_due2, R.id.widget_due3, R.id.widget_due4, R.id.widget_due5, R.id.widget_due6, R.id.widget_due7, R.id.widget_due8),
+        )
 
-        /** Per-instance opacity + row count for this widgetId's current on-screen size. */
-        fun styled(context: Context, views: RemoteViews, appWidgetId: Int): RemoteViews =
-            WidgetStyle.applyInstanceStyle(context, views, appWidgetId, ROW_IDS, rowHeightDp = 40, chromeDp = 100)
+        fun push(context: Context, appWidgetIds: IntArray?, data: WidgetData) =
+            WidgetPush.push(context, TodoListWidgetProvider::class.java, appWidgetIds, data) { id, d -> buildViews(context, id, d) }
 
-        private fun parseTasks(tasks: JSONArray?): List<TodoItem> {
-            if (tasks == null) return emptyList()
-            return (0 until tasks.length()).map {
-                val o = tasks.getJSONObject(it)
-                TodoItem(
-                    id = o.optString("id"),
-                    title = o.optString("title", "(zonder titel)"),
-                    due = o.optString("due", null),
-                    priority = o.optString("priority", null),
-                )
-            }
-        }
-
-        fun buildViews(
-            context: Context,
-            tasks: JSONArray? = null,
-            errorMessage: String? = null,
-            notConfiguredMessage: Boolean = false,
-        ): RemoteViews {
+        fun buildViews(context: Context, appWidgetId: Int, data: WidgetData): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_todo_list)
-
-            views.setOnClickPendingIntent(R.id.widget_root, DeepLink.pendingIntent(context, 0, "tasks"))
-
-            val refreshIntent = Intent(context, TodoListWidgetProvider::class.java).apply {
-                action = TodoListWidgetProvider.ACTION_REFRESH
-            }
-            val refreshPendingIntent = PendingIntent.getBroadcast(
-                context, 0, refreshIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            val json = WidgetChrome.bind(
+                context, views, appWidgetId, data,
+                TodoListWidgetProvider::class.java, TodoListWidgetProvider.ACTION_REFRESH,
+                DeepLink.pendingIntent(context, 0, "tasks"),
             )
-            views.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent)
-
-            when {
-                notConfiguredMessage -> {
-                    ROW_IDS.forEach { views.setViewVisibility(it, View.GONE) }
-                    views.setViewVisibility(R.id.widget_more, View.GONE)
-                    views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
-                    views.setTextViewText(R.id.widget_empty, "Nog niet ingesteld — open de app → Instellingen")
-                    views.setTextViewText(R.id.widget_updated, "")
-                }
-                errorMessage != null -> {
-                    ROW_IDS.forEach { views.setViewVisibility(it, View.GONE) }
-                    views.setViewVisibility(R.id.widget_more, View.GONE)
-                    views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
-                    views.setTextViewText(R.id.widget_empty, "⚠️ $errorMessage")
-                    views.setTextViewText(R.id.widget_updated, "")
-                }
-                else -> renderTasks(context, views, parseTasks(tasks))
+            if (json == null) {
+                views.setViewVisibility(R.id.widget_count, android.view.View.GONE)
+                return views
             }
 
+            val items = TaskRows.parse(json)
+            val done = PendingDone.ids(context)
+            val open = items.count { it.id !in done }
+            views.setViewVisibility(R.id.widget_count, if (open > 0) android.view.View.VISIBLE else android.view.View.GONE)
+            views.setTextViewText(R.id.widget_count, open.toString())
+
+            if (items.isEmpty()) {
+                WidgetChrome.showEmpty(views, "Alles gedaan — geen open taken.")
+                WidgetChrome.setMore(views, null)
+                return views
+            }
+
+            val capacity = WidgetStyle.rowCapacity(context, appWidgetId, TaskRows.ROW_HEIGHT_DP, TaskRows.CHROME_DP, IDS.rows.size)
+            val shown = minOf(capacity, items.size)
+            TaskRows.render(context, views, IDS, items, shown, done, compact = WidgetStyle.isNarrow(context, appWidgetId))
+            WidgetChrome.setMore(views, if (items.size > shown) "+${items.size - shown} meer" else null)
             return views
         }
 
-        private fun renderTasks(context: Context, views: RemoteViews, items: List<TodoItem>) {
-            views.setViewVisibility(R.id.widget_empty, if (items.isEmpty()) View.VISIBLE else View.GONE)
+        fun refreshNow(context: Context) = WidgetJobs.refreshNow(context, TodoWidgetWorker::class.java, UNIQUE_ONE_TIME_WORK)
 
-            for (i in ROW_IDS.indices) {
-                if (i >= items.size) {
-                    views.setViewVisibility(ROW_IDS[i], View.GONE)
-                    continue
-                }
-                val item = items[i]
-                views.setViewVisibility(ROW_IDS[i], View.VISIBLE)
-                views.setTextViewText(TITLE_IDS[i], item.title)
+        fun schedulePeriodic(context: Context) = WidgetJobs.schedulePeriodic(context, TodoWidgetWorker::class.java, UNIQUE_PERIODIC_WORK)
 
-                val dotRes = when (item.priority) {
-                    "High" -> R.drawable.priority_dot_high
-                    "Medium" -> R.drawable.priority_dot_medium
-                    else -> R.drawable.priority_dot_low
-                }
-                views.setInt(DOT_IDS[i], "setBackgroundResource", dotRes)
-
-                val dueLabel = DateFmt.relative(item.due)
-                val overdue = DateFmt.isOverdue(item.due)
-                if (dueLabel.isEmpty()) {
-                    views.setViewVisibility(DUE_IDS[i], View.GONE)
-                } else {
-                    views.setViewVisibility(DUE_IDS[i], View.VISIBLE)
-                    views.setTextViewText(DUE_IDS[i], dueLabel)
-                    views.setInt(DUE_IDS[i], "setBackgroundResource", if (overdue) R.drawable.pill_danger else R.drawable.pill_glass)
-                    views.setTextColor(DUE_IDS[i], if (overdue) context.getColor(R.color.widget_danger) else context.getColor(R.color.widget_text_secondary))
-                }
-
-                val toggleIntent = Intent(context, TodoListWidgetProvider::class.java).apply {
-                    action = TodoListWidgetProvider.ACTION_TOGGLE
-                    putExtra(TodoListWidgetProvider.EXTRA_TASK_ID, item.id)
-                    data = android.net.Uri.parse("todowidget://toggle/${item.id}")
-                }
-                val togglePendingIntent = PendingIntent.getBroadcast(
-                    context, 400 + i, toggleIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
-                )
-                views.setOnClickPendingIntent(CHECK_IDS[i], togglePendingIntent)
-
-                // Distinct request code per row so each row's PendingIntent carries its own task id.
-                views.setOnClickPendingIntent(ROW_IDS[i], DeepLink.pendingIntent(context, 450 + i, "tasks", item.id))
-            }
-
-            if (items.size > MAX_ROWS) {
-                views.setViewVisibility(R.id.widget_more, View.VISIBLE)
-                views.setTextViewText(R.id.widget_more, "+${items.size - MAX_ROWS} meer — tik om alles te zien")
-            } else {
-                views.setViewVisibility(R.id.widget_more, View.GONE)
-            }
-
-            views.setTextViewText(R.id.widget_updated, "Ververst: net")
-        }
-
-        fun refreshNow(context: Context) {
-            val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
-            val request = OneTimeWorkRequestBuilder<TodoWidgetWorker>()
-                .setConstraints(constraints)
-                .setBackoffCriteria(BackoffPolicy.LINEAR, WorkRequest.MIN_BACKOFF_MILLIS, TimeUnit.MILLISECONDS)
-                .build()
-            WorkManager.getInstance(context)
-                .enqueueUniqueWork(UNIQUE_ONE_TIME_WORK, ExistingWorkPolicy.REPLACE, request)
-        }
-
-        fun schedulePeriodic(context: Context) {
-            val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
-            val request = PeriodicWorkRequestBuilder<TodoWidgetWorker>(REFRESH_INTERVAL)
-                .setConstraints(constraints)
-                .build()
-            WorkManager.getInstance(context)
-                .enqueueUniquePeriodicWork(UNIQUE_PERIODIC_WORK, ExistingPeriodicWorkPolicy.KEEP, request)
-        }
-
-        fun cancelPeriodic(context: Context) {
-            WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_PERIODIC_WORK)
-        }
+        fun cancelPeriodic(context: Context) = WidgetJobs.cancel(context, UNIQUE_PERIODIC_WORK)
     }
 }

@@ -1,70 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- HEYRA: static launcher — the card or the wide button opens the quick chat, the round mic starts listening straight away. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="18dp"
-    android:background="@drawable/card_bg">
+    android:layout_height="match_parent">
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="HEYRA"
-        android:textStyle="bold"
-        android:textSize="16sp"
-        android:textColor="@color/widget_text_primary" />
+    <ImageView android:id="@android:id/background" style="@style/WidgetBackground" />
 
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:gravity="center_vertical"
-        android:layout_marginTop="4dp"
-        android:layout_marginBottom="14dp"
-        android:text="Tik om iets te vragen, of spreek direct in"
-        android:textSize="12sp"
-        android:textColor="@color/widget_text_secondary" />
+    <LinearLayout style="@style/WidgetBody">
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
-
-        <LinearLayout
-            android:id="@+id/widget_chat_button"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="horizontal"
-            android:gravity="center"
-            android:paddingTop="11dp"
-            android:paddingBottom="11dp"
-            android:background="@drawable/pill_glass">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Chat"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:textColor="@color/widget_accent_heyra" />
+        <LinearLayout style="@style/WidgetHeader">
+            <ImageView style="@style/WidgetHeaderIcon" android:src="@drawable/ic_w_sparkles" android:tint="@color/widget_accent_heyra" />
+            <TextView style="@style/WidgetTitle" android:text="HEYRA" />
         </LinearLayout>
 
-        <FrameLayout
-            android:id="@+id/widget_mic_button"
-            android:layout_width="42dp"
-            android:layout_height="42dp"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/ghost_button_bg">
-            <ImageView
-                android:layout_width="18dp"
-                android:layout_height="18dp"
-                android:layout_gravity="center"
-                android:tint="@color/widget_accent_heyra"
-                android:src="@drawable/ic_mic"
-                android:contentDescription="Spreek met HEYRA" />
-        </FrameLayout>
-    </LinearLayout>
+        <TextView android:id="@+id/widget_empty" style="@style/WidgetEmpty" />
 
-</LinearLayout>
+        <TextView style="@style/WidgetText.Secondary" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:gravity="center_vertical" android:paddingStart="10dp" android:paddingEnd="10dp" android:maxLines="2" android:text="Stel een vraag, of spreek direct in." />
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="44dp" android:orientation="horizontal" android:paddingStart="4dp" android:paddingEnd="4dp">
+            <LinearLayout android:id="@+id/widget_chat_button" style="@style/WidgetShortcut" android:orientation="horizontal">
+                <ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_w_chat" android:tint="@color/widget_accent_heyra" android:importantForAccessibility="no" />
+                <TextView style="@style/WidgetShortcutLabel" android:layout_marginTop="0dp" android:layout_marginStart="8dp" android:textSize="13sp" android:fontFamily="sans-serif-medium" android:textColor="@color/widget_text_primary" android:text="Chat" />
+            </LinearLayout>
+            <FrameLayout android:id="@+id/widget_mic_button" android:layout_width="44dp" android:layout_height="44dp" android:layout_marginStart="6dp" android:background="@drawable/glass_button_bg" android:contentDescription="Spreek met HEYRA">
+                <ImageView android:layout_width="20dp" android:layout_height="20dp" android:layout_gravity="center" android:src="@drawable/ic_w_mic" android:tint="@color/widget_accent_heyra" android:importantForAccessibility="no" />
+            </FrameLayout>
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

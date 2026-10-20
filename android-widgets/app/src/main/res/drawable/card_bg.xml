@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Shared dark-glass card — translucent so it blends with the home-screen
-     wallpaper the way the OS's own widgets do, large native corner radius,
-     no per-widget spine or icon badge. Color/identity comes from a small
-     accent used on progress bars / tag text only. -->
+     wallpaper the way the OS's own widgets do. Drawn by its own ImageView
+     (@android:id/background) so the per-widget opacity setting fades only
+     this card, never the text on it. Radius follows the launcher on 12+. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <solid android:color="@color/widget_card_bg" />
-    <corners android:radius="28dp" />
+    <corners android:radius="@dimen/widget_radius" />
 </shape>

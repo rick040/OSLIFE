@@ -1,10 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- configuration_optional: Android 12+ places the widget straight away instead of opening the
+     opacity sheet first; reconfigurable: long-press → "Widget aanpassen" opens it any time. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:minWidth="250dp"
-    android:minHeight="180dp"
+    android:description="@string/widget_desc_health"
+    android:previewImage="@drawable/widget_preview_health"
+    android:minWidth="140dp"
+    android:minHeight="140dp"
+    android:minResizeWidth="140dp"
+    android:minResizeHeight="140dp"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_health"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
+    android:widgetFeatures="reconfigurable|configuration_optional"
     android:configure="nl.oslife.widgets.widget.common.WidgetConfigureActivity">
 </appwidget-provider>

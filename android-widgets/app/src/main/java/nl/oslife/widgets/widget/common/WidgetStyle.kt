@@ -2,89 +2,75 @@ package nl.oslife.widgets.widget.common
 
 import android.appwidget.AppWidgetManager
 import android.content.Context
-import android.os.Build
-import android.view.View
 import android.widget.RemoteViews
-import nl.oslife.widgets.R
 
 /**
- * Per-widgetId styling: opacity (set via WidgetConfigureActivity, the native
- * "Edit widget" entry point) and, for row-list widgets, how many rows fit at
- * the size the user has currently resized that instance to. Both are stored
- * per appWidgetId (not per widget type) since several instances of the same
- * widget can be pinned at different sizes/opacities side by side.
+ * Per-widgetId styling: background opacity (set via WidgetConfigureActivity, the native "Edit
+ * widget" entry point) and, for row-list widgets, how many rows fit at the size the user has
+ * currently resized that instance to. Both are per appWidgetId (not per widget type) since
+ * several instances of the same widget can be pinned at different sizes/opacities side by side.
  */
 object WidgetStyle {
     private const val PREFS = "widget_instance_style"
-    private const val MIN_OPACITY = 40
-    private const val MAX_OPACITY = 100
+    const val MIN_BACKGROUND = 0
+    const val MAX_BACKGROUND = 100
 
-    fun getOpacityPercent(context: Context, appWidgetId: Int): Int =
+    fun getBackgroundPercent(context: Context, appWidgetId: Int): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getInt(opacityKey(appWidgetId), MAX_OPACITY)
+            .getInt(backgroundKey(appWidgetId), MAX_BACKGROUND)
+            .coerceIn(MIN_BACKGROUND, MAX_BACKGROUND)
 
-    fun setOpacityPercent(context: Context, appWidgetId: Int, percent: Int) {
+    fun setBackgroundPercent(context: Context, appWidgetId: Int, percent: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putInt(opacityKey(appWidgetId), percent.coerceIn(MIN_OPACITY, MAX_OPACITY))
+            .putInt(backgroundKey(appWidgetId), percent.coerceIn(MIN_BACKGROUND, MAX_BACKGROUND))
             .apply()
     }
 
     /** Call from onDeleted() so removed widget instances don't leak prefs forever. */
     fun clear(context: Context, appWidgetId: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .remove(opacityKey(appWidgetId))
+            .remove(backgroundKey(appWidgetId))
             .apply()
     }
 
-    private fun opacityKey(appWidgetId: Int) = "opacity_$appWidgetId"
+    // Same key as when this setting faded the whole widget, so earlier choices carry over.
+    private fun backgroundKey(appWidgetId: Int) = "opacity_$appWidgetId"
 
     /**
-     * Returns a per-instance copy of [base] with this widgetId's saved opacity applied and,
-     * if [rowIds] is given, any rows beyond what this instance's current on-screen height can
-     * fit hidden. Never mutates [base] itself — several instances at different sizes/opacities
-     * are pushed from the same base RemoteViews and must not bleed into each other.
+     * Fades only the card (the @android:id/background ImageView every layout starts with) —
+     * text and icons stay fully opaque, so even a 0% card stays readable on the wallpaper.
      */
-    fun applyInstanceStyle(
-        context: Context,
-        base: RemoteViews,
-        appWidgetId: Int,
-        rowIds: IntArray? = null,
-        rowHeightDp: Int = 0,
-        chromeDp: Int = 0,
-    ): RemoteViews {
-        // RemoteViews' copy constructor was added in API 28; on the rare pre-Pie device fall
-        // back to the shared instance — opacity/row-count then apply identically to every
-        // pinned instance of that widget instead of independently, a safe degradation.
-        val instance = if (Build.VERSION.SDK_INT >= 28) RemoteViews(base) else base
-
-        if (rowIds != null && rowHeightDp > 0) {
-            val visible = visibleRowCount(context, appWidgetId, rowHeightDp, chromeDp, rowIds.size)
-            for (i in rowIds.indices) {
-                if (i >= visible) instance.setViewVisibility(rowIds[i], View.GONE)
-            }
-        }
-
-        val opacity = getOpacityPercent(context, appWidgetId).coerceIn(MIN_OPACITY, MAX_OPACITY)
-        instance.setFloat(R.id.widget_root, "setAlpha", if (opacity < MAX_OPACITY) opacity / 100f else 1f)
-
-        return instance
+    fun applyBackground(context: Context, views: RemoteViews, appWidgetId: Int) {
+        applyBackgroundPercent(views, getBackgroundPercent(context, appWidgetId))
     }
 
-    private fun visibleRowCount(
-        context: Context,
-        appWidgetId: Int,
-        rowHeightDp: Int,
-        chromeDp: Int,
-        maxRows: Int,
-    ): Int {
+    fun applyBackgroundPercent(views: RemoteViews, percent: Int) {
+        views.setInt(android.R.id.background, "setImageAlpha", percent.coerceIn(MIN_BACKGROUND, MAX_BACKGROUND) * 255 / 100)
+    }
+
+    /**
+     * True when this instance is narrower than [thresholdDp] (portrait width as the launcher
+     * reports it), so widgets can drop secondary bits like due-date pills instead of
+     * squeezing titles down to "Offe…". Unknown size counts as wide.
+     */
+    fun isNarrow(context: Context, appWidgetId: Int, thresholdDp: Int = 230): Boolean {
+        val widthDp = AppWidgetManager.getInstance(context).getAppWidgetOptions(appWidgetId)
+            .getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)
+        return widthDp in 1 until thresholdDp
+    }
+
+    /**
+     * How many [rowHeightDp]-tall rows fit in this instance at its current size, after
+     * [chromeDp] of header/footer/padding. Falls back to [maxRows] when the launcher doesn't
+     * report a size.
+     */
+    fun rowCapacity(context: Context, appWidgetId: Int, rowHeightDp: Int, chromeDp: Int, maxRows: Int): Int {
         val options = AppWidgetManager.getInstance(context).getAppWidgetOptions(appWidgetId)
         val heightDp = maxOf(
             options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0),
             options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0),
         )
         if (heightDp <= 0) return maxRows
-        val usable = heightDp - chromeDp
-        if (usable <= 0) return 1
-        return (usable / rowHeightDp).coerceIn(1, maxRows)
+        return ((heightDp - chromeDp) / rowHeightDp).coerceIn(1, maxRows)
     }
 }

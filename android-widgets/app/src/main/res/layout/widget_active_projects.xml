@@ -1,110 +1,69 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Actieve projecten: name + deadline pill, then progress bar with "klant · 62%". Tap a row to open that project. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="18dp"
-    android:background="@drawable/card_bg">
+    android:layout_height="match_parent">
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical">
+    <ImageView android:id="@android:id/background" style="@style/WidgetBackground" />
 
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Projecten"
-            android:textStyle="bold"
-            android:textSize="16sp"
-            android:textColor="@color/widget_text_primary" />
+    <LinearLayout style="@style/WidgetBody">
 
-        <ImageButton
-            android:id="@+id/widget_refresh"
-            android:layout_width="30dp"
-            android:layout_height="30dp"
-            android:background="@drawable/ghost_button_bg"
-            android:padding="6dp"
-            android:src="@drawable/ic_refresh_small"
-            android:contentDescription="Ververs" />
-    </LinearLayout>
-
-    <TextView
-        android:id="@+id/widget_empty"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="Geen actieve projecten."
-        android:textSize="13sp"
-        android:textColor="@color/widget_text_secondary"
-        android:visibility="gone" />
-
-    <LinearLayout
-        android:id="@+id/widget_row1"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="14dp"
-        android:orientation="vertical">
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
-            <TextView android:id="@+id/widget_name1" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
-            <TextView android:id="@+id/widget_deadline1" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:background="@drawable/pill_glass" android:textSize="11sp" android:textColor="@color/widget_text_secondary" android:text="" />
+        <LinearLayout style="@style/WidgetHeader">
+            <ImageView style="@style/WidgetHeaderIcon" android:src="@drawable/ic_w_folder" android:tint="@color/widget_accent_projects" />
+            <TextView style="@style/WidgetTitle" android:text="Projecten" />
+            <TextView android:id="@+id/widget_count" style="@style/WidgetCountBadge" android:textColor="@color/widget_accent_projects" />
+            <ImageView android:id="@+id/widget_refresh" style="@style/WidgetRefresh" />
         </LinearLayout>
-        <TextView android:id="@+id/widget_client1" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textSize="11sp" android:textColor="@color/widget_text_tertiary" android:maxLines="1" android:ellipsize="end" android:text="" />
-        <ProgressBar android:id="@+id/widget_progress1" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="8dp" android:layout_marginTop="6dp" android:max="100" android:progress="0" android:progressDrawable="@drawable/widget_progress_fill" />
-    </LinearLayout>
 
-    <LinearLayout
-        android:id="@+id/widget_row2"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:orientation="vertical">
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
-            <TextView android:id="@+id/widget_name2" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
-            <TextView android:id="@+id/widget_deadline2" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:background="@drawable/pill_glass" android:textSize="11sp" android:textColor="@color/widget_text_secondary" android:text="" />
+        <TextView android:id="@+id/widget_empty" style="@style/WidgetEmpty" />
+
+        <LinearLayout android:id="@+id/widget_content" style="@style/WidgetContent">
+            <LinearLayout android:id="@+id/widget_row1" style="@style/WidgetRow">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+                    <TextView android:id="@+id/widget_name1" style="@style/WidgetText.Strong" android:layout_width="0dp" android:layout_weight="1" />
+                    <TextView android:id="@+id/widget_deadline1" style="@style/WidgetPill" />
+                </LinearLayout>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:orientation="horizontal" android:gravity="center_vertical">
+                    <ProgressBar android:id="@+id/widget_progress1" style="?android:attr/progressBarStyleHorizontal" android:layout_width="0dp" android:layout_height="6dp" android:layout_weight="1" android:max="100" android:progress="0" android:progressDrawable="@drawable/widget_progress_fill" />
+                    <TextView android:id="@+id/widget_meta1" style="@style/WidgetText.Meta" android:layout_marginStart="8dp" />
+                </LinearLayout>
+            </LinearLayout>
+            <LinearLayout android:id="@+id/widget_row2" style="@style/WidgetRow">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+                    <TextView android:id="@+id/widget_name2" style="@style/WidgetText.Strong" android:layout_width="0dp" android:layout_weight="1" />
+                    <TextView android:id="@+id/widget_deadline2" style="@style/WidgetPill" />
+                </LinearLayout>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:orientation="horizontal" android:gravity="center_vertical">
+                    <ProgressBar android:id="@+id/widget_progress2" style="?android:attr/progressBarStyleHorizontal" android:layout_width="0dp" android:layout_height="6dp" android:layout_weight="1" android:max="100" android:progress="0" android:progressDrawable="@drawable/widget_progress_fill" />
+                    <TextView android:id="@+id/widget_meta2" style="@style/WidgetText.Meta" android:layout_marginStart="8dp" />
+                </LinearLayout>
+            </LinearLayout>
+            <LinearLayout android:id="@+id/widget_row3" style="@style/WidgetRow">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+                    <TextView android:id="@+id/widget_name3" style="@style/WidgetText.Strong" android:layout_width="0dp" android:layout_weight="1" />
+                    <TextView android:id="@+id/widget_deadline3" style="@style/WidgetPill" />
+                </LinearLayout>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:orientation="horizontal" android:gravity="center_vertical">
+                    <ProgressBar android:id="@+id/widget_progress3" style="?android:attr/progressBarStyleHorizontal" android:layout_width="0dp" android:layout_height="6dp" android:layout_weight="1" android:max="100" android:progress="0" android:progressDrawable="@drawable/widget_progress_fill" />
+                    <TextView android:id="@+id/widget_meta3" style="@style/WidgetText.Meta" android:layout_marginStart="8dp" />
+                </LinearLayout>
+            </LinearLayout>
+            <LinearLayout android:id="@+id/widget_row4" style="@style/WidgetRow">
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+                    <TextView android:id="@+id/widget_name4" style="@style/WidgetText.Strong" android:layout_width="0dp" android:layout_weight="1" />
+                    <TextView android:id="@+id/widget_deadline4" style="@style/WidgetPill" />
+                </LinearLayout>
+                <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:orientation="horizontal" android:gravity="center_vertical">
+                    <ProgressBar android:id="@+id/widget_progress4" style="?android:attr/progressBarStyleHorizontal" android:layout_width="0dp" android:layout_height="6dp" android:layout_weight="1" android:max="100" android:progress="0" android:progressDrawable="@drawable/widget_progress_fill" />
+                    <TextView android:id="@+id/widget_meta4" style="@style/WidgetText.Meta" android:layout_marginStart="8dp" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
-        <TextView android:id="@+id/widget_client2" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textSize="11sp" android:textColor="@color/widget_text_tertiary" android:maxLines="1" android:ellipsize="end" android:text="" />
-        <ProgressBar android:id="@+id/widget_progress2" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="8dp" android:layout_marginTop="6dp" android:max="100" android:progress="0" android:progressDrawable="@drawable/widget_progress_fill" />
-    </LinearLayout>
 
-    <LinearLayout
-        android:id="@+id/widget_row3"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:orientation="vertical">
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
-            <TextView android:id="@+id/widget_name3" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
-            <TextView android:id="@+id/widget_deadline3" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:background="@drawable/pill_glass" android:textSize="11sp" android:textColor="@color/widget_text_secondary" android:text="" />
+        <LinearLayout style="@style/WidgetFooterRow">
+            <TextView android:id="@+id/widget_updated" style="@style/WidgetFooter" />
+            <TextView android:id="@+id/widget_more" style="@style/WidgetMore" />
         </LinearLayout>
-        <TextView android:id="@+id/widget_client3" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textSize="11sp" android:textColor="@color/widget_text_tertiary" android:maxLines="1" android:ellipsize="end" android:text="" />
-        <ProgressBar android:id="@+id/widget_progress3" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="8dp" android:layout_marginTop="6dp" android:max="100" android:progress="0" android:progressDrawable="@drawable/widget_progress_fill" />
     </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/widget_row4"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:orientation="vertical">
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
-            <TextView android:id="@+id/widget_name4" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textSize="14sp" android:textStyle="bold" android:textColor="@color/widget_text_primary" android:maxLines="1" android:ellipsize="end" android:text="" />
-            <TextView android:id="@+id/widget_deadline4" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:background="@drawable/pill_glass" android:textSize="11sp" android:textColor="@color/widget_text_secondary" android:text="" />
-        </LinearLayout>
-        <TextView android:id="@+id/widget_client4" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textSize="11sp" android:textColor="@color/widget_text_tertiary" android:maxLines="1" android:ellipsize="end" android:text="" />
-        <ProgressBar android:id="@+id/widget_progress4" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="8dp" android:layout_marginTop="6dp" android:max="100" android:progress="0" android:progressDrawable="@drawable/widget_progress_fill" />
-    </LinearLayout>
-
-    <TextView
-        android:id="@+id/widget_updated"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text=""
-        android:textSize="10sp"
-        android:textColor="@color/widget_text_tertiary" />
-
-</LinearLayout>
+</FrameLayout>

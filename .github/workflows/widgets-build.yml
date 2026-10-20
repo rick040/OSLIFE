@@ -60,3 +60,17 @@ jobs:
           name: OSLIFE widgets — latest debug APK
           body: Auto-published from the latest successful widgets-only build (commit ${{ github.sha }}). Overwritten on every build — not a versioned release.
           files: android-widgets/app/build/outputs/apk/debug/app-debug.apk
+
+      # After the APK is out, so a render problem never holds up the download: inflates every
+      # widget the way a launcher does (catches "Kan widget niet laden" layouts before they hit
+      # the phone) and saves what each one looks like as reviewable PNGs.
+      - name: Render widgets
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Upload widget renders
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oslife-widgets-renders
+          path: android-widgets/app/build/widget-renders
+          if-no-files-found: ignore

@@ -22,7 +22,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Home-screen widgets voor OSLIFE: to-do lijst, belangrijkste items, actieve projecten, brain-dump snel toevoegen, HEYRA snel chatten/spreken."
+            android:text="Home-screen widgets voor OSLIFE: Vandaag, Snelle acties, To-do, Belangrijkste, Projecten, Brain-dump, HEYRA, Gezondheid, Financiën, Inbox en Agenda."
             android:textSize="13sp"
             android:alpha="0.7"
             android:layout_marginBottom="20dp" />
@@ -30,7 +30,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Eén basis-URL en secret voor alle negen widgets — elke widget haalt zijn eigen edge function op onder deze URL."
+            android:text="Eén basis-URL en secret voor alle widgets — elke widget haalt zijn eigen edge function op onder deze URL."
             android:textSize="12sp"
             android:alpha="0.7"
             android:layout_marginBottom="8dp" />
@@ -81,20 +81,28 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Instellingen opslaan" />
+            android:text="Opslaan en verbinding testen" />
+
+        <TextView
+            android:id="@+id/connectionStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textSize="13sp"
+            android:visibility="gone" />
 
         <Button
             android:id="@+id/refreshOslifeWidgetsButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:text="Alle negen widgets nu verversen" />
+            android:text="Alle widgets nu verversen" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Long-press het homescreen → Widgets → OSLIFE Widgets om ze toe te voegen: To-do lijst, Belangrijkste items, Actieve projecten, Brain-dump snel toevoegen, HEYRA snel chatten/spreken, Gezondheid, Financiën, Inbox, Agenda."
+            android:text="Long-press het homescreen → Widgets → OSLIFE Widgets om ze toe te voegen. Long-press een geplaatste widget → Widget aanpassen om de achtergrond doorzichtiger te maken."
             android:textSize="12sp"
             android:alpha="0.7" />
 

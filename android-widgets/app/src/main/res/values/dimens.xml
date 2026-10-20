@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Card corner radius. Android 12+ overrides this with the launcher's own widget radius
+         (values-v31), so OSLIFE widgets round exactly like every other widget on the home screen. -->
+    <dimen name="widget_radius">24dp</dimen>
+</resources>

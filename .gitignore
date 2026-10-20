@@ -25,3 +25,8 @@ gym-launcher/.gradle
 gym-launcher/local.properties
 gym-launcher/**/build
 gym-launcher/oslife-gym-launcher.apk
+
+# OSLIFE widgets (/android-widgets) build output and local SDK path
+android-widgets/.gradle
+android-widgets/local.properties
+android-widgets/**/build

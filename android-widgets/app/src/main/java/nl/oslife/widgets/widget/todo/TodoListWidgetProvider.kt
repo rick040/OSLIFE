@@ -1,59 +1,35 @@
 package nl.oslife.widgets.widget.todo
 
-import android.appwidget.AppWidgetManager
-import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
-import android.os.Bundle
-import nl.oslife.widgets.widget.common.WidgetStyle
+import nl.oslife.widgets.R
+import nl.oslife.widgets.widget.common.DataWidgetProvider
+import nl.oslife.widgets.widget.common.WidgetData
 
 /**
- * Home-screen "To-do lijst" widget: up to six open tasks (widget-tasks edge
- * function), one row per task with a tap-to-complete checkbox. Same
- * WorkManager-driven fixed-row push as every other widget here — see
- * TodoWidgetWorker's doc comment for why this replaced an earlier
- * RemoteViewsService/ListView collection.
+ * Home-screen "To-do lijst" widget: open tasks (widget-tasks edge function), one row per task.
+ * Tapping the ring ticks the task off immediately on screen (PendingDone) while
+ * TodoToggleWorker tells the server; tapping it again before it disappears undoes it.
+ * Also the receiver for tick-offs from the "Belangrijkste" widget.
  */
-class TodoListWidgetProvider : AppWidgetProvider() {
+class TodoListWidgetProvider : DataWidgetProvider() {
 
-    override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        // The widget host aborts adding a widget entirely if onUpdate() throws — a
-        // rendering bug in the eventual real-data path must never take down the
-        // initial placeholder push.
-        val views = try {
-            TodoWidgetWorker.buildViews(context)
-        } catch (e: Exception) {
-            TodoWidgetWorker.buildViews(context, errorMessage = "Interne fout: ${e.message}")
-        }
-        appWidgetIds.forEach { id -> appWidgetManager.updateAppWidget(id, TodoWidgetWorker.styled(context, views, id)) }
-        TodoWidgetWorker.refreshNow(context)
-    }
+    override val function = TaskRows.FUNCTION
+    override val layoutId = R.layout.widget_todo_list
+    override val refreshAction = ACTION_REFRESH
 
-    override fun onEnabled(context: Context) {
-        TodoWidgetWorker.schedulePeriodic(context)
-    }
-
-    override fun onDisabled(context: Context) {
-        TodoWidgetWorker.cancelPeriodic(context)
-    }
-
-    override fun onAppWidgetOptionsChanged(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int, newOptions: Bundle) {
-        super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
-        TodoWidgetWorker.refreshNow(context)
-    }
-
-    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
-        appWidgetIds.forEach { id -> WidgetStyle.clear(context, id) }
-    }
+    override fun push(context: Context, appWidgetIds: IntArray?, data: WidgetData) = TodoWidgetWorker.push(context, appWidgetIds, data)
+    override fun refreshNow(context: Context) = TodoWidgetWorker.refreshNow(context)
+    override fun schedulePeriodic(context: Context) = TodoWidgetWorker.schedulePeriodic(context)
+    override fun cancelPeriodic(context: Context) = TodoWidgetWorker.cancelPeriodic(context)
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        when (intent.action) {
-            ACTION_REFRESH -> TodoWidgetWorker.refreshNow(context)
-            ACTION_TOGGLE -> {
-                val taskId = intent.getStringExtra(EXTRA_TASK_ID) ?: return
-                TodoToggleWorker.enqueue(context, taskId)
-            }
+        if (intent.action == ACTION_TOGGLE) {
+            val taskId = intent.getStringExtra(EXTRA_TASK_ID) ?: return
+            PendingDone.toggle(context, taskId)
+            TaskRows.pushAll(context, WidgetData.cached(context, TaskRows.FUNCTION))
+            TodoToggleWorker.enqueue(context, taskId)
         }
     }
 
@@ -61,8 +37,5 @@ class TodoListWidgetProvider : AppWidgetProvider() {
         const val ACTION_REFRESH = "nl.oslife.widgets.widget.todo.ACTION_REFRESH"
         const val ACTION_TOGGLE = "nl.oslife.widgets.widget.todo.ACTION_TOGGLE"
         const val EXTRA_TASK_ID = "task_id"
-
-        /** Kept for TodoToggleWorker's existing call site — just triggers a re-render now. */
-        fun notifyListChanged(context: Context) = TodoWidgetWorker.refreshNow(context)
     }
 }

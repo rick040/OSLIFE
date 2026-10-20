@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shared building blocks for every widget layout, so all eleven widgets share one grid:
+     6dp card inset + 10dp row inset = content 16dp from the card edge, a 32dp header, 36dp
+     touch rows, and a footer line pinned to the bottom. Row-count math in the workers
+     (WidgetStyle.rowCapacity) assumes these sizes — keep them in step. -->
+<resources>
+
+    <!-- Card background as its own view (id @android:id/background) so the opacity setting
+         fades only the card, never the text, and Android 12+ launchers animate app launches
+         out of it. -->
+    <style name="WidgetBackground">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:src">@drawable/card_bg</item>
+        <item name="android:scaleType">fitXY</item>
+        <item name="android:importantForAccessibility">no</item>
+    </style>
+
+    <style name="WidgetBody">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:paddingStart">6dp</item>
+        <item name="android:paddingEnd">6dp</item>
+        <item name="android:paddingTop">8dp</item>
+        <item name="android:paddingBottom">8dp</item>
+    </style>
+
+    <style name="WidgetHeader">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">32dp</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">10dp</item>
+    </style>
+
+    <style name="WidgetHeaderIcon">
+        <item name="android:layout_width">18dp</item>
+        <item name="android:layout_height">18dp</item>
+        <item name="android:importantForAccessibility">no</item>
+    </style>
+
+    <style name="WidgetTitle">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginStart">8dp</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/widget_text_primary</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+
+    <!-- Small number pill next to a title (open tasks, unread mail). -->
+    <style name="WidgetCountBadge">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">6dp</item>
+        <item name="android:layout_marginEnd">2dp</item>
+        <item name="android:paddingStart">8dp</item>
+        <item name="android:paddingEnd">8dp</item>
+        <item name="android:paddingTop">2dp</item>
+        <item name="android:paddingBottom">2dp</item>
+        <item name="android:background">@drawable/pill_glass</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:visibility">gone</item>
+    </style>
+
+    <style name="WidgetRefresh">
+        <item name="android:layout_width">32dp</item>
+        <item name="android:layout_height">32dp</item>
+        <item name="android:layout_marginStart">4dp</item>
+        <item name="android:padding">8dp</item>
+        <item name="android:background">@drawable/ghost_button_bg</item>
+        <item name="android:src">@drawable/ic_w_refresh</item>
+        <item name="android:tint">@color/widget_text_secondary</item>
+        <item name="android:contentDescription">Ververs</item>
+    </style>
+
+    <!-- Fills the space between header and footer; both this and WidgetEmpty take weight so
+         whichever one is showing pushes the footer down to the bottom edge. -->
+    <style name="WidgetContent">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:layout_marginTop">4dp</item>
+    </style>
+
+    <style name="WidgetEmpty">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">@color/widget_text_secondary</item>
+        <item name="android:visibility">gone</item>
+    </style>
+
+    <style name="WidgetFooterRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:layout_marginTop">2dp</item>
+    </style>
+
+    <style name="WidgetFooter">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:textColor">@color/widget_text_tertiary</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+
+    <!-- "+3 meer" at the right end of the footer line. -->
+    <style name="WidgetMore">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">8dp</item>
+        <item name="android:textSize">10sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/widget_text_secondary</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:visibility">gone</item>
+    </style>
+
+    <style name="WidgetText">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+    <style name="WidgetText.Body">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/widget_text_primary</item>
+    </style>
+    <style name="WidgetText.Strong">
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/widget_text_primary</item>
+    </style>
+    <style name="WidgetText.Secondary">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/widget_text_secondary</item>
+    </style>
+    <style name="WidgetText.Meta">
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/widget_text_tertiary</item>
+    </style>
+    <style name="WidgetText.Hero">
+        <item name="android:textSize">28sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textColor">@color/widget_hero_number</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+    <!-- Icon + value stat line (sleep, weight, open payments...) — icon via drawableStart. -->
+    <style name="WidgetText.Stat">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/widget_text_primary</item>
+        <item name="android:drawablePadding">6dp</item>
+        <item name="android:gravity">center_vertical</item>
+    </style>
+
+    <style name="WidgetPill">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">8dp</item>
+        <item name="android:paddingStart">8dp</item>
+        <item name="android:paddingEnd">8dp</item>
+        <item name="android:paddingTop">2dp</item>
+        <item name="android:paddingBottom">2dp</item>
+        <item name="android:background">@drawable/pill_glass</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/widget_text_secondary</item>
+        <item name="android:maxLines">1</item>
+    </style>
+
+    <!-- One tappable task line: ripple row (opens the task) with a 36dp checkbox target. -->
+    <style name="WidgetTaskRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">36dp</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:background">@drawable/widget_ripple</item>
+    </style>
+    <style name="WidgetTaskCheck">
+        <item name="android:layout_width">36dp</item>
+        <item name="android:layout_height">36dp</item>
+        <item name="android:padding">9dp</item>
+        <item name="android:background">@drawable/widget_ripple_round</item>
+        <item name="android:src">@drawable/ic_w_task_open_low</item>
+        <item name="android:contentDescription">Afvinken</item>
+    </style>
+    <style name="WidgetTaskTitle" parent="WidgetText.Body">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginStart">2dp</item>
+    </style>
+
+    <!-- Multi-line tappable row (projects, mail, agenda). -->
+    <style name="WidgetRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:paddingTop">5dp</item>
+        <item name="android:paddingBottom">5dp</item>
+        <item name="android:background">@drawable/widget_ripple</item>
+    </style>
+
+    <!-- Glass shortcut button (brain-dump, HEYRA): icon above a short label. -->
+    <style name="WidgetShortcut">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:gravity">center</item>
+        <item name="android:background">@drawable/glass_button_bg</item>
+    </style>
+    <style name="WidgetShortcutIcon">
+        <item name="android:layout_width">20dp</item>
+        <item name="android:layout_height">20dp</item>
+        <item name="android:importantForAccessibility">no</item>
+    </style>
+    <style name="WidgetShortcutLabel">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/widget_text_secondary</item>
+        <item name="android:maxLines">1</item>
+    </style>
+</resources>

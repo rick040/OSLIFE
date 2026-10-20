@@ -21,9 +21,36 @@
             </intent-filter>
         </activity>
 
+        <!-- Listed first so they top the widget picker: the day overview and the action bar. -->
+        <receiver
+            android:name=".widget.today.TodayWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_label_today">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="nl.oslife.widgets.widget.today.ACTION_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_today_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.quickactions.QuickActionsWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_label_quick_actions">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_quick_actions_info" />
+        </receiver>
+
         <receiver
             android:name=".widget.todo.TodoListWidgetProvider"
-            android:exported="false">
+            android:exported="false"
+            android:label="@string/widget_label_todo">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="nl.oslife.widgets.widget.todo.ACTION_REFRESH" />
@@ -36,7 +63,8 @@
 
         <receiver
             android:name=".widget.priority.TopPriorityWidgetProvider"
-            android:exported="false">
+            android:exported="false"
+            android:label="@string/widget_label_priority">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="nl.oslife.widgets.widget.priority.ACTION_REFRESH" />
@@ -48,7 +76,8 @@
 
         <receiver
             android:name=".widget.projects.ActiveProjectsWidgetProvider"
-            android:exported="false">
+            android:exported="false"
+            android:label="@string/widget_label_projects">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="nl.oslife.widgets.widget.projects.ACTION_REFRESH" />
@@ -60,7 +89,8 @@
 
         <receiver
             android:name=".widget.braindump.BraindumpQuickAddWidgetProvider"
-            android:exported="false">
+            android:exported="false"
+            android:label="@string/widget_label_braindump">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="nl.oslife.widgets.widget.braindump.ACTION_REFRESH" />
@@ -86,7 +116,8 @@
 
         <receiver
             android:name=".widget.heyra.HeyraQuickWidgetProvider"
-            android:exported="false">
+            android:exported="false"
+            android:label="@string/widget_label_heyra">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -104,7 +135,8 @@
 
         <receiver
             android:name=".widget.health.HealthWidgetProvider"
-            android:exported="false">
+            android:exported="false"
+            android:label="@string/widget_label_health">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="nl.oslife.widgets.widget.health.ACTION_REFRESH" />
@@ -116,7 +148,8 @@
 
         <receiver
             android:name=".widget.finance.FinanceWidgetProvider"
-            android:exported="false">
+            android:exported="false"
+            android:label="@string/widget_label_finance">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="nl.oslife.widgets.widget.finance.ACTION_REFRESH" />
@@ -128,7 +161,8 @@
 
         <receiver
             android:name=".widget.inbox.InboxWidgetProvider"
-            android:exported="false">
+            android:exported="false"
+            android:label="@string/widget_label_inbox">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="nl.oslife.widgets.widget.inbox.ACTION_REFRESH" />
@@ -140,7 +174,8 @@
 
         <receiver
             android:name=".widget.calendar.CalendarWidgetProvider"
-            android:exported="false">
+            android:exported="false"
+            android:label="@string/widget_label_calendar">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="nl.oslife.widgets.widget.calendar.ACTION_REFRESH" />

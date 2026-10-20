@@ -1,144 +1,96 @@
 package nl.oslife.widgets.widget.calendar
 
-import android.app.PendingIntent
-import android.appwidget.AppWidgetManager
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.view.View
 import android.widget.RemoteViews
-import androidx.work.BackoffPolicy
-import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.WorkRequest
-import androidx.work.Worker
 import androidx.work.WorkerParameters
 import nl.oslife.widgets.R
+import nl.oslife.widgets.widget.common.DataWidgetWorker
+import nl.oslife.widgets.widget.common.DateFmt
 import nl.oslife.widgets.widget.common.DeepLink
-import nl.oslife.widgets.widget.common.OslifeWidgetApi
+import nl.oslife.widgets.widget.common.WidgetChrome
+import nl.oslife.widgets.widget.common.WidgetData
+import nl.oslife.widgets.widget.common.WidgetJobs
+import nl.oslife.widgets.widget.common.WidgetPush
 import nl.oslife.widgets.widget.common.WidgetStyle
-import java.time.Duration
-import java.util.concurrent.TimeUnit
+import nl.oslife.widgets.widget.common.str
+import nl.oslife.widgets.widget.todo.TaskRows
+import java.time.LocalTime
 
-private val ROW_IDS = intArrayOf(R.id.widget_row1, R.id.widget_row2, R.id.widget_row3, R.id.widget_row4)
-private val TIME_IDS = intArrayOf(R.id.widget_time1, R.id.widget_time2, R.id.widget_time3, R.id.widget_time4)
-private val TITLE_IDS = intArrayOf(R.id.widget_title1, R.id.widget_title2, R.id.widget_title3, R.id.widget_title4)
+private val ROW_IDS = intArrayOf(R.id.widget_row1, R.id.widget_row2, R.id.widget_row3, R.id.widget_row4, R.id.widget_row5, R.id.widget_row6, R.id.widget_row7, R.id.widget_row8)
+private val BAR_IDS = intArrayOf(R.id.widget_bar1, R.id.widget_bar2, R.id.widget_bar3, R.id.widget_bar4, R.id.widget_bar5, R.id.widget_bar6, R.id.widget_bar7, R.id.widget_bar8)
+private val TITLE_IDS = intArrayOf(R.id.widget_title1, R.id.widget_title2, R.id.widget_title3, R.id.widget_title4, R.id.widget_title5, R.id.widget_title6, R.id.widget_title7, R.id.widget_title8)
+private val TIME_IDS = intArrayOf(R.id.widget_time1, R.id.widget_time2, R.id.widget_time3, R.id.widget_time4, R.id.widget_time5, R.id.widget_time6, R.id.widget_time7, R.id.widget_time8)
 
-class CalendarWidgetWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
+class CalendarWidgetWorker(context: Context, params: WorkerParameters) : DataWidgetWorker(context, params) {
 
-    override fun doWork(): Result {
-        val context = applicationContext
-        val views = try {
-            when (val result = OslifeWidgetApi.get(context, "widget-calendar")) {
-                is OslifeWidgetApi.Result.Success -> buildViews(context, blocks = result.json.optJSONArray("blocks"))
-                is OslifeWidgetApi.Result.NotConfigured -> buildViews(context, notConfiguredMessage = true)
-                is OslifeWidgetApi.Result.Failure -> buildViews(context, errorMessage = result.message)
-            }
-        } catch (e: Exception) {
-            buildViews(context, errorMessage = "Interne fout: ${e.message}")
-        }
-        pushViews(context, views)
-        return Result.success()
-    }
+    override val function = FUNCTION
+    override fun push(context: Context, data: WidgetData) = push(context, null, data)
 
     companion object {
+        const val FUNCTION = "widget-calendar"
         private const val UNIQUE_PERIODIC_WORK = "calendar_widget_refresh_periodic"
         private const val UNIQUE_ONE_TIME_WORK = "calendar_widget_refresh_once"
-        private val REFRESH_INTERVAL = Duration.ofMinutes(30)
+        private const val ROW_HEIGHT_DP = 44
 
-        private fun pushViews(context: Context, views: RemoteViews) {
-            val manager = AppWidgetManager.getInstance(context)
-            val ids = manager.getAppWidgetIds(ComponentName(context, CalendarWidgetProvider::class.java))
-            ids.forEach { id -> manager.updateAppWidget(id, styled(context, views, id)) }
-        }
+        fun push(context: Context, appWidgetIds: IntArray?, data: WidgetData) =
+            WidgetPush.push(context, CalendarWidgetProvider::class.java, appWidgetIds, data) { id, d -> buildViews(context, id, d) }
 
-        fun styled(context: Context, views: RemoteViews, appWidgetId: Int): RemoteViews =
-            WidgetStyle.applyInstanceStyle(context, views, appWidgetId, ROW_IDS, rowHeightDp = 34, chromeDp = 90)
-
-        fun buildViews(
-            context: Context,
-            blocks: org.json.JSONArray? = null,
-            errorMessage: String? = null,
-            notConfiguredMessage: Boolean = false,
-        ): RemoteViews {
+        fun buildViews(context: Context, appWidgetId: Int, data: WidgetData, now: LocalTime = LocalTime.now()): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.widget_calendar)
+            val open = DeepLink.pendingIntent(context, 0, "daybuilder")
+            val json = WidgetChrome.bind(
+                context, views, appWidgetId, data,
+                CalendarWidgetProvider::class.java, CalendarWidgetProvider.ACTION_REFRESH, open,
+            ) ?: return views
 
-            views.setOnClickPendingIntent(R.id.widget_root, DeepLink.pendingIntent(context, 0, "daybuilder"))
-
-            val refreshIntent = Intent(context, CalendarWidgetProvider::class.java).apply {
-                action = CalendarWidgetProvider.ACTION_REFRESH
-            }
-            val refreshPendingIntent = PendingIntent.getBroadcast(
-                context, 0, refreshIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-            views.setOnClickPendingIntent(R.id.widget_refresh, refreshPendingIntent)
-
-            when {
-                notConfiguredMessage -> {
-                    ROW_IDS.forEach { views.setViewVisibility(it, View.GONE) }
-                    views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
-                    views.setTextViewText(R.id.widget_empty, "Nog niet ingesteld — open de app → Instellingen")
-                    views.setTextViewText(R.id.widget_updated, "")
-                }
-                errorMessage != null -> {
-                    ROW_IDS.forEach { views.setViewVisibility(it, View.GONE) }
-                    views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
-                    views.setTextViewText(R.id.widget_empty, "⚠️ $errorMessage")
-                    views.setTextViewText(R.id.widget_updated, "")
-                }
-                else -> renderBlocks(views, blocks)
-            }
-
-            return views
-        }
-
-        private fun renderBlocks(views: RemoteViews, blocks: org.json.JSONArray?) {
+            val blocks = json.optJSONArray("blocks")
+            // widget-calendar already drops finished blocks (same end-or-start rule), but a cached
+            // copy can be hours old.
             val items = (0 until (blocks?.length() ?: 0)).map { i -> blocks!!.getJSONObject(i) }
+                .filter { b ->
+                    val until = DateFmt.time(b.str("endTime")) ?: DateFmt.time(b.str("startTime"))
+                    until == null || !until.isBefore(now)
+                }
+            if (items.isEmpty()) {
+                WidgetChrome.showEmpty(views, "Niets meer op de agenda vandaag.")
+                WidgetChrome.setMore(views, null)
+                return views
+            }
 
-            views.setViewVisibility(R.id.widget_empty, if (items.isEmpty()) View.VISIBLE else View.GONE)
-
+            val shown = minOf(WidgetStyle.rowCapacity(context, appWidgetId, ROW_HEIGHT_DP, TaskRows.CHROME_DP, ROW_IDS.size), items.size)
             for (i in ROW_IDS.indices) {
-                if (i >= items.size) {
+                if (i >= shown) {
                     views.setViewVisibility(ROW_IDS[i], View.GONE)
                     continue
                 }
                 val b = items[i]
+                val start = DateFmt.time(b.str("startTime"))
+                val end = DateFmt.time(b.str("endTime"))
+                val isNow = start != null && end != null && !start.isAfter(now) && end.isAfter(now)
+
                 views.setViewVisibility(ROW_IDS[i], View.VISIBLE)
-                val startTime = b.optString("startTime", "").take(5)
-                views.setTextViewText(TIME_IDS[i], startTime)
-                views.setTextViewText(TITLE_IDS[i], b.optString("title", "(geen titel)"))
+                views.setTextViewText(TITLE_IDS[i], b.str("title") ?: "(geen titel)")
+                views.setTextViewText(TIME_IDS[i], when {
+                    isNow -> "Nu · tot ${hhmm(end!!)}"
+                    start != null && end != null -> "${hhmm(start)} – ${hhmm(end)}"
+                    start != null -> hhmm(start)
+                    else -> "Hele dag"
+                })
+                views.setTextColor(TIME_IDS[i], context.getColor(if (isNow) R.color.widget_accent_calendar else R.color.widget_text_tertiary))
+                views.setInt(BAR_IDS[i], "setImageAlpha", if (isNow) 255 else 110)
+                views.setOnClickPendingIntent(ROW_IDS[i], open)
             }
-
-            views.setTextViewText(R.id.widget_updated, "Ververst: net")
+            WidgetChrome.setMore(views, if (items.size > shown) "+${items.size - shown} later" else null)
+            return views
         }
 
-        fun refreshNow(context: Context) {
-            val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
-            val request = OneTimeWorkRequestBuilder<CalendarWidgetWorker>()
-                .setConstraints(constraints)
-                .setBackoffCriteria(BackoffPolicy.LINEAR, WorkRequest.MIN_BACKOFF_MILLIS, TimeUnit.MILLISECONDS)
-                .build()
-            WorkManager.getInstance(context)
-                .enqueueUniqueWork(UNIQUE_ONE_TIME_WORK, ExistingWorkPolicy.REPLACE, request)
-        }
+        private fun hhmm(t: LocalTime) = String.format("%02d:%02d", t.hour, t.minute)
 
-        fun schedulePeriodic(context: Context) {
-            val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
-            val request = PeriodicWorkRequestBuilder<CalendarWidgetWorker>(REFRESH_INTERVAL)
-                .setConstraints(constraints)
-                .build()
-            WorkManager.getInstance(context)
-                .enqueueUniquePeriodicWork(UNIQUE_PERIODIC_WORK, ExistingPeriodicWorkPolicy.KEEP, request)
-        }
+        fun refreshNow(context: Context) = WidgetJobs.refreshNow(context, CalendarWidgetWorker::class.java, UNIQUE_ONE_TIME_WORK)
 
-        fun cancelPeriodic(context: Context) {
-            WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_PERIODIC_WORK)
-        }
+        fun schedulePeriodic(context: Context) = WidgetJobs.schedulePeriodic(context, CalendarWidgetWorker::class.java, UNIQUE_PERIODIC_WORK)
+
+        fun cancelPeriodic(context: Context) = WidgetJobs.cancel(context, UNIQUE_PERIODIC_WORK)
     }
 }

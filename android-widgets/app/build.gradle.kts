@@ -49,6 +49,20 @@ android {
     buildFeatures {
         viewBinding = true
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all { test ->
+                // Robolectric downloads its Android runtime jar on first run; on machines where
+                // Maven Central is rate-limited, pre-download it and point ROBOLECTRIC_DEPS_DIR at it.
+                System.getenv("ROBOLECTRIC_DEPS_DIR")?.let { dir ->
+                    test.systemProperty("robolectric.offline", "true")
+                    test.systemProperty("robolectric.dependency.dir", dir)
+                }
+            }
+        }
+    }
 }
 
 dependencies {
@@ -61,4 +75,7 @@ dependencies {
 
     // Small, well-tested HTTP client for the widget-* edge function calls.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.13")
 }

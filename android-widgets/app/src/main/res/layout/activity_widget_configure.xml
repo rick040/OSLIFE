@@ -3,7 +3,7 @@
     android:id="@+id/scrim"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#73000000">
+    android:background="#33000000">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -17,7 +17,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Widget aanpassen"
+            android:text="Achtergrond"
             android:textStyle="bold"
             android:textSize="17sp"
             android:textColor="@color/dialog_text_primary" />
@@ -27,7 +27,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:layout_marginBottom="16dp"
-            android:text="Doorzichtigheid van de kaart op je startscherm."
+            android:text="Hoe dekkend de achtergrond van de kaart is. Tekst blijft altijd volledig zichtbaar — je ziet het meteen op de widget zelf."
             android:textSize="12sp"
             android:textColor="@color/dialog_text_tertiary" />
 
@@ -42,7 +42,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:max="60" />
+                android:max="100" />
 
             <TextView
                 android:id="@+id/opacityLabel"

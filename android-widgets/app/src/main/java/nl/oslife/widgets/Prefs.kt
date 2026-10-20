@@ -31,6 +31,10 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_OSLIFE_SECRET, "") ?: ""
         set(value) = sp.edit().putString(KEY_OSLIFE_SECRET, value).apply()
 
+    /** True once the functions URL and secret are both filled in — before that no widget can fetch anything. */
+    val isConfigured: Boolean
+        get() = oslifeFunctionsBaseUrl.isNotBlank() && oslifeWidgetSecret.isNotBlank()
+
     /** Full URL for one of the widget-* edge functions, or "" if not configured yet. */
     fun oslifeFunctionUrl(functionName: String): String {
         val base = oslifeFunctionsBaseUrl.trim().trimEnd('/')

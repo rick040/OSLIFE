@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Glass shortcut button on the dark card (brain-dump, HEYRA, snelle acties). -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/widget_ripple">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/widget_glass_bg" />
+            <corners android:radius="16dp" />
+        </shape>
+    </item>
+</ripple>

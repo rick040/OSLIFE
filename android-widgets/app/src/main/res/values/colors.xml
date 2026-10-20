@@ -28,6 +28,17 @@
     <color name="widget_glass_bg">#1FFFFFFF</color>
     <color name="widget_danger_bg">#40FF453A</color>
     <color name="widget_hero_number">#FFFFFF</color>
+    <color name="widget_accent_habits">#F472B6</color>
+    <color name="widget_accent_dog">#A3E635</color>
+
+    <!-- Press feedback on rows/buttons, the "this is cached, not live" footer, and the
+         task checkbox states (ring color = priority; filled green = ticked off). -->
+    <color name="widget_ripple">#2EFFFFFF</color>
+    <color name="widget_warning">#FBBF24</color>
+    <color name="widget_done">#34D399</color>
+    <color name="widget_on_accent">#15151A</color>
+    <color name="widget_priority_high">#F87171</color>
+    <color name="widget_priority_medium">#FBBF24</color>
 
     <!-- ── Floating quick-capture dialogs (QuickAddActivity, HeyraQuickChatActivity) ──
          A separate, deliberately light card system — NOT RemoteViews, a normal
