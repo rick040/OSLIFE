@@ -52,6 +52,18 @@ maken niet uit. De verwachte tabs/kolommen + sheet-id properties staan boven in 
   kernpunten van een Claude-gesprek van de `oslife-remember` Claude Skill en logt die direct als een
   `braindump_entries`-rij (embed + vault + cognee, zelfde best-effort verrijking als een Braindump-
   capture). Setup: `../.claude/skills/oslife-remember/SKILL.md`.
+- `kwgt-api` (`supabase/functions/kwgt-api/`) — backend voor de 5 premium KWGT-widgets (to-do
+  lijst, belangrijkste items, actieve projecten, brain-dump quick add, HEYRA quick chat/voice):
+  GET-only, secret via query-param, service-role. Setup: `kwgt/README.md`.
+
+## KWGT-widgets (`kwgt/`)
+
+Vijf kant-en-klare, direct importeerbare `.kwgt`-bestanden (`kwgt/presets/`) voor
+[KWGT](https://play.google.com/store/apps/details?id=org.kustom.widget) ("Kustom Widget"),
+gebaseerd op `kwgt-api` hierboven. Gebouwd met `kwgt/scripts/build_presets.py` volgens een
+`preset.json`-schema dat is teruggelezen uit echte, werkende widgets van andere makers (zie
+`kwgt/README.md` voor de bronnen en wat geverifieerd vs. best-effort is). Importeren, twee
+tekstvelden invullen (API-URL + secret), klaar — zie `kwgt/README.md`.
 
 ## Claude Skill (`../.claude/skills/oslife-remember/`)
 
